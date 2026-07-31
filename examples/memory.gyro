@@ -1,0 +1,56 @@
+// Manual memory with a compiler-checked safety net.
+//
+// `alloc` returns a raw pointer, `free` releases it, and `defer` schedules
+// the release at scope exit. The compiler tracks every allocation and warns
+// when one can reach the end of its scope without being freed or returned.
+
+import { println } from "@gyro/stdlib"
+import { alloc, free } from "@gyro/mem"
+
+struct Node {
+  value: i32
+  next: *Node
+}
+
+// Freed on every path, including the early return.
+fn sum_pair(a: i32, b: i32): i32 {
+  var node = alloc<Node>()
+  defer free(node)
+
+  node.value = a + b
+  if node.value < 0 {
+    return 0
+  }
+  return node.value
+}
+
+// The allocation escapes through the return value, so ownership moves to the
+// caller and no warning is reported here.
+export fn make_node(value: i32): *Node {
+  var node = alloc<Node>()
+  node.value = value
+  node.next = null
+  return node
+}
+
+// Freeing a chain the compiler cannot see through: the loop is opaque to the
+// escape analysis, so this is written out by hand.
+export fn free_chain(head: *Node) {
+  var current = head
+  while current != null {
+    var next = current.next
+    free(current)
+    current = next
+  }
+}
+
+fn main() {
+  println(sum_pair(2, 3))
+
+  var head = make_node(1)
+  head.next = make_node(2)
+  defer free_chain(head)
+
+  var address = &head.value
+  println(*address)
+}

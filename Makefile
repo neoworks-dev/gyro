@@ -1,17 +1,33 @@
-.PHONY: all test
+.PHONY: all build test check fmt vet clean install
 
-all: compile-parser run-compiler
+GO      ?= go
+BIN     := bin/gyro
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
-run-compiler:
-	bun run ./src/compiler.ts
+all: build test
 
-compile-parser:
-	bunx peggy -o src/gyro-parser-v1.js src/gyro.peggy
+build:
+	$(GO) build $(LDFLAGS) -o $(BIN) .
 
 test:
-	bunx peggy src/gyro.peggy --test-file src/test.gyro
+	$(GO) test ./...
 
-compile:
-	nasm -F dwarf -g -f elf32 -o $(in).o $(in) 
-	ld -m elf_i386 -o $(out) $(in).o
-	rm $(in).o
+# Parse every reference program. Fails if any of them stops parsing cleanly.
+check: build
+	@for file in examples/*.gyro; do \
+		./$(BIN) check $$file || exit 1; \
+	done
+
+fmt:
+	$(GO) fmt ./...
+
+vet:
+	$(GO) vet ./...
+
+install:
+	$(GO) install $(LDFLAGS) .
+
+clean:
+	rm -rf bin
+	$(GO) clean

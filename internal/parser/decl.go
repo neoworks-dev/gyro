@@ -1,0 +1,483 @@
+package parser
+
+import (
+	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/lexer"
+	"github.com/gyro-lang/gyro/internal/token"
+)
+
+func (p *Parser) parseFile() *ast.File {
+	file := &ast.File{Name: p.file.Name}
+
+	p.skipTerminators()
+	for p.at(token.Import) {
+		file.Imports = append(file.Imports, p.parseImport())
+		p.skipTerminators()
+	}
+
+	for !p.atEOF() {
+		before := p.index
+
+		decl := p.parseDecl()
+		if decl != nil {
+			file.Decls = append(file.Decls, decl)
+		}
+		p.skipTerminators()
+
+		// Guarantee forward progress even when parseDecl bailed out on a
+		// token it does not know how to start a declaration with.
+		if p.index == before {
+			p.next()
+		}
+	}
+	return file
+}
+
+// parseImport parses every import form. A bare `import "path"` imports the
+// module for its side effects only and binds nothing.
+func (p *Parser) parseImport() *ast.Import {
+	node := &ast.Import{Offset: p.offset()}
+	p.expect(token.Import)
+
+	switch {
+	case p.at(token.String):
+		node.Path = lexer.Unescape(p.next().Text)
+		p.expectTerminator()
+		return node
+
+	case p.accept(token.Star):
+		p.expect(token.As)
+		node.Wildcard, _ = p.expectIdent()
+
+	case p.at(token.LBrace):
+		node.Names = p.parseNameList()
+
+	default:
+		node.Default, _ = p.expectIdent()
+		// A default import may also pull named bindings alongside it.
+		if p.accept(token.Comma) {
+			node.Names = p.parseNameList()
+		}
+	}
+
+	p.expect(token.From)
+	node.Path = lexer.Unescape(p.expect(token.String).Text)
+	p.expectTerminator()
+	return node
+}
+
+// parseNameList parses a braced `{ a, b as c }` list, shared by imports and
+// standalone exports.
+func (p *Parser) parseNameList() []ast.ImportName {
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	var names []ast.ImportName
+	for !p.at(token.RBrace) && !p.atEOF() {
+		name := ast.ImportName{Offset: p.offset()}
+		name.Name, _ = p.expectIdent()
+		if p.accept(token.As) {
+			name.Alias, _ = p.expectIdent()
+		}
+		names = append(names, name)
+
+		p.skipTerminators()
+		if !p.accept(token.Comma) {
+			break
+		}
+		p.skipTerminators()
+	}
+
+	p.expect(token.RBrace)
+	return names
+}
+
+// parseExportDecl parses a standalone `export { ... }` or `export * from ...`.
+func (p *Parser) parseExportDecl() *ast.ExportDecl {
+	decl := &ast.ExportDecl{Offset: p.offset()}
+	p.expect(token.Export)
+
+	if p.accept(token.Star) {
+		decl.Star = true
+	} else {
+		decl.Names = p.parseNameList()
+	}
+
+	// `from` is required for a star export and optional for a name list.
+	if decl.Star {
+		p.expect(token.From)
+		decl.Path = lexer.Unescape(p.expect(token.String).Text)
+	} else if p.accept(token.From) {
+		decl.Path = lexer.Unescape(p.expect(token.String).Text)
+	}
+
+	p.expectTerminator()
+	return decl
+}
+
+// parseDecl parses one top-level declaration together with any decorators
+// and the optional `export` modifier that precede it.
+func (p *Parser) parseDecl() ast.Decl {
+	decorators := p.parseDecorators()
+	offset := p.offset()
+	if len(decorators) > 0 {
+		offset = decorators[0].Offset
+	}
+
+	// A standalone `export { ... }` or `export * from ...` is a declaration
+	// in its own right rather than a modifier on the one that follows.
+	if p.at(token.Export) && (p.peekAt(1).Kind == token.LBrace || p.peekAt(1).Kind == token.Star) {
+		if len(decorators) > 0 {
+			p.errorf(offset, "decorators cannot be attached to an export list")
+		}
+		return p.parseExportDecl()
+	}
+
+	exported := p.accept(token.Export)
+
+	switch p.kind() {
+	case token.Fn, token.Async:
+		fn := p.parseFuncDecl()
+		fn.Offset, fn.Decorators, fn.Exported = offset, decorators, exported
+		return fn
+	case token.Struct:
+		decl := p.parseStructDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
+	case token.Enum:
+		decl := p.parseEnumDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
+	case token.Impl:
+		if exported {
+			p.errorf(offset, "impl blocks cannot be exported; export the methods instead")
+		}
+		decl := p.parseImplDecl()
+		decl.Offset = offset
+		return decl
+	case token.Var, token.Const:
+		decl := p.parseVarDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		p.expectTerminator()
+		return decl
+	}
+
+	p.errorf(p.offset(), "expected a declaration, found %s", describe(p.tok()))
+	p.syncStatement()
+	return nil
+}
+
+// parseDecorators parses a run of `@name` / `@name(args)` annotations.
+func (p *Parser) parseDecorators() []*ast.Decorator {
+	var decorators []*ast.Decorator
+	for p.at(token.At) {
+		decorator := &ast.Decorator{Offset: p.offset()}
+		p.next()
+		decorator.Name = p.parsePath()
+
+		if p.at(token.LParen) {
+			decorator.HasParens = true
+			decorator.Args = p.parseArgs()
+		}
+		decorators = append(decorators, decorator)
+		p.skipTerminators()
+	}
+	return decorators
+}
+
+// parseFuncDecl parses `fn name<T>(params): results { body }`. The caller
+// fills in the offset, decorators and export flag.
+func (p *Parser) parseFuncDecl() *ast.FuncDecl {
+	fn := &ast.FuncDecl{Offset: p.offset()}
+	fn.Async = p.accept(token.Async)
+	p.expect(token.Fn)
+	fn.Name, _ = p.expectIdent()
+	fn.TypeParams = p.parseTypeParams()
+
+	fn.Recv, fn.Params = p.parseParams()
+	fn.Results = p.parseResults()
+	fn.Effects = p.parseEffectRow()
+
+	if p.at(token.LBrace) {
+		fn.Body = p.parseBlock()
+	} else {
+		// A body-less signature is how an external or interface method is
+		// written; sema decides whether that is allowed here.
+		p.expectTerminator()
+	}
+	return fn
+}
+
+// parseTypeParams parses an optional `<T, U>` list after a declaration name.
+func (p *Parser) parseTypeParams() []ast.TypeParam {
+	if !p.at(token.Lt) {
+		return nil
+	}
+	p.next()
+
+	var params []ast.TypeParam
+	for !p.at(token.Gt) && !p.atEOF() {
+		name, offset := p.expectIdent()
+		params = append(params, ast.TypeParam{Offset: offset, Name: name})
+		if !p.accept(token.Comma) {
+			break
+		}
+	}
+	p.expect(token.Gt)
+	return params
+}
+
+// parseParams parses a parenthesized parameter list. A leading `self` or
+// `*self` becomes the receiver rather than an ordinary parameter.
+func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
+	p.expect(token.LParen)
+
+	var recv *ast.Receiver
+	var params []ast.Param
+
+	p.skipTerminators()
+	first := true
+	for !p.at(token.RParen) && !p.atEOF() {
+		if first && p.isReceiver() {
+			recv = p.parseReceiver()
+		} else {
+			params = append(params, p.parseParam())
+		}
+		first = false
+
+		p.skipTerminators()
+		if !p.accept(token.Comma) {
+			break
+		}
+		p.skipTerminators()
+	}
+
+	p.expect(token.RParen)
+	return recv, params
+}
+
+func (p *Parser) isReceiver() bool {
+	if p.at(token.Self) {
+		return true
+	}
+	return p.at(token.Star) && p.peekAt(1).Kind == token.Self
+}
+
+func (p *Parser) parseReceiver() *ast.Receiver {
+	recv := &ast.Receiver{Offset: p.offset()}
+	recv.Pointer = p.accept(token.Star)
+	p.expect(token.Self)
+	return recv
+}
+
+func (p *Parser) parseParam() ast.Param {
+	param := ast.Param{Offset: p.offset()}
+	param.Name, _ = p.expectIdent()
+	p.expect(token.Colon)
+	param.Type = p.parseType()
+
+	if p.accept(token.Assign) {
+		p.withStructLits(true, func() {
+			param.Default = p.parseExpr()
+		})
+	}
+	return param
+}
+
+// parseResults parses the `: T` or `: (T, error)` return annotation. An
+// absent annotation means the function returns nothing.
+func (p *Parser) parseResults() []ast.Type {
+	if !p.accept(token.Colon) {
+		return nil
+	}
+
+	// A parenthesized list directly after the colon is a multi-value return
+	// rather than a tuple-typed single value.
+	if p.at(token.LParen) {
+		p.next()
+		var results []ast.Type
+		for !p.at(token.RParen) && !p.atEOF() {
+			results = append(results, p.parseType())
+			if !p.accept(token.Comma) {
+				break
+			}
+		}
+		p.expect(token.RParen)
+		return results
+	}
+
+	return []ast.Type{p.parseType()}
+}
+
+// parseEffectRow parses the reserved effect annotation that follows a
+// signature: `!{}`, `!{ io, alloc }`, `!e`, or `!{ io, ..e }`.
+func (p *Parser) parseEffectRow() *ast.EffectRow {
+	if !p.at(token.Bang) {
+		return nil
+	}
+
+	row := &ast.EffectRow{Offset: p.offset()}
+	p.next()
+
+	// A bare `!e` is a row variable on its own.
+	if !p.at(token.LBrace) {
+		row.Var, _ = p.expectIdent()
+		return row
+	}
+
+	p.next()
+	for !p.at(token.RBrace) && !p.atEOF() {
+		if p.accept(token.DotDot) {
+			row.Var, _ = p.expectIdent()
+			break
+		}
+		name, _ := p.expectIdent()
+		row.Names = append(row.Names, name)
+
+		if !p.accept(token.Comma) {
+			break
+		}
+	}
+	p.expect(token.RBrace)
+	return row
+}
+
+// parseStructDecl parses `struct Name<T> { field: T ... }`.
+func (p *Parser) parseStructDecl() *ast.StructDecl {
+	decl := &ast.StructDecl{Offset: p.offset()}
+	p.expect(token.Struct)
+	decl.Name, _ = p.expectIdent()
+	decl.TypeParams = p.parseTypeParams()
+
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		field := ast.Field{Offset: p.offset()}
+		field.Exported = p.accept(token.Export)
+		field.Name, _ = p.expectIdent()
+		p.expect(token.Colon)
+		field.Type = p.parseType()
+		decl.Fields = append(decl.Fields, field)
+
+		// Fields are newline separated; a comma is accepted as well.
+		p.accept(token.Comma)
+		p.skipTerminators()
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// parseEnumDecl parses `enum Name<T> { Variant, Variant(T) }`.
+func (p *Parser) parseEnumDecl() *ast.EnumDecl {
+	decl := &ast.EnumDecl{Offset: p.offset()}
+	p.expect(token.Enum)
+	decl.Name, _ = p.expectIdent()
+	decl.TypeParams = p.parseTypeParams()
+
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		variant := ast.EnumVariant{Offset: p.offset()}
+		variant.Name, _ = p.expectIdent()
+
+		if p.accept(token.LParen) {
+			for !p.at(token.RParen) && !p.atEOF() {
+				variant.Payload = append(variant.Payload, p.parseType())
+				if !p.accept(token.Comma) {
+					break
+				}
+			}
+			p.expect(token.RParen)
+		}
+		decl.Variants = append(decl.Variants, variant)
+
+		p.accept(token.Comma)
+		p.skipTerminators()
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// parseImplDecl parses `impl<T> Type { methods }`.
+func (p *Parser) parseImplDecl() *ast.ImplDecl {
+	decl := &ast.ImplDecl{Offset: p.offset()}
+	p.expect(token.Impl)
+	decl.TypeParams = p.parseTypeParams()
+	decl.Type = p.parseType()
+
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		before := p.index
+
+		decorators := p.parseDecorators()
+		offset := p.offset()
+		if len(decorators) > 0 {
+			offset = decorators[0].Offset
+		}
+		exported := p.accept(token.Export)
+
+		if !p.at(token.Fn) && !p.at(token.Async) {
+			p.errorf(p.offset(), "expected a method, found %s", describe(p.tok()))
+			p.syncStatement()
+			if p.index == before {
+				p.next()
+			}
+			continue
+		}
+
+		method := p.parseFuncDecl()
+		method.Offset, method.Decorators, method.Exported = offset, decorators, exported
+		decl.Methods = append(decl.Methods, method)
+		p.skipTerminators()
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// parseVarDecl parses `var name: T = value` and `const NAME = value`, with
+// the `value, err = f()` form for multi-value returns.
+func (p *Parser) parseVarDecl() *ast.VarDecl {
+	decl := &ast.VarDecl{Offset: p.offset()}
+	decl.Const = p.at(token.Const)
+	p.next()
+
+	decl.Names = append(decl.Names, p.parseBinding())
+	for p.accept(token.Comma) {
+		decl.Names = append(decl.Names, p.parseBinding())
+	}
+
+	if p.accept(token.Colon) {
+		decl.Type = p.parseType()
+	}
+
+	if p.accept(token.Assign) {
+		p.withStructLits(true, func() {
+			decl.Value = p.parseExpr()
+		})
+	} else if decl.Type == nil {
+		p.errorf(decl.Offset, "declaration needs either a type annotation or an initializer")
+	} else if decl.Const {
+		p.errorf(decl.Offset, "const declaration needs an initializer")
+	}
+
+	return decl
+}
+
+func (p *Parser) parseBinding() ast.Binding {
+	binding := ast.Binding{Offset: p.offset()}
+	if p.at(token.Underscore) {
+		binding.Blank = true
+		binding.Name = "_"
+		p.next()
+		return binding
+	}
+	binding.Name, _ = p.expectIdent()
+	return binding
+}

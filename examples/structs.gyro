@@ -1,0 +1,89 @@
+// Structs, impl blocks, enums and pattern matching.
+
+import { println } from "@gyro/stdlib"
+
+export struct Stack {
+  export capacity: i32
+  top: i32
+  items: i32[]
+}
+
+impl Stack {
+  // An associated function: no receiver, called as Stack::new(..).
+  export fn new(capacity: i32): Stack {
+    return Stack{ capacity: capacity, top: 0, items: [] }
+  }
+
+  // A method on an immutable receiver.
+  export fn is_empty(self): bool {
+    return self.top == 0
+  }
+
+  // A pointer receiver may mutate the value it was called on.
+  export fn push(*self, value: i32) {
+    self.items[self.top] = value
+    self.top++
+  }
+}
+
+export enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Point,
+}
+
+fn area(shape: Shape): f64 {
+  return match shape {
+    Shape::Circle(r): 3.14159 * r * r,
+    Shape::Rect(w, h): w * h,
+    Shape::Point: 0.0,
+  }
+}
+
+fn classify(n: i32): string {
+  return match n {
+    0: "zero",
+    1: "one",
+    2: "two",
+    _: "many",
+  }
+}
+
+fn is_prime(n: i32): bool {
+  if n < 2 {
+    return false
+  }
+  if n == 2 {
+    return true
+  }
+
+  var i: i32 = 2
+  while i * i <= n {
+    if n % i == 0 {
+      return false
+    }
+    i++
+  }
+  return true
+}
+
+fn main() {
+  var stack = Stack::new(16)
+  stack.push(1)
+  stack.push(2)
+  println("stack empty: #{stack.is_empty()}")
+
+  println(area(Shape::Circle(2.0)))
+  println(area(Shape::Rect(3.0, 4.0)))
+
+  for var n = 0; n <= 4; n++ {
+    println(classify(n))
+  }
+
+  println("--- primes up to 30 ---")
+  for n in 2..30 {
+    if is_prime(n) {
+      println(n)
+    }
+  }
+}

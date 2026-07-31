@@ -1,18 +1,21 @@
-
-// examples/hello.gyro
 // The classic starting point.
 
-fn greet(name: string) -> void {
-  print("Hello, #{name}!");
+import { println } from "@gyro/stdlib"
+
+fn greet(name: string) {
+  println("Hello, #{name}!")
 }
 
-fn main() -> void {
-  greet("World");
-  print("Gyro compiler is alive.");
+fn main() {
+  greet("World")
+  println("Gyro compiler is alive.")
 
-  let x: i32 = 6 * 7;
-  print(x);           // 42
+  var x: i32 = 6 * 7
+  println(x)              // 42
 
-  let flag: bool = x > 40;
-  print(flag);        // true
+  var flag = x > 40       // inferred bool
+  println(flag)           // true
+
+  const MAX: i32 = 100
+  println("max is #{MAX}, half of that is #{MAX / 2}")
 }

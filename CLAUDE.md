@@ -1,14 +1,74 @@
-## Git
+# Gyro
 
-You're allowed to use git. Every time you make a big change, commit the current worktree if it's dirty before changing anything, then write your changes, choose a short to-the-point commit message, and push to the remote repository. If you are unsure about what to write in the commit message, ask for help. Write an explanation of the change in the body of the commit message if it is not obvious from the title. Always mention that a commit was made by you and not an actual human.
+Compiler for the Gyro language, written in Go. `docs/language.md` is the
+source of truth for the syntax — read it before changing the parser.
+
+## Layout
+
+```
+main.go              CLI driver
+internal/token/      token kinds and keywords
+internal/lexer/      scanner, automatic statement termination
+internal/ast/        syntax tree and dumper
+internal/parser/     recursive descent, precedence climbing
+internal/diag/       positions and diagnostics
+examples/            reference programs, all must parse cleanly
+```
+
+## Commands
+
+```sh
+make build   # -> bin/gyro
+make test    # go test ./...
+make check   # parse every example
+make vet
+```
+
+## Working on the language
+
+Gyro's design is still in flux, and much of it is not derivable from the code.
+When a change touches syntax or semantics:
+
+1. Update `docs/language.md` first.
+2. Add a parser test in `internal/parser/parser_test.go`.
+3. Add or extend an example in `examples/` so the syntax has a real user.
+
+Do not reintroduce `src/gyro.peggy`. The Peggy grammar was abandoned and
+deleted; it describes a different language from the one implemented here.
+
+Ask before inventing syntax or semantics that `docs/language.md` does not
+cover. Guessing produces code that has to be undone.
+
+## Constraints that are easy to break
+
+- **No universe scope.** If a name is not part of the formal syntax, it must
+  be imported. `println` is imported; `ch.close()` and `xs.len()` are methods
+  on built-in types. Do not add predeclared functions.
+- **Visibility is explicit.** `export` marks it. There is no capitalization
+  rule; do not add one.
+- **No `:=`.** Bindings are `var` or `const`, assignment is `=`.
+- **`>>` is two `>` tokens.** The lexer must never merge them, or nested
+  generics stop closing. The parser rejoins them for shifts.
+- **`<-` is scanned greedily** and split back apart by the parser in
+  binary-operator position. Sends are statements only.
+- **Parser progress.** Every loop over statements or declarations must
+  guarantee forward progress on malformed input.
+  `TestParserAlwaysTerminates` covers this.
+
+## Go style
+
+- Descriptive names. `recordID`, not `rid`.
+- Guard clauses over nesting; more than two levels of indentation is a smell.
+- Short functions with one responsibility.
+- Comments explain why, never restate the code. No comment is better than an
+  obvious one.
+- Match the surrounding code when these rules conflict with it.
 
 ## Code Style
 
 When editing or generating code, prioritize readability and maintainability over cleverness.
 
 Rules:
-
-- Use Svelte specific coding. Svelte has features for dynamic class assignments like `class:rotate-0={open}`, prefer those over `class={open ? "rotate-0" : "rotate-90"}`
 
 - Preserve descriptive names. Do not shorten identifiers.
   - Good: `recordId`, `customerAccount`, `paymentMethod`
@@ -35,7 +95,8 @@ Rules:
 - Do not change behavior, public APIs, data shapes, validation rules, or side effects unless explicitly asked.
 - Match the surrounding code style when it conflicts with these rules.
 
-## Tests
+## Git
 
-After having written all your changes, think about if any of these changes require writing a test, if so, create a test in the tests/ directory and run the `bun test` command to see if any of the tests are failing, if they do, investigate further, otherwise everything is fine and you're done.
-There are two distinct testing frameworks used in this project, `bun test` is used for simple integration tests whereas playwright is used for more advanced end-to-end tests that require browser automation, if you are adding a test that requires browser automation, write a playwright test and run `bunx playwright test` to see if any of the tests are failing.
+Commit before large changes when the tree is dirty. Write a short imperative
+subject and explain the reasoning in the body when it is not obvious from the
+diff. State in the commit message that it was written by Claude, not a human.

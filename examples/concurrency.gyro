@@ -1,0 +1,91 @@
+// Threads, channels and async, which solve three different problems.
+//
+//   threads  - use every core                (@concurrent)
+//   channels - hand work between them safely  (chan<T>, select)
+//   async    - hold many idle IO operations   (async fn / await)
+
+import { println, Mutex } from "@gyro/stdlib"
+import { get } from "@gyro/net"
+
+// --- channels -------------------------------------------------------------
+
+fn produce(out: chan<i32>, count: i32) {
+  for var i = 0; i < count; i++ {
+    out <- i * i
+  }
+  out.close()
+}
+
+fn consume(values: chan<i32>, done: chan<bool>) {
+  var total: i32 = 0
+  for value in values {
+    total += value
+  }
+  println("total: #{total}")
+  done <- true
+}
+
+// `select` waits on several operations and takes whichever is ready first.
+// Bindings are ordinary declarations, so there is no separate `:=` form.
+fn drain(values: chan<i32>, quit: chan<bool>) {
+  while true {
+    select {
+      var value = <-values: println("got #{value}")
+      quit <- true: return
+      else: println("nothing ready")
+    }
+  }
+}
+
+// --- threads --------------------------------------------------------------
+
+@concurrent(threads = 8)
+fn sum_shared(values: i32[]) {
+  var total = Mutex{ 0 }
+
+  for value in values {
+    var guard = match total.lock() {
+      Ok(g): g,
+      Err(poisoned): poisoned.into_inner(),
+    }
+    guard.set(guard.get() + value)
+  }
+}
+
+// --- async ----------------------------------------------------------------
+
+export async fn fetch_all(urls: string[]): (string[], error) {
+  var bodies: string[] = []
+
+  for url in urls {
+    var body, err = await get(url)
+    if err != null {
+      return bodies, err
+    }
+    bodies = bodies.append(body)
+  }
+  return bodies, null
+}
+
+async fn main() {
+  var values = chan<i32>(64)
+  var done = chan<bool>()
+
+  spawn produce(values, 10)
+  spawn consume(values, done)
+  var _ = <-done
+
+  var bodies, err = await fetch_all(["https://example.com"])
+  if err != null {
+    println("fetch failed: #{err.message}")
+    return
+  }
+  println("fetched #{bodies.len()} pages")
+
+  // The lexical hazard `<-` creates, and why it is not a problem: a send is
+  // always a statement, so a comparison against a negative number still
+  // parses as a comparison.
+  var x: i32 = 3
+  var negative = x < -1
+  println(negative)
+}

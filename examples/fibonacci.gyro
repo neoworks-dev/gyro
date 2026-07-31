@@ -1,53 +1,56 @@
+// Recursion, loops and compile-time evaluation.
 
-// examples/fibonacci.gyro
-// Demonstrates: recursion, if/else, for loops, multiple functions.
+import { println } from "@gyro/stdlib"
+import { comptime } from "@gyro/stdlib"
 
-// Recursive Fibonacci
-fn fib(n: i32) -> i32 {
-  if (n <= 1) {
-    return n;
+export fn fib(n: i32): i32 {
+  if n <= 1 {
+    return n
   }
-  return fib(n - 1) + fib(n - 2);
+  return fib(n - 1) + fib(n - 2)
 }
 
-// Iterative Fibonacci — much faster
-fn fib_iter(n: i32) -> i32 {
-  if (n <= 1) {
-    return n;
+// Iterative version, much faster for large n.
+export fn fib_iter(n: i32): i32 {
+  if n <= 1 {
+    return n
   }
-  let a: i32 = 0;
-  let b: i32 = 1;
-  for (let i: i32 = 2; i <= n; i += 1) {
-    let tmp: i32 = a + b;
-    a = b;
-    b = tmp;
+
+  var a: i32 = 0
+  var b: i32 = 1
+  for var i = 2; i <= n; i++ {
+    var next = a + b
+    a = b
+    b = next
   }
-  return b;
+  return b
 }
 
-fn factorial(n: i32) -> i32 {
-  if (n <= 1) {
-    return 1;
+fn factorial(n: i32): i32 {
+  if n <= 1 {
+    return 1
   }
-  return n * factorial(n - 1);
+  return n * factorial(n - 1)
 }
 
-fn main() -> void {
-  // Print first 10 Fibonacci numbers (recursive)
-  print("--- Fibonacci (recursive) ---");
-  for (let i: i32 = 0; i <= 10; i += 1) {
-    print(fib(i));
+// Evaluated during compilation; the binary contains 55, not a call.
+@comptime const FIB_10: i32 = fib(10)
+
+fn main() {
+  println("--- fibonacci (recursive) ---")
+  for var i = 0; i <= 10; i++ {
+    println(fib(i))
   }
 
-  // Print first 15 Fibonacci numbers (iterative)
-  print("--- Fibonacci (iterative) ---");
-  for (let i: i32 = 0; i <= 15; i += 1) {
-    print(fib_iter(i));
+  println("--- fibonacci (iterative) ---")
+  for i in 0..15 {
+    println(fib_iter(i))
   }
 
-  // Factorials
-  print("--- Factorials ---");
-  for (let n: i32 = 1; n <= 10; n += 1) {
-    print(factorial(n));
+  println("--- factorials ---")
+  for var n = 1; n <= 10; n++ {
+    println(factorial(n))
   }
+
+  println("fib(10) was folded to #{FIB_10} at compile time")
 }
