@@ -1,7 +1,0 @@
-fn main() {
-	@compiled var x = name()
-}
-
-fn name() {
-	return 5;
-}

@@ -174,7 +174,6 @@ Keyword
   / CaseToken
   / CatchToken
   / ContinueToken
-  / DebuggerToken
   / DefaultToken
   / DeleteToken
   / DoToken
@@ -193,13 +192,12 @@ Keyword
   / TryToken
   / TypeofToken
   / VarToken
+	/ ConstToken
   / VoidToken
   / WhileToken
 
 FutureReservedWord
-  = ClassToken
-  / ConstToken
-  / EnumToken
+  = EnumToken
   / ExportToken
   / ExtendsToken
   / ImportToken
@@ -431,10 +429,8 @@ Zs = [\u0020\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]
 BreakToken      = "break"      !IdentifierPart
 CaseToken       = "case"       !IdentifierPart
 CatchToken      = "catch"      !IdentifierPart
-ClassToken      = "class"      !IdentifierPart
 ConstToken      = "const"      !IdentifierPart
 ContinueToken   = "continue"   !IdentifierPart
-DebuggerToken   = "debugger"   !IdentifierPart
 DefaultToken    = "default"    !IdentifierPart
 DeleteToken     = "delete"     !IdentifierPart
 DoToken         = "do"         !IdentifierPart
@@ -465,6 +461,9 @@ TypeofToken     = "typeof"     !IdentifierPart
 VarToken        = "var"        !IdentifierPart
 VoidToken       = "void"       !IdentifierPart
 WhileToken      = "while"      !IdentifierPart
+StructToken = "struct" !IdentifierPart
+PublicToken = "public" !IdentifierPart
+PrivateToken = "private" !IdentifierPart
 
 // Skipped
 
@@ -691,9 +690,15 @@ PostfixOperator
 UnaryExpression
   = PostfixExpression
   / operator:UnaryOperator __ argument:UnaryExpression {
-      var type = (operator === "++" || operator === "--")
-        ? "UpdateExpression"
-        : "UnaryExpression";
+      var type = "UnaryExpression";
+
+			if (operator === "++" || operator === "--") {
+				type = "UpdateExpression"
+			} else if (operator == "*") {
+				type = "PointerDereference"
+			} else if (operator == "&") {
+				type = "Reference"
+			}
 
       return {
         type: type,
@@ -713,6 +718,8 @@ UnaryOperator
   / $("-" !"=")
   / "~"
   / "!"
+	/ "*"
+	/ "&"
 
 ExponentiationExpression
   = head:UnaryExpression
@@ -979,7 +986,7 @@ Statement
   / SwitchStatement
   / ThrowStatement
   / TryStatement
-  / DebuggerStatement
+	/ StructStatement
 
 Block
   = "{" __ body:(StatementList __)? "}" {
@@ -992,12 +999,63 @@ Block
 StatementList
   = head:Statement tail:(__ Statement)* { return buildList(head, tail, 1); }
 
+StructStatement =
+	StructToken __ id:Identifier __ "{" __ properties:StructPropertyNameAndTypeList?  __ "}" EOS {
+		return {
+			type: "Struct",
+			id,
+			properties: properties || []
+		}
+	}
+
+StructPropertyNameAndTypeList
+	= head:StructPropertyAssignment tail:(__ "," __ StructPropertyAssignment)* {
+      return buildList(head, tail, 3);
+    }
+
+StructPropertyAssignment
+  = access:StructPropertyKeywords? key:IdentifierName __ ":" __ value:TypeExpression {
+      return { type: "Property", key: key, value: value, access };
+    }
+
+StructPropertyKeywords =
+	PublicToken
+	/ PrivateToken
+
+
+/* ---------------------------------- Types --------------------------------- */
+
+TypeExpression
+	= name:Type generics:("<" __ @GenericArgumentList __ ">")? array:TypeArraySuffix?
+	{
+		return { type: "TypeExpression", name, generics, array }
+	}
+
+GenericArgumentList
+	= head:(TypeExpression / Literal / IdentifierName) tail:(__ "," __ TypeExpression / Literal / IdentifierName)* {
+      return buildList(head, tail, 3);
+    }
+
+TypeArraySuffix =
+	"[" __ min:NumericLiteral "," max:NumericLiteral? __ "]"
+		{
+			return { type: "ArrayLength", min, max}
+		}
+
+Type =
+	BasicType
+	/ IdentifierName
+
+BasicType =
+	"i8" / "i16" / "i32" / "i64" / "i128" / "u8" / "u16" / "u32" / "u64" / "f32" / "f64" / "f128" / "int" / "float"
+
+
 VariableStatement
-  = decorators:(@Decorator __)* __ VarToken __ declarations:VariableDeclarationList EOS {
+  = decorators:(@Decorator __)* __ kind:(VarToken / ConstToken) __ declarations:VariableDeclarationList EOS {
       return {
         type: "VariableDeclaration",
         declarations: declarations,
-        kind: "var",
+        kind: kind[0],
 				decorators
       };
     }
@@ -1048,7 +1106,7 @@ ExpressionStatement
     }
 
 IfStatement
-  = IfToken __ "(" __ test:Expression __ ")" __
+  = IfToken __ test:Expression __
     consequent:Statement __
     ElseToken __
     alternate:Statement
@@ -1060,7 +1118,7 @@ IfStatement
         alternate: alternate
       };
     }
-  / IfToken __ "(" __ test:Expression __ ")" __
+  / IfToken __ test:Expression __
     consequent:Statement {
       return {
         type: "IfStatement",
@@ -1096,7 +1154,7 @@ IterationStatement
     }
   / ForToken __
     "(" __
-    VarToken __ declarations:VariableDeclarationListNoIn __ ";" __
+    kind:(VarToken / ConstToken) __ declarations:VariableDeclarationListNoIn __ ";" __
     test:(Expression __)? ";" __
     update:(Expression __)?
     ")" __
@@ -1107,44 +1165,10 @@ IterationStatement
         init: {
           type: "VariableDeclaration",
           declarations: declarations,
-          kind: "var"
+          kind: kind[0]
         },
         test: extractOptional(test, 0),
         update: extractOptional(update, 0),
-        body: body
-      };
-    }
-  / ForToken __
-    "(" __
-    left:LeftHandSideExpression __
-    InToken __
-    right:Expression __
-    ")" __
-    body:Statement
-    {
-      return {
-        type: "ForInStatement",
-        left: left,
-        right: right,
-        body: body
-      };
-    }
-  / ForToken __
-    "(" __
-    VarToken __ declarations:VariableDeclarationListNoIn __
-    InToken __
-    right:Expression __
-    ")" __
-    body:Statement
-    {
-      return {
-        type: "ForInStatement",
-        left: {
-          type: "VariableDeclaration",
-          declarations: declarations,
-          kind: "var"
-        },
-        right: right,
         body: body
       };
     }
@@ -1267,16 +1291,13 @@ Catch
 Finally
   = FinallyToken __ block:Block { return block; }
 
-DebuggerStatement
-  = DebuggerToken EOS { return { type: "DebuggerStatement" }; }
-
 /* ------------------------------- Decorators ------------------------------- */
 
 Decorator =
-	"@" name:IdentifierName params:("(" __ @(FormalParameterList __)? ")")? __ {
+	"@" name:IdentifierName args:("(" __ @(Arguments __)? ")")? __ {
 		return {
 			type: "Decorator",
-			params,
+			args,
 			name
 		}
 	}

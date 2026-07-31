@@ -1,0 +1,18 @@
+
+// examples/hello.gyro
+// The classic starting point.
+
+fn greet(name: string) -> void {
+  print("Hello, #{name}!");
+}
+
+fn main() -> void {
+  greet("World");
+  print("Gyro compiler is alive.");
+
+  let x: i32 = 6 * 7;
+  print(x);           // 42
+
+  let flag: bool = x > 40;
+  print(flag);        // true
+}

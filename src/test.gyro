@@ -1,0 +1,5 @@
+fn main(argc: i32, argv: float) {
+	var x = 5
+
+	return x
+}
