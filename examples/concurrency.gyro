@@ -54,15 +54,17 @@ fn sum_shared(values: i32[]) {
 
 // --- async ----------------------------------------------------------------
 
-export async fn fetch_all(urls: string[]): (string[], error) {
-  var bodies: string[] = []
+// Takes a borrowed view of the urls and returns an owning Array the caller
+// is responsible for freeing.
+export async fn fetch_all(urls: string[]): (Array<string>, error?) {
+  var bodies = Array<string>::new()
 
   for url in urls {
     var body, err = await get(url)
     if err != null {
       return bodies, err
     }
-    bodies = bodies.append(body)
+    bodies.push(body)
   }
   return bodies, null
 }
@@ -78,8 +80,9 @@ async fn main() {
   var _ = <-done
 
   var bodies, err = await fetch_all(["https://example.com"])
+  defer bodies.free()
   if err != null {
-    println("fetch failed: #{err.message}")
+    println("fetch failed: #{err.message()}")
     return
   }
   println("fetched #{bodies.len()} pages")

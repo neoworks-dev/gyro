@@ -73,8 +73,14 @@ func (p *Parser) binaryOp() (kind token.Kind, prec int, width int) {
 		return token.Plus, precAdditive, 1
 	case token.Minus:
 		return token.Minus, precAdditive, 1
+	case token.PlusMod:
+		return token.PlusMod, precAdditive, 1
+	case token.MinusMod:
+		return token.MinusMod, precAdditive, 1
 	case token.Star:
 		return token.Star, precMultiplicative, 1
+	case token.StarMod:
+		return token.StarMod, precMultiplicative, 1
 	case token.Slash:
 		return token.Slash, precMultiplicative, 1
 	case token.Percent:
@@ -362,30 +368,81 @@ func (p *Parser) parsePrimary() ast.Expr {
 // parseNameOrStructLit parses a path and, when a brace may legally follow,
 // turns it into a struct literal.
 func (p *Parser) parseNameOrStructLit() ast.Expr {
-	path := p.parsePath()
+	path := p.parseTypePath()
+
+	// `Stack<i32>{ ... }` instantiates a generic struct. The angle brackets
+	// are speculative for the same reason a generic call's are: without the
+	// brace that follows, `a < b` is just a comparison.
+	if p.at(token.Lt) && !p.noStructLit {
+		var args []ast.Type
+		ok := p.trial(func() {
+			args = p.parseTypeArgs()
+			if !p.at(token.LBrace) {
+				p.errorf(p.offset(), "not a generic struct literal")
+			}
+		})
+		if ok {
+			last := len(path.Segments) - 1
+			path.Segments[last].Args = args
+			return p.parseStructLitBody(&ast.NamedType{Offset: path.Offset, Path: path})
+		}
+	}
 
 	if p.at(token.LBrace) && !p.noStructLit {
 		return p.parseStructLitBody(&ast.NamedType{Offset: path.Offset, Path: path})
 	}
 
-	if len(path.Segments) == 1 {
-		return &ast.Ident{Offset: path.Offset, Name: path.Segments[0]}
+	if path.IsPlainName() {
+		return &ast.Ident{Offset: path.Offset, Name: path.Segments[0].Name}
 	}
 	return path
 }
 
-// parsePath parses `a::b::c`.
+// parsePath parses `a::b::c`, without type arguments on any segment. It is
+// used where a bare name is expected, such as a decorator.
 func (p *Parser) parsePath() *ast.Path {
 	path := &ast.Path{Offset: p.offset()}
-	name, _ := p.expectIdent()
-	path.Segments = append(path.Segments, name)
 
-	for p.at(token.ColonColon) {
-		p.next()
-		segment, _ := p.expectIdent()
+	for {
+		segment := ast.PathSegment{Offset: p.offset()}
+		segment.Name, _ = p.expectIdent()
 		path.Segments = append(path.Segments, segment)
+
+		if !p.accept(token.ColonColon) {
+			return path
+		}
 	}
-	return path
+}
+
+// parseTypePath parses a path whose segments may carry type arguments, as in
+// `Array<i32>::new` or `ast::cast<i32>`. Angle brackets are only consumed
+// when they close and are followed by something that can continue a path or
+// a call, so an ordinary comparison is left alone.
+func (p *Parser) parseTypePath() *ast.Path {
+	path := &ast.Path{Offset: p.offset()}
+
+	for {
+		segment := ast.PathSegment{Offset: p.offset()}
+		segment.Name, _ = p.expectIdent()
+
+		if p.at(token.Lt) {
+			var args []ast.Type
+			ok := p.trial(func() {
+				args = p.parseTypeArgs()
+				if !p.at(token.ColonColon) {
+					p.errorf(p.offset(), "not a parameterized path segment")
+				}
+			})
+			if ok {
+				segment.Args = args
+			}
+		}
+		path.Segments = append(path.Segments, segment)
+
+		if !p.accept(token.ColonColon) {
+			return path
+		}
+	}
 }
 
 func (p *Parser) parseStructLitBody(typ ast.Type) ast.Expr {
@@ -630,10 +687,10 @@ func (p *Parser) parsePattern() ast.Pattern {
 			return pattern
 		}
 
-		if len(path.Segments) > 1 {
+		if !path.IsPlainName() {
 			return &ast.VariantPattern{Offset: offset, Path: path}
 		}
-		return &ast.BindingPattern{Offset: offset, Name: path.Segments[0]}
+		return &ast.BindingPattern{Offset: offset, Name: path.Segments[0].Name}
 	}
 
 	p.errorf(offset, "expected a pattern, found %s", describe(p.tok()))

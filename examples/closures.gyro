@@ -5,10 +5,11 @@
 import { println, spawn } from "@gyro/stdlib"
 
 // A closure's type is the function type that already existed in the language.
-fn apply(values: i32[], f: fn(i32): i32): i32[] {
-  var out: i32[] = []
+// The input borrows; the result owns and is freed by the caller.
+fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
+  var out = Array<i32>::new()
   for value in values {
-    out = out.append(f(value))
+    out.push(f(value))
   }
   return out
 }
@@ -29,6 +30,8 @@ fn main() {
   // Types come from the expected type at the call site, and a body that is
   // one expression needs neither braces nor `return`.
   var doubled = apply([1, 2, 3], fn(x) x * 2)
+  defer doubled.free()
+
   var sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
   println(sum)
 

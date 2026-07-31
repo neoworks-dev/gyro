@@ -37,6 +37,7 @@ func TestOperators(t *testing.T) {
 	}{
 		{"+ - * / %", "+ - * / %"},
 		{"++ -- += -= *= /= %=", "++ -- += -= *= /= %="},
+		{"+% -% *%", "+% -% *%"},
 		{"== != < <= > >=", "== != < <= > >="},
 		{"&& || ! & | ^ ~", "&& || ! & | ^ ~"},
 		{"<< <<= >>=", "<< <<= > >="},
@@ -224,7 +225,7 @@ func TestNestedBlockComment(t *testing.T) {
 }
 
 func TestKeywords(t *testing.T) {
-	src := "var const fn struct impl enum return if elif else while for in " +
+	src := "var const fn struct impl trait enum return if elif else while for in " +
 		"match break continue defer async await chan select import from " +
 		"as export self true false null _"
 

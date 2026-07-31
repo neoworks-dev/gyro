@@ -62,14 +62,21 @@ is in [`docs/language.md`](docs/language.md).
 | closures | anonymous `fn`, inferred types, explicit capture lists |
 | syntax | no semicolons, no parentheses on `if` / `while` / `for` |
 | primitives | explicit widths: `i8`–`i64`, `u8`–`u64`, `f32`, `f64` |
-| types | `struct` holds data, `impl` holds methods |
-| visibility | explicit `export`; no capitalization rules |
-| imports | `import { a } from "path"`, TypeScript-style |
-| errors | `(T, error)` return pairs, checked, no propagation operator |
+| types | `struct` holds data, `impl` holds methods, `trait` holds contracts |
+| generics | `fn max<T: Ord & Display>` — bounds joined by intersection |
+| null | `*T` is never null; only `T?` is, and it must be checked |
+| visibility | explicit `export`; no capitalization rules, no default exports |
+| modules | one file is one module |
+| errors | `(T, error?)` pairs, checked; `error` is an interface |
+| panics | out-of-bounds, null deref and overflow abort; `+%` wraps on purpose |
 | memory | manual `alloc` / `free`, `defer`, leak analysis warns |
+| slices | `T[]` borrows, `Array<T>` owns and grows |
 | pattern matching | `match subject { pattern: body, ... }` |
-| concurrency | threads (`spawn`), channels (`chan<T>`, `select`), `async` / `await` |
+| concurrency | threads, channels (`chan<T>`, `select`), `async` / `await` |
 | effects | `!{ io, alloc }` rows — parsed, not yet checked |
+
+Every one of these, with the alternatives that were rejected and why, is
+recorded in [`docs/decisions.md`](docs/decisions.md).
 
 Two rules drive most of the rest:
 
@@ -114,8 +121,9 @@ syntax; each one parses cleanly and is checked by the test suite.
 | `fibonacci.gyro` | recursion, loops, `@comptime` |
 | `structs.gyro` | structs, impl blocks, enums, `match` |
 | `errors.gyro` | `(T, error)` returns and explicit handling |
-| `memory.gyro` | `alloc` / `free`, `defer`, escape behaviour |
+| `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, escape |
 | `closures.gyro` | anonymous functions, inference, capture lists |
+| `traits.gyro` | traits, bounds, operator traits |
 | `concurrency.gyro` | threads, channels, `select`, `async` / `await` |
 
 ## Architecture
@@ -135,6 +143,7 @@ internal/parser/     recursive descent, precedence climbing for expressions
 internal/diag/       source positions and diagnostics
 examples/            reference programs
 docs/language.md     grammar and semantics
+docs/decisions.md    what was decided, and what was rejected
 ```
 
 The parser is hand-written recursive descent, with a precedence-climbing loop
@@ -149,6 +158,9 @@ Three ambiguities are worth knowing about, because they shaped the design:
 - **`ch <- v` versus `x < -1`.** The lexer scans `<-` greedily; the parser
   splits it back apart in binary-operator position. Sends are statements, so
   the two never collide.
+- **`Array<i32>::new()` versus `a < b`.** Type arguments can sit on any path
+  segment, so the same speculative parse decides whether `<` opens an
+  argument list or is a comparison.
 - **`if Point { }`.** A struct literal cannot start at the top level of a
   condition, since the brace opens the body. Same resolution as Rust.
 

@@ -1,7 +1,12 @@
 # Gyro
 
-Compiler for the Gyro language, written in Go. `docs/language.md` is the
-source of truth for the syntax — read it before changing the parser.
+Compiler for the Gyro language, written in Go.
+
+- `docs/language.md` is the source of truth for the syntax. Read it before
+  changing the parser.
+- `docs/decisions.md` records what was decided and what was rejected. Read it
+  before proposing a change to settled syntax, and update it whenever a new
+  decision is made.
 
 ## Layout
 
@@ -50,6 +55,14 @@ cover. Guessing produces code that has to be undone.
 - **`else if` is rejected.** Chaining is spelled `elif`, one way only.
 - **`move` and `copy` are contextual**, valid only inside a capture list.
   They must stay usable as ordinary identifiers.
+- **Trait bounds join with `&`, not `+`.** Several bounds are an
+  intersection. Do not "fix" this to match Rust.
+- **`?` binds to the outermost type.** `*Node?` is a nullable pointer, not a
+  pointer to a nullable value. `parseSuffixType` exists for this.
+- **No default exports**, so no default imports either.
+- **Type arguments live on path segments**, since `Array<i32>::new`
+  parameterizes a non-final segment. Use `Path.Names()` and
+  `Path.IsPlainName()` rather than indexing segments as strings.
 - **Visibility is explicit.** `export` marks it. There is no capitalization
   rule; do not add one.
 - **No `:=`.** Bindings are `var` or `const`, assignment is `=`.

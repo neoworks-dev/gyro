@@ -114,7 +114,7 @@ func TestGenericCallVersusComparison(t *testing.T) {
 		{
 			name: "nested type arguments close on two separate angle brackets",
 			expr: "m<Result<i32, error>>(v)",
-			want: "Call Fun: Ident m TypeArg: NamedType Result NamedType i32 NamedType error Arg: Ident v",
+			want: "Call Fun: Ident m TypeArg: NamedType Result<_, _> NamedType i32 NamedType error Arg: Ident v",
 		},
 		{
 			name: "constant type arguments are kept as expressions",
@@ -387,7 +387,6 @@ func TestImportsAndExports(t *testing.T) {
 	}{
 		{`import { a, b as c } from "m"`, `Import {a, b as c} from "m"`},
 		{`import * as m from "m"`, `Import * as m from "m"`},
-		{`import def from "m"`, `Import def from "m"`},
 		{`import "m"`, `Import <side effects> from "m"`},
 		{`export { a, b }`, `Export {a, b}`},
 		{`export { a } from "m"`, `Export {a} from "m"`},
@@ -399,6 +398,141 @@ func TestImportsAndExports(t *testing.T) {
 		if want := "File test.gyro " + test.want; got != want {
 			t.Errorf("parsing %q\n got: %s\nwant: %s", test.src, got, want)
 		}
+	}
+}
+
+func TestDefaultImportIsRejected(t *testing.T) {
+	// There are no default exports, so a bare name has nothing to bind to.
+	var bag diag.Bag
+	Parse("test.gyro", "import def from \"m\"\n", &bag)
+
+	if !bag.HasErrors() {
+		t.Fatal("expected a default import to be rejected")
+	}
+	if !strings.Contains(bag.Items()[0].Message, "default export") {
+		t.Errorf("error should mention default exports, got: %s", bag.Items()[0])
+	}
+}
+
+func TestNullableTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "the marker binds to the whole type",
+			src:  "fn f(n: *Node?) {\n}\n",
+			want: "File test.gyro Func f Param n: Type: OptionalType PointerType NamedType Node Body: Block",
+		},
+		{
+			name: "parentheses move it inward",
+			src:  "fn f(n: *(Node?)) {\n}\n",
+			want: "File test.gyro Func f Param n: Type: PointerType OptionalType NamedType Node Body: Block",
+		},
+		{
+			name: "a plain pointer is never nullable",
+			src:  "fn f(n: *Node) {\n}\n",
+			want: "File test.gyro Func f Param n: Type: PointerType NamedType Node Body: Block",
+		},
+		{
+			name: "nullable slice element type",
+			src:  "fn f(n: i32[]?) {\n}\n",
+			want: "File test.gyro Func f Param n: Type: OptionalType ArrayType NamedType i32 Body: Block",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := dumpOf(t, test.src); got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestTraits(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "trait declaration",
+			src:  "export trait Ord {\n  fn compare(self, other: Self): i32\n}\n",
+			want: "File test.gyro Trait export Ord Func compare Recv: self " +
+				"Param other: Type: NamedType Self Result: NamedType i32",
+		},
+		{
+			name: "trait implementation",
+			src:  "impl Ord for Version {\n  fn compare(self, other: Version): i32 {\n  }\n}\n",
+			want: "File test.gyro Impl Trait: NamedType Ord Type: NamedType Version " +
+				"Func compare Recv: self Param other: Type: NamedType Version " +
+				"Result: NamedType i32 Body: Block",
+		},
+		{
+			name: "inherent impl has no trait",
+			src:  "impl Version {\n  fn new(): Version {\n  }\n}\n",
+			want: "File test.gyro Impl Type: NamedType Version Func new Result: NamedType Version Body: Block",
+		},
+		{
+			name: "bounds are joined with &, not +",
+			src:  "fn max<T: Ord & Display>(a: T, b: T): T {\n}\n",
+			want: "File test.gyro Func max<T: Ord & Display> Param a: Type: NamedType T " +
+				"Param b: Type: NamedType T Result: NamedType T Body: Block",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := dumpOf(t, test.src); got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestParameterizedPaths(t *testing.T) {
+	tests := []struct {
+		expr string
+		want string
+	}{
+		{
+			// Type arguments on a non-final segment: the associated function
+			// of a generic type.
+			expr: "Array<i32>::new()",
+			want: "Call Fun: Path Array<_>::new",
+		},
+		{
+			expr: "Stack::new(16)",
+			want: "Call Fun: Path Stack::new Arg: Lit int literal 16",
+		},
+		{
+			expr: "Stack<i32>{ top: 0 }",
+			want: "StructLit Type: NamedType Stack<_> NamedType i32 Field top: Lit int literal 0",
+		},
+		{
+			// Still a comparison: no brace, no call, no `::`.
+			expr: "a < b",
+			want: "Binary < Ident a Ident b",
+		},
+	}
+
+	for _, test := range tests {
+		got := dumpOf(t, wrap(test.expr))
+		want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+		if got != want {
+			t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
+		}
+	}
+}
+
+func TestWrappingOperators(t *testing.T) {
+	got := dumpOf(t, wrap("hash *% 31 +% byte"))
+	want := "File test.gyro Func t Body: Block Var x Value: Binary +% " +
+		"Binary *% Ident hash Lit int literal 31 Ident byte"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
 	}
 }
 

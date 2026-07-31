@@ -3,13 +3,16 @@
 // `alloc` returns a raw pointer, `free` releases it, and `defer` schedules
 // the release at scope exit. The compiler tracks every allocation and warns
 // when one can reach the end of its scope without being freed or returned.
+//
+// A plain `*Node` can never be null. Only `*Node?` can, and it cannot be
+// dereferenced until it has been checked.
 
 import { println } from "@gyro/stdlib"
 import { alloc, free } from "@gyro/mem"
 
 struct Node {
   value: i32
-  next: *Node
+  next: *Node?      // nullable: the last node has no successor
 }
 
 // Freed on every path, including the early return.
@@ -36,8 +39,10 @@ export fn make_node(value: i32): *Node {
 // Freeing a chain the compiler cannot see through: the loop is opaque to the
 // escape analysis, so this is written out by hand.
 export fn free_chain(head: *Node) {
-  var current = head
+  var current: *Node? = head
   while current != null {
+    // `current` is narrowed to *Node inside the check, so the field access
+    // needs no unwrapping.
     var next = current.next
     free(current)
     current = next
@@ -46,7 +51,7 @@ export fn free_chain(head: *Node) {
 
 // A closure captures explicitly, so what escapes into it is visible in the
 // source. `move` hands ownership to the closure, which is what tells the leak
-// analysis to stop tracking the allocation here; `copy` duplicates the value.
+// analysis to stop tracking the allocation here.
 export fn defer_release(value: i32): fn() {
   var node = alloc<Node>()
   node.value = value
@@ -68,4 +73,12 @@ fn main() {
 
   var address = &head.value
   println(*address)
+
+  // Overflow is a panic, not a wrap. Wrapping is spelled out where it is
+  // wanted, as in a hash.
+  var hash: u32 = 2166136261
+  for byte in [104, 105] {
+    hash = hash *% 16777619 +% byte
+  }
+  println(hash)
 }

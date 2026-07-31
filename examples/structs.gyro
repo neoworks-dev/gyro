@@ -5,25 +5,45 @@ import { println } from "@gyro/stdlib"
 export struct Stack {
   export capacity: i32
   top: i32
-  items: i32[]
+  // Array<T> owns its buffer and grows. A slice, i32[], only borrows one.
+  items: Array<i32>
 }
 
 impl Stack {
   // An associated function: no receiver, called as Stack::new(..).
   export fn new(capacity: i32): Stack {
-    return Stack{ capacity: capacity, top: 0, items: [] }
+    return Stack{ capacity: capacity, top: 0, items: Array<i32>::new() }
   }
 
-  // A method on an immutable receiver.
+  // `self` borrows and never copies the receiver, however large it is.
   export fn is_empty(self): bool {
     return self.top == 0
   }
 
   // A pointer receiver may mutate the value it was called on.
   export fn push(*self, value: i32) {
-    self.items[self.top] = value
+    self.items.push(value)
     self.top++
   }
+
+  // Lending the contents out as a borrowed view costs nothing.
+  export fn view(self): i32[] {
+    return self.items.slice()
+  }
+
+  export fn free(*self) {
+    self.items.free()
+  }
+}
+
+// Takes a borrowed view, so it works on an Array, a fixed-size array or a
+// literal without any of them being copied.
+fn total(values: i32[]): i32 {
+  var sum: i32 = 0
+  for value in values {
+    sum += value
+  }
+  return sum
 }
 
 export enum Shape {
@@ -69,9 +89,13 @@ fn is_prime(n: i32): bool {
 
 fn main() {
   var stack = Stack::new(16)
+  defer stack.free()
+
   stack.push(1)
   stack.push(2)
   println("stack empty: #{stack.is_empty()}")
+  println(total(stack.view()))
+  println(total([3, 4, 5]))
 
   println(area(Shape::Circle(2.0)))
   println(area(Shape::Rect(3.0, 4.0)))

@@ -54,8 +54,11 @@ func (f *File) Pos() int { return 0 }
 //
 //	import { a, b as c } from "path"
 //	import * as name from "path"
-//	import name from "path"
 //	import "path"
+//
+// There is no default-import form, because there are no default exports: a
+// name is spelled the same in the module that defines it and in every module
+// that uses it.
 type Import struct {
 	Offset int
 	// Names lists the bound names for a braced import. It is empty for the
@@ -63,10 +66,7 @@ type Import struct {
 	Names []ImportName
 	// Wildcard is the local name for `import * as name`, or "" otherwise.
 	Wildcard string
-	// Default is the local name for `import name from "path"`, which binds
-	// whatever the module marks as its default export.
-	Default string
-	Path    string
+	Path     string
 }
 
 // ImportName is a single `name` or `name as alias` in a braced import.
@@ -179,11 +179,31 @@ type Param struct {
 	Default Expr
 }
 
-// TypeParam is one generic parameter name.
+// TypeParam is one generic parameter, with any trait bounds it carries:
+// `<T: Ord>` or `<T: Ord & Display>`. Several bounds are an intersection, so
+// they are joined with `&` rather than Rust's `+`.
 type TypeParam struct {
 	Offset int
 	Name   string
+	Bounds []Type
 }
+
+// TraitDecl declares a trait: a set of method signatures a type can promise
+// to provide. Satisfaction is nominal, declared by an ImplDecl naming the
+// trait, so a type never satisfies a trait by accident.
+type TraitDecl struct {
+	Offset     int
+	Decorators []*Decorator
+	Exported   bool
+	Name       string
+	TypeParams []TypeParam
+	// Methods carry a nil Body when they are required, and a non-nil Body
+	// when the trait supplies a default implementation.
+	Methods []*FuncDecl
+}
+
+func (t *TraitDecl) Pos() int  { return t.Offset }
+func (t *TraitDecl) declNode() {}
 
 // StructDecl declares an aggregate type. Methods live in a separate ImplDecl.
 type StructDecl struct {
@@ -206,12 +226,15 @@ type Field struct {
 	Type     Type
 }
 
-// ImplDecl attaches methods to a named type.
+// ImplDecl attaches methods to a named type, either directly (`impl Stack`)
+// or as a trait implementation (`impl Ord for Version`).
 type ImplDecl struct {
 	Offset     int
 	TypeParams []TypeParam
-	Type       Type
-	Methods    []*FuncDecl
+	// Trait is the implemented trait, or nil for an inherent impl.
+	Trait   Type
+	Type    Type
+	Methods []*FuncDecl
 }
 
 func (i *ImplDecl) Pos() int  { return i.Offset }
@@ -425,14 +448,40 @@ func (i *Ident) Pos() int  { return i.Offset }
 func (i *Ident) exprNode() {}
 
 // Path is a `::`-separated namespace path such as `ast::Literal`. A path
-// with a single segment is equivalent to an Ident.
+// with a single unparameterized segment is equivalent to an Ident.
+//
+// Any segment may carry type arguments, since both the namespace and the
+// final name can be generic: `Array<i32>::new` parameterizes the first,
+// `ast::cast<i32>` the last.
 type Path struct {
 	Offset   int
-	Segments []string
+	Segments []PathSegment
+}
+
+// PathSegment is one `name` or `name<A, B>` component of a path.
+type PathSegment struct {
+	Offset int
+	Name   string
+	Args   []Type
 }
 
 func (p *Path) Pos() int  { return p.Offset }
 func (p *Path) exprNode() {}
+
+// Names returns the segment names without their type arguments.
+func (p *Path) Names() []string {
+	names := make([]string, len(p.Segments))
+	for i, segment := range p.Segments {
+		names[i] = segment.Name
+	}
+	return names
+}
+
+// IsPlainName reports whether the path is a single segment with no type
+// arguments, meaning it can be treated as an ordinary identifier.
+func (p *Path) IsPlainName() bool {
+	return len(p.Segments) == 1 && len(p.Segments[0].Args) == 0
+}
 
 // SelfExpr is the `self` receiver inside a method.
 type SelfExpr struct {
@@ -758,12 +807,21 @@ func (v *VariantPattern) patternNode() {}
 // Types
 // ---------------------------------------------------------------------------
 
-// NamedType is a possibly namespaced type name with optional type arguments,
-// such as `i32`, `ast::Literal` or `Result<string, error>`.
+// NamedType is a possibly namespaced type name such as `i32`,
+// `ast::Literal` or `Result<string, error>`. Type arguments live on the path
+// segment that carries them.
 type NamedType struct {
 	Offset int
 	Path   *Path
-	Args   []Type
+}
+
+// Args returns the type arguments on the final path segment, which is where
+// a type's own parameters appear.
+func (n *NamedType) Args() []Type {
+	if n.Path == nil || len(n.Path.Segments) == 0 {
+		return nil
+	}
+	return n.Path.Segments[len(n.Path.Segments)-1].Args
 }
 
 func (n *NamedType) Pos() int  { return n.Offset }
@@ -809,6 +867,19 @@ type FuncType struct {
 
 func (f *FuncType) Pos() int  { return f.Offset }
 func (f *FuncType) typeNode() {}
+
+// OptionalType is `T?`, the only type that may hold null.
+//
+// The marker binds to the whole type, so `*Node?` is a nullable pointer. A
+// plain `*Node` can never be null, which is what lets the checker reject a
+// dereference that has not been guarded.
+type OptionalType struct {
+	Offset int
+	Elem   Type
+}
+
+func (o *OptionalType) Pos() int  { return o.Offset }
+func (o *OptionalType) typeNode() {}
 
 // ChanType is `chan<T>`. Channels are language-level rather than a stdlib
 // generic so that `select` and the send and receive operators can be type

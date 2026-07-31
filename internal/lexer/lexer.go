@@ -447,6 +447,9 @@ func (l *Lexer) scanOperator() token.Token {
 		if tok, ok := accept('=', token.PlusEq); ok {
 			return tok
 		}
+		if tok, ok := accept('%', token.PlusMod); ok {
+			return tok
+		}
 		return make(token.Plus)
 	case '-':
 		if tok, ok := accept('-', token.Decrement); ok {
@@ -458,9 +461,15 @@ func (l *Lexer) scanOperator() token.Token {
 		if tok, ok := accept('>', token.Arrow); ok {
 			return tok
 		}
+		if tok, ok := accept('%', token.MinusMod); ok {
+			return tok
+		}
 		return make(token.Minus)
 	case '*':
 		if tok, ok := accept('=', token.StarEq); ok {
+			return tok
+		}
+		if tok, ok := accept('%', token.StarMod); ok {
 			return tok
 		}
 		return make(token.Star)

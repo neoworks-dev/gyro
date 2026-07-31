@@ -53,11 +53,11 @@ func (p *Parser) parseImport() *ast.Import {
 		node.Names = p.parseNameList()
 
 	default:
-		node.Default, _ = p.expectIdent()
-		// A default import may also pull named bindings alongside it.
-		if p.accept(token.Comma) {
-			node.Names = p.parseNameList()
-		}
+		// Gyro has no default exports, so there is nothing a bare name
+		// could bind to.
+		p.errorf(p.offset(), "expected { or * after import; Gyro has no default exports")
+		p.syncStatement()
+		return node
 	}
 
 	p.expect(token.From)
@@ -148,6 +148,10 @@ func (p *Parser) parseDecl() ast.Decl {
 		decl := p.parseEnumDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
+	case token.Trait:
+		decl := p.parseTraitDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
 	case token.Impl:
 		if exported {
 			p.errorf(offset, "impl blocks cannot be exported; export the methods instead")
@@ -218,7 +222,18 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	var params []ast.TypeParam
 	for !p.at(token.Gt) && !p.atEOF() {
 		name, offset := p.expectIdent()
-		params = append(params, ast.TypeParam{Offset: offset, Name: name})
+		param := ast.TypeParam{Offset: offset, Name: name}
+
+		// `<T: Ord>` or `<T: Ord & Display>`. Several bounds are an
+		// intersection, so they are joined with `&` rather than Rust's `+`.
+		if p.accept(token.Colon) {
+			param.Bounds = append(param.Bounds, p.parseType())
+			for p.accept(token.Amp) {
+				param.Bounds = append(param.Bounds, p.parseType())
+			}
+		}
+		params = append(params, param)
+
 		if !p.accept(token.Comma) {
 			break
 		}
@@ -408,16 +423,42 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 	return decl
 }
 
-// parseImplDecl parses `impl<T> Type { methods }`.
+// parseTraitDecl parses `trait Name<T> { fn method(self): T ... }`. A method
+// with a body supplies a default implementation.
+func (p *Parser) parseTraitDecl() *ast.TraitDecl {
+	decl := &ast.TraitDecl{Offset: p.offset()}
+	p.expect(token.Trait)
+	decl.Name, _ = p.expectIdent()
+	decl.TypeParams = p.parseTypeParams()
+
+	decl.Methods = p.parseMethodBlock("a method signature")
+	return decl
+}
+
+// parseImplDecl parses `impl<T> Type { ... }` and `impl<T> Trait for Type`.
 func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	decl := &ast.ImplDecl{Offset: p.offset()}
 	p.expect(token.Impl)
 	decl.TypeParams = p.parseTypeParams()
 	decl.Type = p.parseType()
 
+	// `impl Ord for Version` names the trait first, so what was parsed as
+	// the type turns out to have been the trait.
+	if p.accept(token.For) {
+		decl.Trait = decl.Type
+		decl.Type = p.parseType()
+	}
+
+	decl.Methods = p.parseMethodBlock("a method")
+	return decl
+}
+
+// parseMethodBlock parses the braced method list shared by traits and impls.
+func (p *Parser) parseMethodBlock(what string) []*ast.FuncDecl {
 	p.expect(token.LBrace)
 	p.skipTerminators()
 
+	var methods []*ast.FuncDecl
 	for !p.at(token.RBrace) && !p.atEOF() {
 		before := p.index
 
@@ -429,7 +470,7 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 		exported := p.accept(token.Export)
 
 		if !p.at(token.Fn) && !p.at(token.Async) {
-			p.errorf(p.offset(), "expected a method, found %s", describe(p.tok()))
+			p.errorf(p.offset(), "expected %s, found %s", what, describe(p.tok()))
 			p.syncStatement()
 			if p.index == before {
 				p.next()
@@ -439,12 +480,12 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 
 		method := p.parseFuncDecl()
 		method.Offset, method.Decorators, method.Exported = offset, decorators, exported
-		decl.Methods = append(decl.Methods, method)
+		methods = append(methods, method)
 		p.skipTerminators()
 	}
 
 	p.expect(token.RBrace)
-	return decl
+	return methods
 }
 
 // parseVarDecl parses `var name: T = value` and `const NAME = value`, with

@@ -53,13 +53,15 @@ Escape it as `\#{` to write the sequence literally. Escapes are `\n`, `\t`,
 
 | class | operators |
 | --- | --- |
-| arithmetic | `+ - * / %` |
+| arithmetic | `+ - * / %` — these panic on overflow |
+| wrapping | `+% -% *%` — deliberate two's-complement wraparound |
 | increment | `++ --` (prefix and postfix, usable in expressions) |
 | comparison | `== != < <= > >=` |
 | logical | `&& \|\| !` |
 | bitwise | `& \| ^ ~ << >>` |
 | assignment | `= += -= *= /= %= &= \|= ^= <<= >>=` |
 | access | `.` field, `::` namespace, `[]` index |
+| type | `?` nullable, `&` joins trait bounds |
 | other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
 
 `>>` is deliberately scanned as two `>` tokens so that nested generic
@@ -96,9 +98,15 @@ export * from "./m"
 import { println } from "@gyro/stdlib"
 import { open as fopen } from "@gyro/fs"
 import * as ast from "@gyro/ast"
-import defaults from "./config"
 import "./side-effects"
 ```
+
+One file is one module. `./util` resolves to `util.gyro` beside the importing
+file, `@gyro/...` is the bundled standard library, and a bare name is a
+package under `.stack/`. Circular imports are rejected.
+
+There is **no default export**, and therefore no `import name from "path"`.
+A name is spelled the same where it is defined and everywhere it is used.
 
 **If a name is not part of the formal syntax, it has to be imported.** There
 is no universe scope and no predeclared functions: operations on built-in
@@ -189,9 +197,14 @@ impl Stack {
 }
 ```
 
-A method takes `self` to read the receiver or `*self` to mutate it. A
-function in an impl block with no receiver is an associated function, called
-as `Stack::new(16)`.
+`self` borrows the receiver immutably and never copies it, however large the
+struct is. `*self` takes a pointer and may mutate. A function in an impl
+block with no receiver is an associated function, called as `Stack::new(16)`;
+for a generic type that is `Array<i32>::new()`.
+
+A struct literal is only legal where every field is visible, so a type with
+private fields is constructed exclusively through its own associated
+functions. That is what makes invariants enforceable.
 
 Struct literals come in two forms, named and positional. A literal is one or
 the other, never a mix:
@@ -210,6 +223,45 @@ export enum Shape {
   Point,
 }
 ```
+
+### Traits
+
+A trait is a set of method signatures a type can promise to provide.
+Satisfaction is **nominal**: a type implements a trait only where an `impl`
+says so, never by accident. `Self` refers to the implementing type.
+
+```gyro
+export trait Ord {
+  fn compare(self, other: Self): i32
+}
+
+impl Ord for Version {
+  fn compare(self, other: Version): i32 { ... }
+}
+```
+
+Generics constrain with bounds. Several bounds are an intersection, so they
+are joined with `&`:
+
+```gyro
+fn max<T: Ord>(a: T, b: T): T { ... }
+fn describe<T: Ord & Display>(a: T, b: T): string { ... }
+```
+
+Operators reach traits through a fixed, closed set — nothing else is
+overloadable:
+
+| operators | trait |
+| --- | --- |
+| `< > <= >=` | `Ord` |
+| `== !=` | `Eq` |
+| `+ - * /` | `Add` `Sub` `Mul` `Div` |
+| `[]` | `Index` |
+
+A value whose concrete type is not known at the call site — such as an
+`error` — is a trait object: a vtable pointer plus a fixed inline buffer.
+Small types travel inside it with no allocation. A type larger than the cap
+is a compile error naming the size, and must be boxed explicitly.
 
 ### Decorators
 
@@ -232,14 +284,61 @@ named.
 | `u8 u16 u32 u64` | unsigned integers |
 | `f32 f64` | floats |
 | `bool string void error` | other primitives |
-| `*T` | pointer |
-| `T[]` | slice |
+| `*T` | pointer, never null |
+| `T?` | nullable |
+| `T[]` | slice — a borrowed view |
 | `T[N]` | fixed-size array |
 | `chan<T>` | channel |
-| `(A, B)` | tuple |
+| `(A, B)` | multi-value return |
 | `fn(A, B): C` | function |
 | `ast::Literal` | namespaced name |
 | `Result<T, E>` | generic instantiation |
+
+### Nullability
+
+A `*T` can never be null; only a `T?` can. The compiler refuses to dereference
+a nullable value until it has been checked, and narrows the type inside the
+check.
+
+```gyro
+fn find(id: i32): *Node? { ... }
+
+var node = find(3)
+// node.value          // error: node may be null
+if node != null {
+  println(node.value)  // narrowed to *Node here
+}
+```
+
+The marker binds to the whole type, so `*Node?` is a nullable pointer. Write
+`*(Node?)` for a pointer to a nullable value.
+
+### Slices, arrays and strings
+
+`T[]` is a **slice**: a pointer and a length that borrows memory it does not
+own. Passing one allocates nothing, and it can view a fixed-size array, an
+owning collection, a literal, or GPU device memory.
+
+Growth lives in `Array<T>`, which owns its buffer and is freed explicitly.
+`T[N]` is a *fixed-size array*, `Array<T>` a *dynamic array*.
+
+```gyro
+fn total(values: i32[]): i32 { ... }   // borrows
+
+var buf = Array<i32>::new()
+defer buf.free()
+buf.push(4)
+
+total(buf.slice())
+total([1, 2, 3])
+```
+
+`string` is the same arrangement over UTF-8 bytes: a borrowed view, with
+`String` as the owning builder. `len()` counts bytes and `runes()` iterates
+code points.
+
+Known cost, accepted: a slice can outlive the memory behind it, and nothing
+currently detects that.
 
 ---
 
@@ -300,22 +399,53 @@ arm yields at most one value; returning several needs a block.
 
 ## Errors
 
-Errors are ordinary values. A fallible function returns a `(T, error)` pair
+Errors are ordinary values. A fallible function returns a `(T, error?)` pair
 and the caller has to handle it — there is no propagation operator, no
 exceptions and no unwinding.
 
+`error` is a built-in **interface**: any type implementing `message(): string`
+is an error, so a library defines its own error type carrying its own data and
+callers match on the concrete kind.
+
 ```gyro
-fn parse_port(text: string): (i32, error) {
-  var value, err = to_i32(text)
-  if err != null {
-    return 0, err
+export struct RangeError {
+  export value: i32
+}
+
+impl error for RangeError {
+  fn message(self): string { return "out of range" }
+}
+
+fn parse_port(text: string): (i32, error?) {
+  if bad {
+    return 0, RangeError{ value: 70000 }
   }
   return value, null
+}
+
+match err {
+  RangeError(e): report(e.value),
+  _: println(err.message()),
 }
 ```
 
 Discarding an error requires writing `_`, so ignoring one is always visible
 in the source.
+
+### Programmer errors
+
+Out-of-bounds indexing, divide by zero and dereferencing a null `T?` are bugs,
+not conditions. They print a message with source position and **abort**. They
+are neither returnable nor catchable, which keeps the `(T, error?)` channel
+meaningful and needs no unwinding machinery.
+
+```
+panic: index 7 out of range for length 3
+  at main.gyro:12:11
+```
+
+Integer overflow is in the same category: `a + b` panics. Wrapping is
+available where it is actually wanted, spelled `+%`, `-%` and `*%`.
 
 ---
 
@@ -338,6 +468,9 @@ fn f(): i32 {
   return node.value
 }
 ```
+
+A pointer that may be absent is `*T?`, so a linked list's tail is
+`next: *Node?` and the null case has to be checked before use.
 
 ---
 
@@ -426,8 +559,18 @@ mechanism.
 | feature | state |
 | --- | --- |
 | effect rows | parsed, unchecked |
+| nullable types | parsed; narrowing needs flow analysis in sema |
+| traits and bounds | parsed; no satisfaction checking or dispatch |
+| operator traits | specified, not wired to the operators |
+| trait object inline storage | specified, no layout yet |
 | closure capture semantics | parsed; `move` vs `copy` unenforced until sema |
 | closure type inference | parsed; needs bidirectional inference in sema |
-| `->` `=>` `?` tokens | reserved, unused |
+| module resolution | specified, no loader |
+| overflow and bounds panics | operators parse; no checks emitted |
+| `Array<T>` `String` | stdlib types, no stdlib yet |
+| `->` `=>` tokens | reserved, unused |
 | generics | parsed; no instantiation or inference |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
+
+See [`decisions.md`](decisions.md) for why each of these is the way it is,
+and what was rejected.

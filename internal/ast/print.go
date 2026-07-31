@@ -71,7 +71,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *Import:
-		p.line("Import %s from %q", bindingClause(n.Default, n.Wildcard, n.Names), n.Path)
+		p.line("Import %s from %q", bindingClause(n.Wildcard, n.Names), n.Path)
 
 	case *ExportDecl:
 		clause := "{" + nameListString(n.Names) + "}"
@@ -134,9 +134,19 @@ func (p *printer) node(node Node) {
 		}
 		p.indent--
 
+	case *TraitDecl:
+		p.line("Trait %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
+		p.indent++
+		p.decorators(n.Decorators)
+		for _, method := range n.Methods {
+			p.node(method)
+		}
+		p.indent--
+
 	case *ImplDecl:
 		p.line("Impl%s", typeParamString(n.TypeParams))
 		p.indent++
+		p.child("Trait", n.Trait)
 		p.child("Type", n.Type)
 		for _, method := range n.Methods {
 			p.node(method)
@@ -416,13 +426,23 @@ func (p *printer) node(node Node) {
 	case *NamedType:
 		p.line("NamedType %s", pathString(n.Path))
 		p.indent++
-		for _, arg := range n.Args {
-			p.node(arg)
+		// Every segment's arguments are printed, not just the last, since a
+		// path like Array<i32>::new parameterizes an earlier one.
+		for _, segment := range n.Path.Segments {
+			for _, arg := range segment.Args {
+				p.node(arg)
+			}
 		}
 		p.indent--
 
 	case *PointerType:
 		p.line("PointerType")
+		p.indent++
+		p.node(n.Elem)
+		p.indent--
+
+	case *OptionalType:
+		p.line("OptionalType")
 		p.indent++
 		p.node(n.Elem)
 		p.indent--
@@ -536,11 +556,8 @@ func (p *printer) args(args []Arg) {
 }
 
 // bindingClause renders the part of an import between `import` and `from`.
-func bindingClause(defaultName, wildcard string, names []ImportName) string {
+func bindingClause(wildcard string, names []ImportName) string {
 	var parts []string
-	if defaultName != "" {
-		parts = append(parts, defaultName)
-	}
 	if wildcard != "" {
 		parts = append(parts, "* as "+wildcard)
 	}
@@ -568,7 +585,15 @@ func pathString(path *Path) string {
 	if path == nil {
 		return ""
 	}
-	return strings.Join(path.Segments, "::")
+
+	rendered := make([]string, len(path.Segments))
+	for i, segment := range path.Segments {
+		rendered[i] = segment.Name
+		if len(segment.Args) > 0 {
+			rendered[i] += "<" + strings.Repeat("_, ", len(segment.Args)-1) + "_>"
+		}
+	}
+	return strings.Join(rendered, "::")
 }
 
 func typeParamString(params []TypeParam) string {
@@ -578,8 +603,26 @@ func typeParamString(params []TypeParam) string {
 	names := make([]string, len(params))
 	for i, param := range params {
 		names[i] = param.Name
+		if len(param.Bounds) > 0 {
+			names[i] += ": " + boundsString(param.Bounds)
+		}
 	}
 	return "<" + strings.Join(names, ", ") + ">"
+}
+
+// boundsString renders trait bounds compactly, since a bound is always a
+// named type in practice.
+func boundsString(bounds []Type) string {
+	rendered := make([]string, len(bounds))
+	for i, bound := range bounds {
+		named, ok := bound.(*NamedType)
+		if !ok {
+			rendered[i] = "?"
+			continue
+		}
+		rendered[i] = pathString(named.Path)
+	}
+	return strings.Join(rendered, " & ")
 }
 
 func bindingString(bindings []Binding) string {
