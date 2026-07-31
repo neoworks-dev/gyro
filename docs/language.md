@@ -132,6 +132,43 @@ fn apply(f: fn(i32): bool) {}        // function-valued parameter
 The return type follows a colon. Parameters may carry defaults:
 `fn f(n: i32 = 4)`.
 
+### Closures
+
+A closure is an anonymous function, written with the same `fn` and the same
+`:` result marker. There is one spelling of "function" in the language.
+
+```gyro
+var double = fn(a: i32): i32 { return a * 2 }
+var greet  = fn() { println("hi") }
+```
+
+Two shorthands apply where they are unambiguous. Parameter and result types
+may be omitted when the expected function type is known from context, and a
+body consisting of one expression needs neither braces nor `return`:
+
+```gyro
+xs.map(fn(x) x * 2)
+xs.filter(fn(x) x > 0)
+```
+
+A closure states what it captures. `copy` duplicates the binding, `move`
+transfers ownership into the closure, and a bare name means `copy`. Being
+explicit is what lets the leak analysis see an allocation escape:
+
+```gyro
+var scale = fn[copy factor](x: i32): i32 { return x * factor }
+
+var node = alloc<Node>()
+var release = fn[move node]() { free(node) }   // ownership moves in
+```
+
+`move` and `copy` are contextual — they are ordinary identifiers everywhere
+else.
+
+The type a closure inhabits is the function type that already exists:
+`fn(i32): i32`. In type position `fn(A): B` is a type; in expression position
+`fn(a: A): B { ... }` is a value. The two never collide.
+
 ### Structs and impl blocks
 
 Data and behaviour are declared separately.
@@ -228,6 +265,8 @@ for value in collection {}
 ```
 
 `elif` is sugar and desugars to a nested `if`, leaving no trace in the tree.
+It is the only way to chain conditions: **`else if` is rejected**, so there is
+exactly one spelling.
 
 Because a condition is followed by `{`, a bare struct literal cannot appear
 at the top level of a condition — `if Point { }` reads `Point` as a value.
@@ -308,9 +347,15 @@ Three separate mechanisms answering three separate questions.
 
 ### Threads — parallelism
 
-`spawn call` starts the call on another thread. It is grammar rather than a
-library function because, without closures, there is no way to pass an
-uncalled function together with its arguments.
+`spawn` starts a call on another thread. It is an ordinary stdlib function
+taking a closure, not grammar — the closure is what carries the arguments
+across:
+
+```gyro
+import { spawn } from "@gyro/stdlib"
+
+spawn(fn() produce(values, 10))
+```
 
 `@concurrent(threads = N)` configures a parallel region. `Mutex` and friends
 come from the standard library.
@@ -381,8 +426,8 @@ mechanism.
 | feature | state |
 | --- | --- |
 | effect rows | parsed, unchecked |
-| `->` token | reserved for closure syntax |
-| `=>` token | reserved |
-| `?` token | reserved |
+| closure capture semantics | parsed; `move` vs `copy` unenforced until sema |
+| closure type inference | parsed; needs bidirectional inference in sema |
+| `->` `=>` `?` tokens | reserved, unused |
 | generics | parsed; no instantiation or inference |
 | `syntaxfn` parser extensions | designed in the book, not parsed |

@@ -44,8 +44,23 @@ export fn free_chain(head: *Node) {
   }
 }
 
+// A closure captures explicitly, so what escapes into it is visible in the
+// source. `move` hands ownership to the closure, which is what tells the leak
+// analysis to stop tracking the allocation here; `copy` duplicates the value.
+export fn defer_release(value: i32): fn() {
+  var node = alloc<Node>()
+  node.value = value
+
+  return fn[move node]() {
+    free(node)
+  }
+}
+
 fn main() {
   println(sum_pair(2, 3))
+
+  var release = defer_release(7)
+  defer release()
 
   var head = make_node(1)
   head.next = make_node(2)

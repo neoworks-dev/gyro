@@ -50,8 +50,6 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return p.parseDefer()
 	case token.Select:
 		return p.parseSelect()
-	case token.Spawn:
-		return p.parseSpawn()
 	case token.Break, token.Continue:
 		stmt := &ast.BranchStmt{Offset: p.offset(), Kind: p.kind()}
 		p.next()
@@ -194,12 +192,15 @@ func (p *Parser) parseIf() ast.Stmt {
 		stmt.Else = p.parseIf()
 	case token.Else:
 		p.next()
+		// `else if` is not accepted: the chained form is spelled `elif`, so
+		// there is exactly one way to write it.
 		if p.at(token.If) {
+			p.errorf(p.offset(), "use `elif` to chain conditions; `else if` is not valid Gyro")
 			stmt.Else = p.parseIf()
-		} else {
-			stmt.Else = p.parseBlock()
-			p.expectTerminator()
+			return stmt
 		}
+		stmt.Else = p.parseBlock()
+		p.expectTerminator()
 	default:
 		p.index = saved
 		p.expectTerminator()
@@ -216,21 +217,6 @@ func (p *Parser) parseWhile() ast.Stmt {
 		stmt.Cond = p.parseExpr()
 	})
 	stmt.Body = p.parseBlock()
-	p.expectTerminator()
-	return stmt
-}
-
-// parseSpawn parses `spawn f(args)`, which runs the call concurrently and
-// does not wait for it. Like defer, it takes a call and nothing else.
-func (p *Parser) parseSpawn() ast.Stmt {
-	stmt := &ast.SpawnStmt{Offset: p.offset()}
-	p.expect(token.Spawn)
-	stmt.Call = p.parseExpr()
-
-	if _, isCall := stmt.Call.(*ast.CallExpr); !isCall {
-		p.errorf(stmt.Offset, "spawn needs a function call")
-	}
-
 	p.expectTerminator()
 	return stmt
 }

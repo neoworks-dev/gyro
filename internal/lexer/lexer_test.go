@@ -225,13 +225,25 @@ func TestNestedBlockComment(t *testing.T) {
 
 func TestKeywords(t *testing.T) {
 	src := "var const fn struct impl enum return if elif else while for in " +
-		"match break continue defer async await chan select spawn import from " +
+		"match break continue defer async await chan select import from " +
 		"as export self true false null _"
 
 	kinds, _ := scan(t, src)
 	for i, kind := range kinds {
 		if !kind.IsKeyword() {
 			t.Errorf("token %d (%s) was not recognized as a keyword", i, kind)
+		}
+	}
+}
+
+// TestNonKeywords guards the names that deliberately stay ordinary
+// identifiers: `spawn` is a stdlib function, and the capture modes are
+// contextual so they remain usable as variable names.
+func TestNonKeywords(t *testing.T) {
+	for _, name := range []string{"spawn", "move", "copy", "println", "len"} {
+		kinds, _ := scan(t, name)
+		if kinds[0] != token.Ident {
+			t.Errorf("%q lexed as %s, want an identifier", name, kinds[0])
 		}
 	}
 }

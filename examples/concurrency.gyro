@@ -4,7 +4,7 @@
 //   channels - hand work between them safely  (chan<T>, select)
 //   async    - hold many idle IO operations   (async fn / await)
 
-import { println, Mutex } from "@gyro/stdlib"
+import { println, spawn, Mutex } from "@gyro/stdlib"
 import { get } from "@gyro/net"
 
 // --- channels -------------------------------------------------------------
@@ -71,8 +71,10 @@ async fn main() {
   var values = chan<i32>(64)
   var done = chan<bool>()
 
-  spawn produce(values, 10)
-  spawn consume(values, done)
+  // `spawn` is an ordinary stdlib function, not grammar: it takes a closure,
+  // which is what carries the arguments across to the new thread.
+  spawn(fn() produce(values, 10))
+  spawn(fn() consume(values, done))
   var _ = <-done
 
   var bodies, err = await fetch_all(["https://example.com"])

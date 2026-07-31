@@ -330,6 +330,14 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.Chan:
 		return p.parseChanLit()
 
+	case token.Fn:
+		return p.parseClosure()
+
+	case token.Async:
+		if p.peekAt(1).Kind == token.Fn {
+			return p.parseClosure()
+		}
+
 	case token.LParen:
 		p.next()
 		var inner ast.Expr
@@ -429,6 +437,114 @@ func (p *Parser) parseArrayLit() ast.Expr {
 
 	p.expect(token.RBracket)
 	return lit
+}
+
+// parseClosure parses an anonymous function:
+//
+//	fn(a: i32): i32 { return a * 2 }
+//	fn(x) x * 2                        // inferred types, expression body
+//	fn[move node]() { use(node) }      // explicit capture list
+func (p *Parser) parseClosure() ast.Expr {
+	closure := &ast.ClosureExpr{Offset: p.offset()}
+	closure.Async = p.accept(token.Async)
+	p.expect(token.Fn)
+
+	if p.at(token.LBracket) {
+		closure.Captures = p.parseCaptureList()
+	}
+
+	closure.Params = p.parseClosureParams()
+	if p.accept(token.Colon) {
+		closure.Results = p.parseResultList()
+	}
+	closure.Effects = p.parseEffectRow()
+
+	// A brace opens a block body; anything else is a single expression whose
+	// value is the closure's result.
+	if p.at(token.LBrace) {
+		closure.Body = p.parseBlock()
+		return closure
+	}
+
+	p.withStructLits(true, func() {
+		closure.BodyExpr = p.parseExpr()
+	})
+	return closure
+}
+
+// parseCaptureList parses `[move a, copy b]`. The modes are contextual
+// identifiers rather than keywords, so `move` and `copy` stay usable as
+// ordinary names everywhere else.
+func (p *Parser) parseCaptureList() []ast.Capture {
+	p.expect(token.LBracket)
+
+	var captures []ast.Capture
+	for !p.at(token.RBracket) && !p.atEOF() {
+		capture := ast.Capture{Offset: p.offset()}
+
+		name, _ := p.expectIdent()
+		if p.at(token.Ident) {
+			mode, ok := captureMode(name)
+			if !ok {
+				p.errorf(capture.Offset, "unknown capture mode %q; expected move or copy", name)
+			}
+			capture.Mode = mode
+			capture.Name, _ = p.expectIdent()
+		} else {
+			// A bare name captures by copy.
+			capture.Name = name
+		}
+		captures = append(captures, capture)
+
+		if !p.accept(token.Comma) {
+			break
+		}
+	}
+
+	p.expect(token.RBracket)
+	return captures
+}
+
+func captureMode(name string) (ast.CaptureMode, bool) {
+	switch name {
+	case "copy":
+		return ast.CaptureCopy, true
+	case "move":
+		return ast.CaptureMove, true
+	}
+	return ast.CaptureCopy, false
+}
+
+// parseClosureParams parses a closure's parameter list, where the type
+// annotation is optional because it can come from the expected type.
+func (p *Parser) parseClosureParams() []ast.Param {
+	p.expect(token.LParen)
+
+	var params []ast.Param
+	p.skipTerminators()
+	for !p.at(token.RParen) && !p.atEOF() {
+		param := ast.Param{Offset: p.offset()}
+		param.Name, _ = p.expectIdent()
+
+		if p.accept(token.Colon) {
+			param.Type = p.parseType()
+		}
+		if p.accept(token.Assign) {
+			p.withStructLits(true, func() {
+				param.Default = p.parseExpr()
+			})
+		}
+		params = append(params, param)
+
+		p.skipTerminators()
+		if !p.accept(token.Comma) {
+			break
+		}
+		p.skipTerminators()
+	}
+
+	p.expect(token.RParen)
+	return params
 }
 
 // parseChanLit parses `chan<T>()` or `chan<T>(capacity)`.

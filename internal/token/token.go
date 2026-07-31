@@ -97,7 +97,6 @@ const (
 	Await
 	Chan
 	Select
-	Spawn
 	Import
 	From
 	As
@@ -192,7 +191,6 @@ var kindNames = map[Kind]string{
 	Await:      "await",
 	Chan:       "chan",
 	Select:     "select",
-	Spawn:      "spawn",
 	Import:     "import",
 	From:       "from",
 	As:         "as",
@@ -237,7 +235,6 @@ var keywords = map[string]Kind{
 	"await":    Await,
 	"chan":     Chan,
 	"select":   Select,
-	"spawn":    Spawn,
 	"import":   Import,
 	"from":     From,
 	"as":       As,

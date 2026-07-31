@@ -44,6 +44,12 @@ cover. Guessing produces code that has to be undone.
 - **No universe scope.** If a name is not part of the formal syntax, it must
   be imported. `println` is imported; `ch.close()` and `xs.len()` are methods
   on built-in types. Do not add predeclared functions.
+- **Prefer a library function over a keyword.** `spawn` was a keyword until
+  closures made it unnecessary. Before adding grammar, check whether a
+  closure-taking function would do.
+- **`else if` is rejected.** Chaining is spelled `elif`, one way only.
+- **`move` and `copy` are contextual**, valid only inside a capture list.
+  They must stay usable as ordinary identifiers.
 - **Visibility is explicit.** `export` marks it. There is no capitalization
   rule; do not add one.
 - **No `:=`.** Bindings are `var` or `const`, assignment is `=`.

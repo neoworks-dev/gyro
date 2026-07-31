@@ -216,12 +216,6 @@ func (p *printer) node(node Node) {
 	case *BranchStmt:
 		p.line("%s", n.Kind)
 
-	case *SpawnStmt:
-		p.line("Spawn")
-		p.indent++
-		p.node(n.Call)
-		p.indent--
-
 	case *SendStmt:
 		p.line("Send")
 		p.indent++
@@ -375,6 +369,23 @@ func (p *printer) node(node Node) {
 		p.child("Cap", n.Cap)
 		p.indent--
 
+	case *ClosureExpr:
+		p.line("%s", strings.TrimSpace("Closure "+asyncMark(n.Async)+captureListString(n.Captures)))
+		p.indent++
+		for _, param := range n.Params {
+			p.group("Param "+param.Name, func() {
+				p.child("Type", param.Type)
+				p.child("Default", param.Default)
+			})
+		}
+		for _, result := range n.Results {
+			p.child("Result", result)
+		}
+		p.effects(n.Effects)
+		p.child("Body", n.Body)
+		p.child("Body", n.BodyExpr)
+		p.indent--
+
 	case *CastExpr:
 		p.line("Cast")
 		p.indent++
@@ -488,6 +499,17 @@ func fieldLabel(field FieldValue, index int) string {
 		return fmt.Sprintf("Field %d", index)
 	}
 	return "Field " + field.Name
+}
+
+func captureListString(captures []Capture) string {
+	if len(captures) == 0 {
+		return ""
+	}
+	rendered := make([]string, len(captures))
+	for i, capture := range captures {
+		rendered[i] = capture.Mode.String() + " " + capture.Name
+	}
+	return "[" + strings.Join(rendered, ", ") + "]"
 }
 
 func asyncMark(async bool) string {

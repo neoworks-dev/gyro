@@ -59,6 +59,7 @@ is in [`docs/language.md`](docs/language.md).
 | --- | --- |
 | declarations | `var` / `const`, annotation optional, types inferred |
 | functions | `fn f(a: i32): i32` — return type after a colon |
+| closures | anonymous `fn`, inferred types, explicit capture lists |
 | syntax | no semicolons, no parentheses on `if` / `while` / `for` |
 | primitives | explicit widths: `i8`–`i64`, `u8`–`u64`, `f32`, `f64` |
 | types | `struct` holds data, `impl` holds methods |
@@ -75,7 +76,9 @@ Two rules drive most of the rest:
 **Nothing is implicit.** If a name is not part of the formal syntax, it has
 to be imported. There is no universe scope, so `println` is imported while
 `ch.close()` and `xs.len()` are methods on built-in types. Visibility is
-declared, never inferred from spelling.
+declared, never inferred from spelling. Even `spawn` is a library function
+rather than a keyword — it takes a closure, so it needs no grammar of its
+own. Closures name what they capture for the same reason.
 
 **Errors cannot escape by accident.** A fallible function returns
 `(T, error)`, and discarding the error requires writing `_` explicitly.
@@ -112,6 +115,7 @@ syntax; each one parses cleanly and is checked by the test suite.
 | `structs.gyro` | structs, impl blocks, enums, `match` |
 | `errors.gyro` | `(T, error)` returns and explicit handling |
 | `memory.gyro` | `alloc` / `free`, `defer`, escape behaviour |
+| `closures.gyro` | anonymous functions, inference, capture lists |
 | `concurrency.gyro` | threads, channels, `select`, `async` / `await` |
 
 ## Architecture

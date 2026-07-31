@@ -230,6 +230,92 @@ func TestElifDesugarsToNestedIf(t *testing.T) {
 	}
 }
 
+func TestElseIfIsRejected(t *testing.T) {
+	// Chaining is spelled `elif`, so there is exactly one way to write it.
+	var bag diag.Bag
+	Parse("test.gyro", "fn t() {\n  if a {\n  } else if b {\n  }\n}\n", &bag)
+
+	if !bag.HasErrors() {
+		t.Fatal("expected `else if` to be rejected")
+	}
+	if !strings.Contains(bag.Items()[0].Message, "elif") {
+		t.Errorf("error should point at `elif`, got: %s", bag.Items()[0])
+	}
+}
+
+func TestClosures(t *testing.T) {
+	tests := []struct {
+		name string
+		expr string
+		want string
+	}{
+		{
+			name: "annotated with a block body",
+			expr: "fn(a: i32): i32 { return a * 2 }",
+			want: "Closure Param a: Type: NamedType i32 Result: NamedType i32 " +
+				"Body: Block Return Binary * Ident a Lit int literal 2",
+		},
+		{
+			name: "inferred types and an expression body",
+			expr: "fn(x) x * 2",
+			want: "Closure Param x: Body: Binary * Ident x Lit int literal 2",
+		},
+		{
+			name: "no parameters and no result",
+			expr: "fn() { greet() }",
+			want: "Closure Body: Block ExprStmt Call Fun: Ident greet",
+		},
+		{
+			name: "explicit capture list",
+			expr: "fn[move node, copy n]() { use(node) }",
+			want: "Closure [move node, copy n] Body: Block ExprStmt Call Fun: Ident use Arg: Ident node",
+		},
+		{
+			name: "a bare capture name means copy",
+			expr: "fn[n]() { use(n) }",
+			want: "Closure [copy n] Body: Block ExprStmt Call Fun: Ident use Arg: Ident n",
+		},
+		{
+			name: "async closure",
+			expr: "async fn(): i32 { return 1 }",
+			want: "Closure async Result: NamedType i32 Body: Block Return Lit int literal 1",
+		},
+		{
+			name: "multi-value result",
+			expr: "fn(a): (i32, error) { return a }",
+			want: "Closure Param a: Result: NamedType i32 Result: NamedType error " +
+				"Body: Block Return Ident a",
+		},
+		{
+			name: "closure as a call argument",
+			expr: "xs.map(fn(x) x * 2)",
+			want: "Call Fun: Selector .map Ident xs Arg: Closure Param x: " +
+				"Body: Binary * Ident x Lit int literal 2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := dumpOf(t, wrap(test.expr))
+			want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+			if got != want {
+				t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
+			}
+		})
+	}
+}
+
+func TestFunctionTypeIsNotAClosure(t *testing.T) {
+	// `fn(i32): bool` in type position is a type; in expression position the
+	// same keyword starts a closure. The two never collide.
+	got := dumpOf(t, "fn t(f: fn(i32): bool) {\n}\n")
+	want := "File test.gyro Func t Param f: Type: FuncType Param: NamedType i32 " +
+		"Result: NamedType bool Body: Block"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
+	}
+}
+
 func TestElseOnItsOwnLine(t *testing.T) {
 	// A terminator is synthesized after the closing brace; the else on the
 	// next line must still attach to the same if.
@@ -367,7 +453,7 @@ func TestForms(t *testing.T) {
 		"fn t() {\n  for v in 0..10 {\n  }\n}\n",
 		"fn t() {\n  while a < b {\n    break\n  }\n}\n",
 		"fn t() {\n  defer free(p)\n}\n",
-		"fn t() {\n  spawn worker(ch)\n}\n",
+		"fn t() {\n  spawn(fn() worker(ch))\n}\n",
 		"fn t() {\n  var x = await f()\n}\n",
 		"fn t() {\n  var c = chan<i32>(64)\n}\n",
 		"fn t() {\n  var c = chan<i32>()\n}\n",

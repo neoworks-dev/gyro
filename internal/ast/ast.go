@@ -375,17 +375,6 @@ type DeferStmt struct {
 func (d *DeferStmt) Pos() int  { return d.Offset }
 func (d *DeferStmt) stmtNode() {}
 
-// SpawnStmt is `spawn f(args)`, starting the call on another thread. It is
-// grammar rather than a stdlib function because, without closures, there is
-// no way to pass an uncalled function together with its arguments.
-type SpawnStmt struct {
-	Offset int
-	Call   Expr
-}
-
-func (s *SpawnStmt) Pos() int  { return s.Offset }
-func (s *SpawnStmt) stmtNode() {}
-
 // SendStmt is `ch <- value`. Sending is always a statement, never an
 // expression, which is what lets the parser tell `ch <- v` apart from the
 // comparison `x < -1`.
@@ -654,6 +643,61 @@ type ChanLit struct {
 
 func (c *ChanLit) Pos() int  { return c.Offset }
 func (c *ChanLit) exprNode() {}
+
+// CaptureMode says how a closure takes hold of a captured binding.
+type CaptureMode int
+
+const (
+	// CaptureCopy copies the binding into the closure. Copying a pointer
+	// copies the pointer, not what it points at.
+	CaptureCopy CaptureMode = iota
+	// CaptureMove transfers ownership into the closure, which is what makes
+	// an allocation's escape visible to the leak analysis.
+	CaptureMove
+)
+
+func (m CaptureMode) String() string {
+	if m == CaptureMove {
+		return "move"
+	}
+	return "copy"
+}
+
+// Capture is one entry in a closure's capture list.
+type Capture struct {
+	Offset int
+	Mode   CaptureMode
+	Name   string
+}
+
+// ClosureExpr is an anonymous function: `fn(a: i32): i32 { return a * 2 }`.
+//
+// It is spelled with the same `fn` and `:` as a declaration, so there is one
+// way to write a function and one return-type marker. Parameter and result
+// types may be omitted where the expected type is known from context, and a
+// body that is a single expression needs no braces.
+//
+// Captures are listed explicitly: `fn[move node]() { use(node) }`. That keeps
+// escape visible in the source rather than inferred, which is what the leak
+// analysis needs in order to stay honest about manual memory.
+type ClosureExpr struct {
+	Offset   int
+	Async    bool
+	Captures []Capture
+	// Params may have a nil Type, meaning the type is inferred from context.
+	Params []Param
+	// Results is empty when the closure returns nothing or when the result
+	// type is left to inference.
+	Results []Type
+	Effects *EffectRow
+	// Body is set for a braced closure, BodyExpr for an expression one.
+	// Exactly one of the two is non-nil.
+	Body     *Block
+	BodyExpr Expr
+}
+
+func (c *ClosureExpr) Pos() int  { return c.Offset }
+func (c *ClosureExpr) exprNode() {}
 
 // CastExpr is `x as T`.
 type CastExpr struct {

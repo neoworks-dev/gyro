@@ -291,8 +291,14 @@ func (p *Parser) parseResults() []ast.Type {
 		return nil
 	}
 
-	// A parenthesized list directly after the colon is a multi-value return
-	// rather than a tuple-typed single value.
+	return p.parseResultList()
+}
+
+// parseResultList parses the type list after a result colon, shared by
+// declarations, function types and closures.
+func (p *Parser) parseResultList() []ast.Type {
+	// A parenthesized list here is a multi-value return rather than a
+	// tuple-typed single value.
 	if p.at(token.LParen) {
 		p.next()
 		var results []ast.Type
