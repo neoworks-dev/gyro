@@ -708,6 +708,70 @@ forced:
   "programmer errors abort" and keeps defer implementable without
   landing pads.
 
+## METALS
+
+The cross-language IR is sketched in [`metals.md`](metals.md); the format
+lives in `internal/metals`. Eight decisions from the design review:
+
+### METALS is a typed module IR *(new)*
+
+**Status: decided.** Modules, imports/exports, signatures and type shapes
+survive into the IR — the JVM/CLR shape. Rejected LLVM-style low-level
+SSA: it erases exactly what cross-language `import` needs, which is why
+C++ and Rust share LLVM and still cannot call each other without a C ABI
+detour. An SSA layer will exist *inside* the native backend, privately.
+
+### Bodies are registers plus structured control flow *(new)*
+
+**Status: decided.** Virtual registers with fixed types (reassignable,
+not SSA), and `block`/`loop`/`br`/`if`/`switch`/`select` for control
+flow — no goto. Rejected a stack machine (harder to read and to consume)
+and a flat CFG (source structure arrives shredded; verification is
+harder).
+
+### No generics in the IR *(new)*
+
+**Status: decided.** Front ends monomorphize; METALS sees concrete types
+only. Generic exports across a boundary become concrete instantiations
+or `dyn`. Rejected CLR-style IR generics as one of the most complex
+parts of that design, bought before a second front end exists.
+
+### `dyn` is the escape hatch for dynamic languages *(new)*
+
+**Status: decided.** One dynamic value type with checked ops (dyn.wrap,
+dyn.unwrap, dyn.call, dyn.get/set). Rejected strict-only (unannotated
+Python could never be imported) and an untyped core (throws away Gyro's
+checker exactly at the boundary).
+
+### Values copy at language boundaries *(new)*
+
+**Status: decided.** No shared mutable memory between runtimes; `ptr`,
+`chan` and `future` are banned from boundary signatures; long-lived
+foreign state is an opaque `handle`. This is the WASM-component call,
+and it is what lets manual memory and garbage collectors coexist.
+Rejected one shared object model (forces every runtime onto one memory
+model) and handles-only (even an i32 would feel like FFI).
+
+### Concurrency is hybrid, matching the language *(new)*
+
+**Status: decided.** `chan<T>` is an IR type; `send`, `recv`, `select`,
+`await` are verified instructions; `spawn` and mutexes are runtime
+imports. The same line the grammar draws — channels and select are
+grammar, spawn is not.
+
+### Verified from day one *(new)*
+
+**Status: decided.** Third parties will emit METALS, so the IR trusts no
+producer: full type checking of registers and instructions, definedness
+on all paths, boundary-rule enforcement. Rejected verify-later; format
+ambiguities surface at retrofit time, which is the expensive time.
+
+### Text format first *(new)*
+
+**Status: decided.** A canonical readable form with printer and parser,
+so tests diff IR as text; the binary encoding comes later. Same road
+LLVM (.ll) and WASM (.wat) took.
+
 ## Still open
 
 | question | why it matters |
@@ -719,7 +783,7 @@ forced:
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
-| METALS shared IR | the cross-language target; other languages compile into it and `import` reaches across them (js, python, ...) — nothing is designed yet |
+| METALS remainder | the format is sketched and verified (see above); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures — and the Gyro→METALS lowering pass is not started |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |

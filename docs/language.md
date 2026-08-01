@@ -820,6 +820,7 @@ Still to come:
 | race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
+| METALS | sketched: [`metals.md`](metals.md), typed module IR with text format and verifier in `internal/metals`; the Gyro→METALS lowering is not started |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,
 and what was rejected.
