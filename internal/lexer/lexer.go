@@ -191,7 +191,7 @@ func (l *Lexer) needsTerminator() bool {
 	if !endsStatement(l.lastKind) {
 		return false
 	}
-	return !continuesExpression(l.ch)
+	return !l.continuesExpression()
 }
 
 func endsStatement(kind token.Kind) bool {
@@ -199,25 +199,52 @@ func endsStatement(kind token.Kind) bool {
 	case token.Ident, token.Int, token.Float, token.String, token.Char,
 		token.Return, token.Break, token.Continue, token.Self,
 		token.True, token.False, token.Null, token.Underscore,
-		token.Increment, token.Decrement,
 		token.RParen, token.RBracket, token.RBrace:
 		return true
 	}
 	return false
 }
 
-// continuesExpression reports whether a line starting with ch cannot begin a
-// new statement, and so must be a continuation of the previous one. Leading
-// '.' covers method chains broken across lines; the closers cover multi-line
-// argument and element lists.
-func continuesExpression(ch rune) bool {
-	switch ch {
-	// '.' covers both method chains and range operators; neither can begin
-	// a statement, so a newline before one is never a terminator.
-	case '.', ',', ')', ']':
+// continuesExpression reports whether the line starting at the current
+// character cannot begin a new statement, so the newline before it is not a
+// terminator. Leading '.' covers method chains, ',' ')' ']' cover multi-line
+// lists, and a leading binary operator lets a long expression break before
+// the operator as well as after it.
+//
+// '-', '*' and '&' are deliberately absent: a statement can begin with them
+// (negation, assignment through a pointer, address-of), so those operators
+// must trail the line they belong to.
+func (l *Lexer) continuesExpression() bool {
+	switch l.ch {
+	case '.', ',', ')', ']', '+', '/', '%', '|', '^', '>', '=':
 		return true
+	case '<':
+		// A leading '<-' is a receive statement, not a comparison.
+		return l.peek() != '-'
+	case '!':
+		// '!=' continues; a bare '!' begins a negation.
+		return l.peek() == '='
+	case '&':
+		// '&&' continues; a bare '&' begins an address-of.
+		return l.peek() == '&'
+	case 'a':
+		return l.atWord("as")
 	}
 	return false
+}
+
+// atWord reports whether the source at the current position reads exactly
+// the given word followed by something that cannot extend an identifier.
+func (l *Lexer) atWord(word string) bool {
+	end := l.offset + len(word)
+	if end > len(l.src) || l.src[l.offset:end] != word {
+		return false
+	}
+	if end == len(l.src) {
+		return true
+	}
+	next, _ := utf8.DecodeRuneInString(l.src[end:])
+	return !isIdentPart(next)
 }
 
 func (l *Lexer) scanIdent() token.Token {
@@ -441,8 +468,10 @@ func (l *Lexer) scanOperator() token.Token {
 
 	switch ch {
 	case '+':
-		if tok, ok := accept('+', token.Increment); ok {
-			return tok
+		if l.ch == '+' {
+			l.advance()
+			l.errorf(offset, "Gyro has no ++; increment is spelled += 1")
+			return token.Token{Kind: token.Invalid, Text: "++", Offset: offset}
 		}
 		if tok, ok := accept('=', token.PlusEq); ok {
 			return tok
@@ -452,8 +481,10 @@ func (l *Lexer) scanOperator() token.Token {
 		}
 		return make(token.Plus)
 	case '-':
-		if tok, ok := accept('-', token.Decrement); ok {
-			return tok
+		if l.ch == '-' {
+			l.advance()
+			l.errorf(offset, "Gyro has no --; decrement is spelled -= 1")
+			return token.Token{Kind: token.Invalid, Text: "--", Offset: offset}
 		}
 		if tok, ok := accept('=', token.MinusEq); ok {
 			return tok

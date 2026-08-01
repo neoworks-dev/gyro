@@ -221,9 +221,10 @@ func (p *Parser) parseWhile() ast.Stmt {
 	return stmt
 }
 
-// parseSelect parses `select { comm: body, ... }`. Arms use the same
-// `comm: body` shape as match arms, and a binding arm is written with an
-// ordinary `var` declaration rather than a dedicated short form.
+// parseSelect parses `select { comm: body ... }`. Arms use the same
+// newline-terminated `comm: body` shape as match arms, and a binding arm is
+// written with an ordinary `var` declaration rather than a dedicated short
+// form.
 func (p *Parser) parseSelect() ast.Stmt {
 	stmt := &ast.SelectStmt{Offset: p.offset()}
 	p.expect(token.Select)
@@ -246,9 +247,7 @@ func (p *Parser) parseSelect() ast.Stmt {
 				stmt.Arms = append(stmt.Arms, arm)
 			}
 
-			p.skipTerminators()
-			p.accept(token.Comma)
-			p.skipTerminators()
+			p.expectArmEnd()
 
 			if p.index == before {
 				p.next()
@@ -272,8 +271,8 @@ func (p *Parser) parseSelectComm() ast.Stmt {
 // parseArmBody parses the right-hand side of a match or select arm: a block,
 // a control-flow statement, or a single expression.
 //
-// An arm is delimited by the comma that separates it from the next one, so a
-// `return` here yields at most one value. Returning several needs a block.
+// An arm is delimited by the newline that ends it, so a `return` here yields
+// at most one value. Returning several needs a block.
 func (p *Parser) parseArmBody() ast.Stmt {
 	switch p.kind() {
 	case token.LBrace:

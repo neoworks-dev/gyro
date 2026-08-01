@@ -91,7 +91,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *FuncDecl:
-		p.line("Func %s%s%s%s", exportMark(n.Exported), asyncMark(n.Async), n.Name, typeParamString(n.TypeParams))
+		p.line("Func %s%s%s%s%s", exportMark(n.Exported), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		p.decorators(n.Decorators)
 		if n.Recv != nil {
@@ -131,25 +131,6 @@ func (p *printer) node(node Node) {
 					p.node(payload)
 				}
 			})
-		}
-		p.indent--
-
-	case *TraitDecl:
-		p.line("Trait %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
-		p.indent++
-		p.decorators(n.Decorators)
-		for _, method := range n.Methods {
-			p.node(method)
-		}
-		p.indent--
-
-	case *ImplDecl:
-		p.line("Impl%s", typeParamString(n.TypeParams))
-		p.indent++
-		p.child("Trait", n.Trait)
-		p.child("Type", n.Type)
-		for _, method := range n.Methods {
-			p.node(method)
 		}
 		p.indent--
 
@@ -298,12 +279,6 @@ func (p *printer) node(node Node) {
 		p.node(n.X)
 		p.indent--
 
-	case *PostfixExpr:
-		p.line("Postfix %s", n.Op)
-		p.indent++
-		p.node(n.X)
-		p.indent--
-
 	case *BinaryExpr:
 		p.line("Binary %s", n.Op)
 		p.indent++
@@ -343,6 +318,20 @@ func (p *printer) node(node Node) {
 		p.indent++
 		p.node(n.Lo)
 		p.node(n.Hi)
+		p.indent--
+
+	case *TupleLit:
+		p.line("TupleLit")
+		p.indent++
+		for _, element := range n.Elements {
+			p.node(element)
+		}
+		p.indent--
+
+	case *TupleIndexExpr:
+		p.line("TupleIndex .%d", n.Index)
+		p.indent++
+		p.node(n.X)
 		p.indent--
 
 	case *MatchExpr:
@@ -527,9 +516,18 @@ func captureListString(captures []Capture) string {
 	}
 	rendered := make([]string, len(captures))
 	for i, capture := range captures {
-		rendered[i] = capture.Mode.String() + " " + capture.Name
+		rendered[i] = "move " + capture.Name
 	}
 	return "[" + strings.Join(rendered, ", ") + "]"
+}
+
+// ownerString renders the type qualifier of a method: `Stack::` in
+// `fn Stack::push`, with the owning type's parameters when it has any.
+func ownerString(fn *FuncDecl) string {
+	if fn.Owner == "" {
+		return ""
+	}
+	return fn.Owner + typeParamString(fn.OwnerParams) + "::"
 }
 
 func asyncMark(async bool) string {
@@ -603,26 +601,8 @@ func typeParamString(params []TypeParam) string {
 	names := make([]string, len(params))
 	for i, param := range params {
 		names[i] = param.Name
-		if len(param.Bounds) > 0 {
-			names[i] += ": " + boundsString(param.Bounds)
-		}
 	}
 	return "<" + strings.Join(names, ", ") + ">"
-}
-
-// boundsString renders trait bounds compactly, since a bound is always a
-// named type in practice.
-func boundsString(bounds []Type) string {
-	rendered := make([]string, len(bounds))
-	for i, bound := range bounds {
-		named, ok := bound.(*NamedType)
-		if !ok {
-			rendered[i] = "?"
-			continue
-		}
-		rendered[i] = pathString(named.Path)
-	}
-	return strings.Join(rendered, " & ")
 }
 
 func bindingString(bindings []Binding) string {

@@ -1,6 +1,11 @@
-// Structs, impl blocks, enums and pattern matching.
+// Structs, methods, enums and pattern matching.
+//
+// A struct declares data and nothing else. Behaviour lives in free-standing
+// methods: `fn Stack::push` attaches push to Stack, in any file order.
 
-import { println } from "@gyro/stdlib"
+// There is no universe scope: Array is a stdlib type, so it is imported
+// like anything else that is not part of the formal syntax.
+import { println, Array } from "@gyro/stdlib"
 
 export struct Stack {
   export capacity: i32
@@ -9,31 +14,29 @@ export struct Stack {
   items: Array<i32>
 }
 
-impl Stack {
-  // An associated function: no receiver, called as Stack::new(..).
-  export fn new(capacity: i32): Stack {
-    return Stack{ capacity: capacity, top: 0, items: Array<i32>::new() }
-  }
+// An associated function: no receiver, called as Stack::new(..).
+export fn Stack::new(capacity: i32): Stack {
+  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new() }
+}
 
-  // `self` borrows and never copies the receiver, however large it is.
-  export fn is_empty(self): bool {
-    return self.top == 0
-  }
+// `self` borrows and never copies the receiver, however large it is.
+export fn Stack::is_empty(self): bool {
+  return self.top == 0
+}
 
-  // A pointer receiver may mutate the value it was called on.
-  export fn push(*self, value: i32) {
-    self.items.push(value)
-    self.top++
-  }
+// A pointer receiver may mutate the value it was called on.
+export fn Stack::push(*self, value: i32) {
+  self.items.push(value)
+  self.top += 1
+}
 
-  // Lending the contents out as a borrowed view costs nothing.
-  export fn view(self): i32[] {
-    return self.items.slice()
-  }
+// Lending the contents out as a borrowed view costs nothing.
+export fn Stack::view(self): i32[] {
+  return self.items.slice()
+}
 
-  export fn free(*self) {
-    self.items.free()
-  }
+export fn Stack::free(*self) {
+  self.items.free()
 }
 
 // Takes a borrowed view, so it works on an Array, a fixed-size array or a
@@ -52,20 +55,22 @@ export enum Shape {
   Point,
 }
 
+// Match arms end at the newline, like every other statement, and a match
+// over an enum must cover every variant or carry a `_` arm.
 fn area(shape: Shape): f64 {
   return match shape {
-    Shape::Circle(r): 3.14159 * r * r,
-    Shape::Rect(w, h): w * h,
-    Shape::Point: 0.0,
+    Shape::Circle(r): 3.14159 * r * r
+    Shape::Rect(w, h): w * h
+    Shape::Point: 0.0
   }
 }
 
 fn classify(n: i32): string {
   return match n {
-    0: "zero",
-    1: "one",
-    2: "two",
-    _: "many",
+    0: "zero"
+    1: "one"
+    2: "two"
+    _: "many"
   }
 }
 
@@ -82,7 +87,7 @@ fn is_prime(n: i32): bool {
     if n % i == 0 {
       return false
     }
-    i++
+    i += 1
   }
   return true
 }
@@ -100,11 +105,11 @@ fn main() {
   println(area(Shape::Circle(2.0)))
   println(area(Shape::Rect(3.0, 4.0)))
 
-  for var n = 0; n <= 4; n++ {
+  for var n = 0; n <= 4; n += 1 {
     println(classify(n))
   }
 
-  println("--- primes up to 30 ---")
+  println("--- primes below 30 ---")
   for n in 2..30 {
     if is_prime(n) {
       println(n)

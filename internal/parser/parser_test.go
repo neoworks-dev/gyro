@@ -266,14 +266,14 @@ func TestClosures(t *testing.T) {
 			want: "Closure Body: Block ExprStmt Call Fun: Ident greet",
 		},
 		{
-			name: "explicit capture list",
-			expr: "fn[move node, copy n]() { use(node) }",
-			want: "Closure [move node, copy n] Body: Block ExprStmt Call Fun: Ident use Arg: Ident node",
+			name: "move capture list",
+			expr: "fn[move node]() { free(node) }",
+			want: "Closure [move node] Body: Block ExprStmt Call Fun: Ident free Arg: Ident node",
 		},
 		{
-			name: "a bare capture name means copy",
-			expr: "fn[n]() { use(n) }",
-			want: "Closure [copy n] Body: Block ExprStmt Call Fun: Ident use Arg: Ident n",
+			name: "several move captures",
+			expr: "fn[move a, move b]() { use(a) }",
+			want: "Closure [move a, move b] Body: Block ExprStmt Call Fun: Ident use Arg: Ident a",
 		},
 		{
 			name: "async closure",
@@ -282,8 +282,8 @@ func TestClosures(t *testing.T) {
 		},
 		{
 			name: "multi-value result",
-			expr: "fn(a): (i32, error) { return a }",
-			want: "Closure Param a: Result: NamedType i32 Result: NamedType error " +
+			expr: "fn(a): (i32, error?) { return a }",
+			want: "Closure Param a: Result: NamedType i32 Result: OptionalType NamedType error " +
 				"Body: Block Return Ident a",
 		},
 		{
@@ -340,8 +340,8 @@ func TestDeclarations(t *testing.T) {
 		},
 		{
 			name: "exported function with a tuple result",
-			src:  "export fn f(): (i32, error) {\n}\n",
-			want: "File test.gyro Func export f Result: NamedType i32 Result: NamedType error Body: Block",
+			src:  "export fn f(): (i32, error?) {\n}\n",
+			want: "File test.gyro Func export f Result: NamedType i32 Result: OptionalType NamedType error Body: Block",
 		},
 		{
 			name: "async function",
@@ -350,8 +350,8 @@ func TestDeclarations(t *testing.T) {
 		},
 		{
 			name: "method with a pointer receiver",
-			src:  "impl Stack {\n  fn push(*self, v: i32) {\n  }\n}\n",
-			want: "File test.gyro Impl Type: NamedType Stack Func push Recv: *self " +
+			src:  "fn Stack::push(*self, v: i32) {\n}\n",
+			want: "File test.gyro Func Stack::push Recv: *self " +
 				"Param v: Type: NamedType i32 Body: Block",
 		},
 		{
@@ -451,34 +451,33 @@ func TestNullableTypes(t *testing.T) {
 	}
 }
 
-func TestTraits(t *testing.T) {
+func TestMethods(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
 		want string
 	}{
 		{
-			name: "trait declaration",
-			src:  "export trait Ord {\n  fn compare(self, other: Self): i32\n}\n",
-			want: "File test.gyro Trait export Ord Func compare Recv: self " +
-				"Param other: Type: NamedType Self Result: NamedType i32",
+			name: "borrowing receiver",
+			src:  "fn Version::compare(self, other: Version): i32 {\n}\n",
+			want: "File test.gyro Func Version::compare Recv: self " +
+				"Param other: Type: NamedType Version Result: NamedType i32 Body: Block",
 		},
 		{
-			name: "trait implementation",
-			src:  "impl Ord for Version {\n  fn compare(self, other: Version): i32 {\n  }\n}\n",
-			want: "File test.gyro Impl Trait: NamedType Ord Type: NamedType Version " +
-				"Func compare Recv: self Param other: Type: NamedType Version " +
-				"Result: NamedType i32 Body: Block",
+			name: "exported associated function",
+			src:  "export fn Stack::new(capacity: i32): Stack {\n}\n",
+			want: "File test.gyro Func export Stack::new Param capacity: Type: NamedType i32 " +
+				"Result: NamedType Stack Body: Block",
 		},
 		{
-			name: "inherent impl has no trait",
-			src:  "impl Version {\n  fn new(): Version {\n  }\n}\n",
-			want: "File test.gyro Impl Type: NamedType Version Func new Result: NamedType Version Body: Block",
+			name: "method on a generic type",
+			src:  "fn Pair<T>::swap(*self) {\n}\n",
+			want: "File test.gyro Func Pair<T>::swap Recv: *self Body: Block",
 		},
 		{
-			name: "bounds are joined with &, not +",
-			src:  "fn max<T: Ord & Display>(a: T, b: T): T {\n}\n",
-			want: "File test.gyro Func max<T: Ord & Display> Param a: Type: NamedType T " +
+			name: "unbounded generic function",
+			src:  "fn max<T>(a: T, b: T): T {\n}\n",
+			want: "File test.gyro Func max<T> Param a: Type: NamedType T " +
 				"Param b: Type: NamedType T Result: NamedType T Body: Block",
 		},
 	}
@@ -489,6 +488,73 @@ func TestTraits(t *testing.T) {
 				t.Errorf("got:  %s\nwant: %s", got, test.want)
 			}
 		})
+	}
+}
+
+func TestGenericBoundsAreRejected(t *testing.T) {
+	// Generics are duck-typed: the body's usage is the requirement, so a
+	// declared bound has nothing to attach to.
+	var bag diag.Bag
+	Parse("test.gyro", "fn max<T: Ord>(a: T, b: T): T {\n}\n", &bag)
+
+	if !bag.HasErrors() {
+		t.Fatal("expected a bound to be rejected")
+	}
+	if !strings.Contains(bag.Items()[0].Message, "duck-typed") {
+		t.Errorf("error should explain duck typing, got: %s", bag.Items()[0])
+	}
+}
+
+func TestTuples(t *testing.T) {
+	tests := []struct {
+		name string
+		expr string
+		want string
+	}{
+		{
+			name: "tuple literal",
+			expr: `(1, "a")`,
+			want: `TupleLit Lit int literal 1 Lit string literal "a"`,
+		},
+		{
+			name: "grouping stays grouping",
+			expr: "(1)",
+			want: "Lit int literal 1",
+		},
+		{
+			name: "tuple index",
+			expr: "pair.0",
+			want: "TupleIndex .0 Ident pair",
+		},
+		{
+			name: "nested tuple index splits the float",
+			expr: "pair.0.1",
+			want: "TupleIndex .1 TupleIndex .0 Ident pair",
+		},
+		{
+			name: "tuple index then field",
+			expr: "pair.0.name",
+			want: "Selector .name TupleIndex .0 Ident pair",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := dumpOf(t, wrap(test.expr))
+			want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+			if got != want {
+				t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
+			}
+		})
+	}
+}
+
+func TestTupleTypeInChannel(t *testing.T) {
+	got := dumpOf(t, "fn f(ch: chan<(i32, error?)>) {\n}\n")
+	want := "File test.gyro Func f Param ch: Type: ChanType TupleType " +
+		"NamedType i32 OptionalType NamedType error Body: Block"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
 	}
 }
 
@@ -543,18 +609,25 @@ func TestMatchAndSelect(t *testing.T) {
 		want string
 	}{
 		{
-			name: "match arms use colons",
-			src:  "fn t() {\n  var x = match n {\n    0: \"zero\",\n    _: \"other\",\n  }\n}\n",
+			name: "match arms end at the newline",
+			src:  "fn t() {\n  var x = match n {\n    0: \"zero\"\n    _: \"other\"\n  }\n}\n",
 			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident n " +
 				`Arm: Pattern: LiteralPattern Lit int literal 0 Body: ExprStmt Lit string literal "zero" ` +
 				`Arm: Pattern: Wildcard Body: ExprStmt Lit string literal "other"`,
 		},
 		{
-			name: "variant patterns bind their payload",
-			src:  "fn t() {\n  var x = match r {\n    Ok(g): g,\n    Err(e): return e,\n  }\n}\n",
-			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident r " +
-				"Arm: Pattern: VariantPattern Ok BindingPattern g Body: ExprStmt Ident g " +
-				"Arm: Pattern: VariantPattern Err BindingPattern e Body: Return Ident e",
+			name: "variant patterns are qualified and bind their payload",
+			src:  "fn t() {\n  var x = match s {\n    Shape::Circle(r): r\n    Shape::Point: return 0\n  }\n}\n",
+			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident s " +
+				"Arm: Pattern: VariantPattern Shape::Circle BindingPattern r Body: ExprStmt Ident r " +
+				"Arm: Pattern: VariantPattern Shape::Point Body: Return Lit int literal 0",
+		},
+		{
+			name: "a type test binds the whole value",
+			src:  "fn t() {\n  var x = match err {\n    RangeError(e): e\n    _: null\n  }\n}\n",
+			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident err " +
+				"Arm: Pattern: VariantPattern RangeError BindingPattern e Body: ExprStmt Ident e " +
+				"Arm: Pattern: Wildcard Body: ExprStmt Lit null null",
 		},
 		{
 			name: "select arms bind with var, never with :=",
@@ -581,9 +654,21 @@ func TestMatchAndSelect(t *testing.T) {
 	}
 }
 
+func TestMatchArmCommaIsRejected(t *testing.T) {
+	var bag diag.Bag
+	Parse("test.gyro", "fn t() {\n  var x = match n {\n    0: \"zero\",\n    _: \"other\"\n  }\n}\n", &bag)
+
+	if !bag.HasErrors() {
+		t.Fatal("expected the arm comma to be rejected")
+	}
+	if !strings.Contains(bag.Items()[0].Message, "newline") {
+		t.Errorf("error should point at the newline style, got: %s", bag.Items()[0])
+	}
+}
+
 func TestForms(t *testing.T) {
 	sources := []string{
-		"fn t() {\n  for var i = 0; i < 10; i++ {\n  }\n}\n",
+		"fn t() {\n  for var i = 0; i < 10; i += 1 {\n  }\n}\n",
 		"fn t() {\n  for v in 0..10 {\n  }\n}\n",
 		"fn t() {\n  while a < b {\n    break\n  }\n}\n",
 		"fn t() {\n  defer free(p)\n}\n",
@@ -624,9 +709,10 @@ func TestErrorRecoveryReportsAndContinues(t *testing.T) {
 func TestParserAlwaysTerminates(t *testing.T) {
 	// Malformed input must never leave the parser without forward progress.
 	sources := []string{
-		"fn", "fn t(", "fn t() {", "struct", "impl {", "match {", "select {",
+		"fn", "fn t(", "fn t() {", "struct", "match {", "select {",
 		"var", "var x =", "import", "export", "@", "}}}", "((((", "fn t() { ]",
 		"enum E { A(", "fn t() { if }", "fn t() { for ; ; }", "chan<",
+		"fn T::", "fn T::m(", "fn t() { var x = (1,", "fn t() { var x = p.",
 	}
 
 	for _, src := range sources {

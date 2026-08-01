@@ -4,13 +4,13 @@
 //   channels - hand work between them safely  (chan<T>, select)
 //   async    - hold many idle IO operations   (async fn / await)
 
-import { println, spawn, Mutex } from "@gyro/stdlib"
+import { println, spawn, Mutex, Array } from "@gyro/stdlib"
 import { get } from "@gyro/net"
 
 // --- channels -------------------------------------------------------------
 
 fn produce(out: chan<i32>, count: i32) {
-  for var i = 0; i < count; i++ {
+  for var i = 0; i < count; i += 1 {
     out <- i * i
   }
   out.close()
@@ -25,8 +25,15 @@ fn consume(values: chan<i32>, done: chan<bool>) {
   done <- true
 }
 
+// A channel element can be a tuple, so a worker reports a fallible result
+// without a wrapper struct.
+fn fetch_into(url: string, results: chan<(string, error?)>) {
+  results <- ("stub body for #{url}", null)
+}
+
 // `select` waits on several operations and takes whichever is ready first.
-// Bindings are ordinary declarations, so there is no separate `:=` form.
+// Arms end at the newline, and bindings are ordinary declarations: there is
+// no separate `:=` form.
 fn drain(values: chan<i32>, quit: chan<bool>) {
   while true {
     select {
@@ -41,13 +48,13 @@ fn drain(values: chan<i32>, quit: chan<bool>) {
 
 @concurrent(threads = 8)
 fn sum_shared(values: i32[]) {
-  var total = Mutex{ 0 }
+  var total = Mutex::new(0)
 
   for value in values {
-    var guard = match total.lock() {
-      Ok(g): g,
-      Err(poisoned): poisoned.into_inner(),
-    }
+    // lock() returns the guard directly. There is no poisoning: a Gyro
+    // panic aborts the whole process, so no thread ever observes a lock
+    // its holder abandoned.
+    var guard = total.lock()
     guard.set(guard.get() + value)
   }
 }
@@ -69,6 +76,7 @@ export async fn fetch_all(urls: string[]): (Array<string>, error?) {
   return bodies, null
 }
 
+// async main is allowed; the runtime drives it.
 async fn main() {
   var values = chan<i32>(64)
   var done = chan<bool>()
@@ -78,6 +86,13 @@ async fn main() {
   spawn(fn() produce(values, 10))
   spawn(fn() consume(values, done))
   var _ = <-done
+
+  // The tuple comes out whole; a two-name binding on a receive already
+  // means (value, open), so the element is destructured afterwards.
+  var results = chan<(string, error?)>()
+  spawn(fn() fetch_into("https://example.com", results))
+  var result = <-results
+  println("first fetch: #{result.0}")
 
   var bodies, err = await fetch_all(["https://example.com"])
   defer bodies.free()

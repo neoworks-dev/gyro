@@ -36,7 +36,7 @@ func TestOperators(t *testing.T) {
 		want string
 	}{
 		{"+ - * / %", "+ - * / %"},
-		{"++ -- += -= *= /= %=", "++ -- += -= *= /= %="},
+		{"+= -= *= /= %=", "+= -= *= /= %="},
 		{"+% -% *%", "+% -% *%"},
 		{"== != < <= > >=", "== != < <= > >="},
 		{"&& || ! & | ^ ~", "&& || ! & | ^ ~"},
@@ -93,6 +93,51 @@ func TestAutomaticTerminators(t *testing.T) {
 			name: "newline after an operator does not",
 			src:  "a +\nb",
 			want: "identifier + identifier",
+		},
+		{
+			name: "a leading && continues the condition",
+			src:  "a\n&& b",
+			want: "identifier && identifier",
+		},
+		{
+			name: "a leading + continues the expression",
+			src:  "a\n+ b",
+			want: "identifier + identifier",
+		},
+		{
+			name: "a leading == continues the expression",
+			src:  "a\n== b",
+			want: "identifier == identifier",
+		},
+		{
+			name: "a leading as continues the expression",
+			src:  "x\nas f64",
+			want: "identifier as identifier",
+		},
+		{
+			name: "a leading identifier starting with as does not continue",
+			src:  "x\nassert()",
+			want: "identifier end of statement identifier ( )",
+		},
+		{
+			name: "a leading minus starts a new statement",
+			src:  "a\n- b",
+			want: "identifier end of statement - identifier",
+		},
+		{
+			name: "a leading star starts a new statement",
+			src:  "a\n*p = 1",
+			want: "identifier end of statement * identifier = int literal",
+		},
+		{
+			name: "a leading receive starts a new statement",
+			src:  "a\n<-ch",
+			want: "identifier end of statement <- identifier",
+		},
+		{
+			name: "a leading address-of starts a new statement",
+			src:  "a\n&b",
+			want: "identifier end of statement & identifier",
 		},
 		{
 			name: "blank lines collapse",
@@ -225,7 +270,7 @@ func TestNestedBlockComment(t *testing.T) {
 }
 
 func TestKeywords(t *testing.T) {
-	src := "var const fn struct impl trait enum return if elif else while for in " +
+	src := "var const fn struct enum return if elif else while for in " +
 		"match break continue defer async await chan select import from " +
 		"as export self true false null _"
 
@@ -238,13 +283,26 @@ func TestKeywords(t *testing.T) {
 }
 
 // TestNonKeywords guards the names that deliberately stay ordinary
-// identifiers: `spawn` is a stdlib function, and the capture modes are
-// contextual so they remain usable as variable names.
+// identifiers: `spawn` is a stdlib function, `move` is contextual, and
+// `impl` and `trait` left the language entirely.
 func TestNonKeywords(t *testing.T) {
-	for _, name := range []string{"spawn", "move", "copy", "println", "len"} {
+	for _, name := range []string{"spawn", "move", "copy", "println", "len", "impl", "trait"} {
 		kinds, _ := scan(t, name)
 		if kinds[0] != token.Ident {
 			t.Errorf("%q lexed as %s, want an identifier", name, kinds[0])
+		}
+	}
+}
+
+func TestIncrementIsRejected(t *testing.T) {
+	for _, src := range []string{"i++", "i--"} {
+		_, bag := scan(t, src)
+		if !bag.HasErrors() {
+			t.Errorf("expected %q to be rejected", src)
+			continue
+		}
+		if !strings.Contains(bag.Items()[0].Message, "= 1") {
+			t.Errorf("error should point at the += 1 spelling, got: %s", bag.Items()[0])
 		}
 	}
 }

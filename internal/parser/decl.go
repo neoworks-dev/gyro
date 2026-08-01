@@ -148,17 +148,6 @@ func (p *Parser) parseDecl() ast.Decl {
 		decl := p.parseEnumDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
-	case token.Trait:
-		decl := p.parseTraitDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
-		return decl
-	case token.Impl:
-		if exported {
-			p.errorf(offset, "impl blocks cannot be exported; export the methods instead")
-		}
-		decl := p.parseImplDecl()
-		decl.Offset = offset
-		return decl
 	case token.Var, token.Const:
 		decl := p.parseVarDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
@@ -189,14 +178,27 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decorators
 }
 
-// parseFuncDecl parses `fn name<T>(params): results { body }`. The caller
-// fills in the offset, decorators and export flag.
+// parseFuncDecl parses `fn name<T>(params): results { body }` and the
+// method form `fn Type::name(self, ...)`. The caller fills in the offset,
+// decorators and export flag.
 func (p *Parser) parseFuncDecl() *ast.FuncDecl {
 	fn := &ast.FuncDecl{Offset: p.offset()}
 	fn.Async = p.accept(token.Async)
 	p.expect(token.Fn)
-	fn.Name, _ = p.expectIdent()
-	fn.TypeParams = p.parseTypeParams()
+
+	name, _ := p.expectIdent()
+	params := p.parseTypeParams()
+
+	// A `::` after the first name makes this a method: the name was the
+	// owning type — with its parameters, as in `fn Pair<T>::swap` — and the
+	// function's own name follows.
+	if p.accept(token.ColonColon) {
+		fn.Owner, fn.OwnerParams = name, params
+		fn.Name, _ = p.expectIdent()
+		fn.TypeParams = p.parseTypeParams()
+	} else {
+		fn.Name, fn.TypeParams = name, params
+	}
 
 	fn.Recv, fn.Params = p.parseParams()
 	fn.Results = p.parseResults()
@@ -222,17 +224,17 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	var params []ast.TypeParam
 	for !p.at(token.Gt) && !p.atEOF() {
 		name, offset := p.expectIdent()
-		param := ast.TypeParam{Offset: offset, Name: name}
 
-		// `<T: Ord>` or `<T: Ord & Display>`. Several bounds are an
-		// intersection, so they are joined with `&` rather than Rust's `+`.
+		// Bounds do not exist: generics are duck-typed, so the body's usage
+		// is the requirement. Consume a stray bound to keep parsing.
 		if p.accept(token.Colon) {
-			param.Bounds = append(param.Bounds, p.parseType())
+			p.errorf(offset, "generic parameters take no bounds; Gyro generics are duck-typed")
+			p.parseType()
 			for p.accept(token.Amp) {
-				param.Bounds = append(param.Bounds, p.parseType())
+				p.parseType()
 			}
 		}
-		params = append(params, param)
+		params = append(params, ast.TypeParam{Offset: offset, Name: name})
 
 		if !p.accept(token.Comma) {
 			break
@@ -421,71 +423,6 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 
 	p.expect(token.RBrace)
 	return decl
-}
-
-// parseTraitDecl parses `trait Name<T> { fn method(self): T ... }`. A method
-// with a body supplies a default implementation.
-func (p *Parser) parseTraitDecl() *ast.TraitDecl {
-	decl := &ast.TraitDecl{Offset: p.offset()}
-	p.expect(token.Trait)
-	decl.Name, _ = p.expectIdent()
-	decl.TypeParams = p.parseTypeParams()
-
-	decl.Methods = p.parseMethodBlock("a method signature")
-	return decl
-}
-
-// parseImplDecl parses `impl<T> Type { ... }` and `impl<T> Trait for Type`.
-func (p *Parser) parseImplDecl() *ast.ImplDecl {
-	decl := &ast.ImplDecl{Offset: p.offset()}
-	p.expect(token.Impl)
-	decl.TypeParams = p.parseTypeParams()
-	decl.Type = p.parseType()
-
-	// `impl Ord for Version` names the trait first, so what was parsed as
-	// the type turns out to have been the trait.
-	if p.accept(token.For) {
-		decl.Trait = decl.Type
-		decl.Type = p.parseType()
-	}
-
-	decl.Methods = p.parseMethodBlock("a method")
-	return decl
-}
-
-// parseMethodBlock parses the braced method list shared by traits and impls.
-func (p *Parser) parseMethodBlock(what string) []*ast.FuncDecl {
-	p.expect(token.LBrace)
-	p.skipTerminators()
-
-	var methods []*ast.FuncDecl
-	for !p.at(token.RBrace) && !p.atEOF() {
-		before := p.index
-
-		decorators := p.parseDecorators()
-		offset := p.offset()
-		if len(decorators) > 0 {
-			offset = decorators[0].Offset
-		}
-		exported := p.accept(token.Export)
-
-		if !p.at(token.Fn) && !p.at(token.Async) {
-			p.errorf(p.offset(), "expected %s, found %s", what, describe(p.tok()))
-			p.syncStatement()
-			if p.index == before {
-				p.next()
-			}
-			continue
-		}
-
-		method := p.parseFuncDecl()
-		method.Offset, method.Decorators, method.Exported = offset, decorators, exported
-		methods = append(methods, method)
-		p.skipTerminators()
-	}
-
-	p.expect(token.RBrace)
-	return methods
 }
 
 // parseVarDecl parses `var name: T = value` and `const NAME = value`, with

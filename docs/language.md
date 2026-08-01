@@ -4,9 +4,17 @@ This file is the source of truth for Gyro's surface syntax. It replaces the
 old `gyro.peggy` grammar, which was abandoned mid-design and did not describe
 the language as it now stands.
 
-Everything below is implemented by the parser unless it is marked
-**reserved**, which means the syntax is accepted and stored in the tree but no
-later stage checks it yet.
+The design was revised on 2026-07-31 (traits removed, tuples added, methods
+made free-standing, and more — see `decisions.md`), and the parser, lexer
+and examples implement the revised syntax. Semantic analysis exists as a
+name-resolution pass; the table at the end lists what is decided but not
+yet checked.
+
+One principle shows up everywhere and is worth naming once: **Gyro is
+duck-typed wherever a contract is needed.** A type is an `error` by having
+`message(): string`, is iterable by having `next()`, works in a generic
+function by having whatever methods that function calls. Nothing is ever
+declared to satisfy a contract; having the right methods is the whole test.
 
 ---
 
@@ -16,18 +24,27 @@ later stage checks it yet.
 
 Gyro has no statement-terminating semicolons in normal source. The lexer
 inserts a terminator at a newline when the preceding token could end a
-statement — an identifier, a literal, `)`, `]`, `}`, `++`, `--`, or one of
-`return`, `break`, `continue`, `self`, `true`, `false`, `null`, `_`.
+statement — an identifier, a literal, `)`, `]`, `}`, or one of `return`,
+`break`, `continue`, `self`, `true`, `false`, `null`, `_`.
 
 A newline does *not* terminate the statement when the next line begins with
-`.`, `,`, `)` or `]`, so method chains and multi-line argument lists work
-without escapes:
+`.`, `,`, `)`, `]`, or a binary operator that cannot begin a statement —
+`&&`, `||`, `==`, `!=`, `<=`, `>=`, `<`, `>`, `+`, `/`, `%`, `|`, `^`, `<<`,
+`>>`, `..`, `as`. Both continuation styles therefore work:
 
 ```gyro
 var total = values
   .filter(is_even)
   .sum()
+
+var ok = user.is_active
+  && user.age >= 18
 ```
+
+`-`, `*`, `&` and `<-` are **not** continuation tokens, because a statement
+can begin with them (`*p = 5` assigns through a pointer, `&x` takes an
+address, `-x` negates, `<-ch` receives). Those operators must trail the
+line they belong to.
 
 A literal `;` is still accepted, which is what makes the C-style `for` header
 work and lets several statements share a line.
@@ -43,7 +60,17 @@ work and lets several statements share a line.
 3.14      1e9           1.5e-3
 "text"    "hi #{name}"  'c'
 true      false         null
+(1, "a")                            // tuple
 ```
+
+A numeric literal is **context-typed**: it takes the type the context
+requires, so `var h: u32 = 2166136261` needs no cast and `var bytes: u8[] =
+[104, 105]` element literals become `u8`. With no context, an integer literal
+is `i32` and a float literal is `f64`. A literal that does not fit the
+required type is a compile error. Context never converts *typed* values —
+only literals adapt.
+
+A character literal such as `'c'` has type `rune`.
 
 Strings interpolate with `#{expr}`, where the expression is arbitrary Gyro.
 Escape it as `\#{` to write the sequence literally. Escapes are `\n`, `\t`,
@@ -55,14 +82,20 @@ Escape it as `\#{` to write the sequence literally. Escapes are `\n`, `\t`,
 | --- | --- |
 | arithmetic | `+ - * / %` — these panic on overflow |
 | wrapping | `+% -% *%` — deliberate two's-complement wraparound |
-| increment | `++ --` (prefix and postfix, usable in expressions) |
 | comparison | `== != < <= > >=` |
 | logical | `&& \|\| !` |
 | bitwise | `& \| ^ ~ << >>` |
 | assignment | `= += -= *= /= %= &= \|= ^= <<= >>=` |
 | access | `.` field, `::` namespace, `[]` index |
-| type | `?` nullable, `&` joins trait bounds |
+| conversion | `as` |
+| type | `?` nullable |
 | other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
+
+There is no `++` or `--`; increment is `i += 1`, one way only.
+
+Integer division truncates toward zero and `%` takes the sign of the
+dividend: `-7 / 2 == -3`, `-7 % 2 == -1`. Divide by zero panics, and
+`i32::MIN / -1` panics as overflow.
 
 `>>` is deliberately scanned as two `>` tokens so that nested generic
 arguments such as `Result<Vec<i32>, error>` close cleanly; the parser rejoins
@@ -72,6 +105,14 @@ them when a shift is meant.
 against a negative number, so the parser splits the token back apart whenever
 it appears in binary-operator position. Written with a space, `x < -1` is
 never ambiguous in the first place.
+
+### Conversions
+
+`as` converts between numeric types (and `rune`): `x as i64`. Widening always
+succeeds. A narrowing conversion whose value does not fit the target
+**panics**, consistent with arithmetic overflow. Deliberate truncation is
+spelled with a mask first: `(x & 0xff) as u8`. There are no implicit
+conversions between typed values, ever.
 
 ---
 
@@ -113,14 +154,35 @@ is no universe scope and no predeclared functions: operations on built-in
 types are methods on those types, so `ch.close()`, `xs.len()` and
 `xs.append(v)` need no import, while `println` does.
 
+### The entry point
+
+`fn main` in the root module is the one blessed name: the compiler finds it
+and the OS calls it, so it needs no `export` — nothing imports it. `async fn
+main` is allowed; the runtime drives it.
+
 ### Variables
 
 ```gyro
 var x: i32 = 0
 var y = 42            // inferred
 const MAX: i32 = 100  // compile-time constant
-var value, err = f()  // multi-value binding
+var value, err = f()  // tuple destructuring
 var _, err = f()      // `_` discards explicitly
+```
+
+`var x: i32` with no initializer is legal, but reading `x` before every path
+to the read has assigned it is a compile error (**definite assignment**).
+There are no zero values; nothing springs into existence unwritten.
+
+An inner block may shadow an outer name; redeclaring a name in the **same**
+block is an error.
+
+```gyro
+var x = 1
+if cond {
+  var x = 2      // ok: inner scope
+}
+var x = 3        // error: already declared in this block
 ```
 
 ### Functions
@@ -131,14 +193,87 @@ fn add(a: i32, b: i32): i32 {
 }
 
 fn nothing() {}                      // no annotation means no result
-fn load(p: string): (string, error)  // multiple results
+fn load(p: string): (string, error?) // returns a tuple
 fn max<T>(a: T, b: T): T             // generic
-async fn fetch(u: string): (string, error)
+async fn fetch(u: string): (string, error?)
 fn apply(f: fn(i32): bool) {}        // function-valued parameter
 ```
 
 The return type follows a colon. Parameters may carry defaults:
 `fn f(n: i32 = 4)`.
+
+### Methods
+
+A method is a free-standing function whose name is qualified by its type.
+Structs stay pure data; behaviour lives beside it at top level. `self`
+borrows the receiver immutably and never copies it, however large the struct
+is. `*self` takes a pointer and may mutate. A function with no receiver is an
+associated function, called as `Stack::new(16)`.
+
+```gyro
+export struct Stack {
+  export capacity: i32
+  top: i32
+}
+
+export fn Stack::new(capacity: i32): Stack {
+  return Stack{ capacity: capacity, top: 0 }
+}
+
+fn Stack::is_empty(self): bool {
+  return self.top == 0
+}
+
+fn Stack::push(*self, v: i32) {
+  self.top += 1
+}
+```
+
+Methods on a generic type name the parameter in the qualifier:
+`fn Pair<T>::first(self): T`.
+
+There is no `impl` block, no trait, and no `Self`; a method writes its type's
+name out.
+
+### Generics
+
+Generics are **duck-typed**. A type parameter declares no bounds; the body's
+usage is the requirement, checked when `T` becomes concrete. Any type with
+the methods the body calls works; any type without them is a compile error at
+instantiation.
+
+```gyro
+fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {
+    return a
+  }
+  return b
+}
+
+max(3, 7)        // ok: i32 has a built-in compare
+max(v1, v2)      // ok: Version has compare
+max(m1, m2)      // error: Mutex has no method compare
+```
+
+User structs may be generic, instantiated the same way:
+
+```gyro
+struct Pair<T> {
+  first: T
+  second: T
+}
+
+fn Pair<T>::swap(*self) {
+  var tmp = self.first
+  self.first = self.second
+  self.second = tmp
+}
+
+var p = Pair<i32>{ 1, 2 }
+```
+
+Type arguments live on path segments — `Array<i32>::new` parameterizes a
+non-final segment.
 
 ### Closures
 
@@ -148,6 +283,7 @@ A closure is an anonymous function, written with the same `fn` and the same
 ```gyro
 var double = fn(a: i32): i32 { return a * 2 }
 var greet  = fn() { println("hi") }
+var later  = async fn(): i32 { return 1 }
 ```
 
 Two shorthands apply where they are unambiguous. Parameter and result types
@@ -159,59 +295,44 @@ xs.map(fn(x) x * 2)
 xs.filter(fn(x) x > 0)
 ```
 
-A closure states what it captures. `copy` duplicates the binding, `move`
-transfers ownership into the closure, and a bare name means `copy`. Being
-explicit is what lets the leak analysis see an allocation escape:
+A closure captures the locals it uses by **copy**, implicitly. The capture
+list exists for one purpose: transferring ownership. `fn[move node]()` moves
+the binding into the closure, which is what lets the leak analysis see an
+allocation escape. `move` is contextual — an ordinary identifier everywhere
+else.
 
 ```gyro
-var scale = fn[copy factor](x: i32): i32 { return x * factor }
-
 var node = alloc<Node>()
 var release = fn[move node]() { free(node) }   // ownership moves in
 ```
 
-`move` and `copy` are contextual — they are ordinary identifiers everywhere
-else.
-
 The type a closure inhabits is the function type that already exists:
-`fn(i32): i32`. In type position `fn(A): B` is a type; in expression position
-`fn(a: A): B { ... }` is a value. The two never collide.
+`fn(i32): i32`, or `async fn(): i32` for an async closure. In type position
+`fn(A): B` is a type; in expression position `fn(a: A): B { ... }` is a
+value. The two never collide.
 
-### Structs and impl blocks
+### Structs
 
-Data and behaviour are declared separately.
+A struct declares data and nothing else.
 
 ```gyro
 export struct Stack {
   export capacity: i32
   top: i32
 }
-
-impl Stack {
-  export fn new(capacity: i32): Stack {
-    return Stack{ capacity: capacity, top: 0 }
-  }
-
-  fn is_empty(self): bool { return self.top == 0 }
-  fn push(*self, v: i32) { self.top++ }
-}
 ```
-
-`self` borrows the receiver immutably and never copies it, however large the
-struct is. `*self` takes a pointer and may mutate. A function in an impl
-block with no receiver is an associated function, called as `Stack::new(16)`;
-for a generic type that is `Array<i32>::new()`.
 
 A struct literal is only legal where every field is visible, so a type with
 private fields is constructed exclusively through its own associated
-functions. That is what makes invariants enforceable.
+functions. That is what makes invariants enforceable — `Mutex::new(0)`, never
+a literal of a type whose fields you cannot see.
 
 Struct literals come in two forms, named and positional. A literal is one or
 the other, never a mix:
 
 ```gyro
 Point{ x: 1, y: 2 }   // named
-Mutex{ 0 }            // positional, in declaration order
+Pair<i32>{ 1, 2 }     // positional, in declaration order
 ```
 
 ### Enums
@@ -224,49 +345,13 @@ export enum Shape {
 }
 ```
 
-### Traits
-
-A trait is a set of method signatures a type can promise to provide.
-Satisfaction is **nominal**: a type implements a trait only where an `impl`
-says so, never by accident. `Self` refers to the implementing type.
-
-```gyro
-export trait Ord {
-  fn compare(self, other: Self): i32
-}
-
-impl Ord for Version {
-  fn compare(self, other: Version): i32 { ... }
-}
-```
-
-Generics constrain with bounds. Several bounds are an intersection, so they
-are joined with `&`:
-
-```gyro
-fn max<T: Ord>(a: T, b: T): T { ... }
-fn describe<T: Ord & Display>(a: T, b: T): string { ... }
-```
-
-Operators reach traits through a fixed, closed set — nothing else is
-overloadable:
-
-| operators | trait |
-| --- | --- |
-| `< > <= >=` | `Ord` |
-| `== !=` | `Eq` |
-| `+ - * /` | `Add` `Sub` `Mul` `Div` |
-| `[]` | `Index` |
-
-A value whose concrete type is not known at the call site — such as an
-`error` — is a trait object: a vtable pointer plus a fixed inline buffer.
-Small types travel inside it with no allocation. A type larger than the cap
-is a compile error naming the size, and must be boxed explicitly.
-
 ### Decorators
 
 `@name` or `@name(args)`, attachable to any declaration. Arguments may be
-named.
+named. The decorator names are a **fixed set known to the compiler** —
+`@comptime`, `@gpu`, `@concurrent`, `@distributed` — because they configure
+compilation itself; there is nothing meaningful to import. An unknown
+decorator name is a compile error.
 
 ```gyro
 @comptime const FIB_10: i32 = fib(10)
@@ -282,23 +367,44 @@ named.
 | --- | --- |
 | `i8 i16 i32 i64` | signed integers |
 | `u8 u16 u32 u64` | unsigned integers |
+| `usize` | pointer-width unsigned; lengths, indexes, `T[N]` sizes |
 | `f32 f64` | floats |
+| `rune` | a Unicode code point (32-bit) |
 | `bool string void error` | other primitives |
 | `*T` | pointer, never null |
 | `T?` | nullable |
 | `T[]` | slice — a borrowed view |
 | `T[N]` | fixed-size array |
 | `chan<T>` | channel |
-| `(A, B)` | multi-value return |
+| `(A, B)` | tuple |
 | `fn(A, B): C` | function |
+| `async fn(A): B` | async function |
 | `ast::Literal` | namespaced name |
-| `Result<T, E>` | generic instantiation |
+| `Pair<i32>` | generic instantiation |
+
+### Tuples
+
+`(A, B)` is a first-class type: it can be a field, a variable, a channel
+element. Values are written `(a, b)`, read by destructuring or positional
+field access:
+
+```gyro
+var pair = (200, null)
+var code = pair.0
+var a, b = pair
+
+var results = chan<(string, error?)>()
+results <- (body, null)
+```
+
+A multi-value `return a, b` is sugar for returning a tuple. `(expr)` with one
+element stays plain grouping; there are no one-element tuples.
 
 ### Nullability
 
-A `*T` can never be null; only a `T?` can. The compiler refuses to dereference
-a nullable value until it has been checked, and narrows the type inside the
-check.
+A `*T` can never be null; only a `T?` can. The compiler refuses to
+dereference a nullable value until it has been checked, and narrows the type
+inside the check.
 
 ```gyro
 fn find(id: i32): *Node? { ... }
@@ -333,12 +439,27 @@ total(buf.slice())
 total([1, 2, 3])
 ```
 
+An array literal such as `[1, 2, 3]` is a fixed-size array value in the
+enclosing scope; a slice of it borrows that storage.
+
+`len()` returns `usize` and `[]` indexes with `usize`. Because arithmetic
+panics on overflow, `xs.len() - 1` on an empty slice panics loudly instead of
+wrapping around.
+
 `string` is the same arrangement over UTF-8 bytes: a borrowed view, with
 `String` as the owning builder. `len()` counts bytes and `runes()` iterates
-code points.
+code points as `rune`.
 
 Known cost, accepted: a slice can outlive the memory behind it, and nothing
 currently detects that.
+
+### Equality
+
+`==` and `!=` work on primitives, pointers (identity), tuples and enums, and
+on structs as compiler-derived field-wise comparison. Slices do not compare
+with `==` (compare contents explicitly). Comparison operators `< <= > >=`
+work on numeric primitives and `rune` only; ordering a user type is spelled
+`a.compare(b)`.
 
 ---
 
@@ -355,65 +476,95 @@ if x < 0 {
 }
 
 while i * i <= n {
-  i++
+  i += 1
 }
 
-for var i = 0; i < 10; i++ {}
+for var i = 0; i < 10; i += 1 {}
 for value in 0..10 {}
 for value in collection {}
 ```
 
 `elif` is sugar and desugars to a nested `if`, leaving no trace in the tree.
-It is the only way to chain conditions: **`else if` is rejected**, so there is
-exactly one spelling.
+It is the only way to chain conditions: **`else if` is rejected**, so there
+is exactly one spelling.
 
 Because a condition is followed by `{`, a bare struct literal cannot appear
 at the top level of a condition — `if Point { }` reads `Point` as a value.
 Parenthesize to disambiguate: `if (Point{ x: 1 }).x > 0 { }`.
 
+### Ranges and iteration
+
+`a..b` is a half-open range: `0..10` visits 0 through 9, so `0..xs.len()`
+visits every index. There is no inclusive form; an inclusive walk is a
+C-style `for` header.
+
+`for x in ...` iterates slices, fixed-size arrays, ranges and channels
+natively. Any other type is iterable by duck typing: a type with
+`next(*self): (T, bool)` — or an `iter()` returning such a type — works in
+`for..in`. `false` ends the loop.
+
+```gyro
+fn Counter::next(*self): (i32, bool) {
+  if self.n >= self.limit {
+    return 0, false
+  }
+  self.n += 1
+  return self.n, true
+}
+
+for x in Counter{ 0, 5 } { println(x) }
+```
+
 ### Match
 
-`match` is an expression. Arms are `pattern: body`, separated by commas, and
-a body may be an expression, a block, or a control-flow statement.
+`match` is an expression. Arms are `pattern: body`, one per line — an arm
+ends at the newline, like every other statement. A body may be an
+expression, a block, or a control-flow statement.
 
 ```gyro
 var name = match n {
-  0: "zero",
-  1: "one",
-  _: "other",
-}
-
-var guard = match m.lock() {
-  Ok(g): g,
-  Err(poisoned): poisoned.into_inner(),
+  0: "zero"
+  1: "one"
+  _: "other"
 }
 ```
 
-Patterns are `_`, literals, bindings, and variant destructuring such as
-`Ok(value)` or `Shape::Circle(r)`.
+Patterns are `_`, literals, bindings, enum variant destructuring, and
+struct type-tests:
 
-An arm body is delimited by the comma that ends it, so a `return` inside an
+- `Shape::Circle(r)` destructures a variant, binding its payload. Variant
+  patterns are **always qualified** with the enum name.
+- `RangeError(e)` on a value whose concrete type is not statically known (an
+  `error`) is a **type test**: it matches when the value is a `RangeError`
+  and binds the whole struct to `e`.
+
+A match over an enum is checked for **exhaustiveness**: every variant must be
+covered or a `_` arm present; adding a variant later breaks every non-`_`
+match loudly, which is the point.
+
+An arm body is delimited by the newline that ends it, so a `return` inside an
 arm yields at most one value; returning several needs a block.
 
 ---
 
 ## Errors
 
-Errors are ordinary values. A fallible function returns a `(T, error?)` pair
+Errors are ordinary values. A fallible function returns a `(T, error?)` tuple
 and the caller has to handle it — there is no propagation operator, no
 exceptions and no unwinding.
 
-`error` is a built-in **interface**: any type implementing `message(): string`
-is an error, so a library defines its own error type carrying its own data and
-callers match on the concrete kind.
+`error` is a built-in contract, satisfied by duck typing: **any type with a
+`message(): string` method is an error.** Nothing is declared; having the
+method is the whole test. A library defines its own error type carrying its
+own data and callers match on the concrete kind.
 
 ```gyro
 export struct RangeError {
   export value: i32
 }
 
-impl error for RangeError {
-  fn message(self): string { return "out of range" }
+fn RangeError::message(self): string {
+  return "out of range"
 }
 
 fn parse_port(text: string): (i32, error?) {
@@ -424,20 +575,25 @@ fn parse_port(text: string): (i32, error?) {
 }
 
 match err {
-  RangeError(e): report(e.value),
-  _: println(err.message()),
+  RangeError(e): report(e.value)
+  _: println(err.message())
 }
 ```
+
+An `error` value whose concrete type is unknown at the call site is stored as
+a vtable pointer plus a fixed inline buffer. Small types travel inside it
+with no allocation; a type larger than the cap is a compile error naming the
+size, and must be boxed explicitly.
 
 Discarding an error requires writing `_`, so ignoring one is always visible
 in the source.
 
 ### Programmer errors
 
-Out-of-bounds indexing, divide by zero and dereferencing a null `T?` are bugs,
-not conditions. They print a message with source position and **abort**. They
-are neither returnable nor catchable, which keeps the `(T, error?)` channel
-meaningful and needs no unwinding machinery.
+Out-of-bounds indexing, divide by zero and dereferencing a null `T?` are
+bugs, not conditions. They print a message with source position and
+**abort**. They are neither returnable nor catchable, which keeps the
+`(T, error?)` channel meaningful and needs no unwinding machinery.
 
 ```
 panic: index 7 out of range for length 3
@@ -445,7 +601,16 @@ panic: index 7 out of range for length 3
 ```
 
 Integer overflow is in the same category: `a + b` panics. Wrapping is
-available where it is actually wanted, spelled `+%`, `-%` and `*%`.
+available where it is actually wanted, spelled `+%`, `-%` and `*%`. A
+narrowing `as` conversion that loses value panics the same way.
+
+---
+
+## Printing
+
+Every type is printable: `println(x)` and `#{x}` use a compiler-derived
+representation (`Point{ x: 1, y: 2 }`) unless the type has its own
+`to_string(): string` method, which then wins. Primitives print natively.
 
 ---
 
@@ -455,7 +620,8 @@ Memory is manual, with a compiler-checked safety net.
 
 - `alloc<T>()` returns `*T`, `free(p)` releases it. Both are imported.
 - `&x` takes an address, `*p` dereferences.
-- `defer expr` runs a call at scope exit, in reverse order of registration.
+- `defer expr` runs a call at **block exit** — when the enclosing `{ }` ends,
+  in reverse order of registration. A loop body's defers run every iteration.
 - A sema pass tracks each allocation and **warns** when one can reach the end
   of its scope without being freed and without escaping through a return
   value. Warnings, not errors, so arena and process-lifetime patterns are not
@@ -491,7 +657,13 @@ spawn(fn() produce(values, 10))
 ```
 
 `@concurrent(threads = N)` configures a parallel region. `Mutex` and friends
-come from the standard library.
+come from the standard library. `Mutex::new(0)` constructs one and `lock()`
+returns the guard directly — there is no poisoning, because a Gyro panic
+aborts the process rather than unwinding past a held lock.
+
+Nothing yet stops a captured `*T` from crossing `spawn` and racing; a sema
+pass that warns about it is planned. Until then, data races are the
+programmer's problem, like dangling slices.
 
 ### Channels — communication
 
@@ -504,9 +676,12 @@ for v in ch {}           // drain until closed
 ch.close()
 ```
 
+Reading `v` when `open` came back `false` is a definite-assignment error —
+a closed channel yields no value, not a zero value.
+
 `select` waits on several operations and runs the arm that becomes ready
-first. It reuses the `comm: body` shape of match, and bindings are ordinary
-`var` declarations — there is no `:=`.
+first. Arms are `comm: body`, one per line, like match. Bindings are
+ordinary `var` declarations — there is no `:=`.
 
 ```gyro
 select {
@@ -519,10 +694,11 @@ select {
 ### Async — IO concurrency
 
 `async fn` declares an asynchronous function and `await` resolves the value
-of a call to one. Async is a function colour, as in Rust and JavaScript.
+of a call to one. Async is a function colour, as in Rust and JavaScript, and
+it appears in the type: `async fn(): i32` is the type of an async closure.
 
 ```gyro
-export async fn fetch_all(urls: string[]): (string[], error) {
+export async fn fetch_all(urls: string[]): (Array<string>, error?) {
   var body, err = await get(urls[0])
 }
 ```
@@ -537,13 +713,13 @@ parser records these; **no stage checks them yet.**
 ```gyro
 fn add(a: i32, b: i32): i32                       // no row: inferred
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error) !{ io, alloc }
+export fn load(p: string): (string, error?) !{ io, alloc }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e     // effect-polymorphic
 @gpu fn kernel(a: *f32) !{}                       // empty row
 ```
 
-Forms: `!{}`, `!{ a, b }`, `!e` for a bare row variable, and `!{ a, ..e }` for
-concrete effects plus a row variable.
+Forms: `!{}`, `!{ a, b }`, `!e` for a bare row variable, and `!{ a, ..e }`
+for concrete effects plus a row variable.
 
 The intended rule is that module-private functions have their row inferred
 from the body, while anything `export`ed must state it. The decorators are
@@ -554,22 +730,36 @@ mechanism.
 
 ---
 
-## Reserved but not yet implemented
+## Implemented and not
+
+The revised syntax is fully parsed: free methods, tuples and `.0` access,
+`as`, newline-terminated arms, `move`-only capture lists, leading-operator
+continuation, and the removals (`impl`, `trait`, bounds, `++`/`--`, arm
+commas) all error with pointers at the current spelling.
+
+Sema so far is **name resolution**: module scope, imports, lexical scoping
+with same-scope redeclaration errors, `self` only inside methods, method
+owners must exist, local enum variants in paths, the fixed decorator set,
+and no universe scope — an unresolved name is an error. Still to come:
 
 | feature | state |
 | --- | --- |
+| type checking | nothing infers or checks a type yet |
+| definite assignment | needs flow analysis in sema |
+| nullable narrowing | needs the same flow analysis |
+| duck-typed generic checking | needs instantiation in sema |
+| match exhaustiveness | needs sema over enum layouts |
+| error-discard check (`_` required) | needs types for the error slot |
+| derived printing / `to_string` | needs sema and codegen |
+| iteration via `next()` | needs sema |
+| struct-literal field visibility | needs cross-module sema |
+| leak-analysis warnings | needs escape analysis |
 | effect rows | parsed, unchecked |
-| nullable types | parsed; narrowing needs flow analysis in sema |
-| traits and bounds | parsed; no satisfaction checking or dispatch |
-| operator traits | specified, not wired to the operators |
-| trait object inline storage | specified, no layout yet |
-| closure capture semantics | parsed; `move` vs `copy` unenforced until sema |
-| closure type inference | parsed; needs bidirectional inference in sema |
-| module resolution | specified, no loader |
-| overflow and bounds panics | operators parse; no checks emitted |
-| `Array<T>` `String` | stdlib types, no stdlib yet |
+| module resolution | specified, no loader; imports bind names opaquely |
+| overflow, bounds and cast panics | no checks emitted |
+| `Array<T>` `String` `Mutex` `spawn` | stdlib, no stdlib yet |
+| race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
-| generics | parsed; no instantiation or inference |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,

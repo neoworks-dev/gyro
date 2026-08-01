@@ -1,0 +1,88 @@
+// Gyro has no traits. Wherever a contract is needed the test is structural:
+// having the right method is the whole opt-in. A generic function declares
+// no bounds; whatever its body calls is what the type argument must have,
+// checked when the generic is instantiated.
+
+import { println } from "@gyro/stdlib"
+
+export struct Version {
+  export major: i32
+  export minor: i32
+}
+
+export fn Version::new(major: i32, minor: i32): Version {
+  return Version{ major: major, minor: minor }
+}
+
+// Comparison is a method, not an operator: operators never touch user
+// types. Written with explicit branches rather than subtraction, which
+// would panic on overflow.
+export fn Version::compare(self, other: Version): i32 {
+  if self.major != other.major {
+    if self.major < other.major {
+      return -1
+    }
+    return 1
+  }
+  if self.minor < other.minor {
+    return -1
+  }
+  if self.minor > other.minor {
+    return 1
+  }
+  return 0
+}
+
+// println and #{} use the compiler-derived representation unless a type
+// defines to_string, which then wins.
+export fn Version::to_string(self): string {
+  return "v#{self.major}.#{self.minor}"
+}
+
+// Duck-typed generic: no bounds. Calling max with a type that has no
+// compare method is a compile error at the call site.
+export fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {
+    return a
+  }
+  return b
+}
+
+// Arithmetic on user types is also a plain method call.
+export struct Vector2 {
+  export x: f64
+  export y: f64
+}
+
+export fn Vector2::add(self, other: Vector2): Vector2 {
+  return Vector2{ x: self.x + other.x, y: self.y + other.y }
+}
+
+// A user-defined generic struct, instantiated like the built-in ones.
+export struct Pair<T> {
+  export first: T
+  export second: T
+}
+
+export fn Pair<T>::swap(*self) {
+  var tmp = self.first
+  self.first = self.second
+  self.second = tmp
+}
+
+fn main() {
+  var older = Version::new(1, 4)
+  var newer = Version::new(1, 9)
+
+  println(max(older, newer))
+  println(max(3, 7))
+
+  var a = Vector2{ x: 1.0, y: 2.0 }
+  var b = Vector2{ x: 3.0, y: 4.0 }
+  var sum = a.add(b)
+  println(sum.x)
+
+  var pair = Pair<i32>{ 1, 2 }
+  pair.swap()
+  println(pair.first)
+}

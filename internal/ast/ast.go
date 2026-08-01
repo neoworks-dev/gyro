@@ -135,7 +135,8 @@ type EffectRow struct {
 	Var string
 }
 
-// FuncDecl is a function or, when Recv is set, a method inside an impl block.
+// FuncDecl is a function, or a method when Owner names the type it belongs
+// to: `fn Stack::push(*self, v: i32)`.
 type FuncDecl struct {
 	Offset     int
 	Decorators []*Decorator
@@ -143,14 +144,20 @@ type FuncDecl struct {
 	// Async marks an `async fn`, whose calls produce a value that must be
 	// awaited.
 	Async bool
-	Name  string
-	// TypeParams holds the names in `fn max<T>(...)`.
+	// Owner is the type qualifier of a method — `Stack` in `fn Stack::push`.
+	// It is "" for a free function.
+	Owner string
+	// OwnerParams holds the owning type's parameters, as in `fn Pair<T>::swap`.
+	OwnerParams []TypeParam
+	Name        string
+	// TypeParams holds the function's own generics, the `<T>` in `fn max<T>`.
 	TypeParams []TypeParam
-	// Recv is the `self` receiver of a method, nil for free functions.
+	// Recv is the `self` receiver of a method, nil for associated and free
+	// functions.
 	Recv   *Receiver
 	Params []Param
 	// Results is the return type list. A single type is the common case;
-	// multiple types come from the `(T, error)` form used for error
+	// multiple types are the `(T, error?)` tuple form used for error
 	// returns. An empty list means the function returns nothing.
 	Results []Type
 	// Effects is the declared effect row, or nil when the row is left to be
@@ -179,33 +186,16 @@ type Param struct {
 	Default Expr
 }
 
-// TypeParam is one generic parameter, with any trait bounds it carries:
-// `<T: Ord>` or `<T: Ord & Display>`. Several bounds are an intersection, so
-// they are joined with `&` rather than Rust's `+`.
+// TypeParam is one generic parameter. It carries no bounds: Gyro generics
+// are duck-typed, so the body's usage is the requirement and it is checked
+// at instantiation.
 type TypeParam struct {
 	Offset int
 	Name   string
-	Bounds []Type
 }
 
-// TraitDecl declares a trait: a set of method signatures a type can promise
-// to provide. Satisfaction is nominal, declared by an ImplDecl naming the
-// trait, so a type never satisfies a trait by accident.
-type TraitDecl struct {
-	Offset     int
-	Decorators []*Decorator
-	Exported   bool
-	Name       string
-	TypeParams []TypeParam
-	// Methods carry a nil Body when they are required, and a non-nil Body
-	// when the trait supplies a default implementation.
-	Methods []*FuncDecl
-}
-
-func (t *TraitDecl) Pos() int  { return t.Offset }
-func (t *TraitDecl) declNode() {}
-
-// StructDecl declares an aggregate type. Methods live in a separate ImplDecl.
+// StructDecl declares an aggregate type. Structs hold data only; methods are
+// free-standing FuncDecls whose Owner names the struct.
 type StructDecl struct {
 	Offset     int
 	Decorators []*Decorator
@@ -226,22 +216,8 @@ type Field struct {
 	Type     Type
 }
 
-// ImplDecl attaches methods to a named type, either directly (`impl Stack`)
-// or as a trait implementation (`impl Ord for Version`).
-type ImplDecl struct {
-	Offset     int
-	TypeParams []TypeParam
-	// Trait is the implemented trait, or nil for an inherent impl.
-	Trait   Type
-	Type    Type
-	Methods []*FuncDecl
-}
-
-func (i *ImplDecl) Pos() int  { return i.Offset }
-func (i *ImplDecl) declNode() {}
-
 // EnumDecl declares a sum type. Variants may carry positional payloads, as in
-// `Ok(T)` and `Err(E)`.
+// `Circle(f64)` and `Rect(f64, f64)`.
 type EnumDecl struct {
 	Offset     int
 	Decorators []*Decorator
@@ -388,7 +364,7 @@ type BranchStmt struct {
 func (b *BranchStmt) Pos() int  { return b.Offset }
 func (b *BranchStmt) stmtNode() {}
 
-// DeferStmt schedules a call to run when the enclosing function returns.
+// DeferStmt schedules a call to run when the enclosing block exits.
 // Deferred calls run in reverse order of registration.
 type DeferStmt struct {
 	Offset int
@@ -552,8 +528,8 @@ type FieldValue struct {
 func (s *StructLit) Pos() int  { return s.Offset }
 func (s *StructLit) exprNode() {}
 
-// UnaryExpr is a prefix operator: `-x`, `!x`, `~x`, `&x` (address-of),
-// `*x` (dereference), `++x` and `--x`.
+// UnaryExpr is a prefix operator: `-x`, `!x`, `~x`, `&x` (address-of) and
+// `*x` (dereference).
 type UnaryExpr struct {
 	Offset int
 	Op     token.Kind
@@ -562,16 +538,6 @@ type UnaryExpr struct {
 
 func (u *UnaryExpr) Pos() int  { return u.Offset }
 func (u *UnaryExpr) exprNode() {}
-
-// PostfixExpr is `x++` or `x--` in expression position.
-type PostfixExpr struct {
-	Offset int
-	Op     token.Kind
-	X      Expr
-}
-
-func (p *PostfixExpr) Pos() int  { return p.Offset }
-func (p *PostfixExpr) exprNode() {}
 
 // BinaryExpr is an infix operator application.
 type BinaryExpr struct {
@@ -622,7 +588,7 @@ type IndexExpr struct {
 func (i *IndexExpr) Pos() int  { return i.Offset }
 func (i *IndexExpr) exprNode() {}
 
-// RangeExpr is `lo..hi`, used by `for x in 0..10`.
+// RangeExpr is the half-open `lo..hi`, used by `for x in 0..10`.
 type RangeExpr struct {
 	Offset int
 	Lo, Hi Expr
@@ -630,6 +596,26 @@ type RangeExpr struct {
 
 func (r *RangeExpr) Pos() int  { return r.Offset }
 func (r *RangeExpr) exprNode() {}
+
+// TupleLit is `(a, b)`. One-element tuples do not exist, so a parenthesized
+// single expression stays plain grouping and never reaches this node.
+type TupleLit struct {
+	Offset   int
+	Elements []Expr
+}
+
+func (t *TupleLit) Pos() int  { return t.Offset }
+func (t *TupleLit) exprNode() {}
+
+// TupleIndexExpr is positional tuple access: `pair.0`.
+type TupleIndexExpr struct {
+	Offset int
+	X      Expr
+	Index  int
+}
+
+func (t *TupleIndexExpr) Pos() int  { return t.Offset }
+func (t *TupleIndexExpr) exprNode() {}
 
 // MatchExpr is `match subject { pattern: expr, ... }`. It is an expression,
 // so it can be assigned; using it as a statement is also allowed.
@@ -693,29 +679,10 @@ type ChanLit struct {
 func (c *ChanLit) Pos() int  { return c.Offset }
 func (c *ChanLit) exprNode() {}
 
-// CaptureMode says how a closure takes hold of a captured binding.
-type CaptureMode int
-
-const (
-	// CaptureCopy copies the binding into the closure. Copying a pointer
-	// copies the pointer, not what it points at.
-	CaptureCopy CaptureMode = iota
-	// CaptureMove transfers ownership into the closure, which is what makes
-	// an allocation's escape visible to the leak analysis.
-	CaptureMove
-)
-
-func (m CaptureMode) String() string {
-	if m == CaptureMove {
-		return "move"
-	}
-	return "copy"
-}
-
-// Capture is one entry in a closure's capture list.
+// Capture is one `move name` entry in a closure's capture list. Copies are
+// implicit and never listed, so every entry transfers ownership.
 type Capture struct {
 	Offset int
-	Mode   CaptureMode
 	Name   string
 }
 
@@ -726,9 +693,9 @@ type Capture struct {
 // types may be omitted where the expected type is known from context, and a
 // body that is a single expression needs no braces.
 //
-// Captures are listed explicitly: `fn[move node]() { use(node) }`. That keeps
-// escape visible in the source rather than inferred, which is what the leak
-// analysis needs in order to stay honest about manual memory.
+// A closure copies the locals it uses implicitly. The capture list exists
+// only for ownership transfer — `fn[move node]() { free(node) }` — which is
+// the one case the leak analysis must see in the source.
 type ClosureExpr struct {
 	Offset   int
 	Async    bool
@@ -793,7 +760,11 @@ type BindingPattern struct {
 func (b *BindingPattern) Pos() int     { return b.Offset }
 func (b *BindingPattern) patternNode() {}
 
-// VariantPattern destructures an enum variant, as in `Ok(guard)`.
+// VariantPattern is `Name(bindings)` in a pattern. It covers two readings
+// that share one surface shape: destructuring an enum variant, as in
+// `Shape::Circle(r)`, and a type test on a dynamically typed value, as in
+// `RangeError(e)` where the subject is an `error`. Sema tells them apart by
+// what the path resolves to.
 type VariantPattern struct {
 	Offset  int
 	Path    *Path
@@ -847,7 +818,9 @@ type ArrayType struct {
 func (a *ArrayType) Pos() int  { return a.Offset }
 func (a *ArrayType) typeNode() {}
 
-// TupleType is `(A, B)`, produced by multi-value returns.
+// TupleType is `(A, B)`, a first-class type usable anywhere a type is:
+// fields, variables, channel elements. Multi-value returns are the same
+// tuple, spelled without the parentheses.
 type TupleType struct {
 	Offset   int
 	Elements []Type

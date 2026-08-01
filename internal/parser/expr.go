@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -152,8 +153,7 @@ func (p *Parser) parseCast() ast.Expr {
 
 func (p *Parser) parseUnary() ast.Expr {
 	switch p.kind() {
-	case token.Minus, token.Bang, token.Tilde, token.Amp, token.Star,
-		token.Increment, token.Decrement:
+	case token.Minus, token.Bang, token.Tilde, token.Amp, token.Star:
 		expr := &ast.UnaryExpr{Offset: p.offset(), Op: p.kind()}
 		p.next()
 		expr.X = p.parseUnary()
@@ -174,8 +174,8 @@ func (p *Parser) parseUnary() ast.Expr {
 	return p.parsePostfix(p.parsePrimary())
 }
 
-// parsePostfix applies calls, indexing, field access, casts and the postfix
-// increment operators to an already parsed operand.
+// parsePostfix applies calls, indexing and field access to an already
+// parsed operand.
 func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 	for {
 		switch p.kind() {
@@ -193,14 +193,7 @@ func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 			expr = index
 
 		case token.Dot:
-			offset := p.offset()
-			p.next()
-			name, _ := p.expectIdent()
-			expr = &ast.SelectorExpr{Offset: offset, X: expr, Name: name}
-
-		case token.Increment, token.Decrement:
-			expr = &ast.PostfixExpr{Offset: p.offset(), Op: p.kind(), X: expr}
-			p.next()
+			expr = p.parseSelector(expr)
 
 		case token.Lt:
 			call, ok := p.tryGenericCall(expr)
@@ -212,6 +205,58 @@ func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 		default:
 			return expr
 		}
+	}
+}
+
+// parseSelector parses what follows a `.`: a field or method name, or a
+// tuple index as in `pair.0`.
+func (p *Parser) parseSelector(x ast.Expr) ast.Expr {
+	offset := p.offset()
+	p.next() // '.'
+
+	switch p.kind() {
+	case token.Int:
+		tok := p.next()
+		return &ast.TupleIndexExpr{Offset: offset, X: x, Index: p.tupleIndex(tok)}
+
+	case token.Float:
+		// `pair.0.1` reaches the parser as `.` followed by the float `0.1`,
+		// because a digit after a dot reads as a decimal point. After a `.`
+		// it can only be two tuple indexes.
+		return p.splitTupleFloat(x, offset)
+	}
+
+	name, _ := p.expectIdent()
+	return &ast.SelectorExpr{Offset: offset, X: x, Name: name}
+}
+
+// tupleIndex decodes an integer token used as a tuple position.
+func (p *Parser) tupleIndex(tok token.Token) int {
+	index, err := strconv.Atoi(stripSeparators(tok.Text))
+	if err != nil {
+		p.errorf(tok.Offset, "tuple index must be a plain decimal number")
+		return 0
+	}
+	return index
+}
+
+func (p *Parser) splitTupleFloat(x ast.Expr, dotOffset int) ast.Expr {
+	tok := p.next()
+	first, rest, found := strings.Cut(stripSeparators(tok.Text), ".")
+	if !found || first == "" || rest == "" || strings.ContainsAny(rest, "eE") {
+		p.errorf(tok.Offset, "expected a tuple index after '.'")
+		return x
+	}
+
+	inner := &ast.TupleIndexExpr{
+		Offset: dotOffset,
+		X:      x,
+		Index:  p.tupleIndex(token.Token{Text: first, Offset: tok.Offset}),
+	}
+	return &ast.TupleIndexExpr{
+		Offset: tok.Offset,
+		X:      inner,
+		Index:  p.tupleIndex(token.Token{Text: rest, Offset: tok.Offset + len(first) + 1}),
 	}
 }
 
@@ -346,12 +391,21 @@ func (p *Parser) parsePrimary() ast.Expr {
 
 	case token.LParen:
 		p.next()
-		var inner ast.Expr
+		var elements []ast.Expr
 		p.withStructLits(true, func() {
-			inner = p.parseExpr()
+			elements = append(elements, p.parseExpr())
+			for p.accept(token.Comma) {
+				elements = append(elements, p.parseExpr())
+			}
 		})
 		p.expect(token.RParen)
-		return inner
+
+		// `(expr)` is plain grouping; a comma makes it a tuple. There are no
+		// one-element tuples.
+		if len(elements) == 1 {
+			return elements[0]
+		}
+		return &ast.TupleLit{Offset: offset, Elements: elements}
 
 	case token.LBracket:
 		return p.parseArrayLit()
@@ -529,27 +583,23 @@ func (p *Parser) parseClosure() ast.Expr {
 	return closure
 }
 
-// parseCaptureList parses `[move a, copy b]`. The modes are contextual
-// identifiers rather than keywords, so `move` and `copy` stay usable as
-// ordinary names everywhere else.
+// parseCaptureList parses `[move a, move b]`. Copies are implicit and never
+// listed, so every entry transfers ownership. `move` is a contextual
+// identifier rather than a keyword, so it stays usable as an ordinary name
+// everywhere else.
 func (p *Parser) parseCaptureList() []ast.Capture {
 	p.expect(token.LBracket)
 
 	var captures []ast.Capture
 	for !p.at(token.RBracket) && !p.atEOF() {
 		capture := ast.Capture{Offset: p.offset()}
+		word, _ := p.expectIdent()
 
-		name, _ := p.expectIdent()
-		if p.at(token.Ident) {
-			mode, ok := captureMode(name)
-			if !ok {
-				p.errorf(capture.Offset, "unknown capture mode %q; expected move or copy", name)
-			}
-			capture.Mode = mode
+		if word == "move" && p.at(token.Ident) {
 			capture.Name, _ = p.expectIdent()
 		} else {
-			// A bare name captures by copy.
-			capture.Name = name
+			p.errorf(capture.Offset, "capture lists hold only `move name` entries; copies are implicit")
+			capture.Name = word
 		}
 		captures = append(captures, capture)
 
@@ -560,16 +610,6 @@ func (p *Parser) parseCaptureList() []ast.Capture {
 
 	p.expect(token.RBracket)
 	return captures
-}
-
-func captureMode(name string) (ast.CaptureMode, bool) {
-	switch name {
-	case "copy":
-		return ast.CaptureCopy, true
-	case "move":
-		return ast.CaptureMove, true
-	}
-	return ast.CaptureCopy, false
 }
 
 // parseClosureParams parses a closure's parameter list, where the type
@@ -622,7 +662,8 @@ func (p *Parser) parseChanLit() ast.Expr {
 	return lit
 }
 
-// parseMatch parses `match subject { pattern: body, ... }`.
+// parseMatch parses `match subject { pattern: body ... }`. Arms end at the
+// newline, like every other statement.
 func (p *Parser) parseMatch() ast.Expr {
 	expr := &ast.MatchExpr{Offset: p.offset()}
 	p.expect(token.Match)
@@ -643,9 +684,7 @@ func (p *Parser) parseMatch() ast.Expr {
 			arm.Body = p.parseArmBody()
 			expr.Arms = append(expr.Arms, arm)
 
-			p.skipTerminators()
-			p.accept(token.Comma)
-			p.skipTerminators()
+			p.expectArmEnd()
 
 			if p.index == before {
 				p.next()
@@ -655,6 +694,16 @@ func (p *Parser) parseMatch() ast.Expr {
 
 	p.expect(token.RBrace)
 	return expr
+}
+
+// expectArmEnd consumes the newline that ends a match or select arm,
+// rejecting the comma-separated style.
+func (p *Parser) expectArmEnd() {
+	if p.at(token.Comma) {
+		p.errorf(p.offset(), "arms end at the newline; there is no comma between them")
+		p.next()
+	}
+	p.skipTerminators()
 }
 
 // parsePattern parses one match pattern. A bare identifier becomes a binding;

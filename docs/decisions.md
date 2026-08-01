@@ -7,8 +7,28 @@ are not relitigated from scratch.
 Status column: **done** means the parser implements it, **sema** means the
 syntax exists but no stage checks it, **planned** means neither.
 
-All decisions below were taken on 2026-07-31, when the compiler was ported
-from TypeScript to Go and the abandoned Peggy grammar was dropped.
+Two rounds of decisions, both on 2026-07-31: the first when the compiler was
+ported from TypeScript to Go and the Peggy grammar was dropped; the second in
+a full design review that removed traits, made tuples first-class, and made
+duck typing the language's one contract mechanism. Entries below marked
+*(revised)* changed in the second round; the original choice and the reason
+it fell are kept, because the reversal is itself a decision.
+
+---
+
+## The unifying rule: duck typing
+
+**Status: planned.** Wherever Gyro needs a contract, the test is "does the
+type have the method", never "did the type declare membership":
+
+- `error` — any type with `message(): string`
+- generic functions — any `T` with the methods the body calls
+- iteration — any type with `next(*self): (T, bool)` (or `iter()`)
+- printing — `to_string(): string` overrides the derived representation
+
+Nothing is ever declared to satisfy a contract. This replaced nominal traits
+(below) and is deliberately one rule applied four times rather than four
+mechanisms.
 
 ---
 
@@ -31,21 +51,58 @@ form, so there is no second spelling to learn.
 
 ### No semicolons and no parentheses around conditions
 
-**Status: done.** The lexer inserts a terminator at a newline when the
-previous token could end a statement, and suppresses it when the next line
-opens with `.`, `,`, `)` or `]`.
+**Status: done (revised: continuation rules extended).** The lexer inserts a
+terminator at a newline when the previous token could end a statement, and
+suppresses it when the next line opens with `.`, `,`, `)`, `]` — or, since
+the review, a binary operator that cannot begin a statement (`&&`, `+`,
+`==`, …). Leading-operator continuation style therefore works alongside
+trailing-operator style.
+
+`-`, `*` and `&` are excluded from the leading set because a statement can
+begin with them (`*p = 5`, `&x`, `-x`); they must trail the line.
 
 Rejected C-style `if (x) { ... };`. Consequence: a struct literal cannot
 start at the top level of a condition, since the brace opens the body. Same
 resolution as Rust.
 
-### Primitives carry explicit widths
+### Primitives carry explicit widths; `usize` and `rune` exist *(revised)*
 
-**Status: done.** `i8`–`i64`, `u8`–`u64`, `f32`, `f64`, `bool`, `string`,
-`void`, `error`.
+**Status: done (the names resolve), planned (their semantics).** `i8`–`i64`, `u8`–`u64`, `f32`, `f64`,
+`bool`, `string`, `void`, `error` — plus, from the review:
+
+- **`usize`**: pointer-width unsigned. `len()` returns it, `[]` indexes with
+  it, `T[N]` sizes are it. The classic unsigned-underflow footgun is blunted
+  because arithmetic panics on overflow: `xs.len() - 1` on an empty slice
+  panics loudly instead of wrapping.
+- **`rune`**: a 32-bit Unicode code point; the type of `'c'` literals and of
+  `runes()` iteration. Rejected `u8` char literals ('é' would not fit) and
+  removing char literals (byte-level code gets ugly).
 
 Rejected `int` / `float`. The x86-64 backend needs the width anyway, so
 naming it avoids platform-dependent sizing.
+
+### Numeric literals are context-typed *(new)*
+
+**Status: planned.** A literal adapts to the type the context requires
+(`var h: u32 = 2166136261` needs no cast); with no context, integers are
+`i32` and floats `f64`. A literal that does not fit is a compile error.
+Typed values never convert implicitly — only literals adapt.
+
+Rejected strict `i32`-always literals: large unsigned constants would not
+even fit the default type, forcing casts on every line of bit-twiddling
+code.
+
+### Conversions use `as`, and narrowing panics *(new)*
+
+**Status: done (syntax), planned (the panic check).** `x as i64`. Widening always succeeds; a narrowing
+conversion that loses value panics, consistent with overflow panics.
+Deliberate truncation is `(x & 0xff) as u8`.
+
+Rejected conversion methods (`x.to_i64()` — verbose for something this
+common) and type-name calls (`i64(x)` — makes type names callable, a new
+expression form colliding with "construction is literals or `::new()`").
+`as` already exists as a keyword in import renaming; the positions never
+overlap.
 
 ### `elif`, never `else if`
 
@@ -53,6 +110,36 @@ naming it avoids platform-dependent sizing.
 
 One spelling for one construct. `elif` desugars to a nested `if` and leaves
 no trace in the tree.
+
+### `++` and `--` are gone *(revised)*
+
+**Status: done.** Increment is `i += 1`, one way only; the lexer rejects
+`++` with an error naming the spelling.
+
+Originally C-style: prefix/postfix, usable in expressions. The review
+removed them entirely: expression-position increment hides mutation
+mid-expression (`a[i++] = i`), Go's statement-only compromise still leaves
+two spellings for the same thing, and `+= 1` already exists. This also
+shortens the lexer's statement-termination list.
+
+### Ranges are half-open, one form only *(new)*
+
+**Status: done (syntax), planned (semantics).** `0..10` visits 0 through 9, so
+`0..xs.len()` visits every index. No inclusive `..=`; an inclusive walk is a
+C-style `for` header.
+
+Rejected inclusive-by-default (an off-by-one trap against zero-based
+indexing) and a second `..=` operator (two range spellings for marginal
+gain).
+
+### Integer division truncates toward zero *(new)*
+
+**Status: planned.** `-7 / 2 == -3`, `-7 % 2 == -1` — the sign of `%`
+follows the dividend, matching C, Go, Rust and the x86 `idiv` instruction.
+Divide by zero panics; `i32::MIN / -1` panics as overflow.
+
+Rejected floor division: nicer for modular math but costs correction
+instructions on every division.
 
 ---
 
@@ -65,33 +152,54 @@ no trace in the tree.
 Rejected Go's capitalization rule outright — it makes visibility a property
 of spelling, which is invisible at the use site and impossible to grep for.
 
+### `main` is the one blessed name *(new)*
+
+**Status: planned.** The compiler finds `fn main` in the root module; it
+needs no `export` because nothing imports it — the OS calls it. `async fn
+main` is allowed and the runtime drives it.
+
+Rejected requiring `export fn main` (ceremony that documents nothing) and
+rejecting async main (would force every async program to hand-start a
+runtime).
+
 ### If a name is not in the formal syntax, it must be imported
 
-**Status: done (rule), sema (enforcement).**
+**Status: done.** The name-resolution pass enforces it: an identifier that
+is neither declared, imported, nor formal syntax is an error.
 
 There is no universe scope and no predeclared functions. `println` is
-imported; `ch.close()`, `xs.len()` and `xs.append(v)` are methods on built-in
-types, so they need no import and introduce no implicit names.
+imported; `ch.close()`, `xs.len()` and `xs.append(v)` are methods on
+built-in types, so they need no import and introduce no implicit names.
 
 This rule has already changed one decision: `spawn` was a keyword until
 closures made a library function possible.
+
+### Decorator names are a fixed set *(new)*
+
+**Status: done.** `@comptime`, `@gpu`, `@concurrent`, `@distributed` are
+known to the compiler; sema rejects an unknown `@name`. They are not
+imported: they configure compilation itself, so there is no value an import
+could bind.
+
+This is a deliberate carve-out from no-universe-scope, on the grounds that a
+decorator is an instruction to the compiler, not a name in the program.
 
 ### One file is one module
 
 **Status: planned.** `import { x } from "./util"` loads `util.gyro` beside
 the importing file. Circular imports are rejected with a cycle trace.
 
-Resolution: `@gyro/...` is the bundled standard library, `./x` and `../x` are
-relative files, a bare name is a package under `.stack/`.
+Resolution: `@gyro/...` is the bundled standard library, `./x` and `../x`
+are relative files, a bare name is a package under `.stack/`.
 
-Rejected directory-as-module (Go), which would make `export` directory-scoped
-while the import syntax stays file-shaped.
+Rejected directory-as-module (Go), which would make `export`
+directory-scoped while the import syntax stays file-shaped.
 
 ### Named exports only — no `export default`
 
 **Status: done.** Default *imports* were parsed briefly with nothing that
-could declare a default export. Rather than complete the symmetry, the import
-form was removed.
+could declare a default export. Rather than complete the symmetry, the
+import form was removed.
 
 A default export lets the same value carry different names in different
 files, which defeats grep and adds a second export mechanism for no gain.
@@ -100,38 +208,55 @@ files, which defeats grep and adds a second export mechanism for no gain.
 
 ## Errors
 
-### Errors are values returned in a `(T, error)` pair
+### Errors are values returned in a `(T, error?)` tuple
 
-**Status: done (syntax), sema (the check).**
+**Status: done (syntax), sema (the check).** The error slot is explicitly
+nullable: `null` means no error. Signatures reading `(T, error)` in older
+drafts were wrong — a non-nullable `error` slot has no way to say "it
+worked".
 
 No exceptions, no unwinding, no propagation operator. The caller must handle
 the error, and discarding it requires writing `_` explicitly, so ignoring a
 failure is always visible in the source.
 
 Rejected `throws`/`try`, which the book's decorator page used: unwinding
-tables and landing pads are a large backend cost, and implicit propagation is
-exactly what this design is trying to prevent.
+tables and landing pads are a large backend cost, and implicit propagation
+is exactly what this design is trying to prevent.
 
-### `error` is a built-in interface
+### `error` is satisfied structurally *(revised)*
 
-**Status: planned.** Any type implementing `message(): string` is an error,
-so library code defines error types carrying their own data and callers match
-on the concrete kind.
+**Status: planned.** Any type with a `message(): string` method is an
+error — nothing is declared. Library code defines error types carrying their
+own data and callers match on the concrete kind with a type-test pattern:
+`RangeError(e)`.
 
-This is what forced traits into the next milestone. A built-in struct was
-considered and rejected: it cannot carry typed payloads, leaving callers to
-parse strings.
+Originally `error` was a built-in *interface* implemented via
+`impl error for RangeError`; that declaration form died with traits, and the
+structural rule replaced it. A built-in error struct was considered and
+rejected earlier: it cannot carry typed payloads, leaving callers to parse
+strings. `(T, string?)` was rejected for the same reason.
+
+### There is no `Result` *(new)*
+
+**Status: planned.** One error mechanism: `(T, error?)` tuples, everywhere.
+The concurrency example briefly used `Ok`/`Err` copied from Rust; both the
+type and the mutex poisoning it modelled are gone. Poisoning cannot exist in
+Gyro at all — it is Rust's answer to a panic *unwinding* past a held lock,
+and Gyro panics abort the process. `Mutex::lock()` returns the guard
+directly.
+
+Rejected keeping Result as an ordinary stdlib enum: two competing error
+styles in the wild for no gain.
 
 ### Trait objects use inline storage with a size cap
 
-**Status: planned.** A trait object is a vtable pointer plus a fixed inline
-buffer. Small error types are returned by value with no allocation. A type
-exceeding the cap is a compile error naming the size, and the author boxes it
-explicitly.
+**Status: planned.** Now specific to `error`, the one dynamically-typed
+value in the language: a vtable pointer plus a fixed inline buffer. Small
+error types are returned by value with no allocation. A type exceeding the
+cap is a compile error naming the size, and the author boxes it explicitly.
 
-This is the same question the slice decision raised: the alternative — a
-hidden heap allocation on every error path — contradicts explicit
-`alloc`/`free`.
+The alternative — a hidden heap allocation on every error path — contradicts
+explicit `alloc`/`free`.
 
 ---
 
@@ -139,26 +264,55 @@ hidden heap allocation on every error path — contradicts explicit
 
 ### Manual allocation with a checked safety net
 
-**Status: planned.** `alloc<T>()` returns `*T`, `free(p)` releases it, `defer`
-runs a call at scope exit. A sema pass tracks allocations and **warns** when
-one can reach the end of its scope unfreed and unescaped.
+**Status: planned.** `alloc<T>()` returns `*T`, `free(p)` releases it,
+`defer` runs a call at scope exit. A sema pass tracks allocations and
+**warns** when one can reach the end of its scope unfreed and unescaped.
 
 Warnings rather than errors, so arenas and process-lifetime allocations are
 not blocked.
 
-Rejected ownership-and-borrows, which is a large sema investment, and garbage
-collection, which needs a runtime and conflicts with `@gpu`.
+Rejected ownership-and-borrows, which is a large sema investment, and
+garbage collection, which needs a runtime and conflicts with `@gpu`.
+
+### `defer` runs at block exit *(new)*
+
+**Status: planned.** A defer fires when its enclosing `{ }` ends (Zig's
+model), in reverse order of registration, so a loop body's defers run every
+iteration.
+
+Rejected Go's function-exit model: `for { var p = alloc<T>(); defer free(p) }`
+would pile allocations up until return, and the leak-warning pass reasons
+about scopes, not functions.
+
+### Definite assignment, no zero values *(new)*
+
+**Status: planned.** `var x: i32` without an initializer is legal; reading
+it before every path has assigned it is a compile error. A receive from a
+closed channel yields no value — reading it without checking `open` is the
+same error.
+
+Rejected Go-style zero values (values springing into existence unwritten
+cuts against everything else here being explicit) and mandatory
+initializers (conditional initialization would force dummy values that hide
+real bugs).
+
+### Shadowing: inner scopes yes, same scope no *(new)*
+
+**Status: done.** An inner block may redeclare an outer name; declaring
+the same name twice in one block is an error. Standard C/Go behaviour, no
+special rules. A local's initializer resolves before the name binds, so
+`var x = x` reaches the outer x or fails.
 
 ### Absence is expressed by nullable types, not a bare null
 
-**Status: planned.** `*Node` can never be null; `*Node?` can. Dereferencing a
-`T?` before checking it is a compile error, and the type narrows inside the
-check.
+**Status: planned.** `*Node` can never be null; `*Node?` can. Dereferencing
+a `T?` before checking it is a compile error, and the type narrows inside
+the check.
 
 Rejected an unrestricted `null`, which would reintroduce null dereference
-through pointers after explicit errors had just been chosen to prevent silent
-failure. Also rejected `Option<T>` everywhere: correct, but verbose at every
-pointer and dependent on generics landing first.
+through pointers after explicit errors had just been chosen to prevent
+silent failure. Also rejected `Option<T>` everywhere: correct, but verbose
+at every pointer and dependent on generics landing first.
 
 Postfix `?` binds to the outermost type, so `*Node?` is a nullable pointer.
 Write `*(Node?)` for a pointer to a nullable value.
@@ -176,15 +330,18 @@ between aliasing and copying, and — decisively — `@gpu` and `@distributed`
 cannot use a global heap, so a second array type would be needed regardless.
 
 Known cost, accepted: a slice can outlive its backing memory, and nothing
-currently detects that.
+currently detects that. An array literal `[1, 2, 3]` is a fixed-size array
+in the enclosing scope; slices of it borrow that storage and dangle the same
+way if they escape.
 
 Terminology: `T[N]` is a **fixed-size array**, `Array<T>` is a **dynamic
 array**. Both use the word; the qualifier disambiguates.
 
 ### `string` is a UTF-8 view
 
-**Status: planned.** `len()` counts bytes, `runes()` iterates code points.
-Building and concatenation use an owning `String`.
+**Status: planned.** `len()` counts bytes (returning `usize`), `runes()`
+iterates code points as `rune`. Building and concatenation use an owning
+`String`.
 
 Rejected refcounted immutable strings, which are a runtime and hidden
 allocation, and fixed-width runes, which cost four bytes per character and
@@ -194,49 +351,134 @@ transcode at every boundary.
 
 ## Types
 
-### Nominal traits with `impl Trait for Type`, and generic bounds
+### Traits were removed *(revised — the big one)*
 
-**Status: planned.** A type satisfies a trait only where an `impl` says so.
-Generics constrain with `<T: Ord>`. `Self` refers to the implementing type.
+**Status: done.** `trait` and `impl` are no longer keywords; the syntax is
+gone from the grammar.
 
-Rejected structural interfaces: implicit satisfaction contradicts explicit
-visibility and explicit captures, and permits accidental satisfaction.
+The first round designed nominal traits: `trait Ord`, `impl Ord for
+Version`, bounds `<T: Ord & Display>`, operator traits, trait objects. The
+review deleted the entire mechanism. What each piece became:
 
-### Operators map to a fixed set of traits
+- **Contracts** → duck typing (see the unifying rule at the top). Rust-style
+  "having the method isn't enough, you must declare `impl`" bought
+  accidental-satisfaction protection at the price of a whole declaration
+  layer; the review judged exact-signature collisions rare enough not to pay
+  it.
+- **Generic bounds** → nothing. `fn max<T>` declares no constraint; the
+  body's method calls are the requirement, checked at instantiation (the
+  C++-template model). The known cost: errors point into the generic's body
+  rather than at the bad call. Considered and not taken: a fixed built-in
+  constraint vocabulary (`Comparable`, …) for better error locations, and
+  Go-style structural interfaces as constraints — both add a naming layer
+  the language just deleted.
+- **Operator overloading** → removed entirely (next entry).
+- **Trait objects** → survive only as `error`'s representation.
+- **`Self`, `impl`, bound-joining `&`** → gone from the grammar.
 
-**Status: planned.** `Ord` for `< > <= >=`, `Eq` for `== !=`, `Add`/`Sub`/
-`Mul`/`Div` for arithmetic, `Index` for `[]`. Nothing else is overloadable.
+### Operators are not overloadable *(revised)*
 
-Required by the decision above: `fn max<T: Ord>` uses `a > b`, so the
-operator has to reach a trait method.
+**Status: planned.** Operators work on primitives only. Ordering a user type
+is spelled `a.compare(b)`, arithmetic on one is `a.add(b)` — visible calls,
+Go's position. `==`/`!=` work on structs, tuples and enums as
+compiler-derived field-wise comparison, on pointers as identity, and not on
+slices.
 
-### Structs hold data, `impl` holds methods
+The first round mapped operators to a fixed trait set (`Ord`, `Eq`, `Add`…);
+that died with traits. Also considered and rejected: C++-style well-known
+method names unlocking operators (`compare` enabling `<`) — hidden calls
+behind operators for modest sugar.
 
-**Status: done.** Rejected `class`, whose implied inheritance is a large
-semantic commitment that fights a simple SSA IR.
+### Methods are free-standing `fn Type::name(self)` *(revised)*
 
-`self` borrows immutably and never copies the receiver; `*self` is a mutable
-pointer. A copying receiver was rejected because a large struct would incur an
-invisible memcpy per call.
+**Status: done (syntax; sema checks the owner names a type in the module).**
+
+```gyro
+fn Stack::push(*self, v: i32) { ... }
+export fn Stack::new(capacity: i32): Stack { ... }
+```
+
+Structs stay pure data; behaviour is declared beside it at top level, in any
+file order. Receivers keep the first-round semantics: `self` borrows
+immutably and never copies (a copying receiver would memcpy invisibly per
+call), `*self` is a mutable pointer, no receiver means an associated
+function called `Stack::new(16)`.
+
+Rejected `class` (first round — implied inheritance fights a simple SSA IR),
+methods-inside-struct (mixes data and code back together), and `impl` blocks
+(a grouping construct that exists only to hold what free functions can say
+alone).
+
+### Generics are duck-typed; user types may be generic *(revised)*
+
+**Status: done (syntax — a written bound is rejected with an error naming
+duck typing), planned (instantiation checking).** `fn max<T>(a: T, b: T):
+T` — no bounds exist. `struct Pair<T>` and `fn Pair<T>::swap(*self)` are
+legal; instantiation stamps out concrete code per type argument.
+
+Bare angle brackets stay: `max<i32>(3, 7)`. Rejected turbofish. Cost: the
+parser needs bounded backtracking to tell `f<T>(x)` from `a < b`, resolved
+by a speculative parse that commits only when the brackets close and a call
+follows. Type arguments live on path segments, since `Array<i32>::new`
+parameterizes a non-final segment.
 
 ### A struct literal requires every field to be visible
 
 **Status: planned.** A type with private fields is constructed only through
 its own associated functions, which is what makes invariants enforceable.
+Consequence the examples initially got wrong: `Mutex{ 0 }` is illegal
+outside the stdlib — it is `Mutex::new(0)`.
 
-### Generics use bare angle brackets
+### Tuples are first-class *(revised)*
 
-**Status: done (syntax).** `max<i32>(3, 7)` and `VectorAdd<1, 8>(A, B, C)`.
+**Status: done (syntax), planned (semantics).** `(A, B)` is a real type:
+usable in `chan<(string, error?)>`, fields, variables. Values are written `(a, b)`, read by
+destructuring (`var a, b = pair`) or positional access (`pair.0`). No
+one-element tuples; `(expr)` stays grouping. `return a, b` is sugar for
+returning a tuple, so multi-value returns are no longer a special form.
 
-Rejected turbofish. Cost: the parser needs bounded backtracking to tell
-`f<T>(x)` from `a < b`, resolved by a speculative parse that commits only when
-the brackets close and a call follows.
+This reverses the first round's "no tuple values", which held that `(T,
+error)` was a return-only shape and structured data belongs in named
+structs. What broke it: a channel could not carry a fallible result — every
+worker thread needed a single-use wrapper struct. The iteration protocol
+(`next(): (T, bool)`) and channel receive (`var v, open = <-ch`) fell out of
+the same shape for free.
 
-### No tuple values
+### Match is exhaustive, variants qualified, type-tests share the shape *(new)*
 
-**Status: done.** `(T, error)` is a return-type form destructured by
-`var a, b = f()`. `(expr)` stays unambiguously grouping, and structured data
-belongs in named structs.
+**Status: done (newline arms; unqualified variants fail name resolution;
+local `Enum::Variant` paths are validated), planned (exhaustiveness).**
+
+- A match over an enum must cover every variant or carry `_`; adding a
+  variant later breaks every non-`_` match loudly, which is the point.
+- Variant patterns are always written with the enum name:
+  `Shape::Circle(r)`, never bare `Circle(r)`. Grep-friendly, and it keeps
+  variant destructuring visually distinct from the other `Name(binding)`
+  form.
+- `RangeError(e)` where the scrutinee is an `error` is a type test binding
+  the whole value. Same surface shape as variant destructuring, told apart
+  by what the name resolves to. A distinct type-test syntax was considered
+  and rejected as a second pattern form to learn.
+- Arms end at the newline, not at a comma — same rule as every other
+  statement, and it unifies match with `select`. The first round used
+  commas.
+
+### Iteration is duck-typed *(new)*
+
+**Status: planned.** `for x in ...` handles slices, arrays, ranges and
+channels natively; any other type qualifies by having `next(*self): (T,
+bool)` (or `iter()` returning such a type). Rejected a closed built-in set:
+user containers could never be iterated.
+
+### Printing is derived, overridable *(new)*
+
+**Status: planned.** Every type prints: `println` and `#{}` use a
+compiler-derived representation (`Point{ x: 1, y: 2 }`) unless the type
+defines `to_string(): string`. Primitives print natively.
+
+Rejected primitives-only printing (debugging convenience matters more than
+avoiding generated code) — the derived form is compiler-emitted, accepted as
+the one place code generation is invisible.
 
 ---
 
@@ -244,16 +486,18 @@ belongs in named structs.
 
 ### Programmer errors abort
 
-**Status: planned.** Out-of-bounds, divide by zero and null dereference print
-a message with source position and terminate. Not returnable, not catchable.
+**Status: planned.** Out-of-bounds, divide by zero and null dereference
+print a message with source position and terminate. Not returnable, not
+catchable.
 
-Keeps the `(T, error)` channel meaningful — it carries conditions, not bugs —
-and needs no unwinding machinery.
+Keeps the `(T, error?)` channel meaningful — it carries conditions, not
+bugs — and needs no unwinding machinery.
 
 ### Overflow panics; wrapping is explicit
 
 **Status: done (operators), planned (the check).** `a + b` panics on
-overflow; `a +% b`, `a -% b` and `a *% b` wrap deliberately.
+overflow; `a +% b`, `a -% b` and `a *% b` wrap deliberately. Narrowing `as`
+conversions panic on lost value the same way.
 
 Rejected Rust's debug-checked/release-wrapping split, where one expression
 means different things in different build modes, and rejected always-wrap,
@@ -275,16 +519,30 @@ parallelism, channels for communication, async for IO concurrency.
 because there were no closures, and it broke the rule that anything outside
 the formal syntax must be imported.
 
-`select` arms use the `comm: body` shape of match, and bindings are ordinary
-`var` declarations. Go's `:=` was explicitly rejected — an assignment is `=`,
-and anything that binds is `var` or `const`.
+`select` arms use the `comm: body` shape of match — newline-terminated, like
+match arms after the review. Bindings are ordinary `var` declarations. Go's
+`:=` was explicitly rejected — an assignment is `=`, and anything that binds
+is `var` or `const`.
 
 Channels have no direction. `chan.send<T>` was considered; parameter naming
-carries the intent instead.
+carries the intent instead. Channel creation stays call-shaped grammar
+(`chan<i32>(64)`) because `chan` is already a type keyword, not a library
+name.
+
+### Data races: unchecked today, warning planned *(new)*
+
+**Status: planned.** Nothing stops a captured `*T` from crossing `spawn` and
+racing. A sema pass that warns when a pointer crosses a spawn boundary is
+planned; full Send/Sync-style checking (Rust) was rejected as a mechanism
+the language just chose not to afford. Until the pass lands, races sit next
+to dangling slices in the accepted-costs column.
 
 ### Async is a function colour
 
 **Status: done (syntax).** `async fn` declares one, `await` resolves a call.
+The colour appears in the type system: `async fn(): i32` is a type, async
+closures (`async fn() { ... }`) are its values, and `await` works on calls
+to either. `async fn main` is allowed.
 
 Rejected making `async` an effect, which would have avoided function
 colouring, on the grounds that Rust and JavaScript familiarity is worth more
@@ -294,18 +552,21 @@ here than the composition benefit.
 
 ## Closures
 
-**Status: done (syntax), sema (capture rules and inference).**
+**Status: done (syntax, including the move-only capture list; a move of an
+unknown name is a resolution error), sema (capture semantics and
+inference).**
 
-Spelled with the same `fn` and the same `:` as a declaration, so the language
-has one word for "function". Types may be omitted where the expected type is
-known, and a single-expression body needs no braces or `return`.
+Spelled with the same `fn` and the same `:` as a declaration, so the
+language has one word for "function". Types may be omitted where the
+expected type is known, and a single-expression body needs no braces or
+`return`.
 
-Captures are explicit: `fn[move node]()` transfers ownership, `fn[copy n]()`
-duplicates, a bare name means copy. `move` and `copy` are contextual
-identifiers, not keywords.
-
-Explicit capture exists to serve the leak analysis: it makes an allocation's
-escape into a closure visible in the source instead of inferred.
+Captures: a closure copies the locals it uses, **implicitly**. The capture
+list exists only for ownership transfer — `fn[move node]()` — which is the
+one case the leak analysis must see in the source. *(Revised: the first
+round required stating every capture and had a `copy` form; the review made
+copy implicit and dropped `copy`, so brackets appear exactly when ownership
+moves.)* `move` stays contextual — an ordinary identifier elsewhere.
 
 Rejected `(a: i32) -> i32 { }`, which would introduce a second return-type
 marker and require backtracking on a leading `(`.
@@ -333,8 +594,8 @@ effects are the one thing that cannot be recovered from its source.
 
 ### Go, with a hand-written parser
 
-**Status: done.** The TypeScript prototype and its Peggy grammar were dropped
-at commit `efc8c13`.
+**Status: done.** The TypeScript prototype and its Peggy grammar were
+dropped at commit `efc8c13`.
 
 The grammar was abandoned mid-design and described a different language from
 the one intended, so it was not ported. A generated PEG parser was also the
@@ -345,15 +606,15 @@ grow.
 ### `>>` is scanned as two tokens
 
 **Status: done.** The lexer never merges consecutive `>`, so nested generics
-such as `Result<Vec<i32>, error>` close cleanly. The parser rejoins them when
-a shift is meant.
+such as `Result<Vec<i32>, error>` close cleanly. The parser rejoins them
+when a shift is meant.
 
 ### `<-` is scanned greedily and split back apart
 
 **Status: done.** `x<-1` is ambiguous with a comparison against a negative
-number. The lexer always produces `<-`; the parser splits it into `<` and `-`
-in binary-operator position. Sends are statements only, so the two readings
-never collide.
+number. The lexer always produces `<-`; the parser splits it into `<` and
+`-` in binary-operator position. Sends are statements only, so the two
+readings never collide.
 
 ---
 
@@ -366,3 +627,5 @@ never collide.
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it |
+| derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
+| receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |

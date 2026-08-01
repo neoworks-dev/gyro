@@ -29,8 +29,6 @@ const (
 	Star       // *
 	Slash      // /
 	Percent    // %
-	Increment  // ++
-	Decrement  // --
 	PlusMod    // +%  wrapping add
 	MinusMod   // -%  wrapping subtract
 	StarMod    // *%  wrapping multiply
@@ -83,8 +81,6 @@ const (
 	Const
 	Fn
 	Struct
-	Impl
-	Trait
 	Enum
 	Return
 	If
@@ -129,8 +125,6 @@ var kindNames = map[Kind]string{
 	Star:       "*",
 	Slash:      "/",
 	Percent:    "%",
-	Increment:  "++",
-	Decrement:  "--",
 	PlusMod:    "+%",
 	MinusMod:   "-%",
 	StarMod:    "*%",
@@ -181,8 +175,6 @@ var kindNames = map[Kind]string{
 	Const:      "const",
 	Fn:         "fn",
 	Struct:     "struct",
-	Impl:       "impl",
-	Trait:      "trait",
 	Enum:       "enum",
 	Return:     "return",
 	If:         "if",
@@ -226,8 +218,6 @@ var keywords = map[string]Kind{
 	"const":    Const,
 	"fn":       Fn,
 	"struct":   Struct,
-	"impl":     Impl,
-	"trait":    Trait,
 	"enum":     Enum,
 	"return":   Return,
 	"if":       If,
