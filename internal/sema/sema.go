@@ -1,30 +1,24 @@
-// Package sema checks a parsed Gyro file beyond its syntax.
+// Package sema checks a parsed Gyro program beyond its syntax.
 //
-// This first pass is name resolution: it collects the module scope, walks
-// every body with lexical scoping, and reports names that resolve to
-// nothing. It enforces the rules that need no types to check — there is no
-// universe scope, so an unknown name is either a typo or a missing import;
-// an inner block may shadow but the same block may not redeclare; `self` is
-// only legal inside a method; decorator names come from a fixed set.
+// The checker resolves every name under lexical scoping and types every
+// expression. There is no universe scope, so an unknown name is a typo or a
+// missing import; literals are context-typed with i32/f64 defaults; there
+// are no implicit conversions between typed values; generics are duck-typed,
+// so a generic body is checked again at every distinct instantiation; a
+// nullable value must be checked against null before it is used, and the
+// check narrows it.
 //
-// Type checking, definite assignment, nullable narrowing and the leak
-// analysis build on top of this pass and do not exist yet.
+// Definite assignment, match exhaustiveness and the leak analysis are still
+// to come.
 package sema
 
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/types"
+	"math/big"
 )
-
-// builtinTypes are the type names that are part of the formal syntax. They
-// are spellable without an import; everything else has to come from one.
-var builtinTypes = map[string]bool{
-	"i8": true, "i16": true, "i32": true, "i64": true,
-	"u8": true, "u16": true, "u32": true, "u64": true,
-	"usize": true, "f32": true, "f64": true, "rune": true,
-	"bool": true, "string": true, "void": true, "error": true,
-}
 
 // decorators is the fixed set of names the compiler accepts after `@`.
 // Decorators configure compilation itself, so there is nothing an import
@@ -42,8 +36,8 @@ const (
 	symType
 	// symTypeParam names a generic parameter such as the T of max<T>.
 	symTypeParam
-	// symImport names an imported binding, which may stand for a value or a
-	// type; without module loading the checker cannot tell which.
+	// symImport names an imported binding whose module was not loaded, so
+	// nothing is known about it; it types as Unknown.
 	symImport
 	// symNamespace names a wildcard import: `import * as ast`.
 	symNamespace
@@ -53,20 +47,21 @@ type symbol struct {
 	kind   symbolKind
 	offset int
 	decl   ast.Node
+	// typ is the symbol's type: the value's type for symValue, the named
+	// type itself for symType, the bound type for symTypeParam. nil means
+	// not yet computed; Unknown means it failed or cannot be known.
+	typ types.Type
+	// fn is set for function symbols, including generic ones that have no
+	// plain value type.
+	fn *types.Method
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
 }
 
-// Exports is what one module offers its importers: each exported name with
-// the kind of thing it is and the declaration behind it.
+// Exports is what one module offers its importers.
 type Exports struct {
-	names map[string]exportEntry
-}
-
-type exportEntry struct {
-	kind symbolKind
-	decl ast.Node
+	names map[string]*symbol
 }
 
 type scope struct {
@@ -87,64 +82,128 @@ func (s *scope) lookup(name string) *symbol {
 	return nil
 }
 
-// checker holds the state of one file's check.
+// ---------------------------------------------------------------------------
+// Program state
+// ---------------------------------------------------------------------------
+
+// program is the state shared by every module's checker: the caches that
+// make generic instances canonical, and the environments that let a generic
+// body be re-checked from any call site.
+type program struct {
+	bag *diag.Bag
+	// envs maps each function declaration to its module's checker.
+	envs map[*ast.FuncDecl]*checker
+	// structInstances and enumInstances canonicalize generic instances, so
+	// Pair<i32> is one type everywhere and identity is pointer identity.
+	structInstances map[*types.Struct]map[string]*types.Struct
+	enumInstances   map[*types.Enum]map[string]*types.Enum
+	// instantiated caches which (declaration, type arguments) pairs have
+	// been duck-checked, including in-progress ones so recursion converges.
+	instantiated map[string]bool
+	// depth guards against infinitely growing instantiations such as a
+	// generic function calling itself with Pair<T>.
+	depth int
+}
+
+func newProgram(bag *diag.Bag) *program {
+	return &program{
+		bag:             bag,
+		envs:            map[*ast.FuncDecl]*checker{},
+		structInstances: map[*types.Struct]map[string]*types.Struct{},
+		enumInstances:   map[*types.Enum]map[string]*types.Enum{},
+		instantiated:    map[string]bool{},
+	}
+}
+
+// funcContext is the function whose body is being checked.
+type funcContext struct {
+	result   types.Type
+	async    bool
+	inMethod bool
+	selfType types.Type
+}
+
+// checker holds the state of one module's check.
 type checker struct {
-	file   *diag.File
-	bag    *diag.Bag
-	module *scope
-	scope  *scope
+	program    *program
+	file       *diag.File
+	bag        *diag.Bag
+	modulePath string
+	module     *scope
+	scope      *scope
 
 	// imports maps an import specifier to the exports of the module it
 	// resolved to. It is nil when checking a single file without a loader,
 	// and an entry is nil when that dependency failed to load.
 	imports map[string]*Exports
 
-	// enums maps an enum's local name to its declaration, so qualified
-	// variant patterns and paths can be validated. Imported enums appear
-	// under their bound name.
-	enums map[string]*ast.EnumDecl
+	// structTypes and enumTypes map local declarations to their types.
+	structTypes map[*ast.StructDecl]*types.Struct
+	enumTypes   map[*ast.EnumDecl]*types.Enum
+	funcSigs    map[*ast.FuncDecl]*types.Method
 
-	// inMethod reports whether the innermost function declaration carries a
-	// receiver, which is what makes `self` legal. Closures inherit it: a
-	// closure inside a method captures self like any other local.
-	inMethod bool
+	// consts records the values of untyped integer expressions, so a
+	// literal can be checked to fit the type its context requires.
+	consts map[ast.Expr]*big.Int
+
+	// fn is the enclosing function, nil at module scope.
+	fn *funcContext
+
+	// facts holds the symbols currently narrowed from T? to T by a null
+	// check on this control-flow path.
+	facts map[*symbol]bool
+
+	// lenient marks a generic body being checked without concrete type
+	// arguments: operations involving a type parameter poison to Unknown
+	// instead of erroring, because the real check happens per instantiation.
+	lenient bool
 }
 
-func newChecker(file *diag.File, bag *diag.Bag, imports map[string]*Exports) *checker {
+func newChecker(p *program, file *diag.File, modulePath string, imports map[string]*Exports) *checker {
 	c := &checker{
-		file:    file,
-		bag:     bag,
-		module:  newScope(nil),
-		imports: imports,
-		enums:   map[string]*ast.EnumDecl{},
+		program:     p,
+		file:        file,
+		bag:         p.bag,
+		modulePath:  modulePath,
+		module:      newScope(nil),
+		imports:     imports,
+		structTypes: map[*ast.StructDecl]*types.Struct{},
+		enumTypes:   map[*ast.EnumDecl]*types.Enum{},
+		funcSigs:    map[*ast.FuncDecl]*types.Method{},
+		consts:      map[ast.Expr]*big.Int{},
+		facts:       map[*symbol]bool{},
 	}
 	c.scope = c.module
 	return c
 }
 
-// Check resolves every name in one file and reports what fails to resolve.
-// Without a loader, imports bind opaquely; use CheckProgram to validate
-// them against what the imported modules export.
+// Check resolves and types one file. Without a loader, imports bind
+// opaquely and everything reached through them is unchecked; use
+// CheckProgram to validate against what the imported modules export.
 func Check(tree *ast.File, file *diag.File, bag *diag.Bag) {
-	newChecker(file, bag, nil).run(tree)
+	c := newChecker(newProgram(bag), file, file.Name, nil)
+	c.run(tree)
 }
 
 // CheckProgram checks every module of a loaded program in dependency
 // order, so each module's imports are validated against what its
 // dependencies actually export.
-func CheckProgram(program *loader.Program, bag *diag.Bag) {
+func CheckProgram(prog *loader.Program, bag *diag.Bag) {
+	p := newProgram(bag)
 	computed := map[*loader.Module]*Exports{}
-	for _, module := range program.Modules {
+	for _, module := range prog.Modules {
 		imports := map[string]*Exports{}
 		for specifier, dependency := range module.Deps {
 			imports[specifier] = computed[dependency]
 		}
-		computed[module] = newChecker(module.File, bag, imports).run(module.Tree)
+		c := newChecker(p, module.File, module.Path, imports)
+		computed[module] = c.run(module.Tree)
 	}
 }
 
 func (c *checker) run(tree *ast.File) *Exports {
 	c.collectModule(tree)
+	c.buildTypes(tree)
 	exports := c.collectExports(tree)
 	c.checkDecls(tree)
 	return exports
@@ -156,8 +215,16 @@ func (c *checker) errorf(offset int, format string, args ...any) {
 
 // declare adds a name to the current scope. Shadowing an outer scope is
 // fine; redeclaring within the same scope is not.
-func (c *checker) declare(name string, offset int, kind symbolKind, decl ast.Node) {
-	c.declareSymbol(name, &symbol{kind: kind, offset: offset, decl: decl})
+func (c *checker) declare(name string, offset int, kind symbolKind, decl ast.Node) *symbol {
+	sym := &symbol{kind: kind, offset: offset, decl: decl}
+	c.declareSymbol(name, sym)
+	return sym
+}
+
+func (c *checker) declareValue(name string, offset int, decl ast.Node, typ types.Type) *symbol {
+	sym := &symbol{kind: symValue, offset: offset, decl: decl, typ: typ}
+	c.declareSymbol(name, sym)
+	return sym
 }
 
 func (c *checker) declareSymbol(name string, sym *symbol) {
@@ -182,11 +249,14 @@ func (c *checker) pushScope(fn func()) {
 }
 
 // ---------------------------------------------------------------------------
-// Module scope
+// Module collection: names and type shells
 // ---------------------------------------------------------------------------
 
-// collectModule declares every top-level name before any body is checked,
+// collectModule declares every top-level name before any type is resolved,
 // so module-level declarations can reference each other in any order.
+// Structs and enums get their type objects here — empty shells whose fields
+// and variants are filled by buildTypes — because a field can point at a
+// struct declared further down.
 func (c *checker) collectModule(tree *ast.File) {
 	for _, imp := range tree.Imports {
 		c.collectImport(imp)
@@ -200,16 +270,37 @@ func (c *checker) collectModule(tree *ast.File) {
 				c.declare(d.Name, d.Offset, symValue, d)
 			}
 		case *ast.StructDecl:
-			c.declare(d.Name, d.Offset, symType, d)
+			shell := &types.Struct{
+				Name:       d.Name,
+				Module:     c.modulePath,
+				TypeParams: makeTypeParams(d.TypeParams),
+				Methods:    map[string]*types.Method{},
+			}
+			c.structTypes[d] = shell
+			c.declare(d.Name, d.Offset, symType, d).typ = shell
 		case *ast.EnumDecl:
-			c.declare(d.Name, d.Offset, symType, d)
-			c.enums[d.Name] = d
+			shell := &types.Enum{
+				Name:       d.Name,
+				Module:     c.modulePath,
+				TypeParams: makeTypeParams(d.TypeParams),
+				Methods:    map[string]*types.Method{},
+			}
+			c.enumTypes[d] = shell
+			c.declare(d.Name, d.Offset, symType, d).typ = shell
 		case *ast.VarDecl:
 			for _, binding := range d.Names {
 				c.declare(binding.Name, binding.Offset, symValue, d)
 			}
 		}
 	}
+}
+
+func makeTypeParams(params []ast.TypeParam) []*types.TypeParam {
+	out := make([]*types.TypeParam, len(params))
+	for i, param := range params {
+		out[i] = &types.TypeParam{Name: param.Name}
+	}
+	return out
 }
 
 func (c *checker) collectImport(imp *ast.Import) {
@@ -230,46 +321,49 @@ func (c *checker) collectImport(imp *ast.Import) {
 			bound = name.Alias
 		}
 
-		kind, decl := symImport, ast.Node(imp)
+		local := &symbol{kind: symImport, offset: name.Offset, decl: imp, typ: types.Unknown}
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {
 				c.errorf(name.Offset, "%q does not export %s", imp.Path, name.Name)
 			} else {
-				kind, decl = entry.kind, entry.decl
+				local.kind = entry.kind
+				local.decl = entry.decl
+				local.typ = entry.typ
+				local.fn = entry.fn
 			}
 		}
-
-		c.declare(bound, name.Offset, kind, decl)
-		if enum, ok := decl.(*ast.EnumDecl); ok {
-			c.enums[bound] = enum
-		}
+		c.declareSymbol(bound, local)
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
+
 // collectExports gathers what this module offers importers. It runs after
-// collectModule so export lists can look local names up in module scope.
+// buildTypes so the entries carry real types.
 func (c *checker) collectExports(tree *ast.File) *Exports {
-	exports := &Exports{names: map[string]exportEntry{}}
+	exports := &Exports{names: map[string]*symbol{}}
 	for _, decl := range tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			// Methods ride along with their owner type, not by name.
 			if d.Exported && d.Owner == "" {
-				exports.names[d.Name] = exportEntry{kind: symValue, decl: d}
+				c.exportLocal(exports, d.Name)
 			}
 		case *ast.StructDecl:
 			if d.Exported {
-				exports.names[d.Name] = exportEntry{kind: symType, decl: d}
+				c.exportLocal(exports, d.Name)
 			}
 		case *ast.EnumDecl:
 			if d.Exported {
-				exports.names[d.Name] = exportEntry{kind: symType, decl: d}
+				c.exportLocal(exports, d.Name)
 			}
 		case *ast.VarDecl:
 			if d.Exported {
 				for _, binding := range d.Names {
-					exports.names[binding.Name] = exportEntry{kind: symValue, decl: d}
+					c.exportLocal(exports, binding.Name)
 				}
 			}
 		case *ast.ExportDecl:
@@ -277,6 +371,12 @@ func (c *checker) collectExports(tree *ast.File) *Exports {
 		}
 	}
 	return exports
+}
+
+func (c *checker) exportLocal(exports *Exports, name string) {
+	if sym := c.module.lookup(name); sym != nil {
+		exports.names[name] = sym
+	}
 }
 
 func (c *checker) collectExportDecl(decl *ast.ExportDecl, exports *Exports) {
@@ -324,7 +424,7 @@ func (c *checker) collectLocalExportList(decl *ast.ExportDecl, exports *Exports)
 		if name.Alias != "" {
 			bound = name.Alias
 		}
-		exports.names[bound] = exportEntry{kind: sym.kind, decl: sym.decl}
+		exports.names[bound] = sym
 	}
 }
 
@@ -336,14 +436,15 @@ func (c *checker) checkDecls(tree *ast.File) {
 	for _, decl := range tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			c.checkFunc(d)
+			c.checkFuncDecl(d)
 		case *ast.StructDecl:
-			c.checkStruct(d)
-		case *ast.EnumDecl:
-			c.checkEnum(d)
-		case *ast.VarDecl:
 			c.checkDecorators(d.Decorators)
-			c.checkVarValue(d)
+		case *ast.EnumDecl:
+			c.checkDecorators(d.Decorators)
+		case *ast.VarDecl:
+			// Module-level values were typed by buildTypes; only the
+			// decorators remain.
+			c.checkDecorators(d.Decorators)
 		case *ast.ExportDecl:
 			c.checkExport(d)
 		}
@@ -351,7 +452,7 @@ func (c *checker) checkDecls(tree *ast.File) {
 }
 
 func (c *checker) checkExport(decl *ast.ExportDecl) {
-	// A re-export names things in another module, which is not loaded here.
+	// A re-export names things in another module, checked in collectExports.
 	if decl.Path != "" || decl.Star {
 		return
 	}
@@ -381,83 +482,4 @@ func decoratorName(decorator *ast.Decorator) string {
 		joined += "::" + name
 	}
 	return joined
-}
-
-func (c *checker) checkStruct(decl *ast.StructDecl) {
-	c.checkDecorators(decl.Decorators)
-	c.pushScope(func() {
-		c.declareTypeParams(decl.TypeParams)
-		for _, field := range decl.Fields {
-			c.checkType(field.Type)
-		}
-	})
-}
-
-func (c *checker) checkEnum(decl *ast.EnumDecl) {
-	c.checkDecorators(decl.Decorators)
-	c.pushScope(func() {
-		c.declareTypeParams(decl.TypeParams)
-		for _, variant := range decl.Variants {
-			for _, payload := range variant.Payload {
-				c.checkType(payload)
-			}
-		}
-	})
-}
-
-func (c *checker) checkFunc(decl *ast.FuncDecl) {
-	c.checkDecorators(decl.Decorators)
-
-	if decl.Owner != "" {
-		owner := c.module.lookup(decl.Owner)
-		if owner == nil {
-			c.errorf(decl.Offset, "cannot attach a method to %s: no such type in this module", decl.Owner)
-		} else if owner.kind != symType {
-			c.errorf(decl.Offset, "cannot attach a method to %s: it is not a type", decl.Owner)
-		}
-	} else if decl.Recv != nil {
-		c.errorf(decl.Recv.Offset, "a receiver needs an owning type: write fn Type::%s(self, ...)", decl.Name)
-	}
-
-	savedInMethod := c.inMethod
-	c.inMethod = decl.Recv != nil
-	defer func() { c.inMethod = savedInMethod }()
-
-	c.pushScope(func() {
-		c.declareTypeParams(decl.OwnerParams)
-		c.declareTypeParams(decl.TypeParams)
-
-		for _, param := range decl.Params {
-			c.checkType(param.Type)
-			if param.Default != nil {
-				c.expr(param.Default)
-			}
-			c.declare(param.Name, param.Offset, symValue, decl)
-		}
-		for _, result := range decl.Results {
-			c.checkType(result)
-		}
-
-		if decl.Body != nil {
-			c.blockInPlace(decl.Body)
-		}
-	})
-}
-
-func (c *checker) declareTypeParams(params []ast.TypeParam) {
-	for _, param := range params {
-		c.declare(param.Name, param.Offset, symTypeParam, nil)
-	}
-}
-
-// checkVarValue resolves a var declaration's annotation and initializer
-// without declaring its names; declaration order differs between module
-// scope (already collected) and locals (bound after the initializer).
-func (c *checker) checkVarValue(decl *ast.VarDecl) {
-	if decl.Type != nil {
-		c.checkType(decl.Type)
-	}
-	if decl.Value != nil {
-		c.expr(decl.Value)
-	}
 }

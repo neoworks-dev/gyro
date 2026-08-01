@@ -158,7 +158,9 @@ A name is spelled the same where it is defined and everywhere it is used.
 **If a name is not part of the formal syntax, it has to be imported.** There
 is no universe scope and no predeclared functions: operations on built-in
 types are methods on those types, so `ch.close()`, `xs.len()` and
-`xs.append(v)` need no import, while `println` does.
+`s.runes()` need no import, while `println` does. (There is no `append` on
+a slice: `T[]` borrows memory it cannot grow. Growth lives in
+`Array<T>::push`.)
 
 ### The entry point
 
@@ -518,7 +520,14 @@ fn Counter::next(*self): (i32, bool) {
   return self.n, true
 }
 
-for x in Counter{ 0, 5 } { println(x) }
+for x in (Counter{ 0, 5 }) { println(x) }
+```
+
+The parentheses are the same rule as conditions: a brace after the iterable
+opens the loop body, so a bare struct literal cannot sit at the top level
+of a `for..in` head.
+
+```gyro
 ```
 
 ### Match
@@ -743,10 +752,35 @@ The revised syntax is fully parsed: free methods, tuples and `.0` access,
 continuation, and the removals (`impl`, `trait`, bounds, `++`/`--`, arm
 commas) all error with pointers at the current spelling.
 
-Sema so far is **name resolution**: module scope, imports, lexical scoping
-with same-scope redeclaration errors, `self` only inside methods, method
-owners must exist, local enum variants in paths, the fixed decorator set,
-and no universe scope — an unresolved name is an error.
+Sema resolves every name under lexical scoping — no universe scope, so an
+unresolved name is an error — and **types every expression**:
+
+- Literals are context-typed with i32/f64 defaults; constant expressions
+  fold, so `var x: u8 = 200 + 56` is caught at compile time. There are no
+  implicit conversions between typed values, anywhere.
+- Operators enforce matching operand types; `+%`-style wrapping and the
+  bitwise operators are integer-only; `<` on a user type points at
+  `a.compare(b)`; slices refuse `==`.
+- A nullable value cannot be dereferenced, selected through, indexed or
+  iterated until a null check **narrows** it. The checker follows
+  `!= null` / `== null` through `&&`, `!`, `else`, and early exits
+  (`if x == null { return }` leaves x narrowed); assignment un-narrows.
+- Generics are checked by **instantiation**: a generic body is re-checked
+  for every distinct set of type arguments, which is where `max(m1, m2)`
+  fails with "Mutex has no method compare" plus a pointer at the call
+  site. Owner arguments infer through associated functions
+  (`Mutex::new(0)` is a `Mutex<i32>`), struct literals infer from their
+  fields (`Pair{ 1, 2 }`), instances are canonical, and instantiation is
+  cached and depth-capped.
+- Struct literals must set every field and are only legal where every
+  field is visible; cross-module use of a private field is an error.
+- Dropping an error result is an error; discarding takes an explicit
+  `var _, _ =`. An un-awaited async call in statement position is too.
+- Built-in types carry a small fixed method surface, no import needed:
+  `ch.close()`, `xs.len(): usize`, `s.len()`, `s.runes(): rune[]`,
+  `a.compare(b)` on numeric primitives and `rune`, `err.message()`.
+- `for..in` handles slices, arrays, ranges, channels, and the duck-typed
+  `next(*self): (T, bool)` / `iter()` contract.
 
 The **module loader** is real: `gyro check` loads the whole import graph,
 `./x` resolves beside the importing file, `@gyro/...` comes from
@@ -757,19 +791,15 @@ Still to come:
 
 | feature | state |
 | --- | --- |
-| type checking | nothing infers or checks a type yet |
-| definite assignment | needs flow analysis in sema |
-| nullable narrowing | needs the same flow analysis |
-| duck-typed generic checking | needs instantiation in sema |
+| definite assignment | needs flow analysis in sema; reads of unassigned `var x: i32` pass today |
 | match exhaustiveness | needs sema over enum layouts |
-| error-discard check (`_` required) | needs types for the error slot |
-| derived printing / `to_string` | needs sema and codegen |
-| iteration via `next()` | needs sema |
-| struct-literal field visibility | needs cross-module sema |
+| mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
+| `@comptime` evaluation | typed, not evaluated |
+| derived printing / `to_string` override | needs codegen |
 | leak-analysis warnings | needs escape analysis |
 | effect rows | parsed, unchecked |
-| module resolution | done at the name level; `.stack/` packages await the Stack package manager |
-| overflow, bounds and cast panics | no checks emitted |
+| module resolution | done; `.stack/` packages await the Stack package manager |
+| overflow, bounds and cast panics | checked statically for literals only; runtime checks need codegen |
 | `Array<T>` `String` `Mutex` `spawn` | declaration stubs bundled; no implementations, no runtime |
 | race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |

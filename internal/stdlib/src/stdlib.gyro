@@ -18,7 +18,7 @@ export fn Array<T>::pop(*self): (T, bool)
 export fn Array<T>::get(self, index: usize): T
 export fn Array<T>::set(*self, index: usize, value: T)
 export fn Array<T>::len(self): usize
-export fn Array<T>::view(self): T[]
+export fn Array<T>::slice(self): T[]
 export fn Array<T>::free(*self)
 
 // Mutex<T> owns the value it guards; lock() returns the guard directly.

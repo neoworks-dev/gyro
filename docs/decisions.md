@@ -173,7 +173,7 @@ runtime).
 is neither declared, imported, nor formal syntax is an error.
 
 There is no universe scope and no predeclared functions. `println` is
-imported; `ch.close()`, `xs.len()` and `xs.append(v)` are methods on
+imported; `ch.close()`, `xs.len()` and `s.runes()` are methods on
 built-in types, so they need no import and introduce no implicit names.
 
 This rule has already changed one decision: `spawn` was a keyword until
@@ -636,10 +636,62 @@ readings never collide.
 
 ---
 
+### The type checker re-checks generic bodies per instantiation *(new)*
+
+**Status: done.** A generic body is first name-resolved leniently —
+operations involving an opaque type parameter poison to Unknown instead of
+erroring — and then fully re-checked for every distinct set of type
+arguments, C++-template style. That is the honest reading of "the body's
+usage is the requirement": the requirement cannot be stated, only tested.
+Instantiations are cached by (declaration, arguments), recursion converges
+through the cache, and a depth cap of 32 stops types that grow forever.
+The error appears twice on purpose: once inside the body where the missing
+method is used, once at the call site that demanded the instantiation.
+
+Rejected checking generic bodies once against inferred constraints — that
+is traits by the back door, and traits were removed.
+
+### Narrowing is symbol-level and syntactic *(new)*
+
+**Status: done (v1).** `x != null` narrows the local x inside the guarded
+branch; the checker follows `&&`, `!`, `else`, and early exits, and an
+assignment to x withdraws the narrowing. Closures inherit the facts in
+scope — captures copy, so a narrowed copy stays non-null. Narrowing does
+not track fields (`self.next != null` proves nothing); bind the field to a
+local first. That is the same simplification Go's nil checks live with,
+and it keeps the analysis obviously sound.
+
+### Constant expressions fold during checking *(new)*
+
+**Status: done.** Untyped literal arithmetic folds over big integers, so
+`var x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
+runtime panics. Operands are typed without the outer context — the folded
+result is what must fit. This is also the seed of `@comptime`, which needs
+an evaluator anyway.
+
+### Built-in methods are a small fixed surface *(new)*
+
+**Status: done.** `close` on channels; `len` on slices, arrays and
+strings (`usize`); `runes(): rune[]` on strings; `compare(other): i32` on
+the numeric primitives and `rune` — which is what lets `max(3, 7)`
+instantiate; `message(): string` on `error`. There is no `append` on a
+slice: `T[]` borrows memory it cannot grow, so growth lives in
+`Array<T>::push`. The docs briefly said `xs.append(v)`; that was a relic
+and was removed.
+
+### Tuples assign structurally *(new)*
+
+**Status: done.** `(string, null)` goes where `(string, error?)` is
+required: tuple assignability is elementwise, since a tuple is shape, not
+identity. Everything else converts only by `as`.
+
 ## Still open
 
 | question | why it matters |
 | --- | --- |
+| definite assignment | "no zero values" is only half-enforced: struct literals must set every field, but reading an unassigned `var x: i32` passes |
+| match exhaustiveness | decided (exhaustive over enums), not yet implemented |
+| mutation rules | when a `*self` method may be called on what, and what `self` may not do |
 | `@comptime` evaluation subset | which operations may run at compile time |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
