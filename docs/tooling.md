@@ -91,48 +91,28 @@ never need the CLI.
 
 ## Wiring it into Neovim
 
-Reference configuration; adjust paths to where this repository lives.
+`editor/nvim/` holds the working setup, independent of nvim-treesitter's
+install machinery (and so indifferent to its master/main branch split):
 
-Filetype detection:
-
-```lua
-vim.filetype.add({ extension = { gyro = "gyro", metals = "metals" } })
+```sh
+editor/nvim/install.sh          # compile parsers into ~/.config/nvim/parser/,
+                                # symlink queries into ~/.config/nvim/queries/
+cp editor/nvim/gyro.lua ~/.config/nvim/lua/plugins/   # lazy.nvim spec
 ```
 
-Grammars, with nvim-treesitter:
+The install script compiles the committed `parser.c`/`scanner.c` with cc
+— no tree-sitter CLI, no npm. `vim.treesitter` picks the parsers up from
+`parser/` on the runtimepath. The spec registers the `gyro` and `metals`
+filetypes, starts tree-sitter highlighting and folding, and runs the
+language server with `bin/gyro lsp` (adjust `REPO_ROOT` inside if the
+repo lives elsewhere).
 
-```lua
-local parsers = require("nvim-treesitter.parsers").get_parser_configs()
-parsers.gyro = {
-  install_info = {
-    url = "~/path/to/gyro/tree-sitter-gyro",
-    files = { "src/parser.c", "src/scanner.c" },
-  },
-  filetype = "gyro",
-}
-parsers.metals_ir = {
-  install_info = {
-    url = "~/path/to/gyro/tree-sitter-metals",
-    files = { "src/parser.c" },
-  },
-  filetype = "metals",
-}
-```
+After a grammar change: rerun `install.sh`. After a compiler or LSP
+change: `make build`; the server restarts with the next editor session
+(`:LspRestart` for the current one).
 
-then `:TSInstall gyro metals_ir`. Queries must be on the runtimepath as
-`queries/gyro/*.scm`; either symlink each grammar's `queries/` directory
-into your config or add the grammar directories to `runtimepath`.
-
-The language server, with no plugin at all (nvim ≥ 0.11):
-
-```lua
-vim.lsp.config("gyro", {
-  cmd = { "/path/to/gyro/bin/gyro", "lsp" },
-  filetypes = { "gyro", "metals" },
-  root_markers = { ".git", "gyro.toml" },
-})
-vim.lsp.enable("gyro")
-```
+Without lazy.nvim, the spec's `config` function body is plain Lua —
+paste it into `init.lua` and drop the surrounding spec table.
 
 ## Known limits (v1)
 
