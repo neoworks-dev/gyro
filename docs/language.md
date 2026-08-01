@@ -674,7 +674,10 @@ spawn(fn() produce(values, 10))
 `@concurrent(threads = N)` configures a parallel region. `Mutex` and friends
 come from the standard library. `Mutex::new(0)` constructs one and `lock()`
 returns the guard directly — there is no poisoning, because a Gyro panic
-aborts the process rather than unwinding past a held lock.
+aborts the process rather than unwinding past a held lock. Releasing is
+explicit: `guard.unlock()`, usually as `defer guard.unlock()`. (Gyro has no
+destructors, so nothing can release a guard implicitly; if a drop-based
+design ever lands, the explicit call becomes sugar.)
 
 Nothing yet stops a captured `*T` from crossing `spawn` and racing; a sema
 pass that warns about it is planned. Until then, data races are the
@@ -787,6 +790,19 @@ The **module loader** is real: `gyro check` loads the whole import graph,
 declaration-only stub files bundled into the compiler, cycles are rejected
 with a trace, and an import of a name the target module does not export is
 an error. Bare package names error until the Stack package manager exists.
+
+**Programs run**: `gyro run file.gyro` checks a program and executes its
+`fn main` in a tree-walking interpreter — the executable specification the
+native backend will be measured against. The runtime semantics it pins:
+overflow/underflow panics per width, wrapping via `+% -% *%`, truncating
+division with `-7 / 2 == -3`, narrowing `as` panics, bounds and null and
+uninitialized-read panics with source positions, defer at block exit in
+reverse (per loop iteration included, with arguments captured at
+registration), capture-by-copy closures, value-semantics structs, derived
+printing with `to_string` override, spawn/channels/select on real threads,
+async as futures. The stdlib stubs have native bodies: `println`,
+`Array<T>`, `Mutex` (explicit `guard.unlock()`), `alloc`/`free` with
+use-after-free and double-free detection, `fs`, `convert`.
 Still to come:
 
 | feature | state |

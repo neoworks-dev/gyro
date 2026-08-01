@@ -685,6 +685,29 @@ and was removed.
 required: tuple assignability is elementwise, since a tuple is shape, not
 identity. Everything else converts only by `as`.
 
+### The interpreter is the executable spec *(new)*
+
+**Status: done.** A tree-walking interpreter (`gyro run`) executes checked
+programs; every runtime rule the docs assert is now a test. Decisions it
+forced:
+
+- **A closure owns one copy of its captures**, taken at creation. Its
+  calls mutate that copy cumulatively (Rust's FnMut, C++'s mutable
+  lambda); the original local never notices. Rejected copy-per-call,
+  which would make a closure-held counter impossible.
+- **`as` from float to integer truncates toward zero**, then applies the
+  fits-or-panics rule. `2.9 as i32` is 2; `1e300 as i32` panics.
+- **A closed channel yields no value.** The single-value receive form
+  hands back an uninitialized value whose first read panics — the runtime
+  shadow of the definite-assignment rule that will catch it statically.
+- **alloc'd memory starts uninitialized**, not zeroed: reading a field
+  before writing it panics. `free` poisons the cell, so use-after-free
+  and double free are runtime panics today, before any static analysis.
+- **Panics do not run defers.** A panic aborts the process; there is no
+  unwinding, so `defer` is reserved for orderly exits. This follows from
+  "programmer errors abort" and keeps defer implementable without
+  landing pads.
+
 ## Still open
 
 | question | why it matters |
@@ -693,6 +716,7 @@ identity. Everything else converts only by `as`.
 | match exhaustiveness | decided (exhaustive over enums), not yet implemented |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
 | `@comptime` evaluation subset | which operations may run at compile time |
+| guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS shared IR | the cross-language target; other languages compile into it and `import` reaches across them (js, python, ...) — nothing is designed yet |

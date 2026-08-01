@@ -33,3 +33,6 @@ export struct MutexGuard<T> {}
 
 export fn MutexGuard<T>::get(self): T
 export fn MutexGuard<T>::set(*self, value: T)
+// Release is explicit until a drop-based design is settled; pair lock()
+// with `defer guard.unlock()`.
+export fn MutexGuard<T>::unlock(*self)

@@ -53,8 +53,10 @@ fn sum_shared(values: i32[]) {
   for value in values {
     // lock() returns the guard directly. There is no poisoning: a Gyro
     // panic aborts the whole process, so no thread ever observes a lock
-    // its holder abandoned.
+    // its holder abandoned. Release is explicit, and a defer runs at the
+    // exit of the enclosing block — here, every loop iteration.
     var guard = total.lock()
+    defer guard.unlock()
     guard.set(guard.get() + value)
   }
 }
