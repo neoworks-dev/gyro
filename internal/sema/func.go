@@ -21,9 +21,9 @@ func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 // The checker's traversal state is saved and restored, so an instantiation
 // can re-enter while another body is mid-check.
 func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Type) {
-	savedScope, savedFn, savedFacts, savedLenient := c.scope, c.fn, c.facts, c.lenient
+	savedScope, savedFn, savedFacts, savedLenient, savedRec := c.scope, c.fn, c.facts, c.lenient, c.rec
 	defer func() {
-		c.scope, c.fn, c.facts, c.lenient = savedScope, savedFn, savedFacts, savedLenient
+		c.scope, c.fn, c.facts, c.lenient, c.rec = savedScope, savedFn, savedFacts, savedLenient, savedRec
 	}()
 
 	c.scope = newScope(c.module)
@@ -31,6 +31,15 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 
 	generic := len(decl.TypeParams) > 0 || len(decl.OwnerParams) > 0
 	c.lenient = bindings == nil && generic
+
+	// A lenient check produces poisoned types nobody should read; an
+	// instantiation records into its own maps, one set per bindings.
+	if c.lenient {
+		c.rec = nil
+	} else if bindings != nil {
+		instance := c.program.info.instance(decl, bindings)
+		c.rec = &recorder{types: instance.Types, calls: instance.Calls}
+	}
 
 	c.bindFuncTypeParams(decl, bindings)
 

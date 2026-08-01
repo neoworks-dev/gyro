@@ -91,6 +91,8 @@ func (s *scope) lookup(name string) *symbol {
 // body be re-checked from any call site.
 type program struct {
 	bag *diag.Bag
+	// info accumulates what later stages need; see Info.
+	info *Info
 	// envs maps each function declaration to its module's checker.
 	envs map[*ast.FuncDecl]*checker
 	// structInstances and enumInstances canonicalize generic instances, so
@@ -108,6 +110,7 @@ type program struct {
 func newProgram(bag *diag.Bag) *program {
 	return &program{
 		bag:             bag,
+		info:            newInfo(),
 		envs:            map[*ast.FuncDecl]*checker{},
 		structInstances: map[*types.Struct]map[string]*types.Struct{},
 		enumInstances:   map[*types.Enum]map[string]*types.Enum{},
@@ -143,8 +146,14 @@ type checker struct {
 	funcSigs    map[*ast.FuncDecl]*types.Method
 
 	// consts records the values of untyped integer expressions, so a
-	// literal can be checked to fit the type its context requires.
+	// literal can be checked to fit the type its context requires. It is
+	// the program Info's map, shared by every module.
 	consts map[ast.Expr]*big.Int
+
+	// rec receives expression types and call resolutions: the shared
+	// Info maps normally, an instance's maps during an instantiation
+	// check, nil during a lenient generic check.
+	rec *recorder
 
 	// fn is the enclosing function, nil at module scope.
 	fn *funcContext
@@ -170,7 +179,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		structTypes: map[*ast.StructDecl]*types.Struct{},
 		enumTypes:   map[*ast.EnumDecl]*types.Enum{},
 		funcSigs:    map[*ast.FuncDecl]*types.Method{},
-		consts:      map[ast.Expr]*big.Int{},
+		consts:      p.info.Consts,
+		rec:         &recorder{types: p.info.Types, calls: p.info.Calls},
 		facts:       map[*symbol]bool{},
 	}
 	c.scope = c.module
@@ -180,15 +190,18 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 // Check resolves and types one file. Without a loader, imports bind
 // opaquely and everything reached through them is unchecked; use
 // CheckProgram to validate against what the imported modules export.
-func Check(tree *ast.File, file *diag.File, bag *diag.Bag) {
-	c := newChecker(newProgram(bag), file, file.Name, nil)
+func Check(tree *ast.File, file *diag.File, bag *diag.Bag) *Info {
+	p := newProgram(bag)
+	c := newChecker(p, file, file.Name, nil)
 	c.run(tree)
+	return p.info
 }
 
 // CheckProgram checks every module of a loaded program in dependency
 // order, so each module's imports are validated against what its
-// dependencies actually export.
-func CheckProgram(prog *loader.Program, bag *diag.Bag) {
+// dependencies actually export. The returned Info is only meaningful
+// when the bag stayed free of errors.
+func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	p := newProgram(bag)
 	computed := map[*loader.Module]*Exports{}
 	for _, module := range prog.Modules {
@@ -199,6 +212,7 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) {
 		c := newChecker(p, module.File, module.Path, imports)
 		computed[module] = c.run(module.Tree)
 	}
+	return p.info
 }
 
 func (c *checker) run(tree *ast.File) *Exports {

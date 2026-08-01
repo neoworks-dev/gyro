@@ -13,10 +13,16 @@ func (c *checker) expr(e ast.Expr) types.Type {
 	return c.exprWith(e, nil)
 }
 
-// exprWith types an expression. want, when non-nil, is the type the context
-// requires; it types untyped literals and infers closure parameters, and
-// nothing else — typed values never convert.
+// exprWith types an expression and records the result. want, when non-nil,
+// is the type the context requires; it types untyped literals and infers
+// closure parameters, and nothing else — typed values never convert.
 func (c *checker) exprWith(e ast.Expr, want types.Type) types.Type {
+	t := c.exprValue(e, want)
+	c.record(e, t)
+	return t
+}
+
+func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 	switch e := e.(type) {
 	case *ast.Ident:
 		return c.identExpr(e)
@@ -129,7 +135,9 @@ func (c *checker) resolveIdent(e *ast.Ident) *symbol {
 	sym := c.scope.lookup(e.Name)
 	if sym == nil {
 		c.errorf(e.Offset, "undeclared name %s; there is no universe scope, so it must be declared or imported", e.Name)
+		return nil
 	}
+	c.recordRef(e, sym.decl)
 	return sym
 }
 
@@ -220,6 +228,7 @@ func (c *checker) adaptUntyped(e ast.Expr, t types.Type, want types.Type) types.
 			return types.Unknown
 		}
 	}
+	c.record(e, basic)
 	return basic
 }
 

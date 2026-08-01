@@ -196,6 +196,7 @@ func (c *checker) checkPlainCall(call *ast.CallExpr, sig *types.Func, name strin
 			c.expr(arg.Value)
 		}
 	}
+	c.recordCall(call, &CallInfo{Sig: sig})
 	return futureWrap(sig)
 }
 
@@ -281,12 +282,16 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 	// Inside a generic body the type parameters are still opaque, and a
 	// poisoned argument already carries its own error; the inference
 	// errors and the duck check belong to clean, concrete calls.
+	var bindings map[string]types.Type
 	if !c.lenient && !poisoned {
-		bindings := c.collectBindings(call, method, target, s)
+		bindings = c.collectBindings(call, method, target, s)
 		if bindings != nil {
 			c.instantiate(method.Decl, bindings, instantiationLabel(target.name, method, bindings), call.Offset)
 		}
 	}
+
+	substituted, _ := c.substType(sig, s).(*types.Func)
+	c.recordCall(call, &CallInfo{Method: method, Sig: substituted, Bindings: bindings})
 
 	if sig.Async {
 		return &types.Future{Result: result}
@@ -387,7 +392,17 @@ func (c *checker) constructVariant(call *ast.CallExpr, target callee) types.Type
 			c.expr(arg.Value)
 		}
 	}
+	c.recordCall(call, &CallInfo{Enum: target.variantEnum, Variant: variantIndex(target.variantEnum, variant)})
 	return target.variantEnum
+}
+
+func variantIndex(enum *types.Enum, variant *types.Variant) int {
+	for i := range enum.Variants {
+		if &enum.Variants[i] == variant {
+			return i
+		}
+	}
+	return -1
 }
 
 // ---------------------------------------------------------------------------
@@ -552,6 +567,7 @@ func (c *checker) namespacePathee(path *ast.Path, ns *symbol) pathee {
 				path.Segments[0].Name, segment.Name)
 			return pathee{bad: true}
 		}
+		c.recordRef(path, entry.decl)
 		if entry.fn != nil {
 			return pathee{method: entry.fn}
 		}
@@ -676,6 +692,7 @@ func (c *checker) pathValue(path *ast.Path) types.Type {
 			c.errorf(path.Offset, "%s takes a receiver; call it on a value", p.method.Name)
 			return types.Unknown
 		}
+		c.recordRef(path, p.method.Decl)
 		return p.method.Sig
 	case p.typ != nil:
 		c.errorf(path.Offset, "%s is a type, not a value", p.typ)

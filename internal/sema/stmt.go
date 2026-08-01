@@ -192,7 +192,7 @@ func (c *checker) destructure(decl *ast.VarDecl, annotation types.Type, bind fun
 		if annotation != nil {
 			c.errorf(decl.Offset, "a receive binding needs no annotation; it is (element, open)")
 		}
-		elem := c.recvExpr(recv)
+		elem := c.exprWith(recv, nil)
 		bind(decl.Names[0], elem)
 		bind(decl.Names[1], types.Bool)
 		return
@@ -290,7 +290,7 @@ func (c *checker) destructuringAssign(s *ast.AssignStmt) {
 	}
 
 	if recv, ok := s.Rhs.(*ast.RecvExpr); ok && len(s.Lhs) == 2 {
-		elem := c.recvExpr(recv)
+		elem := c.exprWith(recv, nil)
 		c.assignPart(s.Lhs[0], elem, targets[0])
 		c.assignPart(s.Lhs[1], types.Bool, targets[1])
 		return
