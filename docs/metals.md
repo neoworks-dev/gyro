@@ -5,8 +5,10 @@ and that other language front ends (JavaScript, Python, ...) will compile
 into, so that `import` can reach across languages. One format, many
 producers, several consumers: the verifier, the evaluator
 (`internal/meval`, the oracle the lowering is diff-tested against), and
-the native backend (to come). `internal/lower` is the first producer:
-`gyro metals file.gyro` prints a whole program as one module.
+the native backend (`internal/nasm`, x86-64 via NASM — see
+[`native.md`](native.md)). `internal/lower` is the first producer:
+`gyro metals file.gyro` prints a whole program as one module, and
+`gyro build file.gyro` compiles it to a Linux executable.
 
 This document is the source of truth for the format. The Go definitions
 live in `internal/metals`; the text format below is what the printer emits

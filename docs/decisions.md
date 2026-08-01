@@ -809,6 +809,54 @@ native backend will be diffed against. Rejected verifier+golden-text
 only: a lowering bug found later must be debugged through generated
 assembly.
 
+## Native backend
+
+Design in [`native.md`](native.md).
+
+### The runtime is C on libc *(new)*
+
+**Status: decided.** `gyro:rt` is implemented as a small C file compiled
+and linked alongside the generated assembly. libc supplies the
+allocator, formatted output and pthreads; the produced binary depends on
+libc the way Rust's and C's do by default. Rejected freestanding raw
+syscalls (own allocator, own float formatter, threading via `clone` —
+months before the first program runs) and a runtime authored in
+assembly (a worse language for ring buffers and formatters, with no
+offsetting benefit).
+
+### System V AMD64 everywhere *(new)*
+
+**Status: decided.** Every generated function uses the standard Linux
+ABI, so a runtime call is a plain `call` and GDB, perf and valgrind
+understand the frames. One deliberate deviation, documented in
+`native.md`: aggregate arguments between generated functions pass by
+pointer to a caller-owned value rather than by SysV classification —
+the C boundary only ever sees scalars and pointers, so it stays exactly
+ABI-correct where it matters. Rejected a custom internal convention:
+simpler codegen, but every runtime call would need a shim and every
+debugger would be blind.
+
+### v1 codegen spills everything *(new)*
+
+**Status: decided.** Every METALS register gets a stack slot;
+instructions load operands, compute, store back. The output is an order
+of magnitude slower than necessary and trivially auditable, which is
+the correct trade while the bar is byte-identical output against the
+evaluator. Register allocation becomes its own milestone on a working
+foundation. Rejected linear-scan allocation from day one: a much larger
+bug surface before the first example passes.
+
+### Concurrency v1 is OS threads *(new)*
+
+**Status: decided.** `spawn` is `pthread_create`, channels are a
+mutex-and-condvar ring buffer in the C runtime (capacity 0 is a true
+rendezvous), async calls start eagerly on a thread and `await` joins,
+`select` polls its arms. Every example runs natively, so the diff tests
+keep full coverage. Green threads with growable stacks remain the right
+long-term answer for cheap spawning and are recorded as still open;
+a sequential-only v1 was rejected because it leaves the concurrent
+examples untested.
+
 ## Still open
 
 | question | why it matters |
@@ -823,7 +871,12 @@ assembly.
 | METALS remainder | the format is implemented end to end (spec, verifier, Gyro lowering, evaluator); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | mutable METALS globals | METALS globals are constant literals, so module-level `var` does not lower; module-level `const` re-evaluates per use through a synthesized getter until `@comptime` folding exists |
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
+| shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
+| memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
+| printing composites natively | the lowering imports `println<T>` even for records and slices; per `metals.md` it should synthesize a per-type `-> str` function so the runtime only formats primitives — required before a program may print a composite natively |
+| green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
+| select fairness | the evaluator picks a ready arm at random (Go semantics); the native runtime polls arms in order — programs whose output depends on the choice among simultaneously-ready arms may diverge |

@@ -816,6 +816,13 @@ lower→verify→evaluate and demands byte-identical output. Module-level
 `const` lowers to a synthesized getter; module-level `var` does not
 lower yet (METALS has no mutable globals).
 
+**Programs compile**: `gyro build file.gyro -o prog` takes the verified
+module to a native Linux x86-64 executable — NASM assembly linked with
+a small C runtime ([`native.md`](native.md)). The native test suite
+builds every example and demands stdout, stderr and exit status
+byte-identical to `gyro run`; channels, `spawn` and `async` run on OS
+threads. `gyro nasm file.gyro` prints the assembly.
+
 Still to come:
 
 | feature | state |
@@ -833,7 +840,8 @@ Still to come:
 | race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
-| METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle); the native backend consumes this next |
+| METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle) |
+| native backend | v1 done: [`native.md`](native.md); `internal/nasm` emits NASM, links a C runtime, every example diffs clean against the interpreter; still open: register allocation, printing composites, memory reclamation, green threads |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,
 and what was rejected.

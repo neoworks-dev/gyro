@@ -17,6 +17,15 @@ internal/lexer/      scanner, automatic statement termination
 internal/ast/        syntax tree and dumper
 internal/parser/     recursive descent, precedence climbing
 internal/diag/       positions and diagnostics
+internal/loader/     module graph resolution
+internal/sema/       name/type checking; records an Info for the backends
+internal/types/      the type representation
+internal/interp/     tree-walking interpreter, the executable spec
+internal/stdlib/     bundled declaration stubs (@gyro/stdlib, ...)
+internal/metals/     METALS IR: format, printer/parser, verifier
+internal/lower/      Gyro -> METALS lowering
+internal/meval/      METALS evaluator, the lowering's oracle
+internal/nasm/       METALS -> x86-64 NASM + C runtime (gyro build)
 examples/            reference programs, all must parse cleanly
 ```
 

@@ -10,17 +10,33 @@ import (
 // instruction's operands check, and boundary rules hold on exported and
 // cross-language signatures. It returns the first violation found.
 func Verify(m *Module) error {
+	_, err := verifyModule(m, false)
+	return err
+}
+
+// RegisterTypes verifies the module and returns every function's
+// register types, keyed by function name and then register name. The
+// native backend sizes frame slots from this instead of re-deriving
+// the type of every register.
+func RegisterTypes(m *Module) (map[string]map[string]Type, error) {
+	return verifyModule(m, true)
+}
+
+func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 	v := &verifier{module: m, types: map[string]*TypeDecl{}, callables: map[string]*FnType{}}
+	if collect {
+		v.regTypes = map[string]map[string]Type{}
+	}
 
 	for _, decl := range m.Types {
 		if _, dup := v.types[decl.Name]; dup {
-			return fmt.Errorf("type %%%s is declared twice", decl.Name)
+			return nil, fmt.Errorf("type %%%s is declared twice", decl.Name)
 		}
 		v.types[decl.Name] = decl
 	}
 	for _, decl := range m.Types {
 		if err := v.checkDeclShapes(decl); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -29,15 +45,15 @@ func Verify(m *Module) error {
 		foreign := Scheme(imp.Module) != scheme
 		for _, fn := range imp.Funcs {
 			if _, dup := v.callables[fn.Name]; dup {
-				return fmt.Errorf("@%s is declared twice", fn.Name)
+				return nil, fmt.Errorf("@%s is declared twice", fn.Name)
 			}
 			v.callables[fn.Name] = fn.Sig
 			if err := v.checkSigTypes(fn.Name, fn.Sig); err != nil {
-				return err
+				return nil, err
 			}
 			if foreign {
 				if err := v.checkBoundary(fn.Name, fn.Sig); err != nil {
-					return err
+					return nil, err
 				}
 			}
 		}
@@ -45,37 +61,41 @@ func Verify(m *Module) error {
 
 	for _, fn := range m.Funcs {
 		if _, dup := v.callables[fn.Name]; dup {
-			return fmt.Errorf("@%s is declared twice", fn.Name)
+			return nil, fmt.Errorf("@%s is declared twice", fn.Name)
 		}
 		v.callables[fn.Name] = fn.Sig()
 	}
 
 	for _, global := range m.Globals {
 		if err := v.checkType(global.Type); err != nil {
-			return fmt.Errorf("global @%s: %w", global.Name, err)
+			return nil, fmt.Errorf("global @%s: %w", global.Name, err)
 		}
 	}
 
 	for _, fn := range m.Funcs {
 		if err := v.checkSigTypes(fn.Name, fn.Sig()); err != nil {
-			return err
+			return nil, err
 		}
 		if fn.Export {
 			if err := v.checkBoundary(fn.Name, fn.Sig()); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if err := v.checkFunc(fn); err != nil {
-			return fmt.Errorf("fn @%s: %w", fn.Name, err)
+			return nil, fmt.Errorf("fn @%s: %w", fn.Name, err)
 		}
 	}
-	return nil
+	return v.regTypes, nil
 }
 
 type verifier struct {
 	module    *Module
 	types     map[string]*TypeDecl
 	callables map[string]*FnType
+	// regTypes collects each function's register types when non-nil;
+	// clones share one types map per function, so after a body checks
+	// out the map holds every register the function ever assigns.
+	regTypes map[string]map[string]Type
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +259,13 @@ func (v *verifier) checkFunc(fn *Func) error {
 		state.defined[param.Name] = true
 	}
 	fv := &funcVerifier{verifier: v, fn: fn}
-	return fv.checkBody(fn.Body, state)
+	if err := fv.checkBody(fn.Body, state); err != nil {
+		return err
+	}
+	if v.regTypes != nil {
+		v.regTypes[fn.Name] = state.types
+	}
+	return nil
 }
 
 func (fv *funcVerifier) checkBody(body []Instr, state *regState) error {

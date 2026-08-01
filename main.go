@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
@@ -12,6 +14,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/nasm"
 	"github.com/gyro-lang/gyro/internal/parser"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/token"
@@ -28,6 +31,9 @@ usage:
   gyro check <file.gyro>    load, parse and name-check a program, reporting diagnostics
   gyro run <file.gyro>      check a program and run its fn main in the interpreter
   gyro metals <file.gyro>   check a program and print its lowered METALS module
+  gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
+  gyro build <file.gyro> [-o out]
+                            compile a program to a native executable
   gyro version              print the compiler version
 `
 
@@ -51,6 +57,10 @@ func main() {
 		os.Exit(runProgram(args))
 	case "metals":
 		os.Exit(runMetals(args))
+	case "nasm":
+		os.Exit(runNasm(args))
+	case "build":
+		os.Exit(runBuild(args))
 	case "version", "--version", "-v":
 		fmt.Println("gyro", version)
 	case "help", "--help", "-h":
@@ -150,31 +160,95 @@ func runMetals(args []string) int {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
+	module, code := lowerFile(args[0])
+	if module == nil {
+		return code
+	}
+	fmt.Print(metals.Print(module))
+	return 0
+}
 
+// lowerFile loads, checks, lowers and verifies a program, the shared
+// front half of the metals, nasm and build commands.
+func lowerFile(path string) (*metals.Module, int) {
 	var bag diag.Bag
-	program, err := loader.Load(args[0], &bag)
+	program, err := loader.Load(path, &bag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
-		return 2
+		return nil, 2
 	}
 	var info *sema.Info
 	if !bag.HasErrors() {
 		info = sema.CheckProgram(program, &bag)
 	}
 	if code := report(&bag); code != 0 {
-		return code
+		return nil, code
 	}
 
 	module, err := lower.Lower(program, info)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
-		return 1
+		return nil, 1
 	}
 	if err := metals.Verify(module); err != nil {
 		fmt.Fprintf(os.Stderr, "gyro: internal: the lowered module fails verification: %v\n", err)
+		return nil, 1
+	}
+	return module, 0
+}
+
+// runNasm lowers a program and prints its generated assembly.
+func runNasm(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	module, code := lowerFile(args[0])
+	if module == nil {
+		return code
+	}
+	asm, err := nasm.Generate(module)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
 		return 1
 	}
-	fmt.Print(metals.Print(module))
+	fmt.Print(asm)
+	return 0
+}
+
+// runBuild compiles a program to a native executable.
+func runBuild(args []string) int {
+	var inputs []string
+	output := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-o" && i+1 < len(args) {
+			output = args[i+1]
+			i++
+			continue
+		}
+		inputs = append(inputs, args[i])
+	}
+	if len(inputs) != 1 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	if output == "" {
+		base := filepath.Base(inputs[0])
+		output = strings.TrimSuffix(base, ".gyro")
+	}
+
+	if err := nasm.Toolchain(); err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 1
+	}
+	module, code := lowerFile(inputs[0])
+	if module == nil {
+		return code
+	}
+	if err := nasm.Build(module, output); err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 1
+	}
 	return 0
 }
 
