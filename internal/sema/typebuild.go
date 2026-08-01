@@ -292,7 +292,7 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 
 	sym := c.scope.lookup(head.Name)
 	if sym == nil {
-		c.errorf(head.Offset, "undeclared type %s; there is no universe scope, so it must be declared or imported", head.Name)
+		c.reportUndeclared(head.Offset, "type", head.Name)
 		return types.Unknown
 	}
 

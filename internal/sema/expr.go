@@ -134,7 +134,7 @@ func (c *checker) resolveIdent(e *ast.Ident) *symbol {
 	}
 	sym := c.scope.lookup(e.Name)
 	if sym == nil {
-		c.errorf(e.Offset, "undeclared name %s; there is no universe scope, so it must be declared or imported", e.Name)
+		c.reportUndeclared(e.Offset, "name", e.Name)
 		return nil
 	}
 	c.recordRef(e, sym.decl)
@@ -841,7 +841,7 @@ func (c *checker) selectField(offset int, base types.Type, name string, bareMeth
 		return types.Unknown
 	}
 
-	c.errorf(offset, "%s has no field or method %s", t, name)
+	c.errorHintf(offset, didYouMean(name, memberNames(t)), "%s has no field or method %s", t, name)
 	return types.Unknown
 }
 
@@ -987,7 +987,8 @@ func (c *checker) namedStructLit(e *ast.StructLit, strct *types.Struct) {
 
 		declared := strct.FieldNamed(field.Name)
 		if declared == nil {
-			c.errorf(field.Offset, "%s has no field %s", strct.Name, field.Name)
+			c.errorHintf(field.Offset, didYouMean(field.Name, fieldNames(strct)),
+				"%s has no field %s", strct.Name, field.Name)
 			c.expr(field.Value)
 			continue
 		}

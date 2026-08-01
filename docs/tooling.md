@@ -57,7 +57,9 @@ with open buffers overlaid over the file system.
 For `.gyro` files:
 
 - **Diagnostics**: parse and sema errors, live as you type, published for
-  the open file. Warnings arrive as warnings.
+  the open file. Warnings arrive as warnings. A diagnostic's notes — the
+  suggested spelling or import under an undeclared name — follow the
+  message on their own lines, since LSP has one message field.
 - **Hover**: the checked type of the name under the cursor, and for
   functions the declared signature, sliced verbatim from the source.
 - **Go to definition**: through `sema.Info.Refs`, across files; jumps

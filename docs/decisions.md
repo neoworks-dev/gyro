@@ -892,6 +892,50 @@ diagnostics. Deferred, not rejected: rename, find-references, signature
 help — they need position spans the AST does not record yet (nodes know
 where they start, not where they end).
 
+## Diagnostics
+
+### An error states the fact; notes under it guess the fix *(new)*
+
+**Status: decided.** A diagnostic message says only what is wrong
+(`undeclared type String`). Everything about what the author probably
+meant goes in `Diagnostic.Notes`, printed indented under the message and
+folded into one message by the language server. Rejected: explaining the
+language's rules in the message itself. `undeclared name X; there is no
+universe scope, so it must be declared or imported` restated a design
+decision to someone who was looking for a spelling or an import, and the
+rule is the same in every occurrence of the error, so it carried no
+information about *this* one.
+
+### Undeclared names guess: spelling, primitive, import, method *(new)*
+
+**Status: decided.** For an unresolved name the checker emits up to three
+notes, in this order: the primitive it is a foreign spelling of (`String`
+→ `string`, `Int` → `i32`); the import that would bind it — a name added
+to an import already in the file, or a new import of a bundled module;
+that it is a method on a built-in rather than a free function (`len(xs)`
+→ `xs.len()`); and the nearest name in scope by edit distance. Member,
+variant, associated-function and missing-export errors carry the same
+"did you mean" note over their own candidate set.
+
+The import and method notes need to know what the bundled modules
+provide, so `stdlib.Lookup()` parses the declaration stubs once and
+indexes them. It is the stubs themselves that are indexed, not a hand-
+maintained table, so the hints cannot drift from what `@gyro/stdlib`
+actually exports.
+
+A guess appears only within one edit for short names, two from five
+characters up, and never more than half the shorter name — otherwise
+`x` would be offered as the fix for `z`.
+
+### A message repeated at one position is reported once *(new)*
+
+**Status: decided.** `diag.Bag` drops a diagnostic whose position,
+severity and text match one it already holds. A function signature is
+resolved twice — once when types are built, once when the body is
+checked — so every error in a signature was reported twice. Deduplicating
+in the bag fixes it for every pass at once, and two identical messages at
+one position never told the reader anything the first did not.
+
 ## Still open
 
 | question | why it matters |

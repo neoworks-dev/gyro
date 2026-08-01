@@ -33,6 +33,8 @@ fn main() {
   var doubled = apply([1, 2, 3], fn(x) x * 2)
   defer doubled.free()
 
+  const arr = Array<String>::new()
+
   var sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
   println(sum)
 

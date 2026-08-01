@@ -62,13 +62,17 @@ func (d Diagnostic) String() string {
 	return b.String()
 }
 
-// Bag collects diagnostics across a compilation.
+// Bag collects diagnostics across a compilation. Identical messages at the
+// same position are collected once: a signature is resolved both when types
+// are built and when the body is checked, and reporting its error twice only
+// makes the output harder to read.
 type Bag struct {
 	items []Diagnostic
+	seen  map[string]bool
 }
 
 func (b *Bag) Errorf(pos Position, format string, args ...any) {
-	b.items = append(b.items, Diagnostic{
+	b.Add(Diagnostic{
 		Severity: SeverityError,
 		Pos:      pos,
 		Message:  fmt.Sprintf(format, args...),
@@ -76,15 +80,24 @@ func (b *Bag) Errorf(pos Position, format string, args ...any) {
 }
 
 func (b *Bag) Warnf(pos Position, format string, args ...any) {
-	b.items = append(b.items, Diagnostic{
+	b.Add(Diagnostic{
 		Severity: SeverityWarning,
 		Pos:      pos,
 		Message:  fmt.Sprintf(format, args...),
 	})
 }
 
-// Add appends a fully constructed diagnostic, including its notes.
+// Add appends a fully constructed diagnostic, including its notes, unless
+// the same message was already reported at the same position.
 func (b *Bag) Add(d Diagnostic) {
+	key := fmt.Sprintf("%s\x00%d\x00%s", d.Pos, d.Severity, d.Message)
+	if b.seen[key] {
+		return
+	}
+	if b.seen == nil {
+		b.seen = map[string]bool{}
+	}
+	b.seen[key] = true
 	b.items = append(b.items, d)
 }
 

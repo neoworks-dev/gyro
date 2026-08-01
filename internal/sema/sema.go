@@ -342,7 +342,8 @@ func (c *checker) collectImport(imp *ast.Import) {
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {
-				c.errorf(name.Offset, "%q does not export %s", imp.Path, name.Name)
+				c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(exports)),
+					"%q does not export %s", imp.Path, name.Name)
 			} else {
 				local.kind = entry.kind
 				local.decl = entry.decl
@@ -419,7 +420,8 @@ func (c *checker) collectExportDecl(decl *ast.ExportDecl, exports *Exports) {
 	for _, name := range decl.Names {
 		entry, ok := source.names[name.Name]
 		if !ok {
-			c.errorf(name.Offset, "%q does not export %s", decl.Path, name.Name)
+			c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(source)),
+				"%q does not export %s", decl.Path, name.Name)
 			continue
 		}
 		bound := name.Name

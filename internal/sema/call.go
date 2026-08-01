@@ -137,7 +137,7 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 
 	method, ownerParams, ownerArgs := c.lookupMethodFull(recv, fun.Name)
 	if method == nil {
-		c.errorf(fun.Offset, "%s has no method %s", recv, fun.Name)
+		c.errorHintf(fun.Offset, didYouMean(fun.Name, memberNames(recv)), "%s has no method %s", recv, fun.Name)
 		return callee{bad: true}
 	}
 	if method.Recv == types.NoRecv {
@@ -517,7 +517,7 @@ func (c *checker) resolvePathee(path *ast.Path) pathee {
 
 	sym := c.scope.lookup(head.Name)
 	if sym == nil {
-		c.errorf(head.Offset, "undeclared name %s; there is no universe scope, so it must be declared or imported", head.Name)
+		c.reportUndeclared(head.Offset, "name", head.Name)
 		return pathee{bad: true}
 	}
 
@@ -623,7 +623,8 @@ func (c *checker) structMemberPathee(segment, member ast.PathSegment, strct *typ
 	}
 	method, ok := origin.Methods[member.Name]
 	if !ok {
-		c.errorf(member.Offset, "%s has no associated function %s", origin.Name, member.Name)
+		c.errorHintf(member.Offset, didYouMean(member.Name, associatedNames(origin)),
+			"%s has no associated function %s", origin.Name, member.Name)
 		return pathee{bad: true}
 	}
 
@@ -664,7 +665,8 @@ func (c *checker) enumMemberPathee(segment, member ast.PathSegment, enum *types.
 		return p
 	}
 
-	c.errorf(member.Offset, "%s has no variant %s", origin.Name, member.Name)
+	c.errorHintf(member.Offset, didYouMean(member.Name, variantNames(origin)),
+		"%s has no variant %s", origin.Name, member.Name)
 	return pathee{bad: true}
 }
 
