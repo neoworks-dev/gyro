@@ -772,6 +772,43 @@ ambiguities surface at retrofit time, which is the expensive time.
 so tests diff IR as text; the binary encoding comes later. Same road
 LLVM (.ll) and WASM (.wat) took.
 
+### Expanded names are quoted, not mangled *(new)*
+
+**Status: decided.** Monomorphization and module qualification produce
+one METALS function per instantiation, and its name is the source name:
+`@"Pair<i32>::sum"`, `@"list/util::helper"`. A name after a sigil may be
+a quoted string; plain names stay bare words. Rejected dot-mangling
+(nested generics become ambiguous) and opaque names with a debug table
+(kills the "text first, diffable" property).
+
+### Lowering emits one whole-program module *(new)*
+
+**Status: decided.** The Gyro→METALS lowering collapses the loader graph
+into a single self-contained module: only `main` exported, imports only
+from `gyro:rt`. Exactly the input the native backend needs. One METALS
+module per Gyro module returns when the linking/loading model is
+designed; it is recorded as still open.
+
+### `opt.wrap` / `opt.unwrap` *(new)*
+
+**Status: decided.** The IR gained the two optional conversions,
+symmetric with `dyn.wrap`/`dyn.unwrap`: `opt.wrap` makes `opt<T>` from
+`T`, `opt.unwrap` extracts and aborts on null, null tests are `eq`/`ne`
+against `const.null`. Optionals do not nest, matching the language.
+Rejected encoding `T?` as `tuple<T, bool>` (needs a fabricated T and
+there are no zero values) and as a generated two-variant enum (drags a
+type declaration behind every optional).
+
+### The METALS evaluator is the lowering oracle *(new)*
+
+**Status: decided.** A tree-walking evaluator for verified METALS lands
+with the lowering pass; tests run every example as `gyro run` and as
+lower→verify→evaluate and diff the output. The same executable-spec
+discipline the interpreter gives the checker, and the reference the
+native backend will be diffed against. Rejected verifier+golden-text
+only: a lowering bug found later must be debugged through generated
+assembly.
+
 ## Still open
 
 | question | why it matters |
@@ -783,7 +820,7 @@ LLVM (.ll) and WASM (.wat) took.
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
-| METALS remainder | the format is sketched and verified (see above); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures — and the Gyro→METALS lowering pass is not started |
+| METALS remainder | the format is sketched and verified (see above); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |

@@ -322,6 +322,39 @@ fn @nullable(%x: i32) -> opt<i32> {
 `)
 }
 
+func TestOptOpsAndQuotedNames(t *testing.T) {
+	roundTrip(t, `
+module "gyro:test/optnames"
+
+type %"Pair<i32>" = record { first: i32, second: i32 }
+
+fn @"Pair<i32>::sum"(%self: %"Pair<i32>") -> i32 {
+  %a = field.get %self, 0
+  %b = field.get %self, 1
+  %r = iadd %a, %b
+  return %r
+}
+
+fn @"util::pick"(%o: opt<i32>) -> i32 {
+  %null = const.null opt<i32>
+  %missing = eq %o, %null
+  if %missing {
+    %zero = const.i32 0
+    return %zero
+  }
+  %v = opt.unwrap %o
+  return %v
+}
+
+fn @wrap(%x: i32) -> opt<i32> {
+  %pair = record %"Pair<i32>"(%x, %x)
+  %sum = call @"Pair<i32>::sum"(%pair)
+  %o = opt.wrap %sum
+  return %o
+}
+`)
+}
+
 // ---------------------------------------------------------------------------
 // Verifier
 // ---------------------------------------------------------------------------
@@ -498,6 +531,20 @@ func TestVerifierChecksDuplicateCases(t *testing.T) {
   return
 }
 `, "case 0 appears twice")
+}
+
+func TestVerifierChecksOptOps(t *testing.T) {
+	verifyError(t, header+`fn @f(%x: i32) {
+  %v = opt.unwrap %x
+  return
+}
+`, "opt.unwrap wants an opt")
+
+	verifyError(t, header+`fn @f(%o: opt<i32>) {
+  %oo = opt.wrap %o
+  return
+}
+`, "optionals do not nest")
 }
 
 func TestVerifierChecksDynOperands(t *testing.T) {

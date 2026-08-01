@@ -527,6 +527,27 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		defaultState := state.clone()
 		return fv.checkBody(i.Default, defaultState)
 
+	case *OptWrap:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if _, ok := typ.(*Opt); ok {
+			return fmt.Errorf("opt.wrap of %s: optionals do not nest", typ)
+		}
+		return fv.def(state, i.Dst, &Opt{Elem: typ})
+
+	case *OptUnwrap:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		optional, ok := typ.(*Opt)
+		if !ok {
+			return fmt.Errorf("opt.unwrap wants an opt<...>, not %s", typ)
+		}
+		return fv.def(state, i.Dst, optional.Elem)
+
 	case *DynWrap:
 		typ, err := fv.use(state, i.X)
 		if err != nil {

@@ -11,6 +11,7 @@ package metals
 import (
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ func (t *ChanOf) String() string  { return "chan<" + t.Elem.String() + ">" }
 func (t *FutureOf) String() string {
 	return "future<" + t.Result.String() + ">"
 }
-func (t *Named) String() string  { return "%" + t.Name }
+func (t *Named) String() string  { return "%" + QuoteName(t.Name) }
 func (t *Dyn) String() string    { return "dyn" }
 func (t *Handle) String() string { return "handle" }
 
@@ -298,4 +299,27 @@ func Scheme(moduleName string) string {
 		return moduleName[:index]
 	}
 	return ""
+}
+
+// QuoteName renders a name for printing after its @, % or $ sigil: bare
+// when it is a plain word, quoted when monomorphization or module
+// qualification put richer characters in it, as in @"Pair<i32>::sum".
+// Both spellings name the same namespace.
+func QuoteName(name string) string {
+	if isPlainName(name) {
+		return name
+	}
+	return strconv.Quote(name)
+}
+
+func isPlainName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, ch := range name {
+		if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '_' && ch != '.' {
+			return false
+		}
+	}
+	return true
 }

@@ -17,11 +17,11 @@ func Print(m *Module) string {
 		p.printf("import %s {", strconv.Quote(imp.Module))
 		p.indent++
 		for _, fn := range imp.Funcs {
-			prefix := "fn @"
+			prefix := "fn "
 			if fn.Sig.Async {
-				prefix = "async fn @"
+				prefix = "async fn "
 			}
-			p.line(prefix + fn.Name + sigSuffix(fn.Sig))
+			p.line(prefix + at(fn.Name) + sigSuffix(fn.Sig))
 		}
 		p.indent--
 		p.line("}")
@@ -36,7 +36,7 @@ func Print(m *Module) string {
 	}
 
 	for _, global := range m.Globals {
-		p.printf("global @%s: %s = %s", global.Name, global.Type, global.Value)
+		p.printf("global %s: %s = %s", at(global.Name), global.Type, global.Value)
 	}
 	if len(m.Globals) > 0 {
 		p.line("")
@@ -50,6 +50,11 @@ func Print(m *Module) string {
 	}
 	return p.out.String()
 }
+
+// reg, at and lbl render a name behind its sigil, quoting rich names.
+func reg(name string) string { return "%" + QuoteName(name) }
+func at(name string) string  { return "@" + QuoteName(name) }
+func lbl(name string) string { return "$" + QuoteName(name) }
 
 // sigSuffix renders "(A, B) -> R"; the async marker is the caller's.
 func sigSuffix(sig *FnType) string {
@@ -87,7 +92,7 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		for i, field := range decl.Record.Fields {
 			fields[i] = field.Name + ": " + field.Type.String()
 		}
-		p.printf("type %%%s = record { %s }", decl.Name, strings.Join(fields, ", "))
+		p.printf("type %s = record { %s }", reg(decl.Name), strings.Join(fields, ", "))
 		return
 	}
 	variants := make([]string, len(decl.Enum.Variants))
@@ -102,7 +107,7 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		}
 		variants[i] = text
 	}
-	p.printf("type %%%s = enum { %s }", decl.Name, strings.Join(variants, ", "))
+	p.printf("type %s = enum { %s }", reg(decl.Name), strings.Join(variants, ", "))
 }
 
 func (p *printer) function(fn *Func) {
@@ -115,9 +120,9 @@ func (p *printer) function(fn *Func) {
 	}
 	params := make([]string, len(fn.Params))
 	for i, param := range fn.Params {
-		params[i] = "%" + param.Name + ": " + param.Type.String()
+		params[i] = reg(param.Name) + ": " + param.Type.String()
 	}
-	header += "fn @" + fn.Name + "(" + strings.Join(params, ", ") + ")"
+	header += "fn " + at(fn.Name) + "(" + strings.Join(params, ", ") + ")"
 	if fn.Result != nil {
 		header += " -> " + fn.Result.String()
 	}
@@ -137,7 +142,7 @@ func (p *printer) body(body []Instr) {
 func regs(names []string) string {
 	parts := make([]string, len(names))
 	for i, name := range names {
-		parts[i] = "%" + name
+		parts[i] = reg(name)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -146,88 +151,88 @@ func (p *printer) instr(instr Instr) {
 	switch i := instr.(type) {
 	case *Const:
 		if i.Null {
-			p.printf("%%%s = const.null %s", i.Dst, i.Type)
+			p.printf("%s = const.null %s", reg(i.Dst), i.Type)
 			return
 		}
-		p.printf("%%%s = const.%s %s", i.Dst, i.Type, i.Value)
+		p.printf("%s = const.%s %s", reg(i.Dst), i.Type, i.Value)
 	case *Copy:
-		p.printf("%%%s = copy %%%s", i.Dst, i.X)
+		p.printf("%s = copy %s", reg(i.Dst), reg(i.X))
 	case *Bin:
-		p.printf("%%%s = %s %%%s, %%%s", i.Dst, i.Op, i.A, i.B)
+		p.printf("%s = %s %s, %s", reg(i.Dst), i.Op, reg(i.A), reg(i.B))
 	case *Un:
-		p.printf("%%%s = %s %%%s", i.Dst, i.Op, i.X)
+		p.printf("%s = %s %s", reg(i.Dst), i.Op, reg(i.X))
 	case *Conv:
-		p.printf("%%%s = conv %%%s -> %s", i.Dst, i.X, i.To)
+		p.printf("%s = conv %s -> %s", reg(i.Dst), reg(i.X), i.To)
 	case *Slot:
-		p.printf("%%%s = slot %s", i.Dst, i.Type)
+		p.printf("%s = slot %s", reg(i.Dst), i.Type)
 	case *New:
-		p.printf("%%%s = new %s", i.Dst, i.Type)
+		p.printf("%s = new %s", reg(i.Dst), i.Type)
 	case *Free:
-		p.printf("free %%%s", i.X)
+		p.printf("free %s", reg(i.X))
 	case *Load:
-		p.printf("%%%s = load %%%s", i.Dst, i.Ptr)
+		p.printf("%s = load %s", reg(i.Dst), reg(i.Ptr))
 	case *Store:
-		p.printf("store %%%s, %%%s", i.Ptr, i.Val)
+		p.printf("store %s, %s", reg(i.Ptr), reg(i.Val))
 	case *FieldPtr:
-		p.printf("%%%s = field.ptr %%%s, %d", i.Dst, i.Ptr, i.Index)
+		p.printf("%s = field.ptr %s, %d", reg(i.Dst), reg(i.Ptr), i.Index)
 	case *MakeRecord:
-		p.printf("%%%s = record %%%s(%s)", i.Dst, i.TypeName, regs(i.Args))
+		p.printf("%s = record %s(%s)", reg(i.Dst), reg(i.TypeName), regs(i.Args))
 	case *FieldGet:
-		p.printf("%%%s = field.get %%%s, %d", i.Dst, i.X, i.Index)
+		p.printf("%s = field.get %s, %d", reg(i.Dst), reg(i.X), i.Index)
 	case *FieldSet:
-		p.printf("field.set %%%s, %d, %%%s", i.X, i.Index, i.Val)
+		p.printf("field.set %s, %d, %s", reg(i.X), i.Index, reg(i.Val))
 	case *MakeVariant:
-		text := fmt.Sprintf("%%%s = variant %%%s, %d", i.Dst, i.TypeName, i.Variant)
+		text := fmt.Sprintf("%s = variant %s, %d", reg(i.Dst), reg(i.TypeName), i.Variant)
 		if len(i.Args) > 0 {
 			text += "(" + regs(i.Args) + ")"
 		}
 		p.line(text)
 	case *VariantTag:
-		p.printf("%%%s = variant.tag %%%s", i.Dst, i.X)
+		p.printf("%s = variant.tag %s", reg(i.Dst), reg(i.X))
 	case *VariantField:
-		p.printf("%%%s = variant.field %%%s, %d, %d", i.Dst, i.X, i.Variant, i.Index)
+		p.printf("%s = variant.field %s, %d, %d", reg(i.Dst), reg(i.X), i.Variant, i.Index)
 	case *MakeTuple:
-		p.printf("%%%s = tuple(%s)", i.Dst, regs(i.Args))
+		p.printf("%s = tuple(%s)", reg(i.Dst), regs(i.Args))
 	case *TupleGet:
-		p.printf("%%%s = tuple.get %%%s, %d", i.Dst, i.X, i.Index)
+		p.printf("%s = tuple.get %s, %d", reg(i.Dst), reg(i.X), i.Index)
 	case *MakeArray:
-		p.printf("%%%s = array<%s>(%s)", i.Dst, i.Elem, regs(i.Args))
+		p.printf("%s = array<%s>(%s)", reg(i.Dst), i.Elem, regs(i.Args))
 	case *Slice:
-		p.printf("%%%s = slice.of %%%s", i.Dst, i.X)
+		p.printf("%s = slice.of %s", reg(i.Dst), reg(i.X))
 	case *IndexGet:
-		p.printf("%%%s = index.get %%%s, %%%s", i.Dst, i.X, i.Index)
+		p.printf("%s = index.get %s, %s", reg(i.Dst), reg(i.X), reg(i.Index))
 	case *IndexSet:
-		p.printf("index.set %%%s, %%%s, %%%s", i.X, i.Index, i.Val)
+		p.printf("index.set %s, %s, %s", reg(i.X), reg(i.Index), reg(i.Val))
 	case *Len:
-		p.printf("%%%s = len %%%s", i.Dst, i.X)
+		p.printf("%s = len %s", reg(i.Dst), reg(i.X))
 	case *StrConcat:
-		p.printf("%%%s = str.concat %%%s, %%%s", i.Dst, i.A, i.B)
+		p.printf("%s = str.concat %s, %s", reg(i.Dst), reg(i.A), reg(i.B))
 	case *Call:
 		if i.Dst == "" {
-			p.printf("call @%s(%s)", i.Callee, regs(i.Args))
+			p.printf("call %s(%s)", at(i.Callee), regs(i.Args))
 			return
 		}
-		p.printf("%%%s = call @%s(%s)", i.Dst, i.Callee, regs(i.Args))
+		p.printf("%s = call %s(%s)", reg(i.Dst), at(i.Callee), regs(i.Args))
 	case *FnRef:
-		p.printf("%%%s = fn.ref @%s", i.Dst, i.Callee)
+		p.printf("%s = fn.ref %s", reg(i.Dst), at(i.Callee))
 	case *MakeClosure:
-		p.printf("%%%s = closure @%s, %%%s", i.Dst, i.Callee, i.Env)
+		p.printf("%s = closure %s, %s", reg(i.Dst), at(i.Callee), reg(i.Env))
 	case *CallIndirect:
 		if i.Dst == "" {
-			p.printf("call.indirect %%%s(%s)", i.Fn, regs(i.Args))
+			p.printf("call.indirect %s(%s)", reg(i.Fn), regs(i.Args))
 			return
 		}
-		p.printf("%%%s = call.indirect %%%s(%s)", i.Dst, i.Fn, regs(i.Args))
+		p.printf("%s = call.indirect %s(%s)", reg(i.Dst), reg(i.Fn), regs(i.Args))
 	case *Return:
 		if i.Val == "" {
 			p.line("return")
 			return
 		}
-		p.printf("return %%%s", i.Val)
+		p.printf("return %s", reg(i.Val))
 	case *Abort:
 		p.printf("abort %s", strconv.Quote(i.Message))
 	case *If:
-		p.printf("if %%%s {", i.Cond)
+		p.printf("if %s {", reg(i.Cond))
 		p.nested(i.Then)
 		if len(i.Else) > 0 {
 			p.line("} else {")
@@ -235,19 +240,19 @@ func (p *printer) instr(instr Instr) {
 		}
 		p.line("}")
 	case *Block:
-		p.printf("block $%s {", i.Label)
+		p.printf("block %s {", lbl(i.Label))
 		p.nested(i.Body)
 		p.line("}")
 	case *Loop:
-		p.printf("loop $%s {", i.Label)
+		p.printf("loop %s {", lbl(i.Label))
 		p.nested(i.Body)
 		p.line("}")
 	case *Br:
-		p.printf("br $%s", i.Label)
+		p.printf("br %s", lbl(i.Label))
 	case *BrIf:
-		p.printf("br_if %%%s, $%s", i.Cond, i.Label)
+		p.printf("br_if %s, %s", reg(i.Cond), lbl(i.Label))
 	case *Switch:
-		p.printf("switch %%%s {", i.X)
+		p.printf("switch %s {", reg(i.X))
 		p.indent++
 		for _, c := range i.Cases {
 			p.printf("case %d {", c.Value)
@@ -263,26 +268,26 @@ func (p *printer) instr(instr Instr) {
 		p.line("}")
 	case *ChanNew:
 		if i.Cap == "" {
-			p.printf("%%%s = chan.new<%s>", i.Dst, i.Elem)
+			p.printf("%s = chan.new<%s>", reg(i.Dst), i.Elem)
 			return
 		}
-		p.printf("%%%s = chan.new<%s> %%%s", i.Dst, i.Elem, i.Cap)
+		p.printf("%s = chan.new<%s> %s", reg(i.Dst), i.Elem, reg(i.Cap))
 	case *Send:
-		p.printf("send %%%s, %%%s", i.Ch, i.Val)
+		p.printf("send %s, %s", reg(i.Ch), reg(i.Val))
 	case *Recv:
-		p.printf("%%%s = recv %%%s", i.Dst, i.Ch)
+		p.printf("%s = recv %s", reg(i.Dst), reg(i.Ch))
 	case *ChanClose:
-		p.printf("chan.close %%%s", i.Ch)
+		p.printf("chan.close %s", reg(i.Ch))
 	case *Await:
-		p.printf("%%%s = await %%%s", i.Dst, i.X)
+		p.printf("%s = await %s", reg(i.Dst), reg(i.X))
 	case *Select:
 		p.line("select {")
 		p.indent++
 		for _, arm := range i.Arms {
 			if arm.Send {
-				p.printf("send %%%s, %%%s {", arm.Ch, arm.Val)
+				p.printf("send %s, %s {", reg(arm.Ch), reg(arm.Val))
 			} else {
-				p.printf("recv %%%s = %%%s {", arm.Dst, arm.Ch)
+				p.printf("recv %s = %s {", reg(arm.Dst), reg(arm.Ch))
 			}
 			p.nested(arm.Body)
 			p.line("}")
@@ -294,16 +299,20 @@ func (p *printer) instr(instr Instr) {
 		}
 		p.indent--
 		p.line("}")
+	case *OptWrap:
+		p.printf("%s = opt.wrap %s", reg(i.Dst), reg(i.X))
+	case *OptUnwrap:
+		p.printf("%s = opt.unwrap %s", reg(i.Dst), reg(i.X))
 	case *DynWrap:
-		p.printf("%%%s = dyn.wrap %%%s", i.Dst, i.X)
+		p.printf("%s = dyn.wrap %s", reg(i.Dst), reg(i.X))
 	case *DynUnwrap:
-		p.printf("%%%s = dyn.unwrap %%%s -> %s", i.Dst, i.X, i.To)
+		p.printf("%s = dyn.unwrap %s -> %s", reg(i.Dst), reg(i.X), i.To)
 	case *DynCall:
-		p.printf("%%%s = dyn.call %%%s(%s)", i.Dst, i.X, regs(i.Args))
+		p.printf("%s = dyn.call %s(%s)", reg(i.Dst), reg(i.X), regs(i.Args))
 	case *DynGet:
-		p.printf("%%%s = dyn.get %%%s, %s", i.Dst, i.X, strconv.Quote(i.Name))
+		p.printf("%s = dyn.get %s, %s", reg(i.Dst), reg(i.X), strconv.Quote(i.Name))
 	case *DynSet:
-		p.printf("dyn.set %%%s, %s, %%%s", i.X, strconv.Quote(i.Name), i.Val)
+		p.printf("dyn.set %s, %s, %s", reg(i.X), strconv.Quote(i.Name), reg(i.Val))
 	}
 }
 

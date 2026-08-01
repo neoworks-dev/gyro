@@ -114,7 +114,8 @@ func (p *parser) dstInstr() (Instr, error) {
 	}
 
 	switch op.text {
-	case "copy", "load", "len", "slice.of", "variant.tag", "recv", "await", "dyn.wrap":
+	case "copy", "load", "len", "slice.of", "variant.tag", "recv", "await",
+		"opt.wrap", "opt.unwrap", "dyn.wrap":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -127,6 +128,8 @@ func (p *parser) dstInstr() (Instr, error) {
 			"variant.tag": &VariantTag{Dst: dst, X: x},
 			"recv":        &Recv{Dst: dst, Ch: x},
 			"await":       &Await{Dst: dst, X: x},
+			"opt.wrap":    &OptWrap{Dst: dst, X: x},
+			"opt.unwrap":  &OptUnwrap{Dst: dst, X: x},
 			"dyn.wrap":    &DynWrap{Dst: dst, X: x},
 		}
 		return p.line(single[op.text], nil)

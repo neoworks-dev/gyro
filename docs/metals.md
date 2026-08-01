@@ -75,6 +75,11 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 - `@name` is a function or global; `%name` is a register or a named type;
   `$name` is a control-flow label. The three sigils keep the namespaces
   from colliding.
+- A name after a sigil is a bare word, or a quoted string when it carries
+  characters a word cannot: monomorphization and module qualification
+  produce names like `@"Pair<i32>::sum"`, `@"list/util::helper"` and
+  `%"Pair<i32>"`. Both spellings name the same namespace; the printer
+  quotes exactly when it must.
 - Globals are constants (literals only). A front end lowers module-level
   initialization into an ordinary function it arranges to run first.
 - Module names carry the producing language as a scheme prefix
@@ -179,6 +184,18 @@ index.set %s, %i, %v
 
 Derived printing is not an IR concept: the front end generates an
 ordinary `-> str` function per type and calls it.
+
+### Optionals
+
+```metals
+%o = opt.wrap %v            ; T -> opt<T>; optionals do not nest
+%v = opt.unwrap %o          ; opt<T> -> T, aborts on null
+```
+
+A null test is `eq`/`ne` against a `const.null` of the same optional
+type. A front end whose checker proves a value non-null (Gyro's
+narrowing) still emits `opt.unwrap`; the abort is that guarantee made
+explicit, in the same trapping style as `idiv` and `index.get`.
 
 ### Calls
 

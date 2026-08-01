@@ -178,6 +178,12 @@ type (
 		Default []Instr
 	}
 
+	// OptWrap is `%o = opt.wrap %v`: T -> opt<T>. Optionals do not nest.
+	OptWrap struct{ Dst, X string }
+	// OptUnwrap is `%v = opt.unwrap %o`: opt<T> -> T, aborts on null.
+	// Null tests are eq/ne against a const.null of the same optional type.
+	OptUnwrap struct{ Dst, X string }
+
 	DynWrap   struct{ Dst, X string }
 	DynUnwrap struct {
 		Dst, X string
@@ -249,6 +255,8 @@ func (*Recv) isInstr()         {}
 func (*ChanClose) isInstr()    {}
 func (*Await) isInstr()        {}
 func (*Select) isInstr()       {}
+func (*OptWrap) isInstr()      {}
+func (*OptUnwrap) isInstr()    {}
 func (*DynWrap) isInstr()      {}
 func (*DynUnwrap) isInstr()    {}
 func (*DynCall) isInstr()      {}

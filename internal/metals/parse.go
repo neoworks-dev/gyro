@@ -96,9 +96,14 @@ func (s *scanner) scan() token {
 		return token{kind: tNewline}
 	case ch == '%' || ch == '@' || ch == '$':
 		s.pos++
-		name := s.word()
 		kinds := map[byte]tokKind{'%': tReg, '@': tGlobal, '$': tLabel}
-		return token{kind: kinds[ch], text: name}
+		// A quoted name carries characters a bare word cannot:
+		// @"Pair<i32>::sum".
+		if s.pos < len(s.src) && s.src[s.pos] == '"' {
+			str := s.scanString()
+			return token{kind: kinds[ch], text: str.text}
+		}
+		return token{kind: kinds[ch], text: s.word()}
 	case ch == '"':
 		return s.scanString()
 	case ch == '\'':
