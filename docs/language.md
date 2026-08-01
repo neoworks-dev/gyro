@@ -24,8 +24,14 @@ declared to satisfy a contract; having the right methods is the whole test.
 
 Gyro has no statement-terminating semicolons in normal source. The lexer
 inserts a terminator at a newline when the preceding token could end a
-statement — an identifier, a literal, `)`, `]`, `}`, or one of `return`,
-`break`, `continue`, `self`, `true`, `false`, `null`, `_`.
+statement — an identifier, a literal, `)`, `]`, `}`, `>`, `?`, or one of
+`return`, `break`, `continue`, `self`, `true`, `false`, `null`, `_`.
+
+`>` and `?` are in the set because a type can end a line in a
+signature-only declaration: `fn Array<T>::new(): Array<T>` and
+`fn find(): *Node?`. The consequence is that a trailing `>` cannot split
+an expression; break before the operator instead, like the continuation
+rule below already prefers.
 
 A newline does *not* terminate the statement when the next line begins with
 `.`, `,`, `)`, `]`, or a binary operator that cannot begin a statement —
@@ -740,7 +746,14 @@ commas) all error with pointers at the current spelling.
 Sema so far is **name resolution**: module scope, imports, lexical scoping
 with same-scope redeclaration errors, `self` only inside methods, method
 owners must exist, local enum variants in paths, the fixed decorator set,
-and no universe scope — an unresolved name is an error. Still to come:
+and no universe scope — an unresolved name is an error.
+
+The **module loader** is real: `gyro check` loads the whole import graph,
+`./x` resolves beside the importing file, `@gyro/...` comes from
+declaration-only stub files bundled into the compiler, cycles are rejected
+with a trace, and an import of a name the target module does not export is
+an error. Bare package names error until the Stack package manager exists.
+Still to come:
 
 | feature | state |
 | --- | --- |
@@ -755,9 +768,9 @@ and no universe scope — an unresolved name is an error. Still to come:
 | struct-literal field visibility | needs cross-module sema |
 | leak-analysis warnings | needs escape analysis |
 | effect rows | parsed, unchecked |
-| module resolution | specified, no loader; imports bind names opaquely |
+| module resolution | done at the name level; `.stack/` packages await the Stack package manager |
 | overflow, bounds and cast panics | no checks emitted |
-| `Array<T>` `String` `Mutex` `spawn` | stdlib, no stdlib yet |
+| `Array<T>` `String` `Mutex` `spawn` | declaration stubs bundled; no implementations, no runtime |
 | race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |

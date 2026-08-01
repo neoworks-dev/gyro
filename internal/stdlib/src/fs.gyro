@@ -1,0 +1,7 @@
+// @gyro/fs — declarations only; the runtime supplies the bodies.
+
+export struct File {}
+
+export fn open(path: string): (File, error?)
+export fn read_all(file: File): (string, error?)
+export fn File::close(*self)

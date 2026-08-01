@@ -8,6 +8,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/lexer"
+	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/parser"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/token"
@@ -21,7 +22,7 @@ const usage = `gyro - the Gyro compiler
 usage:
   gyro ast <file.gyro>      parse a file and print its syntax tree
   gyro tokens <file.gyro>   print the token stream, terminators included
-  gyro check <file.gyro>    parse and name-check a file, reporting diagnostics
+  gyro check <file.gyro>    load, parse and name-check a program, reporting diagnostics
   gyro version              print the compiler version
 `
 
@@ -79,23 +80,27 @@ func runAST(args []string) int {
 }
 
 func runCheck(args []string) int {
-	file, ok := load(args)
-	if !ok {
+	if len(args) != 1 {
+		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
 
 	var bag diag.Bag
-	tree := parser.ParseFile(file, &bag)
+	program, err := loader.Load(args[0], &bag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 2
+	}
 
 	// Name resolution on a broken parse would double-report; the syntax
 	// errors are the ones worth fixing first.
 	if !bag.HasErrors() {
-		sema.Check(tree, file, &bag)
+		sema.CheckProgram(program, &bag)
 	}
 
 	code := report(&bag)
 	if code == 0 && bag.Len() == 0 {
-		fmt.Printf("%s: ok\n", file.Name)
+		fmt.Printf("%s: ok\n", program.Root.File.Name)
 	}
 	return code
 }

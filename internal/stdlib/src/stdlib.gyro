@@ -1,0 +1,35 @@
+// @gyro/stdlib — declarations only; the runtime supplies the bodies.
+
+export fn print<T>(value: T)
+export fn println<T>(value: T)
+export fn eprintln<T>(value: T)
+
+// spawn starts a thread. The closure carries the arguments across; join by
+// receiving on a channel the closure captures.
+export fn spawn(task: fn())
+
+// Array<T> owns its elements, in contrast to the borrowed view T[].
+export struct Array<T> {}
+
+export fn Array<T>::new(): Array<T>
+export fn Array<T>::with_capacity(capacity: usize): Array<T>
+export fn Array<T>::push(*self, value: T)
+export fn Array<T>::pop(*self): (T, bool)
+export fn Array<T>::get(self, index: usize): T
+export fn Array<T>::set(*self, index: usize, value: T)
+export fn Array<T>::len(self): usize
+export fn Array<T>::view(self): T[]
+export fn Array<T>::free(*self)
+
+// Mutex<T> owns the value it guards; lock() returns the guard directly.
+// There is no poisoning: a panic aborts the whole process, so no thread
+// ever observes a lock its holder abandoned.
+export struct Mutex<T> {}
+
+export fn Mutex<T>::new(value: T): Mutex<T>
+export fn Mutex<T>::lock(*self): MutexGuard<T>
+
+export struct MutexGuard<T> {}
+
+export fn MutexGuard<T>::get(self): T
+export fn MutexGuard<T>::set(*self, value: T)

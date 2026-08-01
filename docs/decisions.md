@@ -61,6 +61,11 @@ trailing-operator style.
 `-`, `*` and `&` are excluded from the leading set because a statement can
 begin with them (`*p = 5`, `&x`, `-x`); they must trail the line.
 
+`>` and `?` end statements *(new)*: the stdlib's declaration-only stubs
+put types like `Array<T>` and `*Node?` at the end of a line, which no
+other closing token follows. The trade-off is that `>` cannot trail a
+split comparison — leading-operator style covers that case.
+
 Rejected C-style `if (x) { ... };`. Consequence: a struct literal cannot
 start at the top level of a condition, since the brace opens the body. Same
 resolution as Rust.
@@ -186,11 +191,24 @@ decorator is an instruction to the compiler, not a name in the program.
 
 ### One file is one module
 
-**Status: planned.** `import { x } from "./util"` loads `util.gyro` beside
+**Status: done.** `import { x } from "./util"` loads `util.gyro` beside
 the importing file. Circular imports are rejected with a cycle trace.
 
 Resolution: `@gyro/...` is the bundled standard library, `./x` and `../x`
-are relative files, a bare name is a package under `.stack/`.
+are relative files, a bare name is a package under `.stack/`. The loader
+implements the first two; bare names are an error until the Stack package
+manager decides the on-disk layout. Two specifiers that reach the same file
+load one module, and re-export paths (`export { a } from "./m"`) are module
+dependencies like any import.
+
+The standard library ships inside the compiler as declaration-only `.gyro`
+files — real signatures, no bodies — so name resolution and later type
+checking see honest interfaces before any runtime exists.
+
+Specifier resolution sits behind a small interface in the loader. That is
+deliberate: the long-term plan is a shared IR (**METALS**) that other
+languages compile into, with `import` reaching across languages; a foreign
+resolver has to be able to slot in without touching sema.
 
 Rejected directory-as-module (Go), which would make `export`
 directory-scoped while the import syntax stays file-shaped.
@@ -625,7 +643,8 @@ readings never collide.
 | `@comptime` evaluation subset | which operations may run at compile time |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
+| METALS shared IR | the cross-language target; other languages compile into it and `import` reaches across them (js, python, ...) — nothing is designed yet |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
-| Stack package manager | resolution of bare import names depends on it |
+| Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |

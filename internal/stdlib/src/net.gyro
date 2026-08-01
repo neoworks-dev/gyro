@@ -1,0 +1,3 @@
+// @gyro/net — declarations only; the runtime supplies the bodies.
+
+export async fn get(url: string): (string, error?)

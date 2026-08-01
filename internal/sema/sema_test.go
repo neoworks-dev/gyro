@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gyro-lang/gyro/internal/diag"
+	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/parser"
 )
 
@@ -142,6 +143,134 @@ func TestBuiltinTypesNeedNoImport(t *testing.T) {
 	checkError(t, "fn t(a: i32<i8>) {\n}\n", "takes no type arguments")
 }
 
+// checkProgram writes files into a temp dir, loads the program rooted at
+// root and checks it, returning the diagnostics bag.
+func checkProgram(t *testing.T, files map[string]string, root string) *diag.Bag {
+	t.Helper()
+
+	dir := t.TempDir()
+	for name, source := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var bag diag.Bag
+	program, err := loader.Load(filepath.Join(dir, root), &bag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bag.HasErrors() {
+		t.Fatalf("program did not load cleanly: %v", bag.Items())
+	}
+
+	CheckProgram(program, &bag)
+	return &bag
+}
+
+func programOK(t *testing.T, files map[string]string, root string) {
+	t.Helper()
+	bag := checkProgram(t, files, root)
+	for _, item := range bag.Items() {
+		t.Errorf("unexpected diagnostic: %s", item)
+	}
+}
+
+func programError(t *testing.T, files map[string]string, root, want string) {
+	t.Helper()
+	bag := checkProgram(t, files, root)
+	if !bag.HasErrors() {
+		t.Fatalf("expected an error containing %q, got none", want)
+	}
+	for _, item := range bag.Items() {
+		if strings.Contains(item.Message, want) {
+			return
+		}
+	}
+	t.Errorf("no diagnostic contains %q; got: %v", want, bag.Items())
+}
+
+const utilModule = "export fn helper() {\n}\n\n" +
+	"export struct Shape {\n}\n\n" +
+	"fn hidden() {\n}\n"
+
+func TestImportsAreValidatedAgainstExports(t *testing.T) {
+	programOK(t, map[string]string{
+		"main.gyro": "import { helper, Shape } from \"./util\"\n\nfn t(s: Shape) {\n  helper()\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro")
+
+	programError(t, map[string]string{
+		"main.gyro": "import { hidden } from \"./util\"\n",
+		"util.gyro": utilModule,
+	}, "main.gyro", "does not export hidden")
+}
+
+func TestImportedNamesCarryTheirKind(t *testing.T) {
+	programError(t, map[string]string{
+		"main.gyro": "import { helper } from \"./util\"\n\nfn t(x: helper) {\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro", "helper is a value, not a type")
+}
+
+func TestImportAliasesBindTheAlias(t *testing.T) {
+	programOK(t, map[string]string{
+		"main.gyro": "import { helper as run } from \"./util\"\n\nfn t() {\n  run()\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro")
+}
+
+func TestNamespaceMembersAreChecked(t *testing.T) {
+	programOK(t, map[string]string{
+		"main.gyro": "import * as util from \"./util\"\n\nfn t(s: util::Shape) {\n  util::helper()\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro")
+
+	programError(t, map[string]string{
+		"main.gyro": "import * as util from \"./util\"\n\nfn t() {\n  util::nope()\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro", "util does not export nope")
+
+	programError(t, map[string]string{
+		"main.gyro": "import * as util from \"./util\"\n\nfn t(x: util::helper) {\n}\n",
+		"util.gyro": utilModule,
+	}, "main.gyro", "util::helper is a value, not a type")
+}
+
+func TestReexportsFlowThrough(t *testing.T) {
+	programOK(t, map[string]string{
+		"main.gyro":   "import { helper } from \"./facade\"\n\nfn t() {\n  helper()\n}\n",
+		"facade.gyro": "export { helper } from \"./util\"\n",
+		"util.gyro":   utilModule,
+	}, "main.gyro")
+
+	programOK(t, map[string]string{
+		"main.gyro":   "import { Shape } from \"./facade\"\n\nfn t(s: Shape) {\n}\n",
+		"facade.gyro": "export * from \"./util\"\n",
+		"util.gyro":   utilModule,
+	}, "main.gyro")
+
+	programError(t, map[string]string{
+		"main.gyro":   "import \"./facade\"\n",
+		"facade.gyro": "export { ghost } from \"./util\"\n",
+		"util.gyro":   utilModule,
+	}, "main.gyro", "does not export ghost")
+}
+
+func TestImportedEnumVariantsAreChecked(t *testing.T) {
+	shapes := "export enum Kind {\n  Circle(f64),\n  Point,\n}\n"
+
+	programOK(t, map[string]string{
+		"main.gyro":   "import { Kind } from \"./shapes\"\n\nfn t(): Kind {\n  return Kind::Point\n}\n",
+		"shapes.gyro": shapes,
+	}, "main.gyro")
+
+	programError(t, map[string]string{
+		"main.gyro":   "import { Kind } from \"./shapes\"\n\nfn t(): Kind {\n  return Kind::Square\n}\n",
+		"shapes.gyro": shapes,
+	}, "main.gyro", "Kind has no variant Square")
+}
+
 func TestExamplesResolve(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.gyro"))
 	if err != nil {
@@ -153,15 +282,14 @@ func TestExamplesResolve(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
-			source, err := os.ReadFile(path)
+			var bag diag.Bag
+			program, err := loader.Load(path, &bag)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			file := diag.NewFile(path, string(source))
-			var bag diag.Bag
-			tree := parser.ParseFile(file, &bag)
-			Check(tree, file, &bag)
+			if !bag.HasErrors() {
+				CheckProgram(program, &bag)
+			}
 
 			for _, item := range bag.Items() {
 				t.Errorf("%s", item)

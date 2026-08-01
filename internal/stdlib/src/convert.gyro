@@ -1,0 +1,4 @@
+// @gyro/convert — declarations only; the runtime supplies the bodies.
+
+export fn to_i32(text: string): (i32, error?)
+export fn to_f64(text: string): (f64, error?)

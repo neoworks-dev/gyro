@@ -14,6 +14,7 @@ package sema
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
+	"github.com/gyro-lang/gyro/internal/loader"
 )
 
 // builtinTypes are the type names that are part of the formal syntax. They
@@ -52,6 +53,20 @@ type symbol struct {
 	kind   symbolKind
 	offset int
 	decl   ast.Node
+	// exports holds the target module's export set for a namespace import,
+	// when the loader supplied one.
+	exports *Exports
+}
+
+// Exports is what one module offers its importers: each exported name with
+// the kind of thing it is and the declaration behind it.
+type Exports struct {
+	names map[string]exportEntry
+}
+
+type exportEntry struct {
+	kind symbolKind
+	decl ast.Node
 }
 
 type scope struct {
@@ -79,8 +94,14 @@ type checker struct {
 	module *scope
 	scope  *scope
 
-	// enums maps an enum's name to its declaration, so qualified variant
-	// patterns and paths can be validated.
+	// imports maps an import specifier to the exports of the module it
+	// resolved to. It is nil when checking a single file without a loader,
+	// and an entry is nil when that dependency failed to load.
+	imports map[string]*Exports
+
+	// enums maps an enum's local name to its declaration, so qualified
+	// variant patterns and paths can be validated. Imported enums appear
+	// under their bound name.
 	enums map[string]*ast.EnumDecl
 
 	// inMethod reports whether the innermost function declaration carries a
@@ -89,18 +110,44 @@ type checker struct {
 	inMethod bool
 }
 
-// Check resolves every name in the file and reports what fails to resolve.
-func Check(tree *ast.File, file *diag.File, bag *diag.Bag) {
+func newChecker(file *diag.File, bag *diag.Bag, imports map[string]*Exports) *checker {
 	c := &checker{
-		file:   file,
-		bag:    bag,
-		module: newScope(nil),
-		enums:  map[string]*ast.EnumDecl{},
+		file:    file,
+		bag:     bag,
+		module:  newScope(nil),
+		imports: imports,
+		enums:   map[string]*ast.EnumDecl{},
 	}
 	c.scope = c.module
+	return c
+}
 
+// Check resolves every name in one file and reports what fails to resolve.
+// Without a loader, imports bind opaquely; use CheckProgram to validate
+// them against what the imported modules export.
+func Check(tree *ast.File, file *diag.File, bag *diag.Bag) {
+	newChecker(file, bag, nil).run(tree)
+}
+
+// CheckProgram checks every module of a loaded program in dependency
+// order, so each module's imports are validated against what its
+// dependencies actually export.
+func CheckProgram(program *loader.Program, bag *diag.Bag) {
+	computed := map[*loader.Module]*Exports{}
+	for _, module := range program.Modules {
+		imports := map[string]*Exports{}
+		for specifier, dependency := range module.Deps {
+			imports[specifier] = computed[dependency]
+		}
+		computed[module] = newChecker(module.File, bag, imports).run(module.Tree)
+	}
+}
+
+func (c *checker) run(tree *ast.File) *Exports {
 	c.collectModule(tree)
+	exports := c.collectExports(tree)
 	c.checkDecls(tree)
+	return exports
 }
 
 func (c *checker) errorf(offset int, format string, args ...any) {
@@ -110,16 +157,20 @@ func (c *checker) errorf(offset int, format string, args ...any) {
 // declare adds a name to the current scope. Shadowing an outer scope is
 // fine; redeclaring within the same scope is not.
 func (c *checker) declare(name string, offset int, kind symbolKind, decl ast.Node) {
+	c.declareSymbol(name, &symbol{kind: kind, offset: offset, decl: decl})
+}
+
+func (c *checker) declareSymbol(name string, sym *symbol) {
 	if name == "" || name == "_" {
 		return
 	}
 	if existing, ok := c.scope.names[name]; ok {
 		previous := c.file.Position(existing.offset)
-		c.errorf(offset, "%s is already declared in this scope (at %d:%d)",
+		c.errorf(sym.offset, "%s is already declared in this scope (at %d:%d)",
 			name, previous.Line, previous.Column)
 		return
 	}
-	c.scope.names[name] = &symbol{kind: kind, offset: offset, decl: decl}
+	c.scope.names[name] = sym
 }
 
 // pushScope enters a nested scope for the duration of fn.
@@ -162,15 +213,118 @@ func (c *checker) collectModule(tree *ast.File) {
 }
 
 func (c *checker) collectImport(imp *ast.Import) {
+	exports := c.imports[imp.Path]
+
 	if imp.Wildcard != "" {
-		c.declare(imp.Wildcard, imp.Offset, symNamespace, imp)
+		c.declareSymbol(imp.Wildcard, &symbol{
+			kind:    symNamespace,
+			offset:  imp.Offset,
+			decl:    imp,
+			exports: exports,
+		})
 	}
+
 	for _, name := range imp.Names {
 		bound := name.Name
 		if name.Alias != "" {
 			bound = name.Alias
 		}
-		c.declare(bound, name.Offset, symImport, imp)
+
+		kind, decl := symImport, ast.Node(imp)
+		if exports != nil {
+			entry, ok := exports.names[name.Name]
+			if !ok {
+				c.errorf(name.Offset, "%q does not export %s", imp.Path, name.Name)
+			} else {
+				kind, decl = entry.kind, entry.decl
+			}
+		}
+
+		c.declare(bound, name.Offset, kind, decl)
+		if enum, ok := decl.(*ast.EnumDecl); ok {
+			c.enums[bound] = enum
+		}
+	}
+}
+
+// collectExports gathers what this module offers importers. It runs after
+// collectModule so export lists can look local names up in module scope.
+func (c *checker) collectExports(tree *ast.File) *Exports {
+	exports := &Exports{names: map[string]exportEntry{}}
+	for _, decl := range tree.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			// Methods ride along with their owner type, not by name.
+			if d.Exported && d.Owner == "" {
+				exports.names[d.Name] = exportEntry{kind: symValue, decl: d}
+			}
+		case *ast.StructDecl:
+			if d.Exported {
+				exports.names[d.Name] = exportEntry{kind: symType, decl: d}
+			}
+		case *ast.EnumDecl:
+			if d.Exported {
+				exports.names[d.Name] = exportEntry{kind: symType, decl: d}
+			}
+		case *ast.VarDecl:
+			if d.Exported {
+				for _, binding := range d.Names {
+					exports.names[binding.Name] = exportEntry{kind: symValue, decl: d}
+				}
+			}
+		case *ast.ExportDecl:
+			c.collectExportDecl(d, exports)
+		}
+	}
+	return exports
+}
+
+func (c *checker) collectExportDecl(decl *ast.ExportDecl, exports *Exports) {
+	if decl.Path == "" {
+		c.collectLocalExportList(decl, exports)
+		return
+	}
+
+	// A re-export pulls from another module's exports; without the loader
+	// (or with a failed dependency) there is nothing to validate against.
+	source := c.imports[decl.Path]
+	if source == nil {
+		return
+	}
+
+	if decl.Star {
+		for name, entry := range source.names {
+			exports.names[name] = entry
+		}
+		return
+	}
+
+	for _, name := range decl.Names {
+		entry, ok := source.names[name.Name]
+		if !ok {
+			c.errorf(name.Offset, "%q does not export %s", decl.Path, name.Name)
+			continue
+		}
+		bound := name.Name
+		if name.Alias != "" {
+			bound = name.Alias
+		}
+		exports.names[bound] = entry
+	}
+}
+
+func (c *checker) collectLocalExportList(decl *ast.ExportDecl, exports *Exports) {
+	for _, name := range decl.Names {
+		// A missing name is reported by checkExport; nothing to add here.
+		sym := c.module.lookup(name.Name)
+		if sym == nil {
+			continue
+		}
+		bound := name.Name
+		if name.Alias != "" {
+			bound = name.Alias
+		}
+		exports.names[bound] = exportEntry{kind: sym.kind, decl: sym.decl}
 	}
 }
 

@@ -283,6 +283,19 @@ func (c *checker) resolvePath(path *ast.Path) {
 	}
 
 	c.checkVariantSegment(path, sym)
+	c.checkNamespaceSegment(path, sym)
+}
+
+// checkNamespaceSegment validates `ns::member` when ns is a wildcard import
+// whose module the loader resolved.
+func (c *checker) checkNamespaceSegment(path *ast.Path, head *symbol) {
+	if head.kind != symNamespace || head.exports == nil || len(path.Segments) < 2 {
+		return
+	}
+	name := path.Segments[1].Name
+	if _, ok := head.exports.names[name]; !ok {
+		c.errorf(path.Segments[1].Offset, "%s does not export %s", path.Segments[0].Name, name)
+	}
 }
 
 // checkVariantSegment validates `Enum::Variant` when the head names an enum
@@ -388,10 +401,29 @@ func (c *checker) checkNamedType(typ *ast.NamedType) {
 	if sym.kind == symValue {
 		c.errorf(head.Offset, "%s is a value, not a type", head.Name)
 	}
+	c.checkNamespaceType(typ.Path, sym)
 
 	for _, segment := range typ.Path.Segments {
 		for _, arg := range segment.Args {
 			c.checkType(arg)
 		}
+	}
+}
+
+// checkNamespaceType validates `ns::Name` in type position when ns is a
+// wildcard import whose module the loader resolved.
+func (c *checker) checkNamespaceType(path *ast.Path, head *symbol) {
+	if head.kind != symNamespace || head.exports == nil || len(path.Segments) < 2 {
+		return
+	}
+
+	segment := path.Segments[1]
+	entry, ok := head.exports.names[segment.Name]
+	if !ok {
+		c.errorf(segment.Offset, "%s does not export %s", path.Segments[0].Name, segment.Name)
+		return
+	}
+	if entry.kind == symValue {
+		c.errorf(segment.Offset, "%s::%s is a value, not a type", path.Segments[0].Name, segment.Name)
 	}
 }

@@ -194,12 +194,17 @@ func (l *Lexer) needsTerminator() bool {
 	return !l.continuesExpression()
 }
 
+// endsStatement includes '>' and '?' because types can end a line in a
+// signature-only declaration: `fn Array<T>::new(): Array<T>` and
+// `fn find(): *Node?`. The cost is that a trailing '>' cannot split an
+// expression — but operators lead the next line in Gyro, they never trail.
 func endsStatement(kind token.Kind) bool {
 	switch kind {
 	case token.Ident, token.Int, token.Float, token.String, token.Char,
 		token.Return, token.Break, token.Continue, token.Self,
 		token.True, token.False, token.Null, token.Underscore,
-		token.RParen, token.RBracket, token.RBrace:
+		token.RParen, token.RBracket, token.RBrace,
+		token.Gt, token.Question:
 		return true
 	}
 	return false

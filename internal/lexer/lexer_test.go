@@ -140,6 +140,21 @@ func TestAutomaticTerminators(t *testing.T) {
 			want: "identifier end of statement & identifier",
 		},
 		{
+			name: "a closing angle ends a signature-only declaration",
+			src:  "fn f(): Array<T>\nfn g()",
+			want: "fn identifier ( ) : identifier < identifier > end of statement fn identifier ( )",
+		},
+		{
+			name: "a nullable type ends a signature-only declaration",
+			src:  "fn f(): *Node?\nfn g()",
+			want: "fn identifier ( ) : * identifier ? end of statement fn identifier ( )",
+		},
+		{
+			name: "a leading > still continues a split comparison",
+			src:  "a\n> b",
+			want: "identifier > identifier",
+		},
+		{
 			name: "blank lines collapse",
 			src:  "a\n\n\nb",
 			want: "identifier end of statement identifier",
