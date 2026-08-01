@@ -857,6 +857,41 @@ long-term answer for cheap spawning and are recorded as still open;
 a sequential-only v1 was rejected because it leaves the concurrent
 examples untested.
 
+## Editor tooling
+
+### Grammars and language server live in this repository *(new)*
+
+**Status: decided.** `tree-sitter-gyro/` and `tree-sitter-metals/` are
+top-level directories here, and the language server is `gyro lsp`, a
+subcommand of the one compiler binary. Tooling versions in lockstep with
+the language while the syntax is still moving; Neovim consumes local
+paths and one command. Rejected separate repositories and a standalone
+binary: the publishing convenience buys nothing while there is exactly
+one user, and coordinated changes (new syntax, new grammar, new
+highlighting) would need three synchronized commits. See
+[`tooling.md`](tooling.md).
+
+### The LSP layer is hand-rolled, zero dependencies *(new)*
+
+**Status: decided.** `internal/lsp` implements Content-Length framing,
+JSON-RPC dispatch, and only the protocol structs the server actually
+uses; `go.mod` keeps zero external dependencies. The alternative —
+`go.lsp.dev/protocol` or `glsp` — brings a huge generated type surface
+for the dozen methods v1 speaks. The framing is ~100 lines; the cost was
+an afternoon, the control is total.
+
+### v1 features: diagnostics, hover, definition, symbols, completion *(new)*
+
+**Status: decided.** Live parse+sema diagnostics, hover with the checked
+type and the declared signature, cross-file go-to-definition through
+`sema.Info.Refs`, document symbols, and completion (scope names, `.`
+members, `::` namespaces, keywords). Completion resolves types against
+the last analysis whose sema pass ran, because the buffer being
+completed in rarely parses. METALS files get parse and verifier
+diagnostics. Deferred, not rejected: rename, find-references, signature
+help — they need position spans the AST does not record yet (nodes know
+where they start, not where they end).
+
 ## Still open
 
 | question | why it matters |

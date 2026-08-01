@@ -1,0 +1,508 @@
+==================
+module anatomy
+==================
+
+module "gyro:examples/structs"
+
+import "gyro:rt" {
+  fn @spawn(fn())
+  fn @println_str(str)
+}
+import "js:./widgets" {
+  fn @render(dyn) -> dyn
+}
+
+type %Point = record { x: i32, y: i32 }
+type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
+
+global @MAX: i32 = 100
+
+export fn @add(%a: i32, %b: i32) -> i32 {
+  %sum = iadd %a, %b
+  return %sum
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (import_declaration
+    (string)
+    (imported_function
+      (global_name)
+      (signature
+        (function_type
+          (signature))))
+    (imported_function
+      (global_name)
+      (signature
+        (primitive_type))))
+  (import_declaration
+    (string)
+    (imported_function
+      (global_name)
+      (signature
+        (primitive_type)
+        (primitive_type))))
+  (type_declaration
+    (type_name)
+    (record_shape
+      (field_declaration
+        (identifier)
+        (primitive_type))
+      (field_declaration
+        (identifier)
+        (primitive_type))))
+  (type_declaration
+    (type_name)
+    (enum_shape
+      (variant_declaration
+        (identifier)
+        (primitive_type))
+      (variant_declaration
+        (identifier)
+        (primitive_type)
+        (primitive_type))
+      (variant_declaration
+        (identifier))))
+  (global_declaration
+    (global_name)
+    (primitive_type)
+    (number))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (primitive_type))
+    (parameter
+      (register)
+      (primitive_type))
+    (primitive_type)
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (mnemonic)
+      (register))))
+
+==================
+quoted names
+==================
+
+module "m"
+
+fn @"Pair<i32>::sum"(%p: %"Pair<i32>") -> i32 {
+  %v = field.get %p, 0
+  return %v
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (type_name))
+    (primitive_type)
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (number))
+    (instruction
+      (mnemonic)
+      (register))))
+
+==================
+constants and conversions
+==================
+
+module "m"
+
+fn @f() {
+  %r = const.i32 42
+  %s = const.str "text"
+  %c = const.rune 'a'
+  %b = const.bool true
+  %n = const.null opt<i32>
+  %d = copy %r
+  %w = conv %r -> u8
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (instruction
+      (register)
+      (mnemonic)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (string))
+    (instruction
+      (register)
+      (mnemonic)
+      (char))
+    (instruction
+      (register)
+      (mnemonic)
+      (identifier))
+    (instruction
+      (register)
+      (mnemonic)
+      (identifier)
+      (identifier))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (identifier))))
+
+==================
+memory and aggregates
+==================
+
+module "m"
+
+type %Point = record { x: i32, y: i32 }
+
+fn @f(%x: i32, %y: i32) {
+  %p = slot i32
+  %h = new %Point
+  free %h
+  %v = load %p
+  store %p, %v
+  %q = field.ptr %h, 1
+  %r = record %Point(%x, %y)
+  %e = variant %Shape, 1(%x, %y)
+  %t = tuple(%x, %y)
+  %a = array<i32>(%x, %y)
+  %s = slice.of %a
+  %i = index.get %s, %x
+  %n = len %s
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (type_declaration
+    (type_name)
+    (record_shape
+      (field_declaration
+        (identifier)
+        (primitive_type))
+      (field_declaration
+        (identifier)
+        (primitive_type))))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (primitive_type))
+    (parameter
+      (register)
+      (primitive_type))
+    (instruction
+      (register)
+      (mnemonic)
+      (identifier))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (mnemonic)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (number)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (identifier)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))))
+
+==================
+structured control flow
+==================
+
+module "m"
+
+fn @f(%c: bool, %tag: i32) {
+  if %c {
+    return
+  } else {
+    abort "boom"
+  }
+  block $done {
+    loop $top {
+      br_if %c, $done
+      br $top
+    }
+  }
+  switch %tag {
+    case 0 {
+      return
+    }
+    case 1 {
+      return
+    }
+    default {
+      return
+    }
+  }
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (primitive_type))
+    (parameter
+      (register)
+      (primitive_type))
+    (if_instruction
+      (register)
+      (instruction
+        (mnemonic))
+      (instruction
+        (mnemonic)
+        (string)))
+    (block_instruction
+      (label)
+      (loop_instruction
+        (label)
+        (instruction
+          (mnemonic)
+          (register)
+          (label))
+        (instruction
+          (mnemonic)
+          (label))))
+    (switch_instruction
+      (register)
+      (switch_case
+        (number)
+        (instruction
+          (mnemonic)))
+      (switch_case
+        (number)
+        (instruction
+          (mnemonic)))
+      (switch_default
+        (instruction
+          (mnemonic))))))
+
+==================
+concurrency
+==================
+
+module "m"
+
+async fn @f(%ch: chan<i32>, %fut: future<i32>) {
+  %c = chan.new<i32> %cap
+  send %ch, %v
+  %t = recv %ch
+  chan.close %ch
+  %r = await %fut
+  select {
+    recv %v = %ch {
+      return
+    }
+    send %ch, %x {
+      return
+    }
+    default {
+      return
+    }
+  }
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (generic_type
+        (type_constructor)
+        (primitive_type)))
+    (parameter
+      (register)
+      (generic_type
+        (type_constructor)
+        (primitive_type)))
+    (instruction
+      (register)
+      (mnemonic)
+      (identifier)
+      (register))
+    (instruction
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (mnemonic)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (select_instruction
+      (select_receive_arm
+        (register)
+        (register)
+        (instruction
+          (mnemonic)))
+      (select_send_arm
+        (register)
+        (register)
+        (instruction
+          (mnemonic)))
+      (select_default_arm
+        (instruction
+          (mnemonic))))))
+
+==================
+calls and closures
+==================
+
+module "m"
+
+fn @f(%a: i32) -> i32 {
+  %r = call @g(%a, %a)
+  %fp = fn.ref @g
+  %c = closure @lifted, %env
+  %ind = call.indirect %fp(%a)
+  return %r
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (primitive_type))
+    (primitive_type)
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name))
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (mnemonic)
+      (register))))
+
+==================
+comments
+==================
+
+module "m" ; trailing comment
+
+; a full-line comment
+fn @f() {
+  return ; done
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string)
+    (comment)
+    (comment))
+  (function_declaration
+    (global_name)
+    (instruction
+      (mnemonic)
+      (comment))))

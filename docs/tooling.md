@@ -1,0 +1,147 @@
+# Editor tooling
+
+Gyro ships its editor support in this repository, versioned in lockstep
+with the compiler: two tree-sitter grammars and a language server. Nothing
+here is wired into any editor automatically; the pieces below expose
+standard interfaces (a tree-sitter parser directory, an LSP command) and
+the editor configuration is yours.
+
+## The pieces
+
+```
+tree-sitter-gyro/     grammar, external scanner, queries, corpus tests
+tree-sitter-metals/   the same for the METALS text format
+internal/lsp/         the language server behind `gyro lsp`
+```
+
+### tree-sitter-gyro
+
+`grammar.js` covers the full surface syntax of `language.md`. The parts a
+context-free grammar cannot express live in `src/scanner.c`:
+
+- **Automatic statement termination.** The scanner replicates
+  `internal/lexer`'s rule: a newline ends a statement when the parse state
+  allows one to end (that is the grammar's encoding of the
+  "last token can end a statement" set) and the next real token cannot
+  only continue an expression. The continuation set is the lexer's,
+  including the fine print: `<` continues unless it is `<-`, `as`
+  continues as a word, comments are looked through.
+- **Nested block comments**, which no regular token can match.
+
+The grammar leans permissive: it exists for highlighting and structure,
+and accepts a superset of what the compiler accepts (for example, a struct
+literal in an `if` condition parses; the compiler rejects it). The
+language server is the authority on what compiles.
+
+Queries under `queries/` target nvim-treesitter's capture conventions:
+`highlights.scm`, `locals.scm`, `folds.scm`, `indents.scm`,
+`injections.scm`.
+
+### tree-sitter-metals
+
+METALS is line-oriented, so this grammar needs no external scanner:
+newlines are ordinary tokens, `;` comments are extras. Structured control
+flow (`if`, `block`, `loop`, `switch`, `select`) has real rules; every
+other instruction parses as destination, mnemonic, operands, which is
+robust to new instructions being added to the IR. The three sigils map to
+distinct node types (`register`, `global_name`, `label`), quoted forms
+like `@"Pair<i32>::sum"` included.
+
+### gyro lsp
+
+`gyro lsp` speaks the Language Server Protocol over stdio. The protocol
+layer is hand-rolled (the repo keeps zero Go dependencies); the language
+smarts are the compiler's own passes, run in-process on every keystroke
+with open buffers overlaid over the file system.
+
+For `.gyro` files:
+
+- **Diagnostics**: parse and sema errors, live as you type, published for
+  the open file. Warnings arrive as warnings.
+- **Hover**: the checked type of the name under the cursor, and for
+  functions the declared signature, sliced verbatim from the source.
+- **Go to definition**: through `sema.Info.Refs`, across files; jumps
+  into imported modules (bundled `@gyro/...` stubs have no file and
+  return nothing).
+- **Document symbols**: functions (methods as `Type::name`), structs with
+  fields, enums with variants, module-level bindings.
+- **Completion**: names in scope, struct fields and methods after `.`,
+  variants/associated functions after `::`, exported names after a
+  wildcard import's `namespace::`, keywords. Member completion resolves
+  against the most recent analysis whose sema pass ran, so it keeps
+  working while the buffer is mid-edit and does not parse.
+
+For `.metals` files: diagnostics from `metals.Parse` (with line numbers)
+and `metals.Verify`.
+
+## Building
+
+The Go side needs nothing beyond `make build`. The grammars regenerate
+with the tree-sitter CLI, installed locally per grammar:
+
+```sh
+cd tree-sitter-gyro     # or tree-sitter-metals
+npm install             # tree-sitter-cli, pinned in package.json
+npx tree-sitter generate
+npx tree-sitter test
+```
+
+The generated `src/parser.c` is committed, so consumers (nvim included)
+never need the CLI.
+
+## Wiring it into Neovim
+
+Reference configuration; adjust paths to where this repository lives.
+
+Filetype detection:
+
+```lua
+vim.filetype.add({ extension = { gyro = "gyro", metals = "metals" } })
+```
+
+Grammars, with nvim-treesitter:
+
+```lua
+local parsers = require("nvim-treesitter.parsers").get_parser_configs()
+parsers.gyro = {
+  install_info = {
+    url = "~/path/to/gyro/tree-sitter-gyro",
+    files = { "src/parser.c", "src/scanner.c" },
+  },
+  filetype = "gyro",
+}
+parsers.metals_ir = {
+  install_info = {
+    url = "~/path/to/gyro/tree-sitter-metals",
+    files = { "src/parser.c" },
+  },
+  filetype = "metals",
+}
+```
+
+then `:TSInstall gyro metals_ir`. Queries must be on the runtimepath as
+`queries/gyro/*.scm`; either symlink each grammar's `queries/` directory
+into your config or add the grammar directories to `runtimepath`.
+
+The language server, with no plugin at all (nvim ≥ 0.11):
+
+```lua
+vim.lsp.config("gyro", {
+  cmd = { "/path/to/gyro/bin/gyro", "lsp" },
+  filetypes = { "gyro", "metals" },
+  root_markers = { ".git", "gyro.toml" },
+})
+vim.lsp.enable("gyro")
+```
+
+## Known limits (v1)
+
+- Diagnostics are published for the open file only; an import's own
+  errors surface when that file is opened.
+- The AST records where nodes start but not where they end, so document
+  symbol ranges extend to the next declaration, and declaration names are
+  located by a bounded text scan.
+- Scope completion approximates lexical scope by declaration order within
+  the enclosing top-level declaration; it can offer a name from a sibling
+  block.
+- No rename, no find-references, no signature help yet.

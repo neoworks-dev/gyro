@@ -1,0 +1,622 @@
+==================
+nested generics close with two gt tokens
+==================
+
+fn main() {
+  var r: Result<Vec<i32>, error> = f()
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (named_type
+          (type_identifier)
+          (type_arguments
+            (named_type
+              (type_identifier)
+              (type_arguments
+                (named_type
+                  (type_identifier))))
+            (named_type
+              (type_identifier))))
+        (call_expression
+          (identifier)
+          (arguments))))))
+
+==================
+right shift is still a shift
+==================
+
+fn main() {
+  var x = a >> 2
+  var y = b << 3
+  x >>= 1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (int_literal)))
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (int_literal)))
+      (assignment_statement
+        (identifier)
+        (int_literal)))))
+
+==================
+send without a space is a send
+==================
+
+fn main() {
+  ch<-1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (send_statement
+        (identifier)
+        (int_literal)))))
+
+==================
+comparison against a negative number
+==================
+
+fn main() {
+  var ok = x < -1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (unary_expression
+            (int_literal)))))))
+
+==================
+tuple positional access
+==================
+
+fn main() {
+  var code = pair.0
+  var deep = pair.0.1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (field_expression
+          (identifier)
+          (tuple_index)))
+      (variable_declaration
+        (identifier)
+        (field_expression
+          (field_expression
+            (identifier)
+            (tuple_index))
+          (tuple_index))))))
+
+==================
+generic call
+==================
+
+fn main() {
+  var m = max<i32>(3, 7)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (call_expression
+          (identifier)
+          (type_arguments
+            (named_type
+              (type_identifier)))
+          (arguments
+            (int_literal)
+            (int_literal)))))))
+
+==================
+generic struct literal and associated function
+==================
+
+fn main() {
+  var p = Pair<i32>{ 1, 2 }
+  var xs = Array<i32>::new()
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (struct_literal
+          (named_type
+            (type_identifier)
+            (type_arguments
+              (named_type
+                (type_identifier))))
+          (struct_literal_body
+            (int_literal)
+            (int_literal))))
+      (variable_declaration
+        (identifier)
+        (call_expression
+          (path_expression
+            (identifier)
+            (type_arguments
+              (named_type
+                (type_identifier)))
+            (identifier))
+          (arguments))))))
+
+==================
+named struct literal
+==================
+
+fn main() {
+  var p = Point{ x: 1, y: 2 }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (struct_literal
+          (named_type
+            (type_identifier))
+          (struct_literal_body
+            (field_initializer
+              (identifier)
+              (int_literal))
+            (field_initializer
+              (identifier)
+              (int_literal))))))))
+
+==================
+string interpolation
+==================
+
+fn main() {
+  println("got #{value} of #{xs.len()}")
+  println("escaped \#{ brace")
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (string_literal
+              (string_content)
+              (interpolation
+                (identifier))
+              (string_content)
+              (interpolation
+                (call_expression
+                  (field_expression
+                    (identifier)
+                    (identifier))
+                  (arguments)))))))
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (string_literal
+              (string_content)
+              (escape_sequence)
+              (string_content))))))))
+
+==================
+char and escape literals
+==================
+
+fn main() {
+  var c = 'a'
+  var nl = '\n'
+  var u = '\u{1F600}'
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (char_literal))
+      (variable_declaration
+        (identifier)
+        (char_literal))
+      (variable_declaration
+        (identifier)
+        (char_literal)))))
+
+==================
+wrapping operators
+==================
+
+fn main() {
+  var a = x +% y
+  var b = x -% y
+  var c = x *% y
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier))))))
+
+==================
+cast chain
+==================
+
+fn main() {
+  var w = x as i64
+  var b = (x & 0xff) as u8
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (cast_expression
+          (identifier)
+          (named_type
+            (type_identifier))))
+      (variable_declaration
+        (identifier)
+        (cast_expression
+          (parenthesized_expression
+            (binary_expression
+              (identifier)
+              (int_literal)))
+          (named_type
+            (type_identifier)))))))
+
+==================
+range in a for loop
+==================
+
+fn main() {
+  for i in 0..10 {
+    f(i)
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (for_in_statement
+        (identifier)
+        (range_expression
+          (int_literal)
+          (int_literal))
+        (block
+          (expression_statement
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier)))))))))
+
+==================
+closures
+==================
+
+fn main() {
+  var double = fn(a: i32): i32 { return a * 2 }
+  xs.map(fn(x) x * 2)
+  var later = async fn(): i32 { return 1 }
+  var release = fn[move node]() { free(node) }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (closure_expression
+          (closure_parameter_list
+            (closure_parameter
+              (identifier)
+              (named_type
+                (type_identifier))))
+          (named_type
+            (type_identifier))
+          (block
+            (return_statement
+              (binary_expression
+                (identifier)
+                (int_literal))))))
+      (expression_statement
+        (call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments
+            (closure_expression
+              (closure_parameter_list
+                (closure_parameter
+                  (identifier)))
+              (binary_expression
+                (identifier)
+                (int_literal))))))
+      (variable_declaration
+        (identifier)
+        (closure_expression
+          (closure_parameter_list)
+          (named_type
+            (type_identifier))
+          (block
+            (return_statement
+              (int_literal)))))
+      (variable_declaration
+        (identifier)
+        (closure_expression
+          (capture_list
+            (identifier))
+          (closure_parameter_list)
+          (block
+            (expression_statement
+              (call_expression
+                (identifier)
+                (arguments
+                  (identifier))))))))))
+
+==================
+match expression
+==================
+
+fn main() {
+  var name = match n {
+    0: "zero"
+    1: "one"
+    Shape::Circle(r): "circle"
+    RangeError(e): "range"
+    _: "other"
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (match_expression
+          (identifier)
+          (match_arm
+            (literal_pattern
+              (int_literal))
+            (string_literal
+              (string_content)))
+          (match_arm
+            (literal_pattern
+              (int_literal))
+            (string_literal
+              (string_content)))
+          (match_arm
+            (variant_pattern
+              (identifier)
+              (identifier)
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (string_literal
+              (string_content)))
+          (match_arm
+            (variant_pattern
+              (identifier)
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (string_literal
+              (string_content)))
+          (match_arm
+            (wildcard_pattern)
+            (string_literal
+              (string_content))))))))
+
+==================
+await binds like a prefix operator
+==================
+
+async fn main() {
+  var body, err = await get(url)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier)
+        (await_expression
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier))))))))
+
+==================
+chan literal and receive forms
+==================
+
+fn main() {
+  var ch = chan<i32>(64)
+  var un = chan<bool>()
+  ch <- value
+  var v = <-ch
+  var v2, open = <-ch
+  ch.close()
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (chan_literal
+          (named_type
+            (type_identifier))
+          (int_literal)))
+      (variable_declaration
+        (identifier)
+        (chan_literal
+          (named_type
+            (type_identifier))))
+      (send_statement
+        (identifier)
+        (identifier))
+      (variable_declaration
+        (identifier)
+        (receive_expression
+          (identifier)))
+      (variable_declaration
+        (identifier)
+        (identifier)
+        (receive_expression
+          (identifier)))
+      (expression_statement
+        (call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments))))))
+
+==================
+select statement
+==================
+
+fn main() {
+  select {
+    var value = <-values: use(value)
+    quit <- true: return
+    else: idle()
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (select_statement
+        (select_arm
+          (variable_declaration
+            (identifier)
+            (receive_expression
+              (identifier)))
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier))))
+        (select_arm
+          (send_statement
+            (identifier)
+            (boolean_literal))
+          (return_statement))
+        (select_else_arm
+          (call_expression
+            (identifier)
+            (arguments)))))))

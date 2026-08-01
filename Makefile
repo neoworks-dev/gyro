@@ -1,4 +1,4 @@
-.PHONY: all build test check fmt vet clean install
+.PHONY: all build test check fmt vet clean install grammar
 
 GO      ?= go
 BIN     := bin/gyro
@@ -27,6 +27,12 @@ vet:
 
 install:
 	$(GO) install $(LDFLAGS) .
+
+# Regenerate and test both tree-sitter grammars. Needs `npm install` in
+# each grammar directory once; the generated parser.c is committed.
+grammar:
+	cd tree-sitter-gyro && npx tree-sitter generate && npx tree-sitter test
+	cd tree-sitter-metals && npx tree-sitter generate && npx tree-sitter test
 
 clean:
 	rm -rf bin

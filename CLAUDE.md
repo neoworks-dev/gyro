@@ -26,8 +26,14 @@ internal/metals/     METALS IR: format, printer/parser, verifier
 internal/lower/      Gyro -> METALS lowering
 internal/meval/      METALS evaluator, the lowering's oracle
 internal/nasm/       METALS -> x86-64 NASM + C runtime (gyro build)
+internal/lsp/        language server (gyro lsp): diagnostics, hover, defs, completion
+tree-sitter-gyro/    tree-sitter grammar for Gyro: external scanner, queries, corpus
+tree-sitter-metals/  tree-sitter grammar for the METALS text format
 examples/            reference programs, all must parse cleanly
 ```
+
+`docs/tooling.md` covers the editor tooling: what the grammars and the
+language server support, and how they wire into Neovim.
 
 ## Commands
 

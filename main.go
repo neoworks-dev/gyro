@@ -13,6 +13,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/lexer"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
+	"github.com/gyro-lang/gyro/internal/lsp"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/nasm"
 	"github.com/gyro-lang/gyro/internal/parser"
@@ -34,6 +35,7 @@ usage:
   gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
   gyro build <file.gyro> [-o out]
                             compile a program to a native executable
+  gyro lsp                  run the language server over stdio
   gyro version              print the compiler version
 `
 
@@ -61,6 +63,11 @@ func main() {
 		os.Exit(runNasm(args))
 	case "build":
 		os.Exit(runBuild(args))
+	case "lsp":
+		if err := lsp.Serve(os.Stdin, os.Stdout, version); err != nil {
+			fmt.Fprintf(os.Stderr, "gyro lsp: %v\n", err)
+			os.Exit(1)
+		}
 	case "version", "--version", "-v":
 		fmt.Println("gyro", version)
 	case "help", "--help", "-h":

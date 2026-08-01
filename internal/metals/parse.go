@@ -12,10 +12,23 @@ func Parse(source string) (*Module, error) {
 	p := &parser{scan: newScanner(source)}
 	module, err := p.module()
 	if err != nil {
-		return nil, fmt.Errorf("metals: line %d: %w", p.scan.line, err)
+		return nil, &ParseError{Line: p.scan.line, Err: err}
 	}
 	return module, nil
 }
+
+// ParseError is a syntax error with the 1-based line it was found on, so
+// tools like the language server can point at it.
+type ParseError struct {
+	Line int
+	Err  error
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("metals: line %d: %v", e.Line, e.Err)
+}
+
+func (e *ParseError) Unwrap() error { return e.Err }
 
 // ---------------------------------------------------------------------------
 // Scanner

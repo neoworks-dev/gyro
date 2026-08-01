@@ -57,6 +57,12 @@ func LoadWith(resolver Resolver, rootPath string, bag *diag.Bag) (*Program, erro
 	if err != nil {
 		return nil, err
 	}
+	return LoadFromSource(resolver, rootPath, string(source), bag)
+}
+
+// LoadFromSource is LoadWith for a root whose current text lives with the
+// caller — an editor buffer — instead of on disk.
+func LoadFromSource(resolver Resolver, rootPath string, source string, bag *diag.Bag) (*Program, error) {
 	absolute, err := filepath.Abs(rootPath)
 	if err != nil {
 		return nil, err
@@ -68,7 +74,7 @@ func LoadWith(resolver Resolver, rootPath string, bag *diag.Bag) (*Program, erro
 		modules:  map[string]*Module{},
 		loading:  map[string]bool{},
 	}
-	root := state.add(absolute, string(source))
+	root := state.add(absolute, source)
 	return &Program{Root: root, Modules: state.order}, nil
 }
 
@@ -178,6 +184,35 @@ func displayPath(path string) string {
 		return path
 	}
 	return relative
+}
+
+// Overlay wraps the default resolver with a set of in-memory files, keyed
+// by absolute path. A module whose path is in the overlay is read from
+// there instead of from disk, which is how a language server sees unsaved
+// buffers.
+func Overlay(files map[string]string) Resolver {
+	return overlayResolver{files: files}
+}
+
+type overlayResolver struct {
+	files map[string]string
+}
+
+func (r overlayResolver) Resolve(fromDir, specifier string) (string, string, error) {
+	if strings.HasPrefix(specifier, "./") || strings.HasPrefix(specifier, "../") {
+		if fromDir != "" {
+			path := filepath.Join(fromDir, specifier)
+			if filepath.Ext(path) == "" {
+				path += ".gyro"
+			}
+			if absolute, err := filepath.Abs(path); err == nil {
+				if text, ok := r.files[absolute]; ok {
+					return absolute, text, nil
+				}
+			}
+		}
+	}
+	return diskResolver{}.Resolve(fromDir, specifier)
 }
 
 // diskResolver implements the resolution rules the docs specify: @gyro/...

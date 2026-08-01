@@ -842,6 +842,7 @@ Still to come:
 | `syntaxfn` parser extensions | designed in the book, not parsed |
 | METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle) |
 | native backend | v1 done: [`native.md`](native.md); `internal/nasm` emits NASM, links a C runtime, every example diffs clean against the interpreter; still open: register allocation, printing composites, memory reclamation, green threads |
+| editor tooling | v1 done: [`tooling.md`](tooling.md); tree-sitter grammars for Gyro and METALS, `gyro lsp` with diagnostics, hover, definition, symbols, completion |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,
 and what was rejected.

@@ -1,0 +1,328 @@
+==================
+newline ends a statement
+==================
+
+fn main() {
+  var x = 1
+  var y = 2
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (int_literal))
+      (variable_declaration
+        (identifier)
+        (int_literal)))))
+
+==================
+leading dot continues a method chain
+==================
+
+fn main() {
+  var total = values
+    .filter(is_even)
+    .sum()
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (call_expression
+          (field_expression
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (identifier)))
+            (identifier))
+          (arguments))))))
+
+==================
+leading logical operator continues
+==================
+
+fn main() {
+  var ok = user.is_active
+    && user.age >= 18
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (binary_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (int_literal)))))))
+
+==================
+leading star starts a new statement
+==================
+
+fn main() {
+  var x = a
+  *p = 5
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier))
+      (assignment_statement
+        (unary_expression
+          (identifier))
+        (int_literal)))))
+
+==================
+leading minus starts a new statement
+==================
+
+fn main() {
+  var x = a
+  -1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier))
+      (expression_statement
+        (unary_expression
+          (int_literal))))))
+
+==================
+leading receive starts a new statement
+==================
+
+fn main() {
+  var x = a
+  <-ch
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier))
+      (expression_statement
+        (receive_expression
+          (identifier))))))
+
+==================
+leading less-than continues
+==================
+
+fn main() {
+  var ok = a
+    < b
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier))))))
+
+==================
+semicolons separate statements on one line
+==================
+
+fn main() {
+  var i = 0; i += 1; f(i)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (int_literal))
+      (assignment_statement
+        (identifier)
+        (int_literal))
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))))
+
+==================
+a comment between statements
+==================
+
+fn main() {
+  var x = 1
+  // note
+  var y = 2
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (int_literal))
+      (line_comment)
+      (variable_declaration
+        (identifier)
+        (int_literal)))))
+
+==================
+a line comment does not hide a continuation
+==================
+
+fn main() {
+  var x = a
+  // note
+  + b
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (line_comment)
+          (identifier))))))
+
+==================
+nested block comments
+==================
+
+fn main() {
+  /* outer /* inner */ still comment */
+  var x = 1
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (block_comment)
+      (variable_declaration
+        (identifier)
+        (int_literal)))))
+
+==================
+else on the next line
+==================
+
+fn main() {
+  if a {
+    f()
+  }
+  else {
+    g()
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (if_statement
+        (identifier)
+        (block
+          (expression_statement
+            (call_expression
+              (identifier)
+              (arguments))))
+        (block
+          (expression_statement
+            (call_expression
+              (identifier)
+              (arguments))))))))
+
+==================
+elif chain
+==================
+
+fn main() {
+  if a {
+  } elif b {
+  } else {
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (if_statement
+        (identifier)
+        (block)
+        (elif_clause
+          (identifier)
+          (block)
+          (block))))))
