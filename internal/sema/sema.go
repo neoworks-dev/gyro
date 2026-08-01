@@ -180,7 +180,7 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		enumTypes:   map[*ast.EnumDecl]*types.Enum{},
 		funcSigs:    map[*ast.FuncDecl]*types.Method{},
 		consts:      p.info.Consts,
-		rec:         &recorder{types: p.info.Types, calls: p.info.Calls},
+		rec:         &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
 		facts:       map[*symbol]bool{},
 	}
 	c.scope = c.module
@@ -238,6 +238,7 @@ func (c *checker) declare(name string, offset int, kind symbolKind, decl ast.Nod
 func (c *checker) declareValue(name string, offset int, decl ast.Node, typ types.Type) *symbol {
 	sym := &symbol{kind: symValue, offset: offset, decl: decl, typ: typ}
 	c.declareSymbol(name, sym)
+	c.recordLocal(decl, name, typ)
 	return sym
 }
 
@@ -291,6 +292,7 @@ func (c *checker) collectModule(tree *ast.File) {
 				Methods:    map[string]*types.Method{},
 			}
 			c.structTypes[d] = shell
+			c.program.info.Structs[d] = shell
 			c.declare(d.Name, d.Offset, symType, d).typ = shell
 		case *ast.EnumDecl:
 			shell := &types.Enum{
@@ -300,6 +302,7 @@ func (c *checker) collectModule(tree *ast.File) {
 				Methods:    map[string]*types.Method{},
 			}
 			c.enumTypes[d] = shell
+			c.program.info.Enums[d] = shell
 			c.declare(d.Name, d.Offset, symType, d).typ = shell
 		case *ast.VarDecl:
 			for _, binding := range d.Names {

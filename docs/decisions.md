@@ -820,7 +820,9 @@ assembly.
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
-| METALS remainder | the format is sketched and verified (see above); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
+| METALS remainder | the format is implemented end to end (spec, verifier, Gyro lowering, evaluator); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
+| mutable METALS globals | METALS globals are constant literals, so module-level `var` does not lower; module-level `const` re-evaluates per use through a synthesized getter until `@comptime` folding exists |
+| checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |

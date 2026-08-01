@@ -803,6 +803,19 @@ printing with `to_string` override, spawn/channels/select on real threads,
 async as futures. The stdlib stubs have native bodies: `println`,
 `Array<T>`, `Mutex` (explicit `guard.unlock()`), `alloc`/`free` with
 use-after-free and double-free detection, `fs`, `convert`.
+
+**Programs lower**: `gyro metals file.gyro` compiles a checked program
+into one self-contained METALS module — monomorphized generics under
+quoted names (`@"Pair<i32>::sum"`), lifted closures with heap
+environment records, defers inlined at every exit, match as tag tests,
+narrowing as explicit `opt.unwrap`, `error` as a closed program-wide
+enum, stdlib natives as `gyro:rt` imports. The module verifies, and
+`internal/meval` — a METALS evaluator — executes it; the lowering's test
+suite runs every example through `gyro run` and through
+lower→verify→evaluate and demands byte-identical output. Module-level
+`const` lowers to a synthesized getter; module-level `var` does not
+lower yet (METALS has no mutable globals).
+
 Still to come:
 
 | feature | state |
@@ -820,7 +833,7 @@ Still to come:
 | race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
-| METALS | sketched: [`metals.md`](metals.md), typed module IR with text format and verifier in `internal/metals`; the Gyro→METALS lowering is not started |
+| METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle); the native backend consumes this next |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,
 and what was rejected.

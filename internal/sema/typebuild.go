@@ -215,6 +215,7 @@ func (c *checker) moduleVar(decl *ast.VarDecl) {
 	c.varTypes(decl, func(binding ast.Binding, typ types.Type) {
 		if sym := c.module.lookup(binding.Name); sym != nil && sym.decl == decl {
 			sym.typ = typ
+			c.recordLocal(decl, binding.Name, typ)
 		}
 	})
 }

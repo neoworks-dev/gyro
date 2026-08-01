@@ -25,6 +25,18 @@ type Info struct {
 	Calls map[*ast.CallExpr]*CallInfo
 	// Consts holds the folded values of untyped integer expressions.
 	Consts map[ast.Expr]*big.Int
+	// Locals holds the declared type of every value binding, keyed by
+	// the declaring node and the bound name: parameters under their
+	// FuncDecl or ClosureExpr, locals under their VarDecl, loop
+	// variables under their ForInStmt, pattern binds under their
+	// BindingPattern. Narrowing never changes these. Two reserved keys
+	// piggyback on the mechanism, spelled as the keywords they are so
+	// no parameter can collide: "self" is a method's receiver type and
+	// "return" its result type.
+	Locals map[ast.Node]map[string]types.Type
+	// Structs and Enums map declarations to their built types.
+	Structs map[*ast.StructDecl]*types.Struct
+	Enums   map[*ast.EnumDecl]*types.Enum
 	// Instances lists every concrete instantiation of each generic
 	// function, keyed by InstanceKey.
 	Instances map[*ast.FuncDecl]map[string]*FuncInstance
@@ -58,6 +70,7 @@ type FuncInstance struct {
 	Bindings map[string]types.Type
 	Types    map[ast.Expr]types.Type
 	Calls    map[*ast.CallExpr]*CallInfo
+	Locals   map[ast.Node]map[string]types.Type
 }
 
 // InstanceKey renders the canonical key of one instantiation: the bound
@@ -87,6 +100,9 @@ func newInfo() *Info {
 		Refs:      map[ast.Expr]ast.Node{},
 		Calls:     map[*ast.CallExpr]*CallInfo{},
 		Consts:    map[ast.Expr]*big.Int{},
+		Locals:    map[ast.Node]map[string]types.Type{},
+		Structs:   map[*ast.StructDecl]*types.Struct{},
+		Enums:     map[*ast.EnumDecl]*types.Enum{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
 	}
 }
@@ -108,6 +124,7 @@ func (info *Info) instance(decl *ast.FuncDecl, bindings map[string]types.Type) *
 		Bindings: bindings,
 		Types:    map[ast.Expr]types.Type{},
 		Calls:    map[*ast.CallExpr]*CallInfo{},
+		Locals:   map[ast.Node]map[string]types.Type{},
 	}
 	byKey[key] = created
 	return created
@@ -118,8 +135,9 @@ func (info *Info) instance(decl *ast.FuncDecl, bindings map[string]types.Type) *
 // instantiation check. nil while a generic body is checked leniently,
 // whose poisoned types are worthless to later stages.
 type recorder struct {
-	types map[ast.Expr]types.Type
-	calls map[*ast.CallExpr]*CallInfo
+	types  map[ast.Expr]types.Type
+	calls  map[*ast.CallExpr]*CallInfo
+	locals map[ast.Node]map[string]types.Type
 }
 
 func (c *checker) record(e ast.Expr, t types.Type) {
@@ -134,6 +152,18 @@ func (c *checker) recordCall(call *ast.CallExpr, resolved *CallInfo) {
 		return
 	}
 	c.rec.calls[call] = resolved
+}
+
+func (c *checker) recordLocal(decl ast.Node, name string, typ types.Type) {
+	if c.rec == nil || decl == nil || name == "" || name == "_" || typ == nil {
+		return
+	}
+	byName := c.rec.locals[decl]
+	if byName == nil {
+		byName = map[string]types.Type{}
+		c.rec.locals[decl] = byName
+	}
+	byName[name] = typ
 }
 
 // recordRef notes what a name resolved to. Resolution does not depend on

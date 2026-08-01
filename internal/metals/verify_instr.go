@@ -362,6 +362,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			if i.Val != "" {
 				return fmt.Errorf("this function returns nothing")
 			}
+			state.unreachable = true
 			return nil
 		}
 		if i.Val == "" {
@@ -374,9 +375,11 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !TypesEqual(typ, fv.fn.Result) {
 			return fmt.Errorf("return of %s from a function returning %s", typ, fv.fn.Result)
 		}
+		state.unreachable = true
 		return nil
 
 	case *Abort:
+		state.unreachable = true
 		return nil
 
 	case *If:
@@ -395,9 +398,20 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err := fv.checkBody(i.Else, elseState); err != nil {
 			return err
 		}
-		// Only registers assigned in both branches survive the join.
-		thenState.intersect(elseState)
-		state.defined = thenState.defined
+		// Only registers assigned in both branches survive the join; a
+		// branch that cannot fall through does not constrain it.
+		switch {
+		case thenState.unreachable && elseState.unreachable:
+			state.defined = thenState.defined
+			state.unreachable = true
+		case thenState.unreachable:
+			state.defined = elseState.defined
+		case elseState.unreachable:
+			state.defined = thenState.defined
+		default:
+			thenState.intersect(elseState)
+			state.defined = thenState.defined
+		}
 		return nil
 
 	case *Block:
@@ -414,6 +428,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !fv.hasLabel(i.Label) {
 			return fmt.Errorf("no enclosing label $%s", i.Label)
 		}
+		state.unreachable = true
 		return nil
 
 	case *BrIf:
@@ -438,7 +453,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			return fmt.Errorf("switch wants an integer, not %s", typ)
 		}
 		seen := map[int]bool{}
-		var joined *regState
+		arms := []*regState{}
 		for _, c := range i.Cases {
 			if seen[c.Value] {
 				return fmt.Errorf("case %d appears twice", c.Value)
@@ -448,20 +463,34 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			if err := fv.checkBody(c.Body, caseState); err != nil {
 				return err
 			}
-			if joined == nil {
-				joined = caseState
-			} else {
-				joined.intersect(caseState)
-			}
+			arms = append(arms, caseState)
 		}
 		defaultState := state.clone()
 		if err := fv.checkBody(i.Default, defaultState); err != nil {
 			return err
 		}
-		if len(i.Default) > 0 && joined != nil {
-			joined.intersect(defaultState)
-			state.defined = joined.defined
+		// Without a default the switch may fall through untouched, so the
+		// entry state stands. With one, join the arms that can fall out.
+		if len(i.Default) == 0 {
+			return nil
 		}
+		arms = append(arms, defaultState)
+		var joined *regState
+		for _, arm := range arms {
+			if arm.unreachable {
+				continue
+			}
+			if joined == nil {
+				joined = arm
+			} else {
+				joined.intersect(arm)
+			}
+		}
+		if joined == nil {
+			state.unreachable = true
+			return nil
+		}
+		state.defined = joined.defined
 		return nil
 
 	case *ChanNew:

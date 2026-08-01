@@ -1,0 +1,236 @@
+package meval
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/gyro-lang/gyro/internal/metals"
+)
+
+// native dispatches a gyro:rt import by name. Monomorphized names such
+// as println<i32> and Array<i32>::push dispatch on their base name; the
+// type arguments only shaped the signature.
+func (m *machine) native(name string, args []value) value {
+	owner, method := splitNativeName(name)
+	arg := func(i int) value {
+		if i < len(args) {
+			return args[i]
+		}
+		return uninitVal{}
+	}
+
+	switch owner {
+	case "":
+		return m.freeNative(method, arg)
+	case "Array":
+		return m.arrayNative(method, arg)
+	case "Mutex":
+		return m.mutexNative(method, arg)
+	case "MutexGuard":
+		return m.guardNative(method, arg)
+	case "File":
+		return m.fileNative(method, arg)
+	case "string":
+		if method == "runes" {
+			text := arg(0).(strVal)
+			runes := []rune(string(text))
+			elems := make([]value, len(runes))
+			for i, r := range runes {
+				elems[i] = intVal{v: int64(r), kind: metals.Rune}
+			}
+			return sliceVal{elems: elems}
+		}
+	}
+	m.throw("unknown runtime function @%s", name)
+	return nil
+}
+
+// splitNativeName separates Array<i32>::push into (Array, push) and
+// println<i32> into ("", println).
+func splitNativeName(name string) (owner, method string) {
+	method = name
+	if i := strings.LastIndex(name, "::"); i >= 0 {
+		owner, method = name[:i], name[i+2:]
+	}
+	if j := strings.IndexByte(owner, '<'); j >= 0 {
+		owner = owner[:j]
+	}
+	if j := strings.IndexByte(method, '<'); j >= 0 {
+		method = method[:j]
+	}
+	return owner, method
+}
+
+func (m *machine) freeNative(method string, arg func(int) value) value {
+	switch method {
+	case "print":
+		fmt.Fprint(m.stdout, m.display(arg(0)))
+		return nil
+	case "println":
+		fmt.Fprintln(m.stdout, m.display(arg(0)))
+		return nil
+	case "eprintln":
+		fmt.Fprintln(m.stderr, m.display(arg(0)))
+		return nil
+	case "str":
+		return strVal(m.repr(arg(0)))
+	case "spawn":
+		fn, ok := arg(0).(fnVal)
+		if !ok {
+			m.throw("spawn takes a closure")
+		}
+		go func() {
+			defer func() {
+				if failure := recover(); failure != nil {
+					if abort, ok := failure.(*Abort); ok {
+						fmt.Fprintln(m.stderr, abort.Error())
+						return
+					}
+					fmt.Fprintln(m.stderr, "panic:", failure)
+				}
+			}()
+			m.callFn(fn, nil)
+		}()
+		return nil
+	case "to_i32":
+		text, _ := arg(0).(strVal)
+		parsed, err := strconv.ParseInt(strings.TrimSpace(string(text)), 10, 32)
+		if err != nil {
+			return tupleVal{intVal{kind: metals.I32}, m.nativeError(fmt.Sprintf("%q is not an i32", string(text)))}
+		}
+		return tupleVal{intVal{v: parsed, kind: metals.I32}, nullVal{}}
+	case "to_f64":
+		text, _ := arg(0).(strVal)
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(string(text)), 64)
+		if err != nil {
+			return tupleVal{floatVal{kind: metals.F64}, m.nativeError(fmt.Sprintf("%q is not an f64", string(text)))}
+		}
+		return tupleVal{floatVal{v: parsed, kind: metals.F64}, nullVal{}}
+	case "open":
+		name, _ := arg(0).(strVal)
+		if _, err := os.Stat(string(name)); err != nil {
+			return tupleVal{nullVal{}, m.nativeError(err.Error())}
+		}
+		return tupleVal{handleVal{obj: &fileObj{name: string(name)}}, nullVal{}}
+	case "read_all":
+		handle, ok := arg(0).(handleVal)
+		if !ok {
+			return tupleVal{strVal(""), m.nativeError("not an open file")}
+		}
+		file, ok := handle.obj.(*fileObj)
+		if !ok {
+			return tupleVal{strVal(""), m.nativeError("not an open file")}
+		}
+		data, err := os.ReadFile(file.name)
+		if err != nil {
+			return tupleVal{strVal(""), m.nativeError(err.Error())}
+		}
+		return tupleVal{strVal(data), nullVal{}}
+	case "get":
+		return tupleVal{strVal(""), m.nativeError("the interpreter has no network")}
+	}
+	m.throw("unknown runtime function %s", method)
+	return nil
+}
+
+// nativeError mints variant 0 of the closed %error sum: Native(str).
+func (m *machine) nativeError(message string) value {
+	return enumVal{typeName: "error", tag: 0, payload: []value{strVal(message)}}
+}
+
+func (m *machine) arrayNative(method string, arg func(int) value) value {
+	if method == "new" || method == "with_capacity" {
+		return handleVal{obj: &arrayObj{}}
+	}
+	handle, ok := arg(0).(handleVal)
+	if !ok {
+		m.throw("an Array method needs its Array")
+	}
+	array, ok := handle.obj.(*arrayObj)
+	if !ok {
+		m.throw("an Array method needs its Array")
+	}
+	if array.freed && method != "free" {
+		m.throw("use after free of an Array")
+	}
+	switch method {
+	case "push":
+		array.elems = append(array.elems, copyValue(arg(1)))
+		return nil
+	case "pop":
+		if len(array.elems) == 0 {
+			return tupleVal{uninitVal{}, boolVal(false)}
+		}
+		last := array.elems[len(array.elems)-1]
+		array.elems = array.elems[:len(array.elems)-1]
+		return tupleVal{last, boolVal(true)}
+	case "get":
+		index := m.index(arg(1), len(array.elems))
+		return copyValue(array.elems[index])
+	case "set":
+		index := m.index(arg(1), len(array.elems))
+		array.elems[index] = copyValue(arg(2))
+		return nil
+	case "len":
+		return uintVal{v: uint64(len(array.elems)), kind: metals.Usize}
+	case "slice":
+		return sliceVal{elems: array.elems}
+	case "free":
+		if array.freed {
+			m.throw("double free of an Array")
+		}
+		array.freed = true
+		return nil
+	}
+	m.throw("unknown Array method %s", method)
+	return nil
+}
+
+func (m *machine) mutexNative(method string, arg func(int) value) value {
+	switch method {
+	case "new":
+		return handleVal{obj: &mutexObj{val: copyValue(arg(0))}}
+	case "lock":
+		handle := arg(0).(handleVal)
+		mutex := handle.obj.(*mutexObj)
+		mutex.mu.Lock()
+		return handleVal{obj: &guardObj{mutex: mutex}}
+	}
+	m.throw("unknown Mutex method %s", method)
+	return nil
+}
+
+func (m *machine) guardNative(method string, arg func(int) value) value {
+	handle := arg(0).(handleVal)
+	guard := handle.obj.(*guardObj)
+	if guard.done {
+		m.throw("the guard was already unlocked")
+	}
+	switch method {
+	case "get":
+		return copyValue(guard.mutex.val)
+	case "set":
+		guard.mutex.val = copyValue(arg(1))
+		return nil
+	case "unlock":
+		guard.done = true
+		guard.mutex.mu.Unlock()
+		return nil
+	}
+	m.throw("unknown MutexGuard method %s", method)
+	return nil
+}
+
+func (m *machine) fileNative(method string, arg func(int) value) value {
+	if method != "close" {
+		m.throw("unknown File method %s", method)
+	}
+	if handle, ok := arg(0).(handleVal); ok {
+		if file, ok := handle.obj.(*fileObj); ok {
+			file.closed = true
+		}
+	}
+	return nil
+}

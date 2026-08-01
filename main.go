@@ -10,6 +10,8 @@ import (
 	"github.com/gyro-lang/gyro/internal/interp"
 	"github.com/gyro-lang/gyro/internal/lexer"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/lower"
+	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/parser"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/token"
@@ -25,6 +27,7 @@ usage:
   gyro tokens <file.gyro>   print the token stream, terminators included
   gyro check <file.gyro>    load, parse and name-check a program, reporting diagnostics
   gyro run <file.gyro>      check a program and run its fn main in the interpreter
+  gyro metals <file.gyro>   check a program and print its lowered METALS module
   gyro version              print the compiler version
 `
 
@@ -46,6 +49,8 @@ func main() {
 		os.Exit(runCheck(args))
 	case "run":
 		os.Exit(runProgram(args))
+	case "metals":
+		os.Exit(runMetals(args))
 	case "version", "--version", "-v":
 		fmt.Println("gyro", version)
 	case "help", "--help", "-h":
@@ -136,6 +141,40 @@ func runProgram(args []string) int {
 		}
 		return 1
 	}
+	return 0
+}
+
+// runMetals checks a program, lowers it to METALS and prints the module.
+func runMetals(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+
+	var bag diag.Bag
+	program, err := loader.Load(args[0], &bag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 2
+	}
+	var info *sema.Info
+	if !bag.HasErrors() {
+		info = sema.CheckProgram(program, &bag)
+	}
+	if code := report(&bag); code != 0 {
+		return code
+	}
+
+	module, err := lower.Lower(program, info)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 1
+	}
+	if err := metals.Verify(module); err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: internal: the lowered module fails verification: %v\n", err)
+		return 1
+	}
+	fmt.Print(metals.Print(module))
 	return 0
 }
 

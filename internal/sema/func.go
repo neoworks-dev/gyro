@@ -38,7 +38,7 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		c.rec = nil
 	} else if bindings != nil {
 		instance := c.program.info.instance(decl, bindings)
-		c.rec = &recorder{types: instance.Types, calls: instance.Calls}
+		c.rec = &recorder{types: instance.Types, calls: instance.Calls, locals: instance.Locals}
 	}
 
 	c.bindFuncTypeParams(decl, bindings)
@@ -49,6 +49,10 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		async:    decl.Async,
 		inMethod: decl.Recv != nil,
 		selfType: selfType,
+	}
+	c.recordLocal(decl, "return", c.fn.result)
+	if selfType != nil {
+		c.recordLocal(decl, "self", selfType)
 	}
 
 	for _, param := range decl.Params {

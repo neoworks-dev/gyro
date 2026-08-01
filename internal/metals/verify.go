@@ -204,6 +204,9 @@ func boundaryOffender(t Type) string {
 type regState struct {
 	types   map[string]Type
 	defined map[string]bool
+	// unreachable marks the path after return, abort or br: nothing on
+	// it runs, so its definedness does not constrain a join.
+	unreachable bool
 }
 
 func (s *regState) clone() *regState {
@@ -211,7 +214,7 @@ func (s *regState) clone() *regState {
 	for name := range s.defined {
 		defined[name] = true
 	}
-	return &regState{types: s.types, defined: defined}
+	return &regState{types: s.types, defined: defined, unreachable: s.unreachable}
 }
 
 // intersect keeps only registers defined in both states.
@@ -253,7 +256,7 @@ func (fv *funcVerifier) use(state *regState, name string) (Type, error) {
 	if !known {
 		return nil, fmt.Errorf("%%%s is never assigned", name)
 	}
-	if !state.defined[name] {
+	if !state.defined[name] && !state.unreachable {
 		return nil, fmt.Errorf("%%%s may not be assigned on this path", name)
 	}
 	return typ, nil
