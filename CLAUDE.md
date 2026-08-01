@@ -85,6 +85,11 @@ cover. Guessing produces code that has to be undone.
   generics stop closing. The parser rejoins them for shifts.
 - **`<-` is scanned greedily** and split back apart by the parser in
   binary-operator position. Sends are statements only.
+- **A new diagnostic needs a code.** Each front-end package maps its
+  message formats to a `diag.Code` in its own `codes.go`; the catalogue and
+  the `gyro explain` text live in `internal/diag/codes.go`.
+  `internal/diag/catalog_test.go` fails when a message has no entry, so a
+  reworded message means updating the table.
 - **Parser progress.** Every loop over statements or declarations must
   guarantee forward progress on malformed input.
   `TestParserAlwaysTerminates` covers this.

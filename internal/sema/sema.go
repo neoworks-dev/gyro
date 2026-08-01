@@ -13,6 +13,8 @@
 package sema
 
 import (
+	"fmt"
+
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
@@ -224,7 +226,12 @@ func (c *checker) run(tree *ast.File) *Exports {
 }
 
 func (c *checker) errorf(offset int, format string, args ...any) {
-	c.bag.Errorf(c.file.Position(offset), format, args...)
+	c.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     codes[format],
+		Pos:      c.file.Position(offset),
+		Message:  fmt.Sprintf(format, args...),
+	})
 }
 
 // declare adds a name to the current scope. Shadowing an outer scope is
@@ -247,9 +254,17 @@ func (c *checker) declareSymbol(name string, sym *symbol) {
 		return
 	}
 	if existing, ok := c.scope.names[name]; ok {
-		previous := c.file.Position(existing.offset)
-		c.errorf(sym.offset, "%s is already declared in this scope (at %d:%d)",
-			name, previous.Line, previous.Column)
+		c.bag.Add(diag.Diagnostic{
+			Severity: diag.SeverityError,
+			Code:     diag.EAlreadyDeclared,
+			Pos:      c.file.Position(sym.offset),
+			Message:  fmt.Sprintf("%s is already declared in this scope", name),
+			Related: []diag.Span{{
+				Pos:   c.file.Position(existing.offset),
+				Label: "previous declaration here",
+			}},
+			Help: []string{"a name may shadow an outer scope, but not another name in the same one"},
+		})
 		return
 	}
 	c.scope.names[name] = sym

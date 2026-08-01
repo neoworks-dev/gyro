@@ -8,6 +8,7 @@
 package lexer
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -89,7 +90,12 @@ func (l *Lexer) peek() rune {
 }
 
 func (l *Lexer) errorf(offset int, format string, args ...any) {
-	l.bag.Errorf(l.file.Position(offset), format, args...)
+	l.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     codes[format],
+		Pos:      l.file.Position(offset),
+		Message:  fmt.Sprintf(format, args...),
+	})
 }
 
 // Next returns the next token, synthesizing terminators as needed.

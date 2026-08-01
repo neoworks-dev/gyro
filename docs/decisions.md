@@ -927,6 +927,45 @@ A guess appears only within one edit for short names, two from five
 characters up, and never more than half the shorter name — otherwise
 `x` would be offered as the fix for `z`.
 
+### Diagnostics render as a code frame, rustc's shape *(new)*
+
+**Status: decided.** The CLI prints the headline with its code, the
+location, the offending line, and the span underlined:
+
+```
+error[E0401]: undeclared name println
+ --> hello.gyro:2:3
+  |
+2 |   println("hi")
+  |   ^^^^^^^ not found in this scope
+  |
+  = help: "@gyro/stdlib" exports println; add: import { println } from "@gyro/stdlib"
+```
+
+Rejected the one-line `file:line:col: error: message` form: the reader
+had to open the file to see what the position pointed at. `Diagnostic`
+grew `Label` (beside the underline) and `Related` (a second frame,
+"previous declaration here"). The span's width is measured from the
+source at the offset rather than recorded at every reporting site,
+because the AST records where nodes start and not where they end; a name
+or a string literal underlines whole, anything else gets one caret.
+Colour follows `NO_COLOR` and whether stderr is a terminal.
+
+### Codes are assigned by a per-package table, not at the call site *(new)*
+
+**Status: decided.** `internal/diag/codes.go` holds the catalogue —
+E01xx lexical, E02xx syntax, E03xx modules, E04xx names, E05xx types,
+E06xx statements — with an explanation each, which `gyro explain E0401`
+prints. Each front-end package maps its own message formats to codes in
+its `codes.go`, and its `errorf` looks the code up.
+
+Rejected passing the code at every reporting site, rustc-style: that is
+170 edits and a code invisible from any one place. The table's cost is
+that a reworded message silently loses its code, so
+`internal/diag/catalog_test.go` reads the sources with `go/ast` and fails
+when a reported format has no entry, or an entry names a code with no
+explanation.
+
 ### A message repeated at one position is reported once *(new)*
 
 **Status: decided.** `diag.Bag` drops a diagnostic whose position,

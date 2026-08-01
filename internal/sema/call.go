@@ -137,11 +137,11 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 
 	method, ownerParams, ownerArgs := c.lookupMethodFull(recv, fun.Name)
 	if method == nil {
-		c.errorHintf(fun.Offset, didYouMean(fun.Name, memberNames(recv)), "%s has no method %s", recv, fun.Name)
+		c.errorHintf(fun.NameOffset, didYouMean(fun.Name, memberNames(recv)), "%s has no method %s", recv, fun.Name)
 		return callee{bad: true}
 	}
 	if method.Recv == types.NoRecv {
-		c.errorf(fun.Offset, "%s is an associated function; call it as %s::%s(...)", fun.Name, recv, fun.Name)
+		c.errorf(fun.NameOffset, "%s is an associated function; call it as %s::%s(...)", fun.Name, recv, fun.Name)
 		return callee{bad: true}
 	}
 	return callee{name: fun.Name, method: method, ownerParams: ownerParams, ownerArgs: ownerArgs}

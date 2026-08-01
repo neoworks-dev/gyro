@@ -7,6 +7,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/lexer"
@@ -37,6 +39,7 @@ type Parser struct {
 // reported, so later stages can still inspect whatever was recovered.
 func Parse(name, src string, bag *diag.Bag) *ast.File {
 	file := diag.NewFile(name, src)
+	bag.Track(file)
 	parser := &Parser{
 		file:   file,
 		bag:    bag,
@@ -48,6 +51,7 @@ func Parse(name, src string, bag *diag.Bag) *ast.File {
 // ParseFile is Parse with the diag.File already built, for callers that need
 // to resolve positions themselves.
 func ParseFile(file *diag.File, bag *diag.Bag) *ast.File {
+	bag.Track(file)
 	parser := &Parser{
 		file:   file,
 		bag:    bag,
@@ -136,7 +140,12 @@ func (p *Parser) errorf(offset int, format string, args ...any) {
 	if p.inTrial {
 		panic(trialFailure{})
 	}
-	p.bag.Errorf(p.file.Position(offset), format, args...)
+	p.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     codes[format],
+		Pos:      p.file.Position(offset),
+		Message:  fmt.Sprintf(format, args...),
+	})
 }
 
 // ---------------------------------------------------------------------------

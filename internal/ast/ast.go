@@ -573,6 +573,9 @@ type SelectorExpr struct {
 	Offset int
 	X      Expr
 	Name   string
+	// NameOffset is where the member name starts, so a diagnostic about it
+	// underlines the name rather than the dot.
+	NameOffset int
 }
 
 func (s *SelectorExpr) Pos() int  { return s.Offset }

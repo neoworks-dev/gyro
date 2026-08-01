@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"fmt"
+
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -318,7 +320,8 @@ func (c *checker) assignPart(lhs ast.Expr, value, target types.Type) {
 		return
 	}
 	if !c.assignableType(value, target) {
-		c.errorf(lhs.Pos(), "cannot use %s as %s in assignment", describeType(value), target)
+		c.errorLabelf(lhs.Pos(), fmt.Sprintf("expected %s", target),
+			"cannot use %s as %s in assignment", describeType(value), target)
 	}
 	c.killFactsFor(lhs)
 }

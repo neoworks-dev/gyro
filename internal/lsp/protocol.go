@@ -30,6 +30,9 @@ type Diagnostic struct {
 	Severity int    `json:"severity"`
 	Source   string `json:"source"`
 	Message  string `json:"message"`
+	// Code is the diagnostic code, E0401 and friends. Editors show it beside
+	// the message and let the user search for it.
+	Code string `json:"code,omitempty"`
 }
 
 type publishDiagnosticsParams struct {

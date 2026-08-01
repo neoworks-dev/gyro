@@ -36,6 +36,7 @@ usage:
   gyro build <file.gyro> [-o out]
                             compile a program to a native executable
   gyro lsp                  run the language server over stdio
+  gyro explain [CODE]       explain a diagnostic code, or list them all
   gyro version              print the compiler version
 `
 
@@ -63,6 +64,8 @@ func main() {
 		os.Exit(runNasm(args))
 	case "build":
 		os.Exit(runBuild(args))
+	case "explain":
+		os.Exit(runExplain(args))
 	case "lsp":
 		if err := lsp.Serve(os.Stdin, os.Stdout, version); err != nil {
 			fmt.Fprintf(os.Stderr, "gyro lsp: %v\n", err)
@@ -275,13 +278,33 @@ func runTokens(args []string) int {
 	return report(&bag)
 }
 
-// report prints every diagnostic and returns the process exit code.
+// report prints every diagnostic as a code frame and returns the process
+// exit code.
 func report(bag *diag.Bag) int {
-	for _, item := range bag.Items() {
-		fmt.Fprintln(os.Stderr, item)
-	}
+	fmt.Fprint(os.Stderr, bag.Render(diag.AutoStyle(os.Stderr)))
 	if bag.HasErrors() {
 		return 1
 	}
+	return 0
+}
+
+// runExplain prints what a diagnostic code means, `gyro explain E0401`.
+func runExplain(args []string) int {
+	if len(args) != 1 {
+		fmt.Println("the codes with an explanation:")
+		for _, code := range diag.Codes() {
+			title, _, _ := diag.Explain(code)
+			fmt.Printf("  %s  %s\n", code, title)
+		}
+		return 0
+	}
+
+	code := diag.Code(strings.ToUpper(args[0]))
+	title, body, found := diag.Explain(code)
+	if !found {
+		fmt.Fprintf(os.Stderr, "gyro: no such diagnostic code %q\n", args[0])
+		return 2
+	}
+	fmt.Printf("%s: %s\n\n%s\n", code, title, body)
 	return 0
 }

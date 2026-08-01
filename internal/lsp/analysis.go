@@ -77,15 +77,21 @@ func (s *Server) analyzeGyro(doc *document) []Diagnostic {
 		if item.Severity == diag.SeverityWarning {
 			severity = severityWarning
 		}
+		// LSP has one message field, so the notes follow the message on
+		// their own lines.
 		message := item.Message
-		if len(item.Notes) > 0 {
-			message += "\n" + strings.Join(item.Notes, "\n")
+		for _, note := range item.Notes {
+			message += "\nnote: " + note
+		}
+		for _, help := range item.Help {
+			message += "\nhelp: " + help
 		}
 		diagnostics = append(diagnostics, Diagnostic{
 			Range:    rangeFor(doc.text, item.Pos.Offset, identifierEnd(doc.text, item.Pos.Offset)),
 			Severity: severity,
 			Source:   "gyro",
 			Message:  message,
+			Code:     string(item.Code),
 		})
 	}
 	return diagnostics

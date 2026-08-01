@@ -5,6 +5,7 @@
 package loader
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,6 +99,7 @@ func (s *loadState) add(path, source string) *Module {
 		File: diag.NewFile(displayPath(path), source),
 		Deps: map[string]*Module{},
 	}
+	s.bag.Track(module.File)
 	s.modules[path] = module
 	s.loading[path] = true
 	s.chain = append(s.chain, path)
@@ -134,11 +136,21 @@ func (s *loadState) dependency(from *Module, specifier string, offset int) {
 
 	path, source, err := s.resolver.Resolve(fromDir, specifier)
 	if err != nil {
-		s.bag.Errorf(from.File.Position(offset), "%s", err)
+		s.bag.Add(diag.Diagnostic{
+			Severity: diag.SeverityError,
+			Code:     codeOf(err),
+			Pos:      from.File.Position(offset),
+			Message:  err.Error(),
+		})
 		return
 	}
 	if s.loading[path] {
-		s.bag.Errorf(from.File.Position(offset), "circular import: %s", s.cycleTrace(path))
+		s.bag.Add(diag.Diagnostic{
+			Severity: diag.SeverityError,
+			Code:     diag.ECircularImport,
+			Pos:      from.File.Position(offset),
+			Message:  fmt.Sprintf("circular import: %s", s.cycleTrace(path)),
+		})
 		return
 	}
 
@@ -215,6 +227,29 @@ func (r overlayResolver) Resolve(fromDir, specifier string) (string, string, err
 	return diskResolver{}.Resolve(fromDir, specifier)
 }
 
+// ResolveError is a resolution failure that knows the diagnostic code it is
+// reported under. A resolver may return any error; one that is not a
+// ResolveError reports as "module not found".
+type ResolveError struct {
+	Code diag.Code
+	Err  error
+}
+
+func (e *ResolveError) Error() string { return e.Err.Error() }
+func (e *ResolveError) Unwrap() error { return e.Err }
+
+func resolveError(code diag.Code, format string, args ...any) error {
+	return &ResolveError{Code: code, Err: fmt.Errorf(format, args...)}
+}
+
+func codeOf(err error) diag.Code {
+	var resolveErr *ResolveError
+	if errors.As(err, &resolveErr) {
+		return resolveErr.Code
+	}
+	return diag.EModuleNotFound
+}
+
 // diskResolver implements the resolution rules the docs specify: @gyro/...
 // is the bundled standard library, ./x and ../x are files beside the
 // importer, and a bare name is a .stack/ package — unimplemented until the
@@ -225,7 +260,8 @@ func (diskResolver) Resolve(fromDir, specifier string) (string, string, error) {
 	if name, ok := strings.CutPrefix(specifier, "@gyro/"); ok {
 		source, found := stdlib.Source(name)
 		if !found {
-			return "", "", fmt.Errorf("no stdlib module %q; the bundled modules are @gyro/{%s}",
+			return "", "", resolveError(diag.ENoSuchStdlib,
+				"no stdlib module %q; the bundled modules are @gyro/{%s}",
 				specifier, strings.Join(stdlib.Modules(), ", "))
 		}
 		return specifier, source, nil
@@ -236,14 +272,17 @@ func (diskResolver) Resolve(fromDir, specifier string) (string, string, error) {
 	}
 
 	if strings.HasPrefix(specifier, "@") {
-		return "", "", fmt.Errorf("cannot resolve %q: only the @gyro namespace is bundled", specifier)
+		return "", "", resolveError(diag.EModuleNotFound,
+			"cannot resolve %q: only the @gyro namespace is bundled", specifier)
 	}
-	return "", "", fmt.Errorf("cannot resolve %q: packages under .stack/ are not implemented yet", specifier)
+	return "", "", resolveError(diag.EModuleNotFound,
+		"cannot resolve %q: packages under .stack/ are not implemented yet", specifier)
 }
 
 func resolveRelative(fromDir, specifier string) (string, string, error) {
 	if fromDir == "" {
-		return "", "", fmt.Errorf("cannot resolve %q: bundled modules import only @gyro modules", specifier)
+		return "", "", resolveError(diag.EModuleNotFound,
+			"cannot resolve %q: bundled modules import only @gyro modules", specifier)
 	}
 
 	path := filepath.Join(fromDir, specifier)
@@ -257,7 +296,7 @@ func resolveRelative(fromDir, specifier string) (string, string, error) {
 
 	source, err := os.ReadFile(absolute)
 	if err != nil {
-		return "", "", fmt.Errorf("cannot load %q: %v", specifier, err)
+		return "", "", resolveError(diag.EModuleUnreadable, "cannot load %q: %v", specifier, err)
 	}
 	return absolute, string(source), nil
 }

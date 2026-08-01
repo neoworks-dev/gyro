@@ -46,18 +46,45 @@ func (s Severity) String() string {
 // Diagnostic is a single message produced by any compiler stage.
 type Diagnostic struct {
 	Severity Severity
-	Pos      Position
-	Message  string
-	// Notes are secondary lines printed under the message, used for
-	// "allocated here" style breadcrumbs and fix hints.
+	// Code names the kind of error, printed as error[E0401]. It may be
+	// NoCode; see codes.go.
+	Code    Code
+	Pos     Position
+	Message string
+	// Length is the width of the underlined span in bytes. Zero means the
+	// renderer measures the token at Pos, which is what most sites want.
+	Length int
+	// Label is the short text printed beside the underline.
+	Label string
+	// Related points at the other places that explain this one: the earlier
+	// declaration, the call site an instantiation came from.
+	Related []Span
+	// Notes state a fact about the language; Help suggests a fix.
 	Notes []string
+	Help  []string
 }
 
+// Span is a secondary location under a diagnostic.
+type Span struct {
+	Pos    Position
+	Length int
+	Label  string
+}
+
+// String is the one-line form, without the source frame: what a test or a
+// log wants. Rendering for a terminal is Render.
 func (d Diagnostic) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: %s: %s", d.Pos, d.Severity, d.Message)
+	fmt.Fprintf(&b, "%s: %s", d.Pos, d.Severity)
+	if d.Code != NoCode {
+		fmt.Fprintf(&b, "[%s]", d.Code)
+	}
+	fmt.Fprintf(&b, ": %s", d.Message)
 	for _, note := range d.Notes {
-		fmt.Fprintf(&b, "\n  %s", note)
+		fmt.Fprintf(&b, "\n  note: %s", note)
+	}
+	for _, help := range d.Help {
+		fmt.Fprintf(&b, "\n  help: %s", help)
 	}
 	return b.String()
 }
@@ -69,6 +96,32 @@ func (d Diagnostic) String() string {
 type Bag struct {
 	items []Diagnostic
 	seen  map[string]bool
+	// files holds the sources the diagnostics point into, so rendering can
+	// quote the offending line. A file the bag never saw renders without
+	// its frame rather than failing.
+	files map[string]*File
+}
+
+// Track registers a source file for rendering. Every stage that creates a
+// diag.File calls it; the cost of forgetting is a frame-less diagnostic.
+func (b *Bag) Track(file *File) {
+	if file == nil {
+		return
+	}
+	if b.files == nil {
+		b.files = map[string]*File{}
+	}
+	b.files[file.Name] = file
+}
+
+// Render draws every diagnostic as a code frame, separated by blank lines.
+func (b *Bag) Render(style Style) string {
+	var out strings.Builder
+	for _, item := range b.Items() {
+		out.WriteString(Render(item, b.files[item.Pos.File], style))
+		out.WriteString("\n\n")
+	}
+	return out.String()
 }
 
 func (b *Bag) Errorf(pos Position, format string, args ...any) {
@@ -90,7 +143,7 @@ func (b *Bag) Warnf(pos Position, format string, args ...any) {
 // Add appends a fully constructed diagnostic, including its notes, unless
 // the same message was already reported at the same position.
 func (b *Bag) Add(d Diagnostic) {
-	key := fmt.Sprintf("%s\x00%d\x00%s", d.Pos, d.Severity, d.Message)
+	key := fmt.Sprintf("%s\x00%d\x00%s\x00%s", d.Pos, d.Severity, d.Code, d.Message)
 	if b.seen[key] {
 		return
 	}

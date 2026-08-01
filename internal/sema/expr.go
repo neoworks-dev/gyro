@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -289,7 +290,8 @@ func (c *checker) assignValue(offset int, e ast.Expr, value, target types.Type, 
 		value = c.adaptUntyped(e, value, target)
 	}
 	if !c.assignableType(value, target) {
-		c.errorf(offset, "cannot use %s as %s in %s", describeType(value), target, context)
+		c.errorLabelf(offset, fmt.Sprintf("expected %s", target),
+			"cannot use %s as %s in %s", describeType(value), target, context)
 	}
 }
 
@@ -807,7 +809,7 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 // calls are handled by callExpr, so a bare method reference is an error.
 func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
 	base := c.expr(e.X)
-	return c.selectField(e.Offset, base, e.Name, true)
+	return c.selectField(e.NameOffset, base, e.Name, true)
 }
 
 // selectField resolves field access through pointers, reporting nullable

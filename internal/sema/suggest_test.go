@@ -21,7 +21,7 @@ func programNote(t *testing.T, files map[string]string, root, want string) {
 func assertNote(t *testing.T, bag *diag.Bag, want string) {
 	t.Helper()
 	for _, item := range bag.Items() {
-		for _, note := range item.Notes {
+		for _, note := range append(item.Notes, item.Help...) {
 			if strings.Contains(note, want) {
 				return
 			}
@@ -61,7 +61,7 @@ func TestUndeclaredNamesSuggestASpelling(t *testing.T) {
 func TestUnrelatedNamesGetNoGuess(t *testing.T) {
 	bag := check(t, "fn t() {\n  var counter = 1\n  var v = zqx\n}\n")
 	for _, item := range bag.Items() {
-		for _, note := range item.Notes {
+		for _, note := range append(item.Notes, item.Help...) {
 			if strings.Contains(note, "did you mean") {
 				t.Errorf("unexpected guess: %s", note)
 			}

@@ -226,8 +226,9 @@ func (p *Parser) parseSelector(x ast.Expr) ast.Expr {
 		return p.splitTupleFloat(x, offset)
 	}
 
+	nameOffset := p.offset()
 	name, _ := p.expectIdent()
-	return &ast.SelectorExpr{Offset: offset, X: x, Name: name}
+	return &ast.SelectorExpr{Offset: offset, X: x, Name: name, NameOffset: nameOffset}
 }
 
 // tupleIndex decodes an integer token used as a tuple position.

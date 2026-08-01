@@ -104,6 +104,20 @@ make build
 ./bin/gyro check examples/structs.gyro    # parse and report diagnostics
 ./bin/gyro ast examples/structs.gyro      # dump the syntax tree
 ./bin/gyro tokens examples/hello.gyro     # dump the token stream
+./bin/gyro explain E0401                  # what a diagnostic code means
+```
+
+Diagnostics print as a code frame, with the span underlined and the fix
+suggested under it:
+
+```
+error[E0401]: undeclared name println
+ --> hello.gyro:2:3
+  |
+2 |   println("hi")
+  |   ^^^^^^^ not found in this scope
+  |
+  = help: "@gyro/stdlib" exports println; add: import { println } from "@gyro/stdlib"
 ```
 
 ```sh

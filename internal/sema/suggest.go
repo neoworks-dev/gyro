@@ -26,13 +26,26 @@ var builtinAliases = map[string]string{
 	"str": "string", "char": "rune", "byte": "u8",
 }
 
-// errorHintf reports an error with secondary note lines under it.
-func (c *checker) errorHintf(offset int, notes []string, format string, args ...any) {
+// errorHintf reports an error with help lines under it.
+func (c *checker) errorHintf(offset int, help []string, format string, args ...any) {
 	c.bag.Add(diag.Diagnostic{
 		Severity: diag.SeverityError,
+		Code:     codes[format],
 		Pos:      c.file.Position(offset),
 		Message:  fmt.Sprintf(format, args...),
-		Notes:    notes,
+		Help:     help,
+	})
+}
+
+// errorLabelf reports an error with a label printed beside the underline,
+// for the messages where the expected type is worth repeating at the span.
+func (c *checker) errorLabelf(offset int, label string, format string, args ...any) {
+	c.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     codes[format],
+		Pos:      c.file.Position(offset),
+		Message:  fmt.Sprintf(format, args...),
+		Label:    label,
 	})
 }
 
@@ -41,11 +54,22 @@ func (c *checker) errorHintf(offset int, notes []string, format string, args ...
 // scope, and the bare message tells the author nothing they do not already
 // see, so the notes carry the diagnosis.
 func (c *checker) reportUndeclared(offset int, kind, name string) {
-	notes := c.undeclaredNotes(name, kind == "type")
-	if len(notes) == 0 {
-		notes = []string{"nothing is predeclared: a name is either declared in this file or imported"}
+	wantType := kind == "type"
+	d := diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Pos:      c.file.Position(offset),
+		Label:    "not found in this scope",
+		Help:     c.undeclaredNotes(name, wantType),
 	}
-	c.errorHintf(offset, notes, "undeclared %s %s", kind, name)
+
+	d.Code, d.Message = diag.EUndeclaredName, fmt.Sprintf("undeclared name %s", name)
+	if wantType {
+		d.Code, d.Message = diag.EUndeclaredType, fmt.Sprintf("undeclared type %s", name)
+	}
+	if len(d.Help) == 0 {
+		d.Notes = []string{"nothing is predeclared: a name is either declared in this file or imported"}
+	}
+	c.bag.Add(d)
 }
 
 func (c *checker) undeclaredNotes(name string, wantType bool) []string {
