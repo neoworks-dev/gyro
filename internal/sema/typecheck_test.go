@@ -425,6 +425,48 @@ func TestGenericFunctionsAreExemptFromBorrowChecking(t *testing.T) {
 	checkOK(t, "fn pick<T>(a: T, b: T, f: bool): T {\n  if f {\n    return a\n  }\n  return b\n}\n")
 }
 
+// A callee's row answers what its result views, which is what carries the
+// fact across a call rather than stopping at each definition.
+const pickPrelude = "fn pick(a: i32[], b: i32[]): i32[] !{ &a } {\n  return a\n}\n\n" +
+	"fn both(a: i32[], b: i32[]): i32[] !{ &a, &b } {\n  return a\n}\n\n"
+
+func TestCallResultCarriesTheCalleesBorrows(t *testing.T) {
+	checkOK(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] !{ &xs } {\n  return pick(xs, ys)\n}\n")
+	checkError(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] {\n  return pick(xs, ys)\n}\n",
+		"this returns a view into xs, which the row does not name")
+	// The caller must account for every source the callee names.
+	checkOK(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] !{ &xs, &ys } {\n  return both(xs, ys)\n}\n")
+	checkError(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] !{ &xs } {\n  return both(xs, ys)\n}\n",
+		"this returns a view into ys, which the row does not name")
+}
+
+// Frame storage travels through a call: passing a local where the callee
+// borrows means the result views this frame.
+func TestLocalStorageTravelsThroughACall(t *testing.T) {
+	checkError(t, pickPrelude+"fn t(ys: i32[]): i32[] !{ &ys } {\n  var local = [1, 2, 3]\n  return pick(local, ys)\n}\n",
+		"view into storage that ends with this function")
+}
+
+// A local bound to a call keeps what the call viewed.
+func TestBorrowSurvivesALocalBinding(t *testing.T) {
+	checkOK(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] !{ &xs } {\n  var v = pick(xs, ys)\n  return v\n}\n")
+	checkError(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] {\n  var v = pick(xs, ys)\n  return v\n}\n",
+		"this returns a view into xs, which the row does not name")
+}
+
+// The row travels with the declaration, so an imported function's borrows
+// reach its caller.
+func TestBorrowsCrossModuleBoundaries(t *testing.T) {
+	files := map[string]string{
+		"util.gyro": "export fn pick(a: i32[], b: i32[]): i32[] !{ &a } {\n  return a\n}\n",
+		"main.gyro": "import { pick } from \"./util\"\n\nfn t(xs: i32[], ys: i32[]): i32[] {\n  return pick(xs, ys)\n}\n",
+	}
+	programError(t, files, "main.gyro", "this returns a view into xs, which the row does not name")
+
+	files["main.gyro"] = "import { pick } from \"./util\"\n\nfn t(xs: i32[], ys: i32[]): i32[] !{ &xs } {\n  return pick(xs, ys)\n}\n"
+	programOK(t, files, "main.gyro")
+}
+
 // ---------------------------------------------------------------------------
 // Spawn races
 // ---------------------------------------------------------------------------

@@ -17,17 +17,40 @@ import (
 // Returning the second kind hands out a view of a frame that is about to go
 // away, which is what gets reported.
 
-// borrowOrigin is where a slice-typed value came from.
+// borrowOrigin is where a slice-typed value came from. A value can view more
+// than one parameter, since a call whose row names several sources returns a
+// view into whichever argument it picked.
 type borrowOrigin struct {
-	// param is the parameter the value views, or nil when the storage
-	// belongs to this frame.
-	param *symbol
+	// params are the parameters of the enclosing function the value views.
+	params []*symbol
 	// local marks storage created here: an array literal, or the buffer of
 	// an Array this frame owns.
 	local bool
 }
 
-func (o borrowOrigin) known() bool { return o.param != nil || o.local }
+func (o borrowOrigin) known() bool { return len(o.params) > 0 || o.local }
+
+// merge combines the origins a value could have come from. Local storage is
+// contagious: a view that might sit on this frame does, for checking.
+func (o borrowOrigin) merge(other borrowOrigin) borrowOrigin {
+	merged := borrowOrigin{local: o.local || other.local}
+	merged.params = append(merged.params, o.params...)
+	for _, sym := range other.params {
+		if !containsSymbol(merged.params, sym) {
+			merged.params = append(merged.params, sym)
+		}
+	}
+	return merged
+}
+
+func containsSymbol(syms []*symbol, want *symbol) bool {
+	for _, sym := range syms {
+		if sym == want {
+			return true
+		}
+	}
+	return false
+}
 
 // declareBorrows resolves a signature's `&name` entries against its
 // parameters, leaving the set the body is checked against.
@@ -74,21 +97,25 @@ func (c *checker) checkReturnedBorrow(e ast.Expr, offset int) {
 		return
 	}
 
-	if origin.param != nil {
-		if c.fn.borrows[origin.param] {
-			return
-		}
+	// Frame storage is the worse problem, so it is the one reported.
+	if origin.local {
 		c.errorHintf(offset, []string{
-			"say so in the row: !{ &" + origin.param.name + " }",
-			c.borrowRowHelp(),
-		}, "this returns a view into %s, which the row does not name", origin.param.name)
+			"the storage is this frame's, and the caller outlives it",
+			"return an owning Array<T> or String, or take the storage as a parameter and name it in the row",
+		}, "this returns a view into storage that ends with this function")
 		return
 	}
 
-	c.errorHintf(offset, []string{
-		"the storage is this frame's, and the caller outlives it",
-		"return an owning Array<T> or String, or take the storage as a parameter and name it in the row",
-	}, "this returns a view into storage that ends with this function")
+	for _, param := range origin.params {
+		if c.fn.borrows[param] {
+			continue
+		}
+		c.errorHintf(offset, []string{
+			"say so in the row: !{ &" + param.name + " }",
+			c.borrowRowHelp(),
+		}, "this returns a view into %s, which the row does not name", param.name)
+		return
+	}
 }
 
 // borrowRowHelp restates what the row currently claims, since the row is
@@ -131,20 +158,65 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 	return borrowOrigin{}
 }
 
-// callOrigin follows `buf.slice()` and `s.runes()` back to the receiver,
-// which is the storage the returned view sits on. A call to a named function
-// is not followed: what it borrows is its own row's business, and checking
-// that across modules is a separate pass.
+// callOrigin works out what a call's result views. A method named on the
+// built-in surface sits on its receiver; a call to a named function is
+// answered by that function's own row, which is what carries the fact across
+// a call and across a module.
 func (c *checker) callOrigin(call *ast.CallExpr) borrowOrigin {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+		switch selector.Name {
+		case "slice", "runes", "view":
+			return c.originOf(selector.X)
+		}
+	}
+	return c.declaredCallOrigin(call)
+}
+
+// declaredCallOrigin maps a callee's `&param` entries onto the arguments
+// this call passed for them. `pick(xs, ys)` with `!{ &a }` on pick views
+// whatever xs views.
+func (c *checker) declaredCallOrigin(call *ast.CallExpr) borrowOrigin {
+	decl := c.calleeDecl(call)
+	if decl == nil || decl.Effects == nil || len(decl.Effects.Borrows) == 0 {
 		return borrowOrigin{}
 	}
-	switch selector.Name {
-	case "slice", "runes", "view":
-		return c.originOf(selector.X)
+	// A generic callee's row is not checked at its definition, so it is not
+	// trustworthy here either.
+	if len(decl.TypeParams) > 0 || len(decl.OwnerParams) > 0 {
+		return borrowOrigin{}
 	}
-	return borrowOrigin{}
+
+	var origin borrowOrigin
+	for _, borrow := range decl.Effects.Borrows {
+		index := paramIndex(decl, borrow.Name)
+		if index < 0 || index >= len(call.Args) {
+			continue
+		}
+		origin = origin.merge(c.originOf(call.Args[index].Value))
+	}
+	return origin
+}
+
+// calleeDecl recovers the declaration a call resolved to, which sema
+// recorded when it checked the call.
+func (c *checker) calleeDecl(call *ast.CallExpr) *ast.FuncDecl {
+	if c.rec == nil {
+		return nil
+	}
+	resolved, ok := c.rec.calls[call]
+	if !ok || resolved == nil || resolved.Method == nil {
+		return nil
+	}
+	return resolved.Method.Decl
+}
+
+func paramIndex(decl *ast.FuncDecl, name string) int {
+	for i, param := range decl.Params {
+		if param.Name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // noteOrigin records where a newly declared local's storage lives.

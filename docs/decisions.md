@@ -704,9 +704,10 @@ marker and require backtracking on a leading `(`.
 
 ### Borrows are named in the effect row *(new)*
 
-**Status: done, intra-function.** An entry written `&xs` says the result is a
-view into that parameter. Always written out, no elision: a row with no `&`
-says the result views nothing.
+**Status: done.** An entry written `&xs` says the result is a view into that
+parameter. Always written out, no elision: a row with no `&` says the result
+views nothing. The row is read at call sites as well as where it is written,
+so what a call views reaches its caller and crosses module boundaries.
 
 This reverses the rejection of ownership-and-borrows recorded under Manual
 allocation. What was rejected there was *inference* — a borrow checker that
@@ -738,10 +739,16 @@ instantiation, so no single row is right for every `T` — `fn pick<T>(a: T, b:
 T): T` is correct for `i32` and a borrow for `string`. Demanding a row would
 be wrong more often than right.
 
-Still open: a call to a named function is not followed, so what
-`pick(xs, ys)` views is not propagated to its caller. That is the step that
-turns this from a local check into a real guarantee, and it needs the row to
-be read at call sites rather than only at definitions.
+Reading the row at call sites is what makes it a real check rather than a
+local one, and it is the reason the annotation earns its cost: the fact a
+signature states is usable by everyone who calls it, including across a
+module, without anyone re-deriving it from a body. It is also the machinery
+the concrete effects will need — `io` and `alloc` become checkable by the
+same "read the callee's row, apply it here" step.
+
+Frame storage propagates through a call: passing a local where the callee
+borrows makes the result view the caller's frame. That falls out of mapping
+`&param` onto the argument rather than being a separate rule.
 
 ### Effect rows themselves
 
@@ -1141,7 +1148,6 @@ one position never told the reader anything the first did not.
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
 | literal payload patterns do not lower | `Shape::Circle(1.0)` type-checks and the interpreter matches it, but the lowering only binds names and `_` in a payload; making it work means the payload test joins the tag test in the arm's condition. The exhaustiveness check already treats such an arm as not covering its variant |
-| borrows across a call | a return is checked against its own row, but a call's result is not given the row's view, so what `pick(xs, ys)` borrows does not reach its caller |
 | borrows from a receiver | `&` names a parameter, and `self` is not one, so a method lending out a view of its receiver — `fn Stack::view(self): i32[]` — states nothing and is unchecked. Whether the spelling is `&self` or the receiver becomes nameable some other way is undecided |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |

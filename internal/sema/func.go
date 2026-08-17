@@ -70,7 +70,7 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		// A view parameter is storage the caller owns; anything derived from
 		// it views the caller's memory rather than this frame's.
 		if sym != nil && viewType(paramType) {
-			sym.origin = borrowOrigin{param: sym}
+			sym.origin = borrowOrigin{params: []*symbol{sym}}
 		}
 	}
 

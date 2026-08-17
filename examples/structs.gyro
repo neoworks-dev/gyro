@@ -59,6 +59,14 @@ fn longest(values: i32[], fallback: i32[]): i32[] !{ &values, &fallback } {
   return values
 }
 
+// The row is read at call sites too, so this has to account for both sources
+// `longest` names. Dropping either one from the row is a compile error, and
+// passing a local array literal in would be one as well: the view would
+// point at this frame.
+fn preferred(primary: i32[], spare: i32[]): i32[] !{ &primary, &spare } {
+  return longest(primary, spare)
+}
+
 export enum Shape {
   Circle(f64),
   Rect(f64, f64),
@@ -112,7 +120,7 @@ fn main() {
   println("stack empty: #{stack.is_empty()}")
   println(total(stack.view()))
   println(total([3, 4, 5]))
-  println(total(longest(stack.view(), [9])))
+  println(total(preferred(stack.view(), [9])))
 
   println(area(Shape::Circle(2.0)))
   println(area(Shape::Rect(3.0, 4.0)))

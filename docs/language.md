@@ -883,14 +883,32 @@ The name must be a parameter of the function, and that parameter has to be a
 view itself — there is nothing to borrow from an `i32`. A borrow entry on a
 result that is not a view is an error rather than a no-op.
 
-Three boundaries worth naming:
+A row is read at call sites, not only where it is written, so what a call
+views reaches the caller — across a module boundary as well:
+
+```gyro
+fn pick(a: i32[], b: i32[]): i32[] !{ &a } { return a }
+
+fn caller(xs: i32[], ys: i32[]): i32[] !{ &xs } {
+  return pick(xs, ys)      // views xs, because pick's row says so
+}
+
+fn bad(ys: i32[]): i32[] !{ &ys } {
+  var local = [1, 2, 3]
+  return pick(local, ys)   // error: the result views this frame
+}
+```
+
+Frame storage travels through a call the same way. A caller has to account
+for every source the callee names: `both(xs, ys)` with `!{ &a, &b }` on
+`both` needs `!{ &xs, &ys }`.
+
+Two boundaries worth naming:
 
 - **Generic functions are not borrow-checked.** Whether `T` is a view depends
   on the instantiation, so no single row is right for every `T`, and demanding
-  one would be wrong more often than not.
-- **A call is not followed.** What `pick(xs, ys)` returns a view into is its
-  own row's business; reading that row at the call site is the step that turns
-  this from a local check into a guarantee, and it is not taken yet.
+  one would be wrong more often than not. A generic callee's row is not
+  trusted at a call site either, for the same reason.
 - **Methods lending out the receiver are not checked.** `&` names a
   parameter, and `self` is a receiver, so `fn Stack::view(self): i32[]` has
   nothing to name. Views reached through a struct field are unchecked for the

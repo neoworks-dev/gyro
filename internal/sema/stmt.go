@@ -471,10 +471,12 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 	// Returning an allocation hands it to the caller, and whatever the
 	// return does not carry is lost right here.
 	c.settleEscapes(s.Results)
-	for _, result := range s.Results {
-		c.checkReturnedBorrow(result, result.Pos())
-	}
 	defer func() {
+		// After the results are typed: following a call back to what it
+		// views needs the call resolution, which typing is what records.
+		for _, result := range s.Results {
+			c.checkReturnedBorrow(result, result.Pos())
+		}
 		c.checkLeaksAtExit()
 		c.flow.reachable = false
 	}()
