@@ -7,8 +7,8 @@ import "github.com/gyro-lang/gyro/internal/diag"
 // site; internal/diag's catalogue test fails when a message is missing here.
 var codes = map[string]diag.Code{
 	// Names. The undeclared-name and already-declared diagnostics are built
-	// by hand in suggest.go and sema.go, so their codes sit at those sites
-	// rather than here.
+	// by hand in suggest.go and sema.go, and the leak warning in leak.go, so
+	// their codes sit at those sites rather than here.
 	"cannot move %s: no such name in scope":                                                   diag.EMoveUnknownName,
 	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed": diag.EUnknownDecorator,
 

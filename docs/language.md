@@ -677,15 +677,34 @@ Memory is manual, with a compiler-checked safety net.
 - `defer expr` runs a call at **block exit** — when the enclosing `{ }` ends,
   in reverse order of registration. A loop body's defers run every iteration.
 - A sema pass tracks each allocation and **warns** when one can reach the end
-  of its scope without being freed and without escaping through a return
-  value. Warnings, not errors, so arena and process-lifetime patterns are not
-  blocked.
+  of its block with nothing having freed or taken it. Warnings, not errors,
+  so arena and process-lifetime patterns are not blocked.
 
 ```gyro
 fn f(): i32 {
   var node = alloc<Node>()
   defer free(node)
   return node.value
+}
+```
+
+An allocation is settled by `free`, and equally by anything that hands it
+on: returning it, sending it, storing it in a struct or array literal,
+passing it to a call, or moving it into a closure with `fn[move node]`. Only
+a bare name counts — `node.value` reads through the pointer and leaves
+ownership where it was.
+
+Freeing on one path is not freeing. A `return` is an exit the check sees, so
+an allocation the return does not carry with it is reported there rather than
+at the closing brace:
+
+```gyro
+fn g(cond: bool) {
+  var node = alloc<Node>()   // warns: the early return loses it
+  if cond {
+    return
+  }
+  free(node)
 }
 ```
 
@@ -842,6 +861,10 @@ unresolved name is an error — and **types every expression**:
   at the match, and a payload pattern that tests rather than binds leaves
   its variant uncovered. Open subjects — integers, strings, `error` — are
   exempt.
+- **Leak analysis** warns when an `alloc<T>()` reaches the end of its
+  block with nothing having freed or taken it. `free`, a return, a send, a
+  call argument, a literal field and a `move` capture all settle it; a
+  `return` that does not carry it is reported at the return.
 - **Definite assignment** runs: a `var x: i32` with no initializer is
   tracked until every path to a read has written it. Branches merge, a
   branch that cannot fall through is ignored, loops assign nothing unless
@@ -895,7 +918,6 @@ Still to come:
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
 | derived printing / `to_string` override | needs codegen |
-| leak-analysis warnings | needs escape analysis |
 | effect rows | parsed, unchecked |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | overflow, bounds and cast panics | checked statically for literals only; runtime checks need codegen |

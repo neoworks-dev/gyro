@@ -8,8 +8,10 @@
 // nullable value must be checked against null before it is used, and the
 // check narrows it.
 //
-// Definite assignment, match exhaustiveness and the leak analysis are still
-// to come.
+// It also runs three flow-sensitive checks over a function body, sharing one
+// state that merges at branches: definite assignment, match exhaustiveness,
+// and the leak analysis that warns when an allocation reaches the end of its
+// block with nothing having freed or taken it.
 package sema
 
 import (
@@ -18,6 +20,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 	"math/big"
 )
@@ -64,6 +67,12 @@ type symbol struct {
 	// the flag rather than at the declaration.
 	openGuard     *symbol
 	openGuardName string
+	// holdsAllocation marks a local bound to an alloc call, which the leak
+	// analysis follows until something settles it.
+	holdsAllocation bool
+	// memIntrinsic names the mem function an imported symbol stands for,
+	// "alloc" or "free", and is empty for everything else.
+	memIntrinsic string
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -183,6 +192,23 @@ type checker struct {
 	// makes readable.
 	guarded map[*symbol][]*symbol
 
+	// allocScopes is the stack of blocks, each holding the allocations
+	// declared in it that the leak analysis has yet to see settled.
+	allocScopes [][]allocSite
+
+	// allocFloor is the first entry of allocScopes belonging to the
+	// function being checked, so a closure's return does not answer for the
+	// allocations of the function it sits in.
+	allocFloor int
+
+	// reportedLeaks keeps one allocation from being reported at an early
+	// exit and again at the end of its block.
+	reportedLeaks map[*symbol]bool
+
+	// importPaths maps an import specifier to the module path it resolved
+	// to, which is how `alloc` is told from a local function of that name.
+	importPaths map[string]string
+
 	// lenient marks a generic body being checked without concrete type
 	// arguments: operations involving a type parameter poison to Unknown
 	// instead of erroring, because the real check happens per instantiation.
@@ -204,7 +230,9 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		rec:         &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
 		facts:       map[*symbol]bool{},
 		flow:        newFlow(),
-		guarded:     map[*symbol][]*symbol{},
+		guarded:       map[*symbol][]*symbol{},
+		importPaths:   map[string]string{},
+		reportedLeaks: map[*symbol]bool{},
 	}
 	c.scope = c.module
 	return c
@@ -229,10 +257,13 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	computed := map[*loader.Module]*Exports{}
 	for _, module := range prog.Modules {
 		imports := map[string]*Exports{}
+		paths := map[string]string{}
 		for specifier, dependency := range module.Deps {
 			imports[specifier] = computed[dependency]
+			paths[specifier] = dependency.Path
 		}
 		c := newChecker(p, module.File, module.Path, imports)
+		c.importPaths = paths
 		computed[module] = c.run(module.Tree)
 	}
 	return p.info
@@ -375,6 +406,12 @@ func (c *checker) collectImport(imp *ast.Import) {
 		}
 
 		local := &symbol{kind: symImport, offset: name.Offset, decl: imp, typ: types.Unknown}
+		if c.importPaths[imp.Path] == stdlib.Path("mem") {
+			switch name.Name {
+			case "alloc", "free":
+				local.memIntrinsic = name.Name
+			}
+		}
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {

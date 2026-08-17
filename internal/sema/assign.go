@@ -17,20 +17,41 @@ import "github.com/gyro-lang/gyro/internal/ast"
 // point contributes nothing to a merge, so `if c { return } else { x = 1 }`
 // leaves x assigned below.
 type flow struct {
-	assigned  map[*symbol]bool
+	assigned map[*symbol]bool
+	// settled holds the tracked allocations that something has freed or
+	// carried out of the block. It merges the same way assigned does.
+	settled   map[*symbol]bool
 	reachable bool
 }
 
 func newFlow() flow {
-	return flow{assigned: map[*symbol]bool{}, reachable: true}
+	return flow{assigned: map[*symbol]bool{}, settled: map[*symbol]bool{}, reachable: true}
+}
+
+func copySet(from map[*symbol]bool) map[*symbol]bool {
+	to := make(map[*symbol]bool, len(from))
+	for sym := range from {
+		to[sym] = true
+	}
+	return to
+}
+
+func intersectSets(a, b map[*symbol]bool) map[*symbol]bool {
+	both := map[*symbol]bool{}
+	for sym := range a {
+		if b[sym] {
+			both[sym] = true
+		}
+	}
+	return both
 }
 
 func (f flow) clone() flow {
-	assigned := make(map[*symbol]bool, len(f.assigned))
-	for sym := range f.assigned {
-		assigned[sym] = true
+	return flow{
+		assigned:  copySet(f.assigned),
+		settled:   copySet(f.settled),
+		reachable: f.reachable,
 	}
-	return flow{assigned: assigned, reachable: f.reachable}
 }
 
 // mergeFlow joins two paths that rejoin: a name is assigned afterwards only
@@ -42,13 +63,11 @@ func mergeFlow(a, b flow) flow {
 	if !b.reachable {
 		return a
 	}
-	both := map[*symbol]bool{}
-	for sym := range a.assigned {
-		if b.assigned[sym] {
-			both[sym] = true
-		}
+	return flow{
+		assigned:  intersectSets(a.assigned, b.assigned),
+		settled:   intersectSets(a.settled, b.settled),
+		reachable: true,
 	}
-	return flow{assigned: both, reachable: true}
 }
 
 // branchFlow walks one path from a copy of the current state and returns
@@ -92,7 +111,7 @@ func (c *checker) pushLoop(alwaysTrue bool, walk func()) {
 
 	// `while true` is left only by breaking out of it.
 	if len(loop.breaks) == 0 {
-		c.flow = flow{assigned: map[*symbol]bool{}, reachable: false}
+		c.flow = flow{assigned: map[*symbol]bool{}, settled: map[*symbol]bool{}, reachable: false}
 		return
 	}
 	merged := loop.breaks[0]

@@ -18,9 +18,11 @@ func (c *checker) block(block *ast.Block) {
 // blockInPlace checks a block's statements in the current scope. Function
 // bodies use it so parameters and locals share the function scope.
 func (c *checker) blockInPlace(block *ast.Block) {
-	for _, stmt := range block.Stmts {
-		c.stmt(stmt)
-	}
+	c.pushAllocScope(func() {
+		for _, stmt := range block.Stmts {
+			c.stmt(stmt)
+		}
+	})
 }
 
 func (c *checker) stmt(stmt ast.Stmt) {
@@ -82,7 +84,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		})
 
 	case *ast.DeferStmt:
-		// The parser already guarantees this is a call.
+		// The parser already guarantees this is a call, and checking it
+		// settles the allocations it is handed: a deferred call runs at
+		// block exit, which is exactly where the leak analysis looks.
 		c.expr(s.Call)
 
 	case *ast.SendStmt:
@@ -200,6 +204,16 @@ func (c *checker) localVar(decl *ast.VarDecl) {
 	if _, ok := decl.Value.(*ast.RecvExpr); ok && len(decl.Names) == 2 && len(declared) == 2 {
 		c.receiveGuard(declared[0], declared[1], decl.Names[1].Name)
 	}
+
+	// `var node = alloc<Node>()` makes this block responsible for it.
+	if c.allocationCall(decl.Value) && len(declared) == 1 && declared[0] != nil {
+		declared[0].holdsAllocation = true
+		c.trackAllocation(declared[0], decl.Offset, decl.Names[0].Name)
+		return
+	}
+
+	// Any other initializer that is a bare name hands the allocation over.
+	c.settleEscape(decl.Value)
 }
 
 // varTypes computes the type of each bound name in a var or const
@@ -453,7 +467,13 @@ func (c *checker) compoundAssign(s *ast.AssignStmt) {
 
 func (c *checker) returnStmt(s *ast.ReturnStmt) {
 	// The results are read before the function leaves; nothing below runs.
-	defer func() { c.flow.reachable = false }()
+	// Returning an allocation hands it to the caller, and whatever the
+	// return does not carry is lost right here.
+	c.settleEscapes(s.Results)
+	defer func() {
+		c.checkLeaksAtExit()
+		c.flow.reachable = false
+	}()
 
 	if c.fn == nil {
 		for _, result := range s.Results {
@@ -495,6 +515,9 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 }
 
 func (c *checker) sendStmt(s *ast.SendStmt) {
+	// A sent allocation belongs to whoever receives it.
+	c.settleEscape(s.Value)
+
 	operand := c.expr(s.Chan)
 	channel, ok := operand.(*types.Chan)
 	if !ok {

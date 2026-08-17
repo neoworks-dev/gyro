@@ -66,7 +66,9 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 		return c.binaryExpr(e)
 
 	case *ast.CallExpr:
-		return c.callExpr(e)
+		result := c.callExpr(e)
+		c.settleCallArgs(e)
+		return result
 
 	case *ast.SelectorExpr:
 		return c.selectorExpr(e)
@@ -738,6 +740,8 @@ func (c *checker) arrayLit(e *ast.ArrayLit, want types.Type) types.Type {
 
 	elem := elemWant
 	for _, element := range e.Elements {
+		// Storing an allocation in a literal puts it beyond this block.
+		c.settleEscape(element)
 		t := c.exprWith(element, elemWant)
 		if elemWant != nil {
 			c.assignValue(element.Pos(), element, t, elemWant, "the array literal")
@@ -872,6 +876,12 @@ func (c *checker) checkFieldVisibility(offset int, strct *types.Struct, field *t
 }
 
 func (c *checker) structLit(e *ast.StructLit) types.Type {
+	// A field holding an allocation outlives this block along with the
+	// struct it went into.
+	for _, field := range e.Fields {
+		c.settleEscape(field.Value)
+	}
+
 	resolved := c.structLitType(e.Type)
 
 	strct, ok := resolved.(*types.Struct)
@@ -1199,17 +1209,26 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 	}
 
 	// A move capture takes an existing binding with it, so the name must
-	// already resolve outside the closure.
+	// already resolve outside the closure. Moving is also what carries an
+	// allocation into the closure, which is the case the leak analysis
+	// cannot see any other way.
 	for _, capture := range e.Captures {
-		if c.scope.lookup(capture.Name) == nil {
+		captured := c.scope.lookup(capture.Name)
+		if captured == nil {
 			c.errorf(capture.Offset, "cannot move %s: no such name in scope", capture.Name)
+			continue
 		}
+		c.settleAllocation(captured)
 	}
 
 	sig := &types.Func{Async: e.Async, Required: len(e.Params)}
 
-	savedFn, savedFacts := c.fn, c.facts
-	defer func() { c.fn, c.facts = savedFn, savedFacts }()
+	savedFn, savedFacts, savedFloor := c.fn, c.facts, c.allocFloor
+	defer func() { c.fn, c.facts, c.allocFloor = savedFn, savedFacts, savedFloor }()
+
+	// A return inside the closure leaves the closure, not the function this
+	// is written in.
+	c.allocFloor = len(c.allocScopes)
 
 	// Captures copy, so a narrowed value stays narrowed inside the body.
 	inherited := map[*symbol]bool{}

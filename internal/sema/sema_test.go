@@ -190,6 +190,22 @@ func programError(t *testing.T, files map[string]string, root, want string) {
 	t.Errorf("no diagnostic contains %q; got: %v", want, bag.Items())
 }
 
+// programWarning asserts a warning containing want, and no errors alongside
+// it: the leak analysis must never block a program from compiling.
+func programWarning(t *testing.T, files map[string]string, root, want string) {
+	t.Helper()
+	bag := checkProgram(t, files, root)
+	if bag.HasErrors() {
+		t.Fatalf("expected only a warning, got errors: %v", bag.Items())
+	}
+	for _, item := range bag.Items() {
+		if strings.Contains(item.Message, want) {
+			return
+		}
+	}
+	t.Errorf("no diagnostic contains %q; got: %v", want, bag.Items())
+}
+
 const utilModule = "export fn helper() {\n}\n\n" +
 	"export struct Shape {\n}\n\n" +
 	"fn hidden() {\n}\n"

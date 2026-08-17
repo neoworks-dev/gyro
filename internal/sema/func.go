@@ -22,16 +22,17 @@ func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 // can re-enter while another body is mid-check.
 func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Type) {
 	savedScope, savedFn, savedFacts, savedLenient, savedRec := c.scope, c.fn, c.facts, c.lenient, c.rec
-	savedFlow, savedLoops := c.flow, c.loops
+	savedFlow, savedLoops, savedFloor := c.flow, c.loops, c.allocFloor
 	defer func() {
 		c.scope, c.fn, c.facts, c.lenient, c.rec = savedScope, savedFn, savedFacts, savedLenient, savedRec
-		c.flow, c.loops = savedFlow, savedLoops
+		c.flow, c.loops, c.allocFloor = savedFlow, savedLoops, savedFloor
 	}()
 
 	c.scope = newScope(c.module)
 	c.facts = map[*symbol]bool{}
 	c.flow = newFlow()
 	c.loops = nil
+	c.allocFloor = len(c.allocScopes)
 
 	generic := len(decl.TypeParams) > 0 || len(decl.OwnerParams) > 0
 	c.lenient = bindings == nil && generic

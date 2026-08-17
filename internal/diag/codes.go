@@ -88,6 +88,10 @@ const (
 	ERangeMisuse     Code = "E0605"
 	EIterationMisuse Code = "E0606"
 	EPrivateField    Code = "E0607"
+
+	// Memory. Warnings, because an arena and a process-lifetime allocation
+	// are both deliberate and neither frees.
+	WPossibleLeak Code = "W0701"
 )
 
 // explanation is the long form behind a code, printed by `gyro explain`.
@@ -228,6 +232,8 @@ var explanations = map[Code]explanation{
 		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes()."},
 	EPrivateField: {"field is private to its module",
 		"Field visibility is explicit; construct the value with an associated\nfunction instead."},
+	WPossibleLeak: {"allocation reaches the end of its block unfreed",
+		"Memory is manual: alloc<T>() is released by free, usually as a defer\nbeside the allocation. Returning it, sending it, passing it to a call or\nmoving it into a closure all hand it on and end the question here.\n\nThis is a warning because an arena and a process-lifetime allocation\nfree nothing on purpose."},
 }
 
 // Explain returns the title and body registered for a code.

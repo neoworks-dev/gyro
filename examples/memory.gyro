@@ -2,8 +2,9 @@
 //
 // `alloc` returns a raw pointer, `free` releases it, and `defer` schedules
 // the release for the exit of the enclosing block. The compiler tracks every
-// allocation and warns when one can reach the end of its scope without being
-// freed or returned.
+// allocation and warns when one can reach the end of its block with nothing
+// having freed or taken it — a return, a send, a call argument, a struct
+// field and a `move` capture all count as taking it.
 //
 // A plain `*Node` can never be null. Only `*Node?` can, and it cannot be
 // dereferenced until it has been checked.

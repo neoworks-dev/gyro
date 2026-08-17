@@ -378,6 +378,63 @@ func TestTupleAssignability(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Leak analysis
+// ---------------------------------------------------------------------------
+
+// The leak analysis needs the real `mem` module behind the import, so these
+// go through the loader rather than checkOK.
+const leakPrelude = "import { alloc, free } from \"mem\"\n\n" +
+	"struct Node {\n  value: i32\n}\n\n" +
+	"struct Holder {\n  node: *Node\n}\n\n"
+
+func leakSource(body string) map[string]string {
+	return map[string]string{"main.gyro": leakPrelude + body}
+}
+
+func TestAllocationReachingBlockEndWarns(t *testing.T) {
+	programWarning(t, leakSource("fn t() {\n  var node = alloc<Node>()\n}\n"),
+		"main.gyro", "the allocation in node reaches the end of its block unfreed")
+}
+
+// free settles it, and so does every way of handing it on.
+func TestSettledAllocationsAreQuiet(t *testing.T) {
+	programOK(t, leakSource("fn t() {\n  var node = alloc<Node>()\n  defer free(node)\n}\n"), "main.gyro")
+	programOK(t, leakSource("fn t() {\n  var node = alloc<Node>()\n  free(node)\n}\n"), "main.gyro")
+	programOK(t, leakSource("fn t(): *Node {\n  var node = alloc<Node>()\n  return node\n}\n"), "main.gyro")
+	programOK(t, leakSource("fn t(): Holder {\n  var node = alloc<Node>()\n  return Holder{ node: node }\n}\n"), "main.gyro")
+	programOK(t, leakSource("fn t(ch: chan<*Node>) {\n  var node = alloc<Node>()\n  ch <- node\n}\n"), "main.gyro")
+	programOK(t, leakSource("fn t(sink: fn(*Node)) {\n  var node = alloc<Node>()\n  sink(node)\n}\n"), "main.gyro")
+}
+
+// A move capture is the case the analysis cannot see any other way: the
+// closure takes the binding with it.
+func TestMoveCaptureSettlesAnAllocation(t *testing.T) {
+	programOK(t, leakSource("fn t() {\n  var node = alloc<Node>()\n  var release = fn[move node]() {\n    free(node)\n  }\n}\n"), "main.gyro")
+}
+
+// Falling out of the bottom is not the only way to reach a block's end. A
+// return that does not carry the allocation loses it right there.
+func TestReturnIsAnExitTheLeakCheckSees(t *testing.T) {
+	programWarning(t, leakSource("fn t(): i32 {\n  var node = alloc<Node>()\n  return 0\n}\n"),
+		"main.gyro", "reaches the end of its block unfreed")
+	programWarning(t, leakSource("fn t(c: bool) {\n  var node = alloc<Node>()\n  if c {\n    return\n  }\n  free(node)\n}\n"),
+		"main.gyro", "reaches the end of its block unfreed")
+}
+
+// A return inside a closure leaves the closure, so it says nothing about the
+// allocations of the function the closure was written in.
+func TestClosureReturnDoesNotBlameItsEnclosingFunction(t *testing.T) {
+	programOK(t, leakSource("fn t() {\n  var node = alloc<Node>()\n  defer free(node)\n  var f = fn(): i32 {\n    return 1\n  }\n}\n"), "main.gyro")
+}
+
+// Freeing on one path is not freeing.
+func TestFreeMustReachEveryPath(t *testing.T) {
+	programWarning(t, leakSource("fn t(c: bool) {\n  var node = alloc<Node>()\n  if c {\n    free(node)\n  }\n}\n"),
+		"main.gyro", "reaches the end of its block unfreed")
+	programOK(t, leakSource("fn t(c: bool) {\n  var node = alloc<Node>()\n  if c {\n    free(node)\n  } else {\n    free(node)\n  }\n}\n"), "main.gyro")
+}
+
+// ---------------------------------------------------------------------------
 // Definite assignment
 // ---------------------------------------------------------------------------
 

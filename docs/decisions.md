@@ -359,12 +359,26 @@ The guard rides the same `&&` / `||` / `!` plumbing as null narrowing, so
 
 ### Manual allocation with a checked safety net
 
-**Status: planned.** `alloc<T>()` returns `*T`, `free(p)` releases it,
-`defer` runs a call at scope exit. A sema pass tracks allocations and
-**warns** when one can reach the end of its scope unfreed and unescaped.
+**Status: done.** `alloc<T>()` returns `*T`, `free(p)` releases it, `defer`
+runs a call at scope exit. A sema pass tracks allocations and **warns** when
+one can reach the end of its block unfreed and unescaped.
 
 Warnings rather than errors, so arenas and process-lifetime allocations are
 not blocked.
+
+Escaping is read broadly on purpose: a return, a send, a call argument, a
+struct or array literal field, and a `move` capture all settle the question,
+because a callee may keep what it is handed and following it is exactly what
+this pass cannot do. The bias is toward silence — a missed leak costs less
+than a warning on correct code, which teaches people to ignore the category.
+
+Only a bare name settles. `node.value` reads through the pointer and leaves
+ownership where it was, so a block that only reads its allocation is still
+reported.
+
+A `return` is treated as an exit the check sees rather than a place to stop
+looking. Checking only the closing brace missed `var node = alloc<Node>()`
+followed by `return 0`, where the allocation is lost on the way out.
 
 Rejected ownership-and-borrows, which is a large sema investment, and
 garbage collection, which needs a runtime and conflicts with `@gpu`.
