@@ -1,0 +1,15 @@
+// The shortest representation that round-trips, matching Go's %v.
+
+import { println } from "stdlib"
+
+fn main() {
+  println(12.0)
+  println(3.14159 * 2.0 * 2.0)
+  println(0.1 + 0.2)
+  println(1.0 / 3.0)
+  println(10000000000000000000000.0)
+  println(0.00001)
+  println(1.5e300 * 1.5e300)
+  println(0.0 - 12.5)
+  println(100000.0)
+}

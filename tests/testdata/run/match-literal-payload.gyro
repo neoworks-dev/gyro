@@ -1,0 +1,28 @@
+// A payload pattern that tests rather than binds. Sema allows it and
+// leaves the variant uncovered, so the wildcard is required.
+//gyro:skip metals a literal payload pattern does not lower
+//gyro:skip native a literal payload pattern does not lower
+
+import { println } from "stdlib"
+
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Point,
+}
+
+fn describe(s: Shape): string {
+  return match s {
+    Shape::Circle(1.0): "unit circle"
+    Shape::Circle(r): "circle"
+    Shape::Rect(w, h): "rect"
+    Shape::Point: "point"
+  }
+}
+
+fn main() {
+  println(describe(Shape::Circle(1.0)))
+  println(describe(Shape::Circle(2.0)))
+  println(describe(Shape::Rect(1.0, 2.0)))
+  println(describe(Shape::Point))
+}

@@ -1,0 +1,18 @@
+// A module-level `var` is mutable state outside any frame.
+//gyro:skip metals METALS has no mutable globals
+//gyro:skip native METALS has no mutable globals
+
+import { println } from "stdlib"
+
+var counter: i32 = 0
+
+fn bump(): i32 {
+  counter += 1
+  return counter
+}
+
+fn main() {
+  println(bump())
+  println(bump())
+  println(counter)
+}

@@ -1,0 +1,13 @@
+// An async function referenced as a value, then called through the value.
+//gyro:skip native indirect async calls are not generated yet
+
+import { println } from "stdlib"
+
+async fn work(n: i32): i32 {
+  return n * 2
+}
+
+async fn main() {
+  var f = work
+  println(await f(21))
+}

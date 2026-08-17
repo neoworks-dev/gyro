@@ -1,0 +1,15 @@
+// A type with no to_string prints a compiler-derived representation.
+// Structs, enums and tuples all need one.
+//gyro:skip native the backend has no synthesized repr function yet
+
+import { println } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+fn main() {
+  println(Point{ x: 1, y: 2 })
+  println((1, "a"))
+}

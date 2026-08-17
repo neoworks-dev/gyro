@@ -1,0 +1,17 @@
+// A receive reports whether the channel was still open, so a drained
+// channel is distinguishable from a zero value.
+
+import { println } from "stdlib"
+
+fn main() {
+  var ch = chan<i32>(1)
+  ch <- 5
+  ch.close()
+  var v, open = <-ch
+  if open {
+    println(v)
+  }
+  println(open)
+  var _, still = <-ch
+  println(still)
+}

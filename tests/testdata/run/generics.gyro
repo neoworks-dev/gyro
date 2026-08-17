@@ -1,0 +1,32 @@
+import { println } from "stdlib"
+
+struct Pair<T> {
+  first: T
+  second: T
+}
+
+fn Pair<T>::swap(*self) {
+  var tmp = self.first
+  self.first = self.second
+  self.second = tmp
+}
+
+fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {
+    return a
+  }
+  return b
+}
+
+fn main() {
+  println(max(3, 7))
+  println(max(2.5, 1.5))
+
+  var pair = Pair<i32>{ 1, 2 }
+  pair.swap()
+  println(pair.first)
+
+  var words = Pair{ first: "a", second: "b" }
+  words.swap()
+  println(words.first)
+}

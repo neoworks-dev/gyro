@@ -1,0 +1,31 @@
+// Integers and strings are open subjects, so they need a wildcard rather
+// than exhaustive coverage.
+
+import { println } from "stdlib"
+
+fn classify(n: i32): string {
+  return match n {
+    0: "zero"
+    1: "one"
+    _: "many"
+  }
+}
+
+fn main() {
+  println(classify(0))
+  println(classify(1))
+  println(classify(7))
+
+  match 3 {
+    0: println("zero")
+    3: println("three")
+    _: println("many")
+  }
+
+  var name = match "b" {
+    "a": "first"
+    "b": "second"
+    _: "other"
+  }
+  println(name)
+}

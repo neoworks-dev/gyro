@@ -1,0 +1,34 @@
+import { println } from "stdlib"
+
+fn pair(): (i32, string) {
+  return 4, "four"
+}
+
+fn main() {
+  var n, word = pair()
+  println(n)
+  println(word)
+
+  var t = pair()
+  println(t.1)
+
+  var counts = (1, 2)
+  counts.0 = 10
+  println(counts.0 + counts.1)
+
+  var xs = [1, 2, 3]
+  xs[1] += 40
+  println(xs[1])
+
+  var i: i32 = 0
+  while true {
+    i += 1
+    if i == 2 {
+      continue
+    }
+    if i > 3 {
+      break
+    }
+    println(i)
+  }
+}

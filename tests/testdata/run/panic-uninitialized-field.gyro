@@ -1,0 +1,17 @@
+// alloc hands back storage, not a value: reading a field nobody wrote is
+// the same bug as reading an unwritten local.
+//gyro:panic uninitialized
+//gyro:skip native the C runtime does not poison uninitialized storage
+
+import { println } from "stdlib"
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+}
+
+fn main() {
+  var node = alloc<Node>()
+  println(node.value)
+  free(node)
+}

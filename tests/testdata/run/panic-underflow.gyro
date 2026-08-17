@@ -1,0 +1,10 @@
+// Underflow is overflow: an unsigned width has no room below zero.
+//gyro:panic integer overflow
+
+import { println } from "stdlib"
+
+fn main() {
+  var x: u8 = 0
+  var y: u8 = 1
+  println(x - y)
+}

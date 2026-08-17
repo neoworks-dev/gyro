@@ -1,0 +1,11 @@
+// len() is bytes; runes() decodes.
+
+import { println } from "stdlib"
+
+fn main() {
+  var text = "héllo"
+  println(text.len())
+  for r in text.runes() {
+    println(r)
+  }
+}

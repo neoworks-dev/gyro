@@ -1,0 +1,8 @@
+//gyro:panic does not fit u32
+
+import { println } from "stdlib"
+
+fn main() {
+  var x: i32 = -1
+  println(x as u32)
+}

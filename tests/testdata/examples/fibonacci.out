@@ -1,0 +1,40 @@
+--- fibonacci (recursive) ---
+0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+--- fibonacci (iterative) ---
+0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+89
+144
+233
+377
+--- factorials ---
+1
+2
+6
+24
+120
+720
+5040
+40320
+362880
+3628800
+fib(10) was folded to 55 at compile time

@@ -1,0 +1,16 @@
+//gyro:panic use after free
+//gyro:skip native the C runtime frees for real and cannot see the reuse
+
+import { println } from "stdlib"
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+}
+
+fn main() {
+  var node = alloc<Node>()
+  node.value = 1
+  free(node)
+  println(node.value)
+}

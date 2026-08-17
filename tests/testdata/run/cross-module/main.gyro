@@ -1,0 +1,11 @@
+import { println } from "stdlib"
+import { shout, double, BASE, Counter } from "./util"
+
+fn main() {
+  shout("hey")
+  println(double(BASE))
+
+  var c = Counter{ n: 0 }
+  println(c.bump())
+  println(c.bump())
+}

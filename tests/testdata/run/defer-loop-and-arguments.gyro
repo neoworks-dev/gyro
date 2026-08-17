@@ -1,0 +1,20 @@
+// A loop body is a block, so its defers run every iteration. Arguments are
+// evaluated where the defer is written, not where it runs.
+//gyro:skip metals lowering evaluates a deferred call's arguments at exit
+//gyro:skip native lowering evaluates a deferred call's arguments at exit
+
+import { println } from "stdlib"
+
+fn main() {
+  for i in 0..2 {
+    defer println("exit #{i}")
+    println("body #{i}")
+  }
+
+  var x = 1
+  {
+    defer println(x)
+    x = 2
+    println(x)
+  }
+}

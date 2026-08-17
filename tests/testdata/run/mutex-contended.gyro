@@ -1,0 +1,28 @@
+// Two threads incrementing the same counter 100 times each. The total is
+// deterministic; the interleaving is not.
+
+import { println, spawn, Mutex } from "stdlib"
+
+fn main() {
+  var total = Mutex::new(0)
+  var done = chan<bool>()
+
+  spawn(fn() {
+    for i in 0..100 {
+      var guard = total.lock()
+      defer guard.unlock()
+      guard.set(guard.get() + 1)
+    }
+    done <- true
+  })
+  for i in 0..100 {
+    var guard = total.lock()
+    defer guard.unlock()
+    guard.set(guard.get() + 1)
+  }
+
+  var _ = <-done
+  var guard = total.lock()
+  println(guard.get())
+  guard.unlock()
+}

@@ -1,0 +1,14 @@
+//gyro:panic double free
+
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+}
+
+fn main() {
+  var node = alloc<Node>()
+  node.value = 1
+  free(node)
+  free(node)
+}

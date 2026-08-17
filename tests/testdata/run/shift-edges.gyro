@@ -1,0 +1,17 @@
+// A shift wider than the type is defined, not undefined: it clears.
+
+import { println } from "stdlib"
+
+fn main() {
+  var one: u64 = 1
+  var wide: u64 = 70
+  println(one << wide)
+  var word: u64 = 12345
+  println(word >> wide)
+  var negative: i64 = -8
+  var two: i64 = 2
+  println(negative >> two)
+  var byte: u8 = 10
+  var shift: u8 = 3
+  println(byte << shift)
+}

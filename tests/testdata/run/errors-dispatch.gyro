@@ -1,0 +1,31 @@
+import { println, eprintln } from "stdlib"
+
+struct TooBig {
+  limit: i32
+}
+
+fn TooBig::message(self): string {
+  return "value above #{self.limit}"
+}
+
+fn check(v: i32): (i32, error?) {
+  if v > 10 {
+    return 0, TooBig{ limit: 10 }
+  }
+  return v, null
+}
+
+fn main() {
+  var ok, err = check(7)
+  println(ok)
+  println(err == null)
+
+  var _, bad = check(99)
+  if bad != null {
+    println(bad.message())
+    match bad {
+      TooBig(e): println(e.limit)
+      _: eprintln("unexpected")
+    }
+  }
+}

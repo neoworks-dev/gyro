@@ -1,0 +1,20 @@
+import { println } from "stdlib"
+
+export const BASE: i32 = 21
+
+export fn shout(text: string) {
+  println("#{text}!")
+}
+
+export fn double(n: i32): i32 {
+  return n * 2
+}
+
+export struct Counter {
+  export n: i32
+}
+
+export fn Counter::bump(*self): i32 {
+  self.n += 1
+  return self.n
+}

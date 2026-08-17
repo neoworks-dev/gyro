@@ -1,0 +1,7 @@
+//gyro:panic closed channel
+
+fn main() {
+  var ch = chan<i32>(1)
+  ch.close()
+  ch <- 1
+}

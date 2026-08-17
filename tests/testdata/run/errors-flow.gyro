@@ -1,0 +1,42 @@
+// An error is a value with a message() method. Callers match on the
+// concrete type when they need its data.
+
+import { println } from "stdlib"
+import { to_i32 } from "convert"
+
+struct RangeError {
+  export value: i32
+}
+
+fn RangeError::message(self): string {
+  return "value #{self.value} is out of range"
+}
+
+fn parse_port(text: string): (i32, error?) {
+  var value, err = to_i32(text)
+  if err != null {
+    return 0, err
+  }
+  if value < 1 || value > 65535 {
+    return 0, RangeError{ value: value }
+  }
+  return value, null
+}
+
+fn describe(text: string) {
+  var port, err = parse_port(text)
+  if err != null {
+    match err {
+      RangeError(e): println("range: #{e.value}")
+      _: println("bad: #{err.message()}")
+    }
+    return
+  }
+  println("ok: #{port}")
+}
+
+fn main() {
+  describe("8080")
+  describe("70000")
+  describe("nonsense")
+}

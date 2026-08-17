@@ -48,10 +48,14 @@ fn main() {
   println(scale(5))
 
   // Closures are how work reaches another thread, which is why `spawn` can
-  // be a library function rather than a keyword.
+  // be a library function rather than a keyword. The channel is what orders
+  // the two prints; without it the output is a race.
+  var done = chan<bool>()
   spawn(fn() {
     println("on another thread")
+    done <- true
   })
+  var _ = <-done
 
   // An async closure inhabits the type `async fn(): i32`; awaiting a call
   // to it works like awaiting any async function.

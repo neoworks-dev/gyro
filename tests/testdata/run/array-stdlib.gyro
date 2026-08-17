@@ -1,0 +1,19 @@
+import { println, Array } from "stdlib"
+
+fn main() {
+  var values = Array<i32>::new()
+  defer values.free()
+  values.push(1)
+  values.push(2)
+  values.push(3)
+  values.set(0, 9)
+  println(values.get(0))
+  var last, ok = values.pop()
+  println("#{last} #{ok}")
+  println(values.len())
+  var total = 0
+  for value in values.slice() {
+    total += value
+  }
+  println(total)
+}
