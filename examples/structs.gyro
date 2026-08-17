@@ -49,6 +49,16 @@ fn total(values: i32[]): i32 {
   return sum
 }
 
+// Handing a view back out says where the view came from. `&values` in the
+// effect row is what makes this legal: without it the compiler assumes the
+// result borrows nothing, and a slice never owns its storage.
+fn longest(values: i32[], fallback: i32[]): i32[] !{ &values, &fallback } {
+  if values.len() == 0 {
+    return fallback
+  }
+  return values
+}
+
 export enum Shape {
   Circle(f64),
   Rect(f64, f64),
@@ -102,6 +112,7 @@ fn main() {
   println("stack empty: #{stack.is_empty()}")
   println(total(stack.view()))
   println(total([3, 4, 5]))
+  println(total(longest(stack.view(), [9])))
 
   println(area(Shape::Circle(2.0)))
   println(area(Shape::Rect(3.0, 4.0)))

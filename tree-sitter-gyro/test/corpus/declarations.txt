@@ -596,3 +596,48 @@ fn f(n: i32 = 4) {}
           (type_identifier))
         (int_literal)))
     (block)))
+
+==================
+borrows in an effect row
+==================
+
+fn first(xs: i32[]): i32[] !{ &xs }
+fn pick(a: i32[], b: i32[]): i32[] !{ io, &a }
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier)))))
+    (slice_type
+      (named_type
+        (type_identifier)))
+    (effect_row
+      (borrow
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier)))))
+    (slice_type
+      (named_type
+        (type_identifier)))
+    (effect_row
+      (identifier)
+      (borrow
+        (identifier)))))

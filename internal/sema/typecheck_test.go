@@ -378,6 +378,54 @@ func TestTupleAssignability(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Borrows
+// ---------------------------------------------------------------------------
+
+// A slice never owns, so a function handing one back states where the view
+// came from.
+func TestReturnedViewNeedsItsSourceNamed(t *testing.T) {
+	checkOK(t, "fn first(xs: i32[]): i32[] !{ &xs } {\n  return xs\n}\n")
+	checkError(t, "fn first(xs: i32[]): i32[] {\n  return xs\n}\n",
+		"this returns a view into xs, which the row does not name")
+	checkError(t, "fn pick(a: i32[], b: i32[]): i32[] !{ &a } {\n  return b\n}\n",
+		"this returns a view into b, which the row does not name")
+	checkOK(t, "fn spans(a: i32[], b: i32[], f: bool): i32[] !{ &a, &b } {\n  if f {\n    return a\n  }\n  return b\n}\n")
+}
+
+// An array literal is storage in the enclosing frame, and the caller
+// outlives the frame.
+func TestViewOfLocalStorageCannotEscape(t *testing.T) {
+	checkError(t, "fn t(): i32[] {\n  var xs = [1, 2, 3]\n  return xs\n}\n",
+		"view into storage that ends with this function")
+	checkError(t, "fn t(): i32[] {\n  return [1, 2, 3]\n}\n",
+		"view into storage that ends with this function")
+}
+
+// The row's own entries are checked: the name is a parameter, that
+// parameter is a view, and the result is one too.
+func TestBorrowRowNamesAViewParameter(t *testing.T) {
+	checkError(t, "fn t(xs: i32[]): i32[] !{ &nope } {\n  return xs\n}\n",
+		"&nope names no parameter of this function")
+	checkError(t, "fn t(n: i32, xs: i32[]): i32[] !{ &n } {\n  return xs\n}\n",
+		"&n borrows from i32, which is not a view")
+	checkError(t, "fn t(xs: i32[]): usize !{ &xs } {\n  return xs.len()\n}\n",
+		"this row borrows, but the result is not a view")
+}
+
+// A result that is not a view needs no row, and a string literal is not
+// frame storage.
+func TestNonViewResultsAreNotBorrowChecked(t *testing.T) {
+	checkOK(t, "fn t(xs: i32[]): usize {\n  return xs.len()\n}\n")
+	checkOK(t, "fn t(): string {\n  return \"a literal is static\"\n}\n")
+}
+
+// Whether T is a view depends on the instantiation, so a generic signature
+// cannot state a borrow that is right for every T.
+func TestGenericFunctionsAreExemptFromBorrowChecking(t *testing.T) {
+	checkOK(t, "fn pick<T>(a: T, b: T, f: bool): T {\n  if f {\n    return a\n  }\n  return b\n}\n")
+}
+
+// ---------------------------------------------------------------------------
 // Spawn races
 // ---------------------------------------------------------------------------
 

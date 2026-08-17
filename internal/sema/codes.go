@@ -131,6 +131,13 @@ var codes = map[string]diag.Code{
 	"%s is read before it is assigned":                                                      diag.EUnassignedRead,
 	"%s holds a value only where %s is true":                                                diag.EUnassignedRead,
 
+	// Borrows
+	"&%s names no parameter of this function":                       diag.EBadBorrowSource,
+	"&%s borrows from %s, which is not a view":                      diag.EBadBorrowSource,
+	"this row borrows, but the result is not a view":                diag.EBadBorrowSource,
+	"this returns a view into %s, which the row does not name":      diag.EUnnamedBorrow,
+	"this returns a view into storage that ends with this function": diag.EEscapingLocalView,
+
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
 	"cannot assign to this expression":                                                     diag.ENotAssignable,

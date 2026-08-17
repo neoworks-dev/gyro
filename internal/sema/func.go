@@ -50,10 +50,11 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 
 	selfType := c.selfTypeFor(decl)
 	c.fn = &funcContext{
-		result:   c.resultType(decl.Results),
-		async:    decl.Async,
-		inMethod: decl.Recv != nil,
-		selfType: selfType,
+		result:        c.resultType(decl.Results),
+		async:         decl.Async,
+		inMethod:      decl.Recv != nil,
+		selfType:      selfType,
+		borrowChecked: !generic,
 	}
 	c.recordLocal(decl, "return", c.fn.result)
 	if selfType != nil {
@@ -65,8 +66,17 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		if param.Default != nil {
 			c.assignExpr(param.Default, paramType, "the default value")
 		}
-		c.declareValue(param.Name, param.Offset, decl, paramType)
+		sym := c.declareValue(param.Name, param.Offset, decl, paramType)
+		// A view parameter is storage the caller owns; anything derived from
+		// it views the caller's memory rather than this frame's.
+		if sym != nil && viewType(paramType) {
+			sym.origin = borrowOrigin{param: sym}
+		}
 	}
+
+	// The row's borrows resolve against the parameters, so this runs after
+	// they are declared.
+	c.fn.borrows = c.declareBorrows(decl)
 
 	if decl.Body != nil {
 		c.blockInPlace(decl.Body)

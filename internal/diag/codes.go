@@ -89,6 +89,11 @@ const (
 	EIterationMisuse Code = "E0606"
 	EPrivateField    Code = "E0607"
 
+	// Borrows
+	EBadBorrowSource   Code = "E0608"
+	EUnnamedBorrow     Code = "E0609"
+	EEscapingLocalView Code = "E0610"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -235,6 +240,12 @@ var explanations = map[Code]explanation{
 		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes()."},
 	EPrivateField: {"field is private to its module",
 		"Field visibility is explicit; construct the value with an associated\nfunction instead."},
+	EBadBorrowSource: {"borrow does not name a view parameter",
+		"An entry written &xs in an effect row names a parameter of the same\nfunction, and that parameter has to be a view — a slice or a string.\nAnything else owns what it holds, so there is nothing to borrow from."},
+	EUnnamedBorrow: {"returned view is not named in the row",
+		"T[] and string are views over storage they do not own, so a function\nreturning one states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
+	EEscapingLocalView: {"view outlives the storage behind it",
+		"The storage belongs to this frame — an array literal, or a buffer this\nfunction owns — and the caller outlives the frame, so the view it gets\nback points at memory that is gone.\n\nReturn an owning Array<T> or String, or take the storage as a parameter\nand name it in the row."},
 	WSpawnRace: {"spawned closure shares a reference with its spawner",
 		"A closure captures by copy, which is safe for a value and not for a\nreference: copying a *T copies the pointer, and copying a T[] copies a\npointer and a length over storage it does not own. Both threads then\nreach the same memory with nothing ordering them.\n\nHand the binding over with fn[move x](), or share through a channel or a\nMutex. A channel capture is never reported, since carrying work between\nthreads is what it is for.\n\nThis does not prove the absence of a race: a pointer reached through a\nstruct field, or two spawns over one channel, are both invisible here."},
 	WPossibleLeak: {"allocation reaches the end of its block unfreed",

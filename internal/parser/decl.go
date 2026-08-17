@@ -332,8 +332,9 @@ func (p *Parser) parseResultList() []ast.Type {
 	return []ast.Type{p.parseType()}
 }
 
-// parseEffectRow parses the reserved effect annotation that follows a
-// signature: `!{}`, `!{ io, alloc }`, `!e`, or `!{ io, ..e }`.
+// parseEffectRow parses the effect annotation that follows a signature:
+// `!{}`, `!{ io, alloc }`, `!e`, or `!{ io, ..e }`. An entry written `&xs`
+// is a borrow rather than an effect, naming the parameter the result views.
 func (p *Parser) parseEffectRow() *ast.EffectRow {
 	if !p.at(token.Bang) {
 		return nil
@@ -354,8 +355,7 @@ func (p *Parser) parseEffectRow() *ast.EffectRow {
 			row.Var, _ = p.expectIdent()
 			break
 		}
-		name, _ := p.expectIdent()
-		row.Names = append(row.Names, name)
+		p.parseEffectEntry(row)
 
 		if !p.accept(token.Comma) {
 			break
@@ -363,6 +363,20 @@ func (p *Parser) parseEffectRow() *ast.EffectRow {
 	}
 	p.expect(token.RBrace)
 	return row
+}
+
+// parseEffectEntry reads one entry of a row: `&xs` borrows a parameter,
+// anything else names an effect.
+func (p *Parser) parseEffectEntry(row *ast.EffectRow) {
+	if p.at(token.Amp) {
+		offset := p.offset()
+		p.next()
+		name, _ := p.expectIdent()
+		row.Borrows = append(row.Borrows, ast.Borrow{Offset: offset, Name: name})
+		return
+	}
+	name, _ := p.expectIdent()
+	row.Names = append(row.Names, name)
 }
 
 // parseStructDecl parses `struct Name<T> { field: T ... }`.

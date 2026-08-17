@@ -483,10 +483,16 @@ func (p *printer) effects(row *EffectRow) {
 }
 
 func effectRowString(row *EffectRow) string {
-	if len(row.Names) == 0 && row.Var != "" {
+	if len(row.Names) == 0 && len(row.Borrows) == 0 && row.Var != "" {
 		return "!" + row.Var
 	}
-	inner := strings.Join(row.Names, ", ")
+
+	entries := append([]string{}, row.Names...)
+	for _, borrow := range row.Borrows {
+		entries = append(entries, "&"+borrow.Name)
+	}
+
+	inner := strings.Join(entries, ", ")
 	if row.Var != "" {
 		if inner != "" {
 			inner += ", "

@@ -81,6 +81,9 @@ type symbol struct {
 	// closureDepth is how many closures deep the symbol was declared. A name
 	// used at a greater depth than it was declared at is captured.
 	closureDepth int
+	// origin is where a slice-typed value's storage lives, which is what
+	// borrow checking follows back from a return.
+	origin borrowOrigin
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -151,6 +154,13 @@ type funcContext struct {
 	async    bool
 	inMethod bool
 	selfType types.Type
+	// borrows is the set of parameters the signature's row says the result
+	// is a view into. Empty means the result must own what it holds.
+	borrows map[*symbol]bool
+	// borrowChecked is false for a generic function. Whether `T` is a view
+	// depends on the instantiation, so a row naming a borrow would be wrong
+	// for every T that owns, and demanding one is worse than not checking.
+	borrowChecked bool
 }
 
 // checker holds the state of one module's check.

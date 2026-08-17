@@ -123,16 +123,27 @@ type Arg struct {
 
 // EffectRow is the `!{ io, alloc }` annotation on a signature.
 //
-// Reserved syntax: the parser records effect rows so that adding the checker
-// later is not a breaking change, but no stage validates them yet. An absent
-// row means "infer", which is the normal case for module-private functions.
+// The concrete effects are reserved: the parser records them so that adding
+// the checker later is not a breaking change, but no stage validates them.
+// An absent row means "infer", which is the normal case for module-private
+// functions. The borrow entries are checked.
 type EffectRow struct {
 	Offset int
 	// Names are the concrete effects listed in the row.
 	Names []string
+	// Borrows are the parameters the result is a view into, written `&xs`.
+	// Empty means the result views nothing, which is what makes returning a
+	// slice of a local an error.
+	Borrows []Borrow
 	// Var is the trailing row variable from `!e` or `!{ io, ..e }`, which is
 	// how an effect-polymorphic signature says "whatever the callee does".
 	Var string
+}
+
+// Borrow is one `&name` entry in an effect row.
+type Borrow struct {
+	Offset int
+	Name   string
 }
 
 // FuncDecl is a function, or a method when Owner names the type it belongs

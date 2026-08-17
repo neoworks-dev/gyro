@@ -187,6 +187,7 @@ func (c *checker) localVar(decl *ast.VarDecl) {
 	var declared []*symbol
 	c.varTypes(decl, func(binding ast.Binding, typ types.Type) {
 		sym := c.declareValue(binding.Name, binding.Offset, decl, typ)
+		c.noteOrigin(sym, decl.Value, typ)
 		declared = append(declared, sym)
 	})
 
@@ -470,6 +471,9 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 	// Returning an allocation hands it to the caller, and whatever the
 	// return does not carry is lost right here.
 	c.settleEscapes(s.Results)
+	for _, result := range s.Results {
+		c.checkReturnedBorrow(result, result.Pos())
+	}
 	defer func() {
 		c.checkLeaksAtExit()
 		c.flow.reachable = false

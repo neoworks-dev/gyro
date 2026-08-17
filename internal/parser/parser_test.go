@@ -352,6 +352,32 @@ func TestDeclarations(t *testing.T) {
 			want: "File test.gyro Func export f Effects: !e Body: Block",
 		},
 		{
+			name: "borrow entry",
+			src:  "fn first(xs: i32[]): i32[] !{ &xs } {\n}\n",
+			want: "File test.gyro Func first Param xs: Type: ArrayType NamedType i32 " +
+				"Result: ArrayType NamedType i32 Effects: !{&xs} Body: Block",
+		},
+		{
+			name: "borrows beside an effect",
+			src:  "fn pick(a: i32[], b: i32[]): i32[] !{ io, &a } {\n}\n",
+			want: "File test.gyro Func pick Param a: Type: ArrayType NamedType i32 " +
+				"Param b: Type: ArrayType NamedType i32 " +
+				"Result: ArrayType NamedType i32 Effects: !{io, &a} Body: Block",
+		},
+		{
+			name: "several borrows",
+			src:  "fn spans(a: i32[], b: i32[]): i32[] !{ &a, &b } {\n}\n",
+			want: "File test.gyro Func spans Param a: Type: ArrayType NamedType i32 " +
+				"Param b: Type: ArrayType NamedType i32 " +
+				"Result: ArrayType NamedType i32 Effects: !{&a, &b} Body: Block",
+		},
+		{
+			name: "borrow with a row variable",
+			src:  "fn head(s: string): string !{ io, &s, ..e } {\n}\n",
+			want: "File test.gyro Func head Param s: Type: NamedType string " +
+				"Result: NamedType string Effects: !{io, &s, ..e} Body: Block",
+		},
+		{
 			name: "channel type",
 			src:  "fn f(ch: chan<i32>) {\n}\n",
 			want: "File test.gyro Func f Param ch: Type: ChanType NamedType i32 Body: Block",

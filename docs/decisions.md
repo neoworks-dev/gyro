@@ -438,10 +438,10 @@ allocation the programmer never wrote, assignment would have to choose
 between aliasing and copying, and — decisively — `@gpu` and `@distributed`
 cannot use a global heap, so a second array type would be needed regardless.
 
-Known cost, accepted: a slice can outlive its backing memory, and nothing
-currently detects that. An array literal `[1, 2, 3]` is a fixed-size array
-in the enclosing scope; slices of it borrow that storage and dangle the same
-way if they escape.
+A slice outliving its backing memory is now caught at a return; see
+"Borrows are named in the effect row" below. An array literal `[1, 2, 3]` is
+a fixed-size array in the enclosing scope, so a slice of it borrows the frame
+and cannot be returned.
 
 Terminology: `T[N]` is a **fixed-size array**, `Array<T>` is a **dynamic
 array**. Both use the word; the qualifier disambiguates.
@@ -701,6 +701,49 @@ marker and require backtracking on a leading `(`.
 ---
 
 ## Effects
+
+### Borrows are named in the effect row *(new)*
+
+**Status: done, intra-function.** An entry written `&xs` says the result is a
+view into that parameter. Always written out, no elision: a row with no `&`
+says the result views nothing.
+
+This reverses the rejection of ownership-and-borrows recorded under Manual
+allocation. What was rejected there was *inference* — a borrow checker that
+works out lifetimes from the body, which is the large sema investment. What
+landed here is the opposite: the signature states the relationship and the
+body is checked against it. The statement is the cheap part, and it is the
+part that makes the fact usable across a call.
+
+The spelling went through three rounds. `borrows xs` was too long for
+something that belongs on most signatures returning a view, and `borrows a,
+b` was ambiguous with effect names in a comma-separated row. `&xs` is short,
+marks each source individually so the ambiguity disappears, and reads the
+same way `&` reads everywhere else: a reference to the thing named.
+
+Rejected putting borrows on the return type (`i32[]&xs`), which reads well
+and is arguably more accurate — a borrow is a property of the type, not of
+what the function does — but splits signature facts across two places.
+Rejected Rust-style named lifetimes, which are more expressive and would add
+a second kind of generic parameter to a language with no trait bounds.
+Rejected eliding the single-candidate case, which is what makes Rust's
+lifetimes bearable but conflicts with "Nothing is implicit."
+
+Consequence worth stating: since a slice never owns, a function returning
+`T[]` needs a `&` entry in practice. Handing ownership back means returning
+`Array<T>`. That is not a new restriction, only a visible one.
+
+Generic functions are exempt. Whether `T` is a view depends on the
+instantiation, so no single row is right for every `T` — `fn pick<T>(a: T, b:
+T): T` is correct for `i32` and a borrow for `string`. Demanding a row would
+be wrong more often than right.
+
+Still open: a call to a named function is not followed, so what
+`pick(xs, ys)` views is not propagated to its caller. That is the step that
+turns this from a local check into a real guarantee, and it needs the row to
+be read at call sites rather than only at definitions.
+
+### Effect rows themselves
 
 **Status: sema.** Signatures may carry `!{ io, alloc }`. The parser records
 these and nothing checks them.
@@ -1098,7 +1141,8 @@ one position never told the reader anything the first did not.
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
 | literal payload patterns do not lower | `Shape::Circle(1.0)` type-checks and the interpreter matches it, but the lowering only binds names and `_` in a payload; making it work means the payload test joins the tag test in the arm's condition. The exhaustiveness check already treats such an arm as not covering its variant |
-| dangling slices | accepted cost of borrowing slices, currently undetected |
+| borrows across a call | a return is checked against its own row, but a call's result is not given the row's view, so what `pick(xs, ys)` borrows does not reach its caller |
+| borrows from a receiver | `&` names a parameter, and `self` is not one, so a method lending out a view of its receiver — `fn Stack::view(self): i32[]` — states nothing and is unchecked. Whether the spelling is `&self` or the receiver becomes nameable some other way is undecided |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |

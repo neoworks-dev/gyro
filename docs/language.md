@@ -813,10 +813,11 @@ export async fn fetch_all(urls: string[]): (Array<string>, error?) {
 
 ---
 
-## Effect rows — reserved
+## Effect rows
 
-Signatures may carry an effect row describing what the function does. The
-parser records these; **no stage checks them yet.**
+Signatures may carry an effect row describing what the function does and
+what its result borrows. The concrete effects are **reserved** — the parser
+records them and no stage checks them. The borrow entries **are** checked.
 
 ```gyro
 fn add(a: i32, b: i32): i32                       // no row: inferred
@@ -835,6 +836,65 @@ the motivation: `@comptime` needs purity, `@gpu` forbids allocation and
 syscalls, and `@distributed` restricts what may cross a node boundary. Today
 each of those is a bespoke check; effect rows are how they become one
 mechanism.
+
+### Borrows
+
+An entry written `&name` says the result is a view into that parameter.
+`T[]` and `string` borrow storage they do not own, so a function returning
+one has to say where it came from:
+
+```gyro
+fn first(xs: i32[]): i32[] !{ &xs }
+fn pick(a: i32[], b: i32[]): i32[] !{ &a }
+fn spans(a: i32[], b: i32[]): i32[] !{ &a, &b }
+fn head(s: string): string !{ io, &s }        // beside an effect
+fn make(): i32[]                              // no &: owns its result
+```
+
+`&` reads the same way it does everywhere else — a reference to the thing
+named. Each source carries its own `&`, so borrows and effect names never
+run together in one list.
+
+**This is always written out.** There is no elision: a row without any `&`
+entry says the result is a view into nothing.
+
+```gyro
+fn good(xs: i32[]): i32[] !{ &xs } {
+  return xs        // fine: the row says the result views xs
+}
+
+fn bad(xs: i32[]): i32[] {
+  return xs        // error: the row names no source
+}
+
+fn worse(): i32[] {
+  var xs = [1, 2, 3]
+  return xs        // error: that storage ends with this function
+}
+```
+
+Because a slice never owns, **a function returning `T[]` needs a `&` entry
+in practice.** There is no way to hand back storage through a `T[]`; a
+function that means to give the caller ownership returns `Array<T>`, or
+`String` rather than `string`. The exception is a view of something static,
+like a string literal, which no frame owns.
+
+The name must be a parameter of the function, and that parameter has to be a
+view itself — there is nothing to borrow from an `i32`. A borrow entry on a
+result that is not a view is an error rather than a no-op.
+
+Three boundaries worth naming:
+
+- **Generic functions are not borrow-checked.** Whether `T` is a view depends
+  on the instantiation, so no single row is right for every `T`, and demanding
+  one would be wrong more often than not.
+- **A call is not followed.** What `pick(xs, ys)` returns a view into is its
+  own row's business; reading that row at the call site is the step that turns
+  this from a local check into a guarantee, and it is not taken yet.
+- **Methods lending out the receiver are not checked.** `&` names a
+  parameter, and `self` is a receiver, so `fn Stack::view(self): i32[]` has
+  nothing to name. Views reached through a struct field are unchecked for the
+  same reason.
 
 ---
 

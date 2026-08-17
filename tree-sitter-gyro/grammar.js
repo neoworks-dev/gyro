@@ -198,9 +198,16 @@ module.exports = grammar({
       '!',
       choice(
         field('row_variable', $.identifier),
-        seq('{', commaSep(choice($.identifier, seq('..', $.identifier))), '}'),
+        seq('{', commaSep(choice(
+          $.borrow,
+          $.identifier,
+          seq('..', $.identifier),
+        )), '}'),
       ),
     )),
+
+    // `&xs` names the parameter the result is a view into.
+    borrow: $ => seq('&', field('source', $.identifier)),
 
     struct_declaration: $ => seq(
       repeat($.decorator),
