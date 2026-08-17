@@ -8,6 +8,17 @@ Compiler for the Gyro language, written in Go.
   before proposing a change to settled syntax, and update it whenever a new
   decision is made.
 
+Gyro is a work in progress with no users. Nothing needs a migration path.
+When a spelling changes, change it everywhere and update the docs — do not
+leave a compatibility shim behind, and do not add a diagnostic whose only
+job is to point from the old spelling at the new one. Same for syntax the
+language never had: an error that names a construct borrowed from another
+language is carrying weight it has not earned.
+
+Delete removed things outright. No tombstone comments recording what used
+to be there, no placeholder to hold a gap in a numbering. Git has the
+history.
+
 ## Layout
 
 ```
@@ -21,7 +32,7 @@ internal/loader/     module graph resolution
 internal/sema/       name/type checking; records an Info for the backends
 internal/types/      the type representation
 internal/interp/     tree-walking interpreter, the executable spec
-internal/stdlib/     bundled declaration stubs (@gyro/stdlib, ...)
+internal/stdlib/     bundled declaration stubs (stdlib, mem, fs, net, ...)
 internal/metals/     METALS IR: format, printer/parser, verifier
 internal/lower/      Gyro -> METALS lowering
 internal/meval/      METALS evaluator, the lowering's oracle
@@ -67,7 +78,8 @@ cover. Guessing produces code that has to be undone.
 - **Prefer a library function over a keyword.** `spawn` was a keyword until
   closures made it unnecessary. Before adding grammar, check whether a
   closure-taking function would do.
-- **`else if` is rejected.** Chaining is spelled `elif`, one way only.
+- **`else` takes a block.** Chaining is spelled `elif`, one way only, so
+  `else if` does not parse.
 - **`move` and `copy` are contextual**, valid only inside a capture list.
   They must stay usable as ordinary identifiers.
 - **Trait bounds join with `&`, not `+`.** Several bounds are an

@@ -37,14 +37,14 @@ func TestUndeclaredNamesSuggestTheBuiltinSpelling(t *testing.T) {
 }
 
 func TestUndeclaredNamesSuggestAnImport(t *testing.T) {
-	checkNote(t, "fn t() {\n  println(1)\n}\n", "import { println } from \"@gyro/stdlib\"")
-	checkNote(t, "fn t() {\n  var xs = Array<i32>::new()\n}\n", "import { Array } from \"@gyro/stdlib\"")
+	checkNote(t, "fn t() {\n  println(1)\n}\n", "import { println } from \"stdlib\"")
+	checkNote(t, "fn t() {\n  var xs = Array<i32>::new()\n}\n", "import { Array } from \"stdlib\"")
 
 	// The module is already imported, so the fix is one more name in its
 	// braces rather than a second import statement.
 	programNote(t, map[string]string{
-		"main.gyro": "import { println } from \"@gyro/stdlib\"\n\nfn t() {\n  eprintln(1)\n}\n",
-	}, "main.gyro", "add it to the import you already have from \"@gyro/stdlib\"")
+		"main.gyro": "import { println } from \"stdlib\"\n\nfn t() {\n  eprintln(1)\n}\n",
+	}, "main.gyro", "add it to the import you already have from \"stdlib\"")
 }
 
 func TestUndeclaredNamesSuggestAMethod(t *testing.T) {
@@ -68,6 +68,50 @@ func TestUnrelatedNamesGetNoGuess(t *testing.T) {
 		}
 	}
 	assertNote(t, bag, "nothing is predeclared")
+}
+
+// Mixed operands are the one error whose fix is always a conversion, so the
+// help names the direction that cannot fail.
+func TestMixedOperandsSuggestAConversion(t *testing.T) {
+	checkNote(t, "fn t(a: i32, b: i64) {\n  var x = a * b\n}\n",
+		"convert the i32 side: `x as i64` widens and always succeeds")
+	checkNote(t, "fn t(a: i32, b: i64) {\n  var x = a * b\n}\n",
+		"the other direction, `x as i32`, panics when the value does not fit")
+	checkNote(t, "fn t(a: i16, b: f64) {\n  var x = a + b\n}\n",
+		"convert the i16 side: `x as f64` widens")
+
+	// Signedness means neither direction is safe.
+	checkNote(t, "fn t(a: i32, b: u32) {\n  var x = a + b\n}\n",
+		"convert one side with `as`: `x as i32` or `x as u32`")
+	checkNote(t, "fn t(a: i32, b: u32) {\n  var x = a + b\n}\n",
+		"neither direction is a widening")
+
+	// usize and u64 are one range under two names.
+	checkNote(t, "fn t(a: usize, b: u64) {\n  var x = a + b\n}\n", "both always succeed")
+
+	// rune is 32 bits wide but not 32 bits deep, so no direction is
+	// promised.
+	checkNote(t, "fn t(a: i32, b: rune) {\n  var x = a + b\n}\n",
+		"convert one side with `as`: `x as i32` or `x as rune`")
+}
+
+func TestOperandErrorsWithoutAConversion(t *testing.T) {
+	checkNote(t, "fn t(a: bool) {\n  var x = a + a\n}\n",
+		"`as` converts between the numeric types and rune")
+	checkNote(t, "fn t(a: f64) {\n  var x = a % a\n}\n",
+		"this operator takes integers; convert first")
+	checkNote(t, "fn t(a: rune) {\n  var x = a + a\n}\n", "rune does no arithmetic")
+}
+
+// A compound assignment cannot convert its target: the declaration fixes
+// that type, so only the value can move.
+func TestCompoundAssignmentConvertsTheValue(t *testing.T) {
+	checkNote(t, "fn t(b: i64) {\n  var a: i32 = 0\n  a += b\n}\n",
+		"the target is i32, so convert the value: `x as i32`")
+	checkNote(t, "fn t(b: i64) {\n  var a: i32 = 0\n  a += b\n}\n",
+		"that is not a widening, so a value outside i32 panics")
+	checkNote(t, "fn t(b: u32) {\n  var a: i64 = 0\n  a += b\n}\n",
+		"`x as i64` widens and always succeeds")
 }
 
 func TestMemberErrorsSuggestASpelling(t *testing.T) {

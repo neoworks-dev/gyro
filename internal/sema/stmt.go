@@ -45,8 +45,10 @@ func (c *checker) stmt(stmt ast.Stmt) {
 
 	case *ast.WhileStmt:
 		facts := c.condition(s.Cond)
-		c.withFacts(facts.then, func() {
-			c.block(s.Body)
+		c.pushLoop(isAlwaysTrue(s.Cond), func() {
+			c.withFacts(facts.then, func() {
+				c.block(s.Body)
+			})
 		})
 
 	case *ast.ForStmt:
@@ -59,11 +61,14 @@ func (c *checker) stmt(stmt ast.Stmt) {
 			if s.Cond != nil {
 				facts = c.condition(s.Cond)
 			}
-			c.withFacts(facts.then, func() {
-				if s.Post != nil {
-					c.stmt(s.Post)
-				}
-				c.blockInPlace(s.Body)
+			// A header with no condition never falls out of the loop.
+			c.pushLoop(s.Cond == nil || isAlwaysTrue(s.Cond), func() {
+				c.withFacts(facts.then, func() {
+					if s.Post != nil {
+						c.stmt(s.Post)
+					}
+					c.blockInPlace(s.Body)
+				})
 			})
 		})
 
@@ -71,7 +76,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		elem := c.iterableElem(s.Iterable)
 		c.pushScope(func() {
 			c.declareValue(s.Name, s.Offset, s, elem)
-			c.blockInPlace(s.Body)
+			c.pushLoop(false, func() {
+				c.blockInPlace(s.Body)
+			})
 		})
 
 	case *ast.DeferStmt:
@@ -82,20 +89,59 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		c.sendStmt(s)
 
 	case *ast.SelectStmt:
-		for _, arm := range s.Arms {
+		c.selectStmt(s)
+
+	case *ast.BranchStmt:
+		if s.Kind == token.Break {
+			c.recordBreak()
+			return
+		}
+		// `continue` goes back to the loop head, so nothing below it runs.
+		c.flow.reachable = false
+	}
+}
+
+// selectStmt runs exactly one arm, so what survives is what every arm
+// assigned. Without an `else` the statement blocks until an arm is ready,
+// which is still exactly one arm.
+func (c *checker) selectStmt(s *ast.SelectStmt) {
+	var merged flow
+	first := true
+
+	for _, arm := range s.Arms {
+		armFlow := c.branchFlow(func() {
 			// The arm's binding is visible to its own body and nowhere else.
 			c.pushScope(func() {
 				c.stmt(arm.Comm)
 				c.stmt(arm.Body)
 			})
+		})
+		if first {
+			merged, first = armFlow, false
+			continue
 		}
-		if s.Else != nil {
-			c.stmt(s.Else)
-		}
-
-	case *ast.BranchStmt:
-		// Nothing to check.
+		merged = mergeFlow(merged, armFlow)
 	}
+
+	if s.Else != nil {
+		elseFlow := c.branchFlow(func() { c.stmt(s.Else) })
+		if first {
+			merged, first = elseFlow, false
+		} else {
+			merged = mergeFlow(merged, elseFlow)
+		}
+	}
+
+	if !first {
+		c.flow = merged
+	}
+}
+
+// isAlwaysTrue recognizes the loop header that cannot fall through, so that
+// `while true { x = 1; break }` leaves x assigned.
+func isAlwaysTrue(e ast.Expr) bool {
+	lit, ok := e.(*ast.BasicLit)
+	return ok && lit.Kind == token.True
 }
 
 // exprStmt types a discarded expression and enforces the two values that
@@ -134,9 +180,26 @@ func containsError(t types.Type) bool {
 // localVar checks a local declaration. The initializer is resolved before
 // the names are bound, so `var x = x` refers to an outer x or fails.
 func (c *checker) localVar(decl *ast.VarDecl) {
+	var declared []*symbol
 	c.varTypes(decl, func(binding ast.Binding, typ types.Type) {
-		c.declareValue(binding.Name, binding.Offset, decl, typ)
+		sym := c.declareValue(binding.Name, binding.Offset, decl, typ)
+		declared = append(declared, sym)
 	})
+
+	// A declaration with no value leaves its names holding nothing.
+	if decl.Value == nil && !decl.Const {
+		for _, sym := range declared {
+			if sym != nil {
+				sym.needsAssign = true
+			}
+		}
+		return
+	}
+
+	// `var v, open = <-ch` binds a value that only exists when open is true.
+	if _, ok := decl.Value.(*ast.RecvExpr); ok && len(decl.Names) == 2 && len(declared) == 2 {
+		c.receiveGuard(declared[0], declared[1], decl.Names[1].Name)
+	}
 }
 
 // varTypes computes the type of each bound name in a var or const
@@ -247,6 +310,7 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 	}
 	c.assignExpr(s.Rhs, target, "assignment")
 	c.killFactsFor(s.Lhs[0])
+	c.markAssignedTarget(s.Lhs[0])
 }
 
 // assignTarget types the left side of an assignment and checks that it is
@@ -319,6 +383,7 @@ func (c *checker) assignPart(lhs ast.Expr, value, target types.Type) {
 	if target == nil {
 		return
 	}
+	c.markAssignedTarget(lhs)
 	if !c.assignableType(value, target) {
 		c.errorLabelf(lhs.Pos(), fmt.Sprintf("expected %s", target),
 			"cannot use %s as %s in assignment", describeType(value), target)
@@ -344,12 +409,17 @@ func (c *checker) compoundAssign(s *ast.AssignStmt) {
 		c.errorf(s.Offset, "a compound assignment takes one target")
 		return
 	}
+	// A compound assignment reads its target before it writes it, and
+	// assignTarget only checks that the target is a place.
+	c.checkAssignedTarget(s.Lhs[0])
+
 	target := c.assignTarget(s.Lhs[0])
 	if target == nil {
 		c.errorf(s.Offset, "_ discards a value; there is nothing to update")
 		c.expr(s.Rhs)
 		return
 	}
+	c.markAssignedTarget(s.Lhs[0])
 
 	op := compoundOps[s.Op]
 	value := c.exprWith(s.Rhs, target)
@@ -373,7 +443,8 @@ func (c *checker) compoundAssign(s *ast.AssignStmt) {
 			valid = types.IsInteger(target)
 		}
 		if !valid || !types.Identical(target, value) {
-			c.errorf(s.Offset, "operator %s needs matching numeric operands, got %s and %s",
+			c.errorHintf(s.Offset, compoundHelp(isIntegerOnlyOp(op), target, value),
+				"operator %s needs matching numeric operands, got %s and %s",
 				s.Op, describeType(target), describeType(value))
 		}
 	}
@@ -381,6 +452,9 @@ func (c *checker) compoundAssign(s *ast.AssignStmt) {
 }
 
 func (c *checker) returnStmt(s *ast.ReturnStmt) {
+	// The results are read before the function leaves; nothing below runs.
+	defer func() { c.flow.reachable = false }()
+
 	if c.fn == nil {
 		for _, result := range s.Results {
 			c.expr(result)
@@ -438,10 +512,15 @@ func (c *checker) sendStmt(s *ast.SendStmt) {
 // ---------------------------------------------------------------------------
 
 // condFacts is what a condition proves: the symbols known non-null when it
-// is true, and when it is false.
+// is true, and when it is false, plus the two-name receive values each side
+// makes readable. Both ride the same &&/||/! plumbing.
 type condFacts struct {
 	then []*symbol
 	els  []*symbol
+	// thenAssigned and elsAssigned hold the values of a two-name receive
+	// whose `open` flag this condition settles.
+	thenAssigned []*symbol
+	elsAssigned  []*symbol
 }
 
 // condition types a boolean condition and extracts narrowing facts from
@@ -456,11 +535,17 @@ func (c *checker) condition(e ast.Expr) condFacts {
 			c.withFacts(left.then, func() {
 				right = c.condition(e.Y)
 			})
-			return condFacts{then: append(left.then, right.then...)}
+			return condFacts{
+				then:         append(left.then, right.then...),
+				thenAssigned: append(left.thenAssigned, right.thenAssigned...),
+			}
 		case token.OrOr:
 			left := c.condition(e.X)
 			right := c.condition(e.Y)
-			return condFacts{els: append(left.els, right.els...)}
+			return condFacts{
+				els:         append(left.els, right.els...),
+				elsAssigned: append(left.elsAssigned, right.elsAssigned...),
+			}
 		case token.Eq, token.NotEq:
 			c.equality(e)
 			if sym := c.nullCheckedSymbol(e); sym != nil {
@@ -474,15 +559,23 @@ func (c *checker) condition(e ast.Expr) condFacts {
 	case *ast.UnaryExpr:
 		if e.Op == token.Bang {
 			inner := c.condition(e.X)
-			return condFacts{then: inner.els, els: inner.then}
+			return condFacts{
+				then:         inner.els,
+				els:          inner.then,
+				thenAssigned: inner.elsAssigned,
+				elsAssigned:  inner.thenAssigned,
+			}
 		}
 	}
+
+	// A bare `open` settles the value bound beside it.
+	guarded := c.guardedByCondition(e)
 
 	t := c.expr(e)
 	if !flexible(t) && !types.Identical(t, types.Bool) {
 		c.errorf(e.Pos(), "a condition is a bool, not %s", describeType(t))
 	}
-	return condFacts{}
+	return condFacts{thenAssigned: guarded}
 }
 
 // nullCheckedSymbol recognizes `x != null` and `x == null` where x is a
@@ -553,14 +646,24 @@ func (c *checker) killFactsFor(e ast.Expr) {
 func (c *checker) ifStmt(s *ast.IfStmt) {
 	facts := c.condition(s.Cond)
 
-	c.withFacts(facts.then, func() {
-		c.block(s.Then)
+	thenFlow := c.branchFlow(func() {
+		c.assumeAssigned(facts.thenAssigned)
+		c.withFacts(facts.then, func() {
+			c.block(s.Then)
+		})
 	})
-	if s.Else != nil {
+
+	elseFlow := c.branchFlow(func() {
+		c.assumeAssigned(facts.elsAssigned)
+		if s.Else == nil {
+			return
+		}
 		c.withFacts(facts.els, func() {
 			c.stmt(s.Else)
 		})
-	}
+	})
+
+	c.flow = mergeFlow(thenFlow, elseFlow)
 
 	// An early exit makes the surviving branch's facts permanent:
 	// `if x == null { return }` leaves x narrowed below.

@@ -42,26 +42,26 @@ func nativeFor(modulePath, owner, name string) nativeFunc {
 }
 
 var natives = map[string]nativeFunc{
-	"@gyro/stdlib||print":    nativePrint,
-	"@gyro/stdlib||println":  nativePrintln,
-	"@gyro/stdlib||eprintln": nativeEprintln,
-	"@gyro/stdlib||spawn":    nativeSpawn,
+	"gyro:stdlib||print":    nativePrint,
+	"gyro:stdlib||println":  nativePrintln,
+	"gyro:stdlib||eprintln": nativeEprintln,
+	"gyro:stdlib||spawn":    nativeSpawn,
 
-	"@gyro/stdlib|Array|new":           nativeArrayNew,
-	"@gyro/stdlib|Array|with_capacity": nativeArrayNew,
-	"@gyro/stdlib|Mutex|new":           nativeMutexNew,
+	"gyro:stdlib|Array|new":           nativeArrayNew,
+	"gyro:stdlib|Array|with_capacity": nativeArrayNew,
+	"gyro:stdlib|Mutex|new":           nativeMutexNew,
 
-	"@gyro/mem||alloc": nativeAlloc,
-	"@gyro/mem||free":  nativeFree,
-	"@gyro/mem||size":  nativeSize,
+	"gyro:mem||alloc": nativeAlloc,
+	"gyro:mem||free":  nativeFree,
+	"gyro:mem||size":  nativeSize,
 
-	"@gyro/fs||open":     nativeOpen,
-	"@gyro/fs||read_all": nativeReadAll,
+	"gyro:fs||open":     nativeOpen,
+	"gyro:fs||read_all": nativeReadAll,
 
-	"@gyro/net||get": nativeNetGet,
+	"gyro:net||get": nativeNetGet,
 
-	"@gyro/convert||to_i32": nativeToI32,
-	"@gyro/convert||to_f64": nativeToF64,
+	"gyro:convert||to_i32": nativeToI32,
+	"gyro:convert||to_f64": nativeToF64,
 }
 
 func nativePrint(c *nativeCall) Value {

@@ -56,7 +56,7 @@ func run(t *testing.T, files map[string]string, root string) (string, *interp.Pa
 // runMain wraps a body in fn main with the stdlib imported.
 func runMain(t *testing.T, body string) (string, *interp.Panic) {
 	t.Helper()
-	source := "import { println, eprintln, print, spawn, Array, Mutex } from \"@gyro/stdlib\"\n\n" +
+	source := "import { println, eprintln, print, spawn, Array, Mutex } from \"stdlib\"\n\n" +
 		"fn main() {\n" + body + "}\n"
 	return run(t, map[string]string{"main.gyro": source}, "main.gyro")
 }
@@ -104,7 +104,7 @@ func TestPrintingPrimitives(t *testing.T) {
 }
 
 func TestDerivedStructRepr(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 struct Point {
   x: i32
@@ -120,7 +120,7 @@ fn main() {
 }
 
 func TestToStringOverridesRepr(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 struct Version {
   major: i32
@@ -141,7 +141,7 @@ fn main() {
 }
 
 func TestEnumRepr(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 enum Shape {
   Circle(f64),
@@ -256,7 +256,7 @@ func TestNegativeToUnsignedPanics(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestStructsCopyOnAssignment(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 struct Point {
   x: i32
@@ -276,7 +276,7 @@ fn main() {
 }
 
 func TestTupleDestructuring(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn pair(): (i32, string) {
   return 7, "seven"
@@ -294,10 +294,14 @@ fn main() {
 	wantOutput(t, out, p, "7\nseven\nseven\n")
 }
 
+// Reading an unwritten local directly is a compile error now, so the
+// runtime check is only reachable through a pointer: taking &x is what
+// puts the local past what sema can follow.
 func TestUninitializedReadPanics(t *testing.T) {
 	_, p := runMain(t, `
   var x: i32
-  println(x)
+  var p = &x
+  println(*p)
 `)
 	wantPanic(t, p, "uninitialized")
 }
@@ -306,8 +310,8 @@ func TestUninitializedReadPanics(t *testing.T) {
 // Pointers and memory
 // ---------------------------------------------------------------------------
 
-const memoryPrelude = `import { println } from "@gyro/stdlib"
-import { alloc, free } from "@gyro/mem"
+const memoryPrelude = `import { println } from "stdlib"
+import { alloc, free } from "mem"
 
 struct Node {
   value: i32
@@ -422,7 +426,7 @@ func TestDeferRunsPerLoopIteration(t *testing.T) {
 }
 
 func TestDeferRunsOnEarlyReturn(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn f(early: bool): i32 {
   defer println("cleanup")
@@ -484,7 +488,7 @@ func TestClosureMutationStaysInside(t *testing.T) {
 }
 
 func TestClosureParametersAndExpressionBody(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn apply(v: i32, f: fn(i32): i32): i32 {
   return f(v)
@@ -523,7 +527,7 @@ fn main() {
 // Methods
 // ---------------------------------------------------------------------------
 
-const stackSource = `import { println } from "@gyro/stdlib"
+const stackSource = `import { println } from "stdlib"
 
 struct Counter {
   n: i32
@@ -585,7 +589,7 @@ fn main() {
 // ---------------------------------------------------------------------------
 
 func TestGenericFunctionAndBuiltinCompare(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn max<T>(a: T, b: T): T {
   if a.compare(b) > 0 {
@@ -604,7 +608,7 @@ fn main() {
 }
 
 func TestGenericStruct(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 struct Pair<T> {
   first: T
@@ -634,7 +638,7 @@ fn main() {
 // Enums and match
 // ---------------------------------------------------------------------------
 
-const shapeSource = `import { println } from "@gyro/stdlib"
+const shapeSource = `import { println } from "stdlib"
 
 enum Shape {
   Circle(f64),
@@ -664,7 +668,7 @@ fn main() {
 }
 
 func TestMatchLiteralsAndWildcard(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn classify(n: i32): string {
   return match n {
@@ -685,7 +689,7 @@ fn main() {
 }
 
 func TestMatchWithoutMatchingArmPanics(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn main() {
   var n: i32 = 5
@@ -700,7 +704,7 @@ fn main() {
 }
 
 func TestReturnInsideMatchArm(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn pick(n: i32): string {
   var label = match n {
@@ -724,8 +728,8 @@ fn main() {
 // ---------------------------------------------------------------------------
 
 func TestErrorValuesFlow(t *testing.T) {
-	src := `import { println, eprintln } from "@gyro/stdlib"
-import { to_i32 } from "@gyro/convert"
+	src := `import { println, eprintln } from "stdlib"
+import { to_i32 } from "convert"
 
 struct RangeError {
   export value: i32
@@ -773,7 +777,7 @@ fn main() {
 // ---------------------------------------------------------------------------
 
 func TestChannelsAndSpawn(t *testing.T) {
-	src := `import { println, spawn } from "@gyro/stdlib"
+	src := `import { println, spawn } from "stdlib"
 
 fn produce(out: chan<i32>, count: i32) {
   for var i = 0; i < count; i += 1 {
@@ -803,7 +807,9 @@ func TestReceiveReportsClosed(t *testing.T) {
   ch <- 5
   ch.close()
   var v, open = <-ch
-  println(v)
+  if open {
+    println(v)
+  }
   println(open)
   var w, still = <-ch
   println(still)
@@ -837,7 +843,7 @@ func TestSelect(t *testing.T) {
 }
 
 func TestMutex(t *testing.T) {
-	src := `import { println, spawn, Mutex } from "@gyro/stdlib"
+	src := `import { println, spawn, Mutex } from "stdlib"
 
 fn main() {
   var total = Mutex::new(0)
@@ -872,7 +878,7 @@ fn main() {
 // ---------------------------------------------------------------------------
 
 func TestAsyncAwait(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 async fn compute(n: i32): i32 {
   return n * 2
@@ -909,7 +915,7 @@ func TestIterationSources(t *testing.T) {
 }
 
 func TestDuckTypedIteration(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 struct Counter {
   n: i32
@@ -1032,7 +1038,7 @@ func TestArrayDoubleFreePanics(t *testing.T) {
 
 func TestCrossModuleExecution(t *testing.T) {
 	out, p := run(t, map[string]string{
-		"main.gyro": `import { println } from "@gyro/stdlib"
+		"main.gyro": `import { println } from "stdlib"
 import { double, BASE } from "./lib"
 
 fn main() {
@@ -1050,7 +1056,7 @@ export fn double(n: i32): i32 {
 }
 
 func TestModuleValuesInitializeInOrder(t *testing.T) {
-	src := `import { println } from "@gyro/stdlib"
+	src := `import { println } from "stdlib"
 
 fn triple(n: i32): i32 {
   return n * 3

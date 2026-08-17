@@ -1,6 +1,6 @@
 // The classic starting point.
 
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn greet(name: string) {
   println("Hello, #{name}!")

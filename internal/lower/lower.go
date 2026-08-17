@@ -20,6 +20,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -132,10 +133,10 @@ func (l *lowerer) indexModules() {
 }
 
 func moduleBase(path string) string {
-	base := filepath.Base(path)
-	base = strings.TrimSuffix(base, ".gyro")
-	base = strings.TrimPrefix(base, "@")
-	return base
+	if name, bundled := stdlib.NameOf(path); bundled {
+		return name
+	}
+	return strings.TrimSuffix(filepath.Base(path), ".gyro")
 }
 
 func (l *lowerer) moduleName() string {
@@ -151,11 +152,15 @@ func (l *lowerer) findMain() *ast.FuncDecl {
 	return nil
 }
 
-// isStdlib reports whether a declaration lives in a bundled @gyro module,
-// whose bodies the runtime supplies.
-func (l *lowerer) isStdlib(decl ast.Node) bool {
+// isIntrinsic reports whether a declaration is one the runtime supplies:
+// bundled and bodyless. A bundled declaration that has a body is ordinary
+// Gyro code and lowers like any other, module tag included.
+func (l *lowerer) isIntrinsic(decl *ast.FuncDecl) bool {
+	if decl.Body != nil {
+		return false
+	}
 	module := l.moduleOf[decl]
-	return module != nil && strings.HasPrefix(module.Path, "@gyro/")
+	return module != nil && stdlib.IsBundled(module.Path)
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +172,7 @@ func (l *lowerer) isStdlib(decl ast.Node) bool {
 // main stays bare, and runtime intrinsics carry no module tag.
 func (l *lowerer) funcName(decl *ast.FuncDecl, bindings map[string]types.Type) string {
 	parts := []string{}
-	if !l.isStdlib(decl) {
+	if !l.isIntrinsic(decl) {
 		if module := l.moduleOf[decl]; module != nil {
 			if tag := l.tags[module.Path]; tag != "" {
 				parts = append(parts, tag)
@@ -295,11 +300,10 @@ func (l *lowerer) metalsFnType(t *types.Func) *metals.FnType {
 	return out
 }
 
-// metalsStruct lowers a struct type: runtime-backed stdlib structs
-// (Array, Mutex, File, ...) are opaque handles, user structs become
-// named records.
+// metalsStruct lowers a struct type: runtime-owned handles (Array, Mutex,
+// File, ...) stay opaque, every other struct becomes a named record.
 func (l *lowerer) metalsStruct(t *types.Struct) metals.Type {
-	if strings.HasPrefix(t.Module, "@gyro/") {
+	if isOpaqueHandle(t) {
 		return &metals.Handle{}
 	}
 	origin := t

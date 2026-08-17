@@ -142,15 +142,15 @@ export * from "./m"
 ### Imports
 
 ```gyro
-import { println } from "@gyro/stdlib"
-import { open as fopen } from "@gyro/fs"
-import * as ast from "@gyro/ast"
+import { println } from "stdlib"
+import { open as fopen } from "fs"
+import * as ast from "ast"
 import "./side-effects"
 ```
 
 One file is one module. `./util` resolves to `util.gyro` beside the importing
-file, `@gyro/...` is the bundled standard library, and a bare name is a
-package under `.stack/`. Circular imports are rejected.
+file, and a bare name is the standard library, falling back to a package
+under `.stack/`. Circular imports are rejected.
 
 There is **no default export**, and therefore no `import name from "path"`.
 A name is spelled the same where it is defined and everywhere it is used.
@@ -181,6 +181,35 @@ var _, err = f()      // `_` discards explicitly
 `var x: i32` with no initializer is legal, but reading `x` before every path
 to the read has assigned it is a compile error (**definite assignment**).
 There are no zero values; nothing springs into existence unwritten.
+
+Assigning in one branch is not enough — every path has to write it:
+
+```gyro
+var x: i32
+if cond {
+  x = 1
+}
+println(x)        // error: not assigned when cond was false
+
+if cond { x = 1 } else { x = 2 }
+println(x)        // fine
+```
+
+A branch that cannot fall through does not have to assign, so an early
+`return` leaves the other branch's write standing. A loop body may run zero
+times, so nothing it writes counts afterwards; the exception is a loop that
+cannot fall out of its condition, where `break` is the only exit and the
+states at the breaks are what survive. A `match` or `select` runs exactly one
+arm, so what survives is what every arm wrote.
+
+Taking an address counts as assigning: `&x` names storage that is real and
+sized whether or not anything has been written there, and writes through the
+pointer cannot be followed. Reading through such a pointer before a write
+panics at runtime rather than failing the build.
+
+A closure may read only what is already assigned where it is written, and
+what it assigns does not count outside it — it runs at a time this analysis
+cannot pin down.
 
 An inner block may shadow an outer name; redeclaring a name in the **same**
 block is an error.
@@ -493,8 +522,8 @@ for value in collection {}
 ```
 
 `elif` is sugar and desugars to a nested `if`, leaving no trace in the tree.
-It is the only way to chain conditions: **`else if` is rejected**, so there
-is exactly one spelling.
+It is the only way to chain conditions; `else` takes a block, so there is
+exactly one spelling.
 
 Because a condition is followed by `{`, a bare struct literal cannot appear
 at the top level of a condition — `if Point { }` reads `Point` as a value.
@@ -555,7 +584,17 @@ struct type-tests:
 
 A match over an enum is checked for **exhaustiveness**: every variant must be
 covered or a `_` arm present; adding a variant later breaks every non-`_`
-match loudly, which is the point.
+match loudly, which is the point. A plain binding closes a match the same way
+`_` does, since it matches whatever is left.
+
+An arm covers a variant only when its payload patterns *bind* rather than
+*test*. `Shape::Circle(r)` covers `Circle`; `Shape::Circle(0.0)` matches one
+radius, so `Circle` stays uncovered and the match needs a further arm.
+
+Only enums are enumerable. A match on an integer, a string, or an `error`
+whose concrete type is unknown is never reported as partial — there is no
+finite variant set to compare against. Falling off the end of such a match
+panics at runtime.
 
 An arm body is delimited by the newline that ends it, so a `return` inside an
 arm yields at most one value; returning several needs a block.
@@ -666,7 +705,7 @@ taking a closure, not grammar — the closure is what carries the arguments
 across:
 
 ```gyro
-import { spawn } from "@gyro/stdlib"
+import { spawn } from "stdlib"
 
 spawn(fn() produce(values, 10))
 ```
@@ -695,7 +734,22 @@ ch.close()
 ```
 
 Reading `v` when `open` came back `false` is a definite-assignment error —
-a closed channel yields no value, not a zero value.
+a closed channel yields no value, not a zero value. The flag is what makes
+the value readable, and the check follows `!` and `&&` the same way null
+narrowing does:
+
+```gyro
+var v, open = <-ch
+if open {
+  println(v)      // fine
+}
+
+var w, more = <-ch
+if !more {
+  return
+}
+println(w)        // fine: the branch that would contradict it returned
+```
 
 `select` waits on several operations and runs the arm that becomes ready
 first. Arms are `comm: body`, one per line, like match. Bindings are
@@ -784,12 +838,23 @@ unresolved name is an error — and **types every expression**:
   `a.compare(b)` on numeric primitives and `rune`, `err.message()`.
 - `for..in` handles slices, arrays, ranges, channels, and the duck-typed
   `next(*self): (T, bool)` / `iter()` contract.
+- A match over an enum is **exhaustive**: the missing variants are named
+  at the match, and a payload pattern that tests rather than binds leaves
+  its variant uncovered. Open subjects — integers, strings, `error` — are
+  exempt.
+- **Definite assignment** runs: a `var x: i32` with no initializer is
+  tracked until every path to a read has written it. Branches merge, a
+  branch that cannot fall through is ignored, loops assign nothing unless
+  `break` is their only exit, and `match`/`select` merge their arms. `&x`
+  counts as a write; a closure reads the state where it is written and
+  its own writes stay inside.
 
 The **module loader** is real: `gyro check` loads the whole import graph,
-`./x` resolves beside the importing file, `@gyro/...` comes from
+`./x` resolves beside the importing file, a bare name comes from the
 declaration-only stub files bundled into the compiler, cycles are rejected
 with a trace, and an import of a name the target module does not export is
-an error. Bare package names error until the Stack package manager exists.
+an error. A bare name that is not bundled errors until the Stack package
+manager exists.
 
 **Programs run**: `gyro run file.gyro` checks a program and executes its
 `fn main` in a tree-walking interpreter — the executable specification the
@@ -827,8 +892,6 @@ Still to come:
 
 | feature | state |
 | --- | --- |
-| definite assignment | needs flow analysis in sema; reads of unassigned `var x: i32` pass today |
-| match exhaustiveness | needs sema over enum layouts |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
 | derived printing / `to_string` override | needs codegen |

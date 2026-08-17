@@ -112,17 +112,13 @@ func TestMissingRelativeModule(t *testing.T) {
 	wantError(t, bag, "cannot load \"./ghost\"")
 }
 
-func TestUnknownStdlibModule(t *testing.T) {
-	_, bag := load(t, map[string]string{
-		"main.gyro": "import { x } from \"@gyro/nope\"\n",
-	}, "main.gyro")
-	wantError(t, bag, "no stdlib module")
-}
-
-func TestBarePackagesAreNotImplemented(t *testing.T) {
+// A bare name is the standard library first and a .stack/ package second,
+// so one specifier that is neither has to name both possibilities.
+func TestUnknownBareModule(t *testing.T) {
 	_, bag := load(t, map[string]string{
 		"main.gyro": "import { pad } from \"leftpad\"\n",
 	}, "main.gyro")
+	wantError(t, bag, "it is not a bundled module")
 	wantError(t, bag, "packages under .stack/ are not implemented yet")
 }
 
@@ -150,7 +146,7 @@ func TestStdlibModulesAreClean(t *testing.T) {
 
 	var imports strings.Builder
 	for _, name := range names {
-		imports.WriteString("import \"@gyro/" + name + "\"\n")
+		imports.WriteString("import \"" + name + "\"\n")
 	}
 
 	program, bag := load(t, map[string]string{

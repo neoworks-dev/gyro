@@ -8,8 +8,8 @@
 // A plain `*Node` can never be null. Only `*Node?` can, and it cannot be
 // dereferenced until it has been checked.
 
-import { println } from "@gyro/stdlib"
-import { alloc, free } from "@gyro/mem"
+import { println } from "stdlib"
+import { alloc, free } from "mem"
 
 struct Node {
   value: i32

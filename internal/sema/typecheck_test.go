@@ -55,6 +55,16 @@ func TestOtherLiterals(t *testing.T) {
 // Operators
 // ---------------------------------------------------------------------------
 
+// A literal that cannot take the other operand's type is one error. The
+// poisoned type it leaves behind used to produce a second, blaming
+// <unknown> for a mismatch the author never wrote.
+func TestABadLiteralOperandReportsOnce(t *testing.T) {
+	bag := check(t, "fn t(x: i32) {\n  var c = 1.5 + x\n}\n")
+	if count := len(bag.Items()); count != 1 {
+		t.Fatalf("expected one diagnostic, got %d: %v", count, bag.Items())
+	}
+}
+
 func TestArithmeticNeedsMatchingTypes(t *testing.T) {
 	checkOK(t, "fn t(a: i32, b: i32): i32 {\n  return a + b * 2\n}\n")
 	checkError(t, "fn t(a: i32, b: u8) {\n  var x = a + b\n}\n", "operator + needs matching numeric operands")
@@ -368,6 +378,61 @@ func TestTupleAssignability(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Definite assignment
+// ---------------------------------------------------------------------------
+
+func TestReadBeforeAssignment(t *testing.T) {
+	checkError(t, "fn t(): i32 {\n  var x: i32\n  return x\n}\n", "x is read before it is assigned")
+	checkOK(t, "fn t(): i32 {\n  var x: i32\n  x = 1\n  return x\n}\n")
+	// A compound assignment reads its target first.
+	checkError(t, "fn t(): i32 {\n  var x: i32\n  x += 1\n  return x\n}\n", "x is read before it is assigned")
+}
+
+// A name counts as assigned below a branch only when every path wrote it.
+func TestAssignmentMustReachEveryPath(t *testing.T) {
+	checkError(t, "fn t(c: bool): i32 {\n  var x: i32\n  if c {\n    x = 1\n  }\n  return x\n}\n", "read before it is assigned")
+	checkOK(t, "fn t(c: bool): i32 {\n  var x: i32\n  if c {\n    x = 1\n  } else {\n    x = 2\n  }\n  return x\n}\n")
+	// A branch that cannot fall through leaves the other one's write standing.
+	checkOK(t, "fn t(c: bool): i32 {\n  var x: i32\n  if c {\n    return 0\n  }\n  x = 5\n  return x\n}\n")
+}
+
+// A loop body may not run, so nothing it writes survives it — unless the
+// loop cannot fall out of its condition, where `break` is the only exit.
+func TestLoopsDoNotAssignOnTheirOwn(t *testing.T) {
+	checkError(t, "fn t(c: bool): i32 {\n  var x: i32\n  while c {\n    x = 1\n  }\n  return x\n}\n", "read before it is assigned")
+	checkError(t, "fn t(xs: i32[]): i32 {\n  var x: i32\n  for v in xs {\n    x = v\n  }\n  return x\n}\n", "read before it is assigned")
+	checkOK(t, "fn t(): i32 {\n  var x: i32\n  while true {\n    x = 1\n    break\n  }\n  return x\n}\n")
+}
+
+// One arm of a match or select runs, so what survives is what all of them
+// wrote.
+func TestArmsMergeTheirAssignments(t *testing.T) {
+	checkOK(t, shapePrelude+"fn t(s: Shape): i32 {\n  var x: i32\n  match s {\n    Shape::Circle(r): { x = 1 }\n    Shape::Rect(w, h): { x = 2 }\n    Shape::Point: { x = 3 }\n  }\n  return x\n}\n")
+	checkError(t, shapePrelude+"fn t(s: Shape): i32 {\n  var x: i32\n  match s {\n    Shape::Circle(r): { x = 1 }\n    Shape::Rect(w, h): { x = 2 }\n    Shape::Point: { }\n  }\n  return x\n}\n", "read before it is assigned")
+}
+
+// Taking an address is a write: the storage is real and sized, and what
+// happens through the pointer cannot be followed here.
+func TestAddressOfCountsAsAssignment(t *testing.T) {
+	checkOK(t, "fn t(): i32 {\n  var x: i32\n  var p = &x\n  *p = 7\n  return x\n}\n")
+}
+
+// A closure runs at an unknown time: it may read only what is already
+// assigned, and what it writes does not count outside.
+func TestClosuresNeitherReadNorWriteAcrossTheBoundary(t *testing.T) {
+	checkError(t, "fn t() {\n  var x: i32\n  var f = fn(): i32 x\n}\n", "read before it is assigned")
+	checkError(t, "fn t(): i32 {\n  var x: i32\n  var f = fn() {\n    x = 1\n  }\n  return x\n}\n", "read before it is assigned")
+}
+
+// The value of a two-name receive is only there when the flag is true, and
+// the check follows ! the same way narrowing does.
+func TestReceiveValueNeedsItsFlagChecked(t *testing.T) {
+	checkError(t, "fn t(ch: chan<i32>): i32 {\n  var v, open = <-ch\n  return v\n}\n", "v holds a value only where open is true")
+	checkOK(t, "fn t(ch: chan<i32>): i32 {\n  var v, open = <-ch\n  if open {\n    return v\n  }\n  return 0\n}\n")
+	checkOK(t, "fn t(ch: chan<i32>): i32 {\n  var v, open = <-ch\n  if !open {\n    return 0\n  }\n  return v\n}\n")
+}
+
+// ---------------------------------------------------------------------------
 // Enums and match
 // ---------------------------------------------------------------------------
 
@@ -397,6 +462,33 @@ func TestMatchPatternTypes(t *testing.T) {
 
 func TestMatchBindsPayloadTypes(t *testing.T) {
 	checkError(t, shapePrelude+"fn t(s: Shape) {\n  var x = match s {\n    Shape::Circle(r): r && true\n    _: false\n  }\n}\n", "a condition is a bool")
+}
+
+func TestMatchOverAnEnumIsExhaustive(t *testing.T) {
+	checkOK(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Circle(r): r\n    Shape::Rect(w, h): w\n    Shape::Point: 0.0\n  }\n}\n")
+	checkError(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Circle(r): r\n  }\n}\n", "leaves Shape::Rect, Shape::Point uncovered")
+	checkError(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Circle(r): r\n    Shape::Rect(w, h): w\n  }\n}\n", "leaves Shape::Point uncovered")
+}
+
+// `_` and a plain binding both match everything left over, so either one
+// closes a match on its own.
+func TestIrrefutableArmClosesAMatch(t *testing.T) {
+	checkOK(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Point: 0.0\n    _: 1.0\n  }\n}\n")
+	checkOK(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    other: 1.0\n  }\n}\n")
+}
+
+// A variant only counts as covered when its payload patterns bind rather
+// than test: Circle(0.0) still leaves every other radius unmatched.
+func TestRefutablePayloadDoesNotCoverAVariant(t *testing.T) {
+	checkError(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Circle(0.0): 1.0\n    Shape::Rect(w, h): w\n    Shape::Point: 0.0\n  }\n}\n", "leaves Shape::Circle uncovered")
+	checkOK(t, shapePrelude+"fn t(s: Shape): f64 {\n  return match s {\n    Shape::Circle(0.0): 1.0\n    Shape::Circle(r): r\n    Shape::Rect(w, h): w\n    Shape::Point: 0.0\n  }\n}\n")
+}
+
+// Only enums are enumerable. A match on an open type — an integer, or an
+// `error` whose concrete type is unknown — is never reported as partial.
+func TestExhaustivenessOnlyAppliesToEnums(t *testing.T) {
+	checkOK(t, "fn t(n: i32): string {\n  return match n {\n    0: \"zero\"\n  }\n}\n")
+	checkOK(t, "struct RangeError {\n  value: i32\n}\n\nfn RangeError::message(self): string {\n  return \"bad\"\n}\n\nfn t(err: error): i32 {\n  return match err {\n    RangeError(e): e.value\n  }\n}\n")
 }
 
 func TestTypeTestPattern(t *testing.T) {
@@ -463,9 +555,13 @@ func TestChannelOperations(t *testing.T) {
 func TestTupleChannelReceive(t *testing.T) {
 	// A two-name binding on a receive means (element, open); the tuple
 	// element comes out whole.
+	// The value is only there when the channel was open, so the read is
+	// guarded; definite assignment is what demands the check.
 	src := "fn t(results: chan<(string, error?)>) {\n" +
 		"  var result, open = <-results\n" +
-		"  var body: string = result.0\n" +
+		"  if open {\n" +
+		"    var body: string = result.0\n" +
+		"  }\n" +
 		"  var flag: bool = open\n}\n"
 	checkOK(t, src)
 }
@@ -630,11 +726,11 @@ func TestImportedGenericInstantiatesAcrossModules(t *testing.T) {
 
 func TestStdlibSignaturesAreReal(t *testing.T) {
 	programOK(t, map[string]string{
-		"main.gyro": "import { println, Array } from \"@gyro/stdlib\"\n\nfn main() {\n" +
+		"main.gyro": "import { println, Array } from \"stdlib\"\n\nfn main() {\n" +
 			"  var xs = Array<i32>::new()\n  xs.push(4)\n  var n: usize = xs.len()\n  println(n)\n  xs.free()\n}\n",
 	}, "main.gyro")
 	programError(t, map[string]string{
-		"main.gyro": "import { Array } from \"@gyro/stdlib\"\n\nfn main() {\n" +
+		"main.gyro": "import { Array } from \"stdlib\"\n\nfn main() {\n" +
 			"  var xs = Array<i32>::new()\n  xs.push(\"four\")\n}\n",
 	}, "main.gyro", "cannot use string as i32")
 }

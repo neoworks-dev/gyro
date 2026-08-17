@@ -1,4 +1,4 @@
-// @gyro/fs — declarations only; the runtime supplies the bodies.
+// fs — declarations only; the runtime supplies the bodies.
 
 export struct File {}
 

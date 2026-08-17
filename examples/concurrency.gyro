@@ -4,8 +4,8 @@
 //   channels - hand work between them safely  (chan<T>, select)
 //   async    - hold many idle IO operations   (async fn / await)
 
-import { println, spawn, Mutex, Array } from "@gyro/stdlib"
-import { get } from "@gyro/net"
+import { println, spawn, Mutex, Array } from "stdlib"
+import { get } from "net"
 
 // --- channels -------------------------------------------------------------
 
@@ -26,9 +26,11 @@ fn consume(values: chan<i32>, done: chan<bool>) {
 }
 
 // A channel element can be a tuple, so a worker reports a fallible result
-// without a wrapper struct.
+// without a wrapper struct. Closing when there is nothing more to send is
+// what lets the receiver tell "no value yet" from "no value ever".
 fn fetch_into(url: string, results: chan<(string, error?)>) {
   results <- ("stub body for #{url}", null)
+  results.close()
 }
 
 // `select` waits on several operations and takes whichever is ready first.
@@ -95,6 +97,16 @@ async fn main() {
   spawn(fn() fetch_into("https://example.com", results))
   var result = <-results
   println("first fetch: #{result.0}")
+
+  // A two-name receive reports whether the channel was open. A closed
+  // channel yields no value, so `body` is only readable where `more` is
+  // true — reading it outside the check does not compile.
+  var body, more = <-results
+  if more {
+    println("second fetch: #{body.0}")
+  } else {
+    println("no more results")
+  }
 
   var bodies, err = await fetch_all(["https://example.com"])
   defer bodies.free()

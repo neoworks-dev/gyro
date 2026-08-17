@@ -187,7 +187,7 @@ func position(t *testing.T, text, needle string) string {
 // Tests
 // ---------------------------------------------------------------------------
 
-const cleanSource = `import { println } from "@gyro/stdlib"
+const cleanSource = `import { println } from "stdlib"
 
 struct Point {
   x: i32
@@ -233,15 +233,15 @@ func TestDiagnosticsLifecycle(t *testing.T) {
 func TestSyntaxErrorDiagnostic(t *testing.T) {
 	c := newClient(t)
 	c.initialize()
-	source := "fn main() {\n  if x { } else if y { }\n}\n"
+	source := "import println from \"stdlib\"\n\nfn main() {\n}\n"
 	uri, _ := tempURI(t, "main.gyro", source)
 
 	c.open(uri, source)
 	diagnostics := c.waitDiagnostics(uri)
 	if len(diagnostics) == 0 {
-		t.Fatal("expected the else-if diagnostic")
+		t.Fatal("expected a syntax diagnostic")
 	}
-	if !strings.Contains(diagnostics[0].Message, "elif") {
+	if !strings.Contains(diagnostics[0].Message, "no default exports") {
 		t.Fatalf("unexpected message %q", diagnostics[0].Message)
 	}
 }
@@ -418,6 +418,177 @@ func TestCompletionScope(t *testing.T) {
 		if !labels[want] {
 			t.Fatalf("scope completion missed %q: have %d items", want, len(items))
 		}
+	}
+}
+
+const hintSource = `import { println } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+fn scaled(p: Point, factor: i32): i32 {
+  return (p.x + p.y) * factor
+}
+
+fn apply(value: i32, f: fn(i32): i32): i32 {
+  return f(value)
+}
+
+fn main() {
+  var origin = Point{ x: 1, y: 2 }
+  var factor = 3
+  var values = [1, 2]
+  for value in values {
+    println(scaled(origin, apply(value, fn(n) n * 2)))
+  }
+  println(scaled(origin, factor + 1))
+  println(values.len())
+}
+`
+
+// annotate reinserts hints into the source, so an expectation reads like
+// what the editor draws.
+func annotate(t *testing.T, text string, hints []inlayHint) string {
+	t.Helper()
+	annotated := text
+	// Later offsets first, so the earlier ones stay valid.
+	for i := len(hints) - 1; i >= 0; i-- {
+		label := hints[i].Label
+		if hints[i].PaddingRight {
+			label += " "
+		}
+		at := offsetFor(annotated, hints[i].Position)
+		annotated = annotated[:at] + label + annotated[at:]
+	}
+	return annotated
+}
+
+func (c *client) inlayHints(uri, text string, span Range) []inlayHint {
+	c.t.Helper()
+	result := c.call("textDocument/inlayHint", fmt.Sprintf(
+		`{"textDocument":{"uri":%q},"range":{"start":{"line":%d,"character":%d},`+
+			`"end":{"line":%d,"character":%d}}}`,
+		uri, span.Start.Line, span.Start.Character, span.End.Line, span.End.Character))
+	var hints []inlayHint
+	if err := json.Unmarshal(result, &hints); err != nil {
+		c.t.Fatalf("bad hints %s: %v", result, err)
+	}
+	return hints
+}
+
+// wholeFile is the range a client would ask about when the whole document
+// is on screen.
+func wholeFile(text string) Range {
+	return Range{End: positionFor(text, len(text))}
+}
+
+func TestInlayHints(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", hintSource)
+	c.open(uri, hintSource)
+	if diagnostics := c.waitDiagnostics(uri); len(diagnostics) != 0 {
+		t.Fatalf("the hint source should check cleanly: %+v", diagnostics)
+	}
+
+	hints := c.inlayHints(uri, hintSource, wholeFile(hintSource))
+	want := `fn main() {
+  var origin: Point = Point{ x: 1, y: 2 }
+  var factor: i32 = 3
+  var values: i32[2] = [1, 2]
+  for value: i32 in values {
+    println(value: scaled(p: origin, factor: apply(value, f: fn(n: i32) n * 2)))
+  }
+  println(value: scaled(p: origin, factor: factor + 1))
+  println(value: values.len())
+}
+`
+	annotated := annotate(t, hintSource, hints)
+	if !strings.Contains(annotated, want) {
+		t.Fatalf("hints render as:\n%s\nwant to contain:\n%s", annotated, want)
+	}
+}
+
+func TestInlayHintsHonourRange(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", hintSource)
+	c.open(uri, hintSource)
+	c.waitDiagnostics(uri)
+
+	// Ask only about the line declaring origin.
+	at := positionFor(hintSource, strings.Index(hintSource, "var origin"))
+	span := Range{Start: at, End: Position{Line: at.Line, Character: 999}}
+	hints := c.inlayHints(uri, hintSource, span)
+	if len(hints) != 1 {
+		t.Fatalf("one line should yield one hint, got %+v", hints)
+	}
+	if hints[0].Label != ": Point" || hints[0].Position.Line != at.Line {
+		t.Fatalf("unexpected hint %+v", hints[0])
+	}
+}
+
+func TestInlayHintsWaitForACleanCheck(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", hintSource)
+	c.open(uri, hintSource)
+	c.waitDiagnostics(uri)
+
+	broken := strings.Replace(hintSource, "var origin = Point{ x: 1, y: 2 }", "var origin = ", 1)
+	c.change(uri, broken)
+	c.waitDiagnostics(uri)
+
+	if hints := c.inlayHints(uri, broken, wholeFile(broken)); len(hints) != 0 {
+		t.Fatalf("a buffer that does not check should have no hints: %+v", hints)
+	}
+}
+
+// A generic body carries no types of its own: sema records one set per
+// instantiation, so the hints exist only while a single instantiation pins
+// them.
+const genericHintSource = `import { println } from "stdlib"
+
+fn largest<T>(a: T, b: T): T {
+  var winner = a
+  if b > a {
+    winner = b
+  }
+  return winner
+}
+
+fn main() {
+  println(largest(1, 2))
+}
+`
+
+func TestInlayHintsInGenericBody(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", genericHintSource)
+	c.open(uri, genericHintSource)
+	if diagnostics := c.waitDiagnostics(uri); len(diagnostics) != 0 {
+		t.Fatalf("the generic source should check cleanly: %+v", diagnostics)
+	}
+
+	hints := c.inlayHints(uri, genericHintSource, wholeFile(genericHintSource))
+	if !strings.Contains(annotate(t, genericHintSource, hints), "var winner: i32 = a") {
+		t.Fatalf("the sole instantiation should type the body:\n%s",
+			annotate(t, genericHintSource, hints))
+	}
+
+	// A second instantiation makes the body ambiguous.
+	twice := strings.Replace(genericHintSource, "  println(largest(1, 2))",
+		"  println(largest(1, 2))\n  println(largest(1.5, 2.5))", 1)
+	c.change(uri, twice)
+	c.waitDiagnostics(uri)
+
+	hints = c.inlayHints(uri, twice, wholeFile(twice))
+	if strings.Contains(annotate(t, twice, hints), "var winner:") {
+		t.Fatalf("two instantiations should leave the body unannotated:\n%s",
+			annotate(t, twice, hints))
 	}
 }
 

@@ -56,6 +56,14 @@ type symbol struct {
 	// fn is set for function symbols, including generic ones that have no
 	// plain value type.
 	fn *types.Method
+	// needsAssign marks a local declared without a value: it holds nothing
+	// until something writes to it, and definite assignment tracks it.
+	needsAssign bool
+	// openGuard is set for the value of a two-name receive. The value only
+	// exists where the flag is true, so a read outside that check points at
+	// the flag rather than at the declaration.
+	openGuard     *symbol
+	openGuardName string
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -164,6 +172,17 @@ type checker struct {
 	// check on this control-flow path.
 	facts map[*symbol]bool
 
+	// flow is the definite-assignment state on this control-flow path.
+	flow flow
+
+	// loops is the stack of enclosing loops, which collect the states that
+	// leave through `break`.
+	loops []*loopFlow
+
+	// guarded maps the `open` flag of a two-name receive to the values it
+	// makes readable.
+	guarded map[*symbol][]*symbol
+
 	// lenient marks a generic body being checked without concrete type
 	// arguments: operations involving a type parameter poison to Unknown
 	// instead of erroring, because the real check happens per instantiation.
@@ -184,6 +203,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		consts:      p.info.Consts,
 		rec:         &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
 		facts:       map[*symbol]bool{},
+		flow:        newFlow(),
+		guarded:     map[*symbol][]*symbol{},
 	}
 	c.scope = c.module
 	return c

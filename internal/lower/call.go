@@ -4,6 +4,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -149,10 +150,10 @@ func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string
 
 func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	module := f.l.moduleOf[decl]
-	if module != nil && module.Path == "@gyro/mem" {
+	if module != nil && module.Path == stdlib.Path("mem") {
 		return f.prepareMemIntrinsic(call, resolved, decl)
 	}
-	if module != nil && module.Path == "@gyro/stdlib" && decl.Owner == "" && isPrintName(decl.Name) {
+	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
 		return f.preparePrint(call, resolved, decl)
 	}
 
@@ -234,7 +235,7 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 			return out
 		}
 	}
-	f.l.fail("@%s: unknown @gyro/mem intrinsic %s", f.fn.Name, decl.Name)
+	f.l.fail("@%s: unknown mem intrinsic %s", f.fn.Name, decl.Name)
 	return nil
 }
 

@@ -1,6 +1,6 @@
 // Recursion, loops and compile-time evaluation.
 
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 export fn fib(n: i32): i32 {
   if n <= 1 {

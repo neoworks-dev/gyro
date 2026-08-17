@@ -230,19 +230,6 @@ func TestElifDesugarsToNestedIf(t *testing.T) {
 	}
 }
 
-func TestElseIfIsRejected(t *testing.T) {
-	// Chaining is spelled `elif`, so there is exactly one way to write it.
-	var bag diag.Bag
-	Parse("test.gyro", "fn t() {\n  if a {\n  } else if b {\n  }\n}\n", &bag)
-
-	if !bag.HasErrors() {
-		t.Fatal("expected `else if` to be rejected")
-	}
-	if !strings.Contains(bag.Items()[0].Message, "elif") {
-		t.Errorf("error should point at `elif`, got: %s", bag.Items()[0])
-	}
-}
-
 func TestClosures(t *testing.T) {
 	tests := []struct {
 		name string

@@ -58,7 +58,7 @@ func TestRenderDrawsACodeFrame(t *testing.T) {
 		Pos:      file.Position(11),
 		Label:    "not found in this scope",
 		Message:  "undeclared name println",
-		Help:     []string{`"@gyro/stdlib" exports println`},
+		Help:     []string{`"stdlib" exports println`},
 	})
 
 	want := `error[E0401]: undeclared name println
@@ -67,7 +67,7 @@ func TestRenderDrawsACodeFrame(t *testing.T) {
 2 |   println(1)
   |   ^^^^^^^ not found in this scope
   |
-  = help: "@gyro/stdlib" exports println
+  = help: "stdlib" exports println
 
 `
 	if got := bag.Render(Style{}); got != want {

@@ -111,10 +111,13 @@ overlap.
 
 ### `elif`, never `else if`
 
-**Status: done.** `else if` is rejected with an error pointing at `elif`.
+**Status: done.** `else` takes a block, so `else if` does not parse.
 
 One spelling for one construct. `elif` desugars to a nested `if` and leaves
-no trace in the tree.
+no trace in the tree. The dedicated "use `elif`" error was removed: Gyro has
+no users migrating from a version that accepted `else if`, and an error that
+exists to catch a habit from another language is weight the grammar has not
+earned.
 
 ### `++` and `--` are gone *(revised)*
 
@@ -194,12 +197,12 @@ decorator is an instruction to the compiler, not a name in the program.
 **Status: done.** `import { x } from "./util"` loads `util.gyro` beside
 the importing file. Circular imports are rejected with a cycle trace.
 
-Resolution: `@gyro/...` is the bundled standard library, `./x` and `../x`
-are relative files, a bare name is a package under `.stack/`. The loader
-implements the first two; bare names are an error until the Stack package
-manager decides the on-disk layout. Two specifiers that reach the same file
-load one module, and re-export paths (`export { a } from "./m"`) are module
-dependencies like any import.
+Resolution: `./x` and `../x` are relative files, and a bare name is the
+standard library, falling back to a package under `.stack/`. The loader
+implements the first two; a bare name that is not bundled is an error until
+the Stack package manager decides the on-disk layout. Two specifiers that
+reach the same file load one module, and re-export paths
+(`export { a } from "./m"`) are module dependencies like any import.
 
 The standard library ships inside the compiler as declaration-only `.gyro`
 files — real signatures, no bodies — so name resolution and later type
@@ -212,6 +215,29 @@ resolver has to be able to slot in without touching sema.
 
 Rejected directory-as-module (Go), which would make `export`
 directory-scoped while the import syntax stays file-shaped.
+
+### The standard library is imported by bare name *(new)*
+
+**Status: decided.** `import { println } from "stdlib"`, not
+`"@gyro/stdlib"`. The prefix was pure ceremony on every import in every
+file, and it made the standard library read like a third-party scope when
+it is the one thing always present. Go, Python and Rust all spell their
+own library plainly; only npm-style ecosystems carry a vendor scope, and
+Gyro's library has no vendor to distinguish.
+
+This takes the bare-name namespace, which had been reserved for `.stack/`
+packages. A bare specifier now resolves to a bundled module first and a
+package second, so the standard library shadows a package of the same
+name. The rule that keeps the two apart is still open — Go's "no dot in
+the first path element" is the obvious candidate, and it costs nothing to
+adopt later since no package manager exists yet.
+
+Module *identity* keeps a prefix even though the specifier does not: the
+loader records a bundled module as `gyro:stdlib`, the METALS scheme for
+Gyro modules. A specifier is what the author writes and a path is what the
+compiler keys on; conflating them would make `mem` ambiguous with a file
+called `mem` in the working directory. The backends ask
+`stdlib.IsBundled(path)` rather than matching a prefix themselves.
 
 ### Named exports only — no `export default`
 
@@ -275,6 +301,57 @@ cap is a compile error naming the size, and the author boxes it explicitly.
 
 The alternative — a hidden heap allocation on every error path — contradicts
 explicit `alloc`/`free`.
+
+---
+
+## Definite assignment
+
+### Every path to a read must have written the name *(new)*
+
+**Status: done.** `var x: i32` with no initializer holds nothing, and reading
+it before every path has written it is a compile error. There are no zero
+values, so the alternative is reading storage that means nothing.
+
+The analysis only ever adds to its set — once assigned, always assigned — so
+it needs no repeated pass over a loop. Whatever a loop body writes cannot be
+relied on afterwards anyway, because the body may not run. Branches are the
+whole difficulty: two paths are walked separately and only the names both
+wrote survive the join. The narrowing facts could not express that, which is
+why this needed a state that merges rather than one that is pushed and
+popped.
+
+Rejected making it a warning. A read of unwritten storage has no meaning to
+recover, unlike a leaked allocation, which an arena makes deliberate.
+
+### `&x` counts as assigning x *(new)*
+
+**Status: done.** Taking the address of a local that holds nothing is legal,
+and it marks the local assigned from there on.
+
+The storage is real and sized whether or not anything has been written to it;
+`&x` names a place rather than reading one. Writing through the pointer is
+the ordinary reason to take it, and `var p = &x; *p = 5; println(x)` has to
+work. The analysis cannot follow what happens through a pointer, so the
+address-of is where it stops tracking.
+
+The cost is a hole: `var p = &x; println(*p)` reads storage nothing wrote,
+and only the interpreter's runtime check catches it. Accepted on the same
+terms as dangling slices.
+
+Rejected Rust's rule, which forbids `&x` until x is initialized and offers
+`MaybeUninit<T>` as the escape. It buys soundness with a second type and a
+second set of rules for the same storage, and Gyro's arithmetic and bounds
+checks are already runtime-checked rather than proved away.
+
+### A two-name receive is guarded by its flag *(new)*
+
+**Status: done.** `var v, open = <-ch` leaves `v` readable only where `open`
+is true. A closed channel yields no value, not a zero value, so the flag is
+the only thing that says whether the value exists.
+
+The guard rides the same `&&` / `||` / `!` plumbing as null narrowing, so
+`if !open { return }` leaves `v` readable below, exactly as `if x == null
+{ return }` leaves x narrowed.
 
 ---
 
@@ -464,11 +541,12 @@ the same shape for free.
 
 ### Match is exhaustive, variants qualified, type-tests share the shape *(new)*
 
-**Status: done (newline arms; unqualified variants fail name resolution;
-local `Enum::Variant` paths are validated), planned (exhaustiveness).**
+**Status: done.**
 
 - A match over an enum must cover every variant or carry `_`; adding a
   variant later breaks every non-`_` match loudly, which is the point.
+  A variant counts as covered only when the arm's payload patterns bind
+  rather than test, so `Shape::Circle(0.0)` leaves `Circle` open.
 - Variant patterns are always written with the enum name:
   `Shape::Circle(r)`, never bare `Circle(r)`. Grep-friendly, and it keeps
   variant destructuring visually distinct from the other `Name(binding)`
@@ -920,8 +998,8 @@ variant, associated-function and missing-export errors carry the same
 The import and method notes need to know what the bundled modules
 provide, so `stdlib.Lookup()` parses the declaration stubs once and
 indexes them. It is the stubs themselves that are indexed, not a hand-
-maintained table, so the hints cannot drift from what `@gyro/stdlib`
-actually exports.
+maintained table, so the hints cannot drift from what `stdlib` actually
+exports.
 
 A guess appears only within one edit for short names, two from five
 characters up, and never more than half the shorter name — otherwise
@@ -939,7 +1017,7 @@ error[E0401]: undeclared name println
 2 |   println("hi")
   |   ^^^^^^^ not found in this scope
   |
-  = help: "@gyro/stdlib" exports println; add: import { println } from "@gyro/stdlib"
+  = help: "stdlib" exports println; add: import { println } from "stdlib"
 ```
 
 Rejected the one-line `file:line:col: error: message` form: the reader
@@ -979,8 +1057,6 @@ one position never told the reader anything the first did not.
 
 | question | why it matters |
 | --- | --- |
-| definite assignment | "no zero values" is only half-enforced: struct literals must set every field, but reading an unassigned `var x: i32` passes |
-| match exhaustiveness | decided (exhaustive over enums), not yet implemented |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
 | `@comptime` evaluation subset | which operations may run at compile time |
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
@@ -990,6 +1066,7 @@ one position never told the reader anything the first did not.
 | mutable METALS globals | METALS globals are constant literals, so module-level `var` does not lower; module-level `const` re-evaluates per use through a synthesized getter until `@comptime` folding exists |
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
+| literal payload patterns do not lower | `Shape::Circle(1.0)` type-checks and the interpreter matches it, but the lowering only binds names and `_` in a payload; making it work means the payload test joins the tag test in the arm's condition. The exhaustiveness check already treats such an arm as not covering its variant |
 | dangling slices | accepted cost of borrowing slices, currently undetected |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |

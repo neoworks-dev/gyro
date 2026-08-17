@@ -10,7 +10,7 @@ compiling several languages into one shared intermediate representation.
 > built.
 
 ```gyro
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 export struct Stack {
   export capacity: i32
@@ -117,7 +117,7 @@ error[E0401]: undeclared name println
 2 |   println("hi")
   |   ^^^^^^^ not found in this scope
   |
-  = help: "@gyro/stdlib" exports println; add: import { println } from "@gyro/stdlib"
+  = help: "stdlib" exports println; add: import { println } from "stdlib"
 ```
 
 ```sh

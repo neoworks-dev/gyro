@@ -6,6 +6,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
@@ -342,11 +343,15 @@ func isUserRecord(t types.Type) bool {
 	if !ok {
 		return false
 	}
-	return !isStdlibStruct(strct)
+	return !isOpaqueHandle(strct)
 }
 
-func isStdlibStruct(t *types.Struct) bool {
-	return len(t.Module) > 6 && t.Module[:6] == "@gyro/"
+// isOpaqueHandle reports whether a struct is a runtime-owned value the
+// backend passes around without ever looking inside: bundled and
+// fieldless, so there is nothing to lay out. A bundled struct that
+// declares fields is ordinary Gyro data and lowers to a record.
+func isOpaqueHandle(t *types.Struct) bool {
+	return stdlib.IsBundled(t.Module) && len(t.Fields) == 0
 }
 
 // newLocal declares a local holding an already-coerced value register.

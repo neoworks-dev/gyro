@@ -91,6 +91,8 @@ func (s *Server) dispatch(req *request) error {
 		return s.handleDocumentSymbol(req)
 	case "textDocument/completion":
 		return s.handleCompletion(req)
+	case "textDocument/inlayHint":
+		return s.handleInlayHint(req)
 	}
 
 	if req.isNotification() {
@@ -123,6 +125,7 @@ func (s *Server) handleInitialize(req *request) error {
 			HoverProvider:          true,
 			DefinitionProvider:     true,
 			DocumentSymbolProvider: true,
+			InlayHintProvider:      true,
 			CompletionProvider: &completionOptions{
 				TriggerCharacters: []string{".", ":"},
 			},

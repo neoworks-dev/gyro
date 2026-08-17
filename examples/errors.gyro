@@ -7,9 +7,9 @@
 // library defines its own error type carrying its own data, and callers
 // match on the concrete kind.
 
-import { println, eprintln } from "@gyro/stdlib"
-import { to_i32 } from "@gyro/convert"
-import { open, read_all } from "@gyro/fs"
+import { println, eprintln } from "stdlib"
+import { to_i32 } from "convert"
+import { open, read_all } from "fs"
 
 export struct RangeError {
   export value: i32

@@ -14,7 +14,6 @@ var codes = map[string]diag.Code{
 	"expected a pattern, found %s":          diag.EExpectedPattern,
 	"expected end of statement, found %s":   diag.EUnterminatedStmt,
 
-	"use `elif` to chain conditions; `else if` is not valid Gyro":      diag.EElseIf,
 	"expected { or * after import; Gyro has no default exports":        diag.EImportForm,
 	"generic parameters take no bounds; Gyro generics are duck-typed":  diag.EGenericBounds,
 	"capture lists hold only `move name` entries; copies are implicit": diag.ECaptureForm,

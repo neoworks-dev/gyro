@@ -36,7 +36,7 @@ func buildIndex() {
 		if !ok {
 			continue
 		}
-		specifier := "@gyro/" + name
+		specifier := name
 
 		var bag diag.Bag
 		tree := parser.Parse(specifier, source, &bag)

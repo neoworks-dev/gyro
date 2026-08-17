@@ -62,6 +62,14 @@ func offsetFor(src string, pos Position) int {
 	return offset
 }
 
+// before orders two positions the way the text reads.
+func before(a, b Position) bool {
+	if a.Line != b.Line {
+		return a.Line < b.Line
+	}
+	return a.Character < b.Character
+}
+
 // rangeFor converts a byte range to a protocol range.
 func rangeFor(src string, start, end int) Range {
 	return Range{Start: positionFor(src, start), End: positionFor(src, end)}

@@ -17,7 +17,7 @@ import (
 //	2 |   println("hi")
 //	  |   ^^^^^^^ not found in this scope
 //	  |
-//	  = help: "@gyro/stdlib" exports println; add: import { println } from "@gyro/stdlib"
+//	  = help: "stdlib" exports println; add: import { println } from "stdlib"
 //
 // Without the source the frame degrades to the headline and the location,
 // which is what the one-line String() form prints.

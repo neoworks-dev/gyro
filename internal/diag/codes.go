@@ -28,7 +28,6 @@ const (
 	EExpectedType     Code = "E0204"
 	EExpectedPattern  Code = "E0205"
 	EUnterminatedStmt Code = "E0206"
-	EElseIf           Code = "E0207"
 	EImportForm       Code = "E0208"
 	EGenericBounds    Code = "E0209"
 	ECaptureForm      Code = "E0210"
@@ -78,6 +77,8 @@ const (
 	EClosureParams       Code = "E0518"
 	EDivisionByZero      Code = "E0519"
 	ENotCallable         Code = "E0520"
+	EMatchNotExhaustive  Code = "E0521"
+	EUnassignedRead      Code = "E0522"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -116,8 +117,6 @@ var explanations = map[Code]explanation{
 	EExpectedPattern: {"expected a pattern", "A match arm begins with a pattern."},
 	EUnterminatedStmt: {"statement did not end",
 		"Statements end at a newline; the tokens after it belong to no\nstatement. A statement continues across a newline only inside\nbrackets or after an operator."},
-	EElseIf: {"`else if` is not Gyro",
-		"Chained conditions are spelled elif. One spelling, so an if-chain\nalways looks the same."},
 	EImportForm: {"malformed import",
 		"An import is `import { name } from \"path\"` or `import * as name from\n\"path\"`. Gyro has no default exports, so there is no default import."},
 	EGenericBounds: {"generic parameters take no bounds",
@@ -144,7 +143,7 @@ var explanations = map[Code]explanation{
 	ECircularImport: {"circular import",
 		"Modules form a cycle. The trace lists it; break it by moving the\nshared declarations into a third module."},
 	ENoSuchStdlib: {"no such bundled module",
-		"The @gyro namespace holds a fixed set of modules; the message lists\nthem."},
+		"The standard library is a fixed set of modules imported by bare name;\nthe message lists them. A specifier that is neither one of those nor a\nrelative path would be a package under .stack/, which needs the Stack\npackage manager."},
 	ENotExported: {"name is not exported",
 		"Visibility is explicit: a declaration is visible to importers only\nwith `export`. There is no capitalization rule."},
 	EExportUndeclared: {"export names an undeclared name",
@@ -172,7 +171,10 @@ var explanations = map[Code]explanation{
 	ELiteralOutOfRange: {"literal does not fit",
 		"An integer literal is checked against the type its context requires."},
 	EBadOperands: {"operator does not apply",
-		"The operator is not defined for these operand types, or the operands\ndo not match each other."},
+		"The operator is not defined for these operand types, or the operands\n" +
+			"do not match each other. Mixed numeric types are converted with `as`:\n" +
+			"a widening always succeeds, and a narrowing panics on a value that\n" +
+			"does not fit."},
 	EWrongArgCount: {"wrong number of arguments",
 		"A call passes exactly as many arguments as the signature declares,\nafter defaults are filled in."},
 	ETypeArgs: {"type arguments do not work out",
@@ -199,6 +201,10 @@ var explanations = map[Code]explanation{
 		"Each instantiation produced another one; the type keeps growing."},
 	EMatchArmsDisagree: {"match arms disagree",
 		"A match is an expression, so every arm produces the same type."},
+	EUnassignedRead: {"value is read before it is assigned",
+		"Gyro has no zero values, so `var x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
+	EMatchNotExhaustive: {"match is not exhaustive",
+		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",
 		"A fallible call returns (value, error?). Dropping the error is\nallowed but never silent: write the discard out."},
 	EClosureParams: {"closure parameters do not work out",

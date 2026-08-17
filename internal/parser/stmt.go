@@ -192,13 +192,6 @@ func (p *Parser) parseIf() ast.Stmt {
 		stmt.Else = p.parseIf()
 	case token.Else:
 		p.next()
-		// `else if` is not accepted: the chained form is spelled `elif`, so
-		// there is exactly one way to write it.
-		if p.at(token.If) {
-			p.errorf(p.offset(), "use `elif` to chain conditions; `else if` is not valid Gyro")
-			stmt.Else = p.parseIf()
-			return stmt
-		}
 		stmt.Else = p.parseBlock()
 		p.expectTerminator()
 	default:

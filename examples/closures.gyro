@@ -3,7 +3,7 @@
 // implicitly; the capture list exists only for `move`, which transfers
 // ownership and is what makes an allocation's escape visible in the source.
 
-import { println, spawn, Array } from "@gyro/stdlib"
+import { println, spawn, Array } from "stdlib"
 
 // A closure's type is the function type that already existed in the language.
 // The input borrows; the result owns and is freed by the caller.

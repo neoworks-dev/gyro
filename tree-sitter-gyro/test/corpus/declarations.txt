@@ -2,9 +2,9 @@
 imports
 ==================
 
-import { println } from "@gyro/stdlib"
-import { open as fopen } from "@gyro/fs"
-import * as ast from "@gyro/ast"
+import { println } from "stdlib"
+import { open as fopen } from "fs"
+import * as ast from "ast"
 import "./side-effects"
 
 ---

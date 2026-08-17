@@ -19,8 +19,8 @@ import (
 
 // Module is one loaded, parsed source file.
 type Module struct {
-	// Path identifies the module: an absolute file path on disk, or the
-	// specifier itself for bundled modules such as "@gyro/stdlib".
+	// Path identifies the module: an absolute file path on disk, or
+	// "gyro:<name>" for a bundled module such as "gyro:stdlib".
 	Path string
 	File *diag.File
 	Tree *ast.File
@@ -130,7 +130,7 @@ func (s *loadState) dependency(from *Module, specifier string, offset int) {
 	}
 
 	fromDir := ""
-	if !strings.HasPrefix(from.Path, "@") {
+	if !stdlib.IsBundled(from.Path) {
 		fromDir = filepath.Dir(from.Path)
 	}
 
@@ -184,7 +184,7 @@ func (s *loadState) cycleTrace(path string) string {
 // directory when that is a strict shortening; diagnostics stay readable
 // without losing the file's identity.
 func displayPath(path string) string {
-	if strings.HasPrefix(path, "@") {
+	if stdlib.IsBundled(path) {
 		return path
 	}
 	workingDir, err := os.Getwd()
@@ -250,39 +250,30 @@ func codeOf(err error) diag.Code {
 	return diag.EModuleNotFound
 }
 
-// diskResolver implements the resolution rules the docs specify: @gyro/...
-// is the bundled standard library, ./x and ../x are files beside the
-// importer, and a bare name is a .stack/ package — unimplemented until the
+// diskResolver implements the resolution rules the docs specify: ./x and
+// ../x are files beside the importer, and a bare name is the standard
+// library, falling back to a .stack/ package — unimplemented until the
 // Stack package manager decides the layout.
 type diskResolver struct{}
 
 func (diskResolver) Resolve(fromDir, specifier string) (string, string, error) {
-	if name, ok := strings.CutPrefix(specifier, "@gyro/"); ok {
-		source, found := stdlib.Source(name)
-		if !found {
-			return "", "", resolveError(diag.ENoSuchStdlib,
-				"no stdlib module %q; the bundled modules are @gyro/{%s}",
-				specifier, strings.Join(stdlib.Modules(), ", "))
-		}
-		return specifier, source, nil
-	}
-
 	if strings.HasPrefix(specifier, "./") || strings.HasPrefix(specifier, "../") {
 		return resolveRelative(fromDir, specifier)
 	}
 
-	if strings.HasPrefix(specifier, "@") {
-		return "", "", resolveError(diag.EModuleNotFound,
-			"cannot resolve %q: only the @gyro namespace is bundled", specifier)
+	if source, found := stdlib.Source(specifier); found {
+		return stdlib.Path(specifier), source, nil
 	}
-	return "", "", resolveError(diag.EModuleNotFound,
-		"cannot resolve %q: packages under .stack/ are not implemented yet", specifier)
+
+	return "", "", resolveError(diag.ENoSuchStdlib,
+		"cannot resolve %q: it is not a bundled module (%s), and packages under .stack/ are not implemented yet",
+		specifier, strings.Join(stdlib.Modules(), ", "))
 }
 
 func resolveRelative(fromDir, specifier string) (string, string, error) {
 	if fromDir == "" {
 		return "", "", resolveError(diag.EModuleNotFound,
-			"cannot resolve %q: bundled modules import only @gyro modules", specifier)
+			"cannot resolve %q: a bundled module has no directory to resolve against", specifier)
 	}
 
 	path := filepath.Join(fromDir, specifier)

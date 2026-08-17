@@ -13,6 +13,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/meval"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 )
 
 // compile loads and checks a program, failing the test on any diagnostic.
@@ -138,7 +139,7 @@ func TestExamplesMatch(t *testing.T) {
 
 func TestClosuresSynchronized(t *testing.T) {
 	diffSource(t, `
-import { println, spawn, Array } from "@gyro/stdlib"
+import { println, spawn, Array } from "stdlib"
 
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
   var out = Array<i32>::new()
@@ -182,7 +183,7 @@ func TestClosureOwnsItsCaptures(t *testing.T) {
 	// FnMut semantics: one captured copy, mutations accumulate across
 	// calls, the original stays untouched.
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var count: i32 = 0
@@ -199,7 +200,7 @@ fn main() {
 
 func TestDefersRunAtBlockExitInReverse(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn work(early: bool): i32 {
   defer println("f1")
@@ -225,7 +226,7 @@ fn main() {
 
 func TestNarrowingLowersToUnwrap(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn describe(x: i32?): i32 {
   if x == null {
@@ -248,7 +249,7 @@ fn main() {
 
 func TestGenericsMonomorphize(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 struct Pair<T> {
   first: T
@@ -281,7 +282,7 @@ fn main() {
 
 func TestErrorsWrapAndDispatch(t *testing.T) {
 	diffSource(t, `
-import { println, eprintln } from "@gyro/stdlib"
+import { println, eprintln } from "stdlib"
 
 struct TooBig {
   limit: i32
@@ -317,7 +318,7 @@ fn main() {
 
 func TestMatchValueAndStatement(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 enum Shape {
   Circle(f64),
@@ -356,7 +357,7 @@ fn main() {
 
 func TestWrappingArithmeticAndCasts(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var bytes: u8[] = [104, 105]
@@ -387,7 +388,7 @@ fn main() {
 
 func TestTuplesAndCompoundTargets(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn pair(): (i32, string) {
   return 4, "four"
@@ -423,7 +424,7 @@ fn main() {
 
 func TestSelectWithReadyChannel(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var ready = chan<i32>(1)
@@ -442,8 +443,8 @@ fn main() {
 
 func TestPointersAndMemory(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
-import { alloc, free } from "@gyro/mem"
+import { println } from "stdlib"
+import { alloc, free } from "mem"
 
 struct Node {
   value: i32
@@ -479,8 +480,8 @@ fn main() {
 
 func TestUseAfterFreePanicsBothWays(t *testing.T) {
 	diffPanic(t, `
-import { alloc, free } from "@gyro/mem"
-import { println } from "@gyro/stdlib"
+import { alloc, free } from "mem"
+import { println } from "stdlib"
 
 struct Box {
   value: i32
@@ -497,7 +498,7 @@ fn main() {
 
 func TestModuleConstLowersToGetter(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn triple(n: i32): i32 {
   return n * 3
@@ -514,7 +515,7 @@ fn main() {
 
 func TestInterpolationUsesToString(t *testing.T) {
 	diffSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 struct Version {
   major: i32
@@ -537,7 +538,7 @@ fn main() {
 func TestCrossModuleNamesAreQualified(t *testing.T) {
 	dir := t.TempDir()
 	util := `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 export fn shout(text: string) {
   println("#{text}!")
@@ -554,7 +555,7 @@ export fn Counter::bump(*self): i32 {
 `
 	main := `
 import { shout, Counter } from "./util"
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   shout("hey")
@@ -580,4 +581,89 @@ fn main() {
 			t.Errorf("the module does not mention %s:\n%s", want, printed)
 		}
 	}
+}
+
+// A bundled module may hold ordinary Gyro. What makes a declaration a
+// runtime intrinsic is the missing body, not the module it lives in, and
+// what makes a struct an opaque handle is having no fields. Both are
+// exercised here through a module served under a bundled path.
+func TestBundledModulesMayCarryGyroCode(t *testing.T) {
+	const bundled = `
+export struct Counter {
+  export n: i32
+}
+
+export fn Counter::new(): Counter {
+  return Counter{ n: 0 }
+}
+
+export fn Counter::bump(*self): i32 {
+  self.n += 1
+  return self.n
+}
+
+export fn double(value: i32): i32 {
+  return value * 2
+}
+`
+	const main = `import { println } from "stdlib"
+import { Counter, double } from "counters"
+
+fn main() {
+  var c = Counter::new()
+  println(c.bump())
+  println(double(21))
+}
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.gyro")
+	if err := os.WriteFile(path, []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var bag diag.Bag
+	resolver := bundledResolver{name: "counters", source: bundled}
+	program, err := loader.LoadWith(resolver, path, &bag)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	info := sema.CheckProgram(program, &bag)
+	if bag.HasErrors() {
+		t.Fatalf("the program does not check cleanly: %v", bag.Items())
+	}
+
+	module := lowerVerified(t, program, info)
+	printed := metals.Print(module)
+	// The record has to exist: an opaque handle cannot be constructed.
+	if !bytes.Contains([]byte(printed), []byte(`%"counters::Counter"`)) {
+		t.Errorf("the bundled struct did not lower to a record:\n%s", printed)
+	}
+	// A bodied bundled function keeps its module tag; only bodyless ones
+	// become bare runtime symbols.
+	if !bytes.Contains([]byte(printed), []byte(`@"counters::double"`)) {
+		t.Errorf("the bundled function lost its module tag:\n%s", printed)
+	}
+
+	var out bytes.Buffer
+	if err := meval.Run(module, &out, &out); err != nil {
+		t.Fatalf("meval: %v\n%s", err, printed)
+	}
+	if out.String() != "1\n42\n" {
+		t.Errorf("unexpected output %q", out.String())
+	}
+}
+
+// bundledResolver serves one module under a bundled path, so a test can
+// put Gyro code where the standard library lives. Everything else falls
+// through to the ordinary rules.
+type bundledResolver struct {
+	name   string
+	source string
+}
+
+func (r bundledResolver) Resolve(fromDir, specifier string) (string, string, error) {
+	if specifier == r.name {
+		return stdlib.Path(r.name), r.source, nil
+	}
+	return loader.Overlay(nil).Resolve(fromDir, specifier)
 }

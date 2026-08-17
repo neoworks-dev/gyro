@@ -1,4 +1,4 @@
-// @gyro/mem — declarations only; the runtime supplies the bodies.
+// mem — declarations only; the runtime supplies the bodies.
 
 export fn alloc<T>(): *T
 export fn free<T>(pointer: *T)

@@ -379,8 +379,8 @@ uint64_t gy_double_to_uint(double v, uint64_t max) {
 }
 
 /* ------------------------------------------------------------------ */
-/* @gyro/convert, @gyro/fs, @gyro/net. Result tuples are written into */
-/* the caller's cell: the error member is { flag, tag, payload... }   */
+/* convert, fs, net. Result tuples are written into the caller's      */
+/* cell: the error member is { flag, tag, payload... }                */
 /* with tag 0, the closed error sum's Native(str) variant.            */
 /* ------------------------------------------------------------------ */
 

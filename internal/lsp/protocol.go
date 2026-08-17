@@ -51,6 +51,7 @@ type serverCapabilities struct {
 	HoverProvider          bool                    `json:"hoverProvider"`
 	DefinitionProvider     bool                    `json:"definitionProvider"`
 	DocumentSymbolProvider bool                    `json:"documentSymbolProvider"`
+	InlayHintProvider      bool                    `json:"inlayHintProvider"`
 	CompletionProvider     *completionOptions      `json:"completionProvider,omitempty"`
 }
 
@@ -171,4 +172,28 @@ type completionItem struct {
 	Label  string `json:"label"`
 	Kind   int    `json:"kind"`
 	Detail string `json:"detail,omitempty"`
+}
+
+// --- inlay hints ----------------------------------------------------------------
+
+const (
+	inlayKindType      = 1
+	inlayKindParameter = 2
+)
+
+type inlayHintParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	// Range is what the client currently displays; hints outside it are
+	// not asked for.
+	Range Range `json:"range"`
+}
+
+type inlayHint struct {
+	Position Position `json:"position"`
+	// Label may also be a list of parts in the specification; a plain
+	// string is all these hints need.
+	Label        string `json:"label"`
+	Kind         int    `json:"kind"`
+	PaddingLeft  bool   `json:"paddingLeft,omitempty"`
+	PaddingRight bool   `json:"paddingRight,omitempty"`
 }

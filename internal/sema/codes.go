@@ -127,6 +127,9 @@ var codes = map[string]diag.Code{
 	"a type test binds the whole value: %s(name)":                                           diag.EPatternNeverMatches,
 	"a type test needs an error subject whose concrete type is unknown; this subject is %s": diag.EPatternNeverMatches,
 	"%s::%s carries %d value(s), the pattern binds %d":                                      diag.EPatternNeverMatches,
+	"this match leaves %s uncovered":                                                        diag.EMatchNotExhaustive,
+	"%s is read before it is assigned":                                                      diag.EUnassignedRead,
+	"%s holds a value only where %s is true":                                                diag.EUnassignedRead,
 
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,

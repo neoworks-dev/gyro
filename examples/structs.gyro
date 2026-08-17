@@ -5,7 +5,7 @@
 
 // There is no universe scope: Array is a stdlib type, so it is imported
 // like anything else that is not part of the formal syntax.
-import { println, Array } from "@gyro/stdlib"
+import { println, Array } from "stdlib"
 
 export struct Stack {
   export capacity: i32
@@ -56,7 +56,8 @@ export enum Shape {
 }
 
 // Match arms end at the newline, like every other statement, and a match
-// over an enum must cover every variant or carry a `_` arm.
+// over an enum must cover every variant or carry a `_` arm. Dropping one of
+// these three arms is a compile error naming what is missing.
 fn area(shape: Shape): f64 {
   return match shape {
     Shape::Circle(r): 3.14159 * r * r

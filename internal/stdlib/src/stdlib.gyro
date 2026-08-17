@@ -1,4 +1,4 @@
-// @gyro/stdlib — declarations only; the runtime supplies the bodies.
+// stdlib — declarations only; the runtime supplies the bodies.
 
 export fn print<T>(value: T)
 export fn println<T>(value: T)

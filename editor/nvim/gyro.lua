@@ -35,7 +35,23 @@ return {
     }
     vim.lsp.enable("gyro")
 
-    -- 4. Tree-sitter highlighting and folding for both filetypes.
+    -- 4. Inlay hints are off by default in Neovim; turn them on per buffer
+    -- once the server attaches, and put a toggle on <leader>ih.
+    vim.api.nvim_create_autocmd("LspAttach", {
+      callback = function(event)
+        local client = vim.lsp.get_client_by_id(event.data.client_id)
+        if not client or client.name ~= "gyro" then
+          return
+        end
+        vim.lsp.inlay_hint.enable(true, { bufnr = event.buf })
+        vim.keymap.set("n", "<leader>ih", function()
+          local filter = { bufnr = event.buf }
+          vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled(filter), filter)
+        end, { buffer = event.buf, desc = "Toggle inlay hints" })
+      end,
+    })
+
+    -- 5. Tree-sitter highlighting and folding for both filetypes.
     vim.api.nvim_create_autocmd("FileType", {
       pattern = { "gyro", "metals" },
       callback = function()

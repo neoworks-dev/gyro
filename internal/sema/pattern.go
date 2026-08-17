@@ -5,54 +5,71 @@ import (
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
+// coverage says what a pattern accounts for of its subject, which is what
+// the exhaustiveness check in matchExpr consumes.
+type coverage struct {
+	// irrefutable marks a pattern that matches every remaining value: `_`
+	// and a plain binding. Nothing after it can be missing.
+	irrefutable bool
+	// variant names the enum variant a pattern accounts for in full, or ""
+	// when it accounts for no whole variant. A destructuring pattern only
+	// qualifies when its own payload patterns are irrefutable, so
+	// `Shape::Circle(0)` leaves Circle uncovered while `Shape::Circle(r)`
+	// covers it.
+	variant string
+}
+
 // pattern checks a match pattern against the subject's type, declaring
 // whatever the pattern binds into the current (per-arm) scope.
-func (c *checker) pattern(p ast.Pattern, subject types.Type) {
+func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 	switch p := p.(type) {
 	case *ast.WildcardPattern:
-		// Matches anything, binds nothing.
+		return coverage{irrefutable: true}
 
 	case *ast.LiteralPattern:
 		value := c.exprWith(p.Value, subject)
 		value = c.adaptUntyped(p.Value, value, subject)
 		if flexible(value) || flexible(subject) {
-			return
+			return coverage{}
 		}
 		if !c.comparable(value, subject) {
 			c.errorf(p.Value.Pos(), "this pattern is %s; it can never match %s", describeType(value), subject)
 		}
+		return coverage{}
 
 	case *ast.BindingPattern:
 		c.declareValue(p.Name, p.Offset, p, subject)
+		return coverage{irrefutable: true}
 
 	case *ast.VariantPattern:
-		c.variantPattern(p, subject)
+		return c.variantPattern(p, subject)
 	}
+	return coverage{}
 }
 
-func (c *checker) variantPattern(p *ast.VariantPattern, subject types.Type) {
+func (c *checker) variantPattern(p *ast.VariantPattern, subject types.Type) coverage {
 	resolved := c.resolvePathee(p.Path)
 	if resolved.bad {
 		c.bindPayloadLeniently(p)
-		return
+		return coverage{}
 	}
 
 	if resolved.variant != nil {
-		c.enumVariantPattern(p, resolved, subject)
-		return
+		return c.enumVariantPattern(p, resolved, subject)
 	}
 
 	if strct, ok := resolved.typ.(*types.Struct); ok {
 		c.typeTestPattern(p, strct, subject)
-		return
+		return coverage{}
 	}
 
 	if resolved.valueType != nil && flexible(resolved.valueType) {
 		c.bindPayloadLeniently(p)
-		return
+		return coverage{}
 	}
 	c.errorf(p.Offset, "a pattern names an enum variant or a struct type test; this is neither")
 	c.bindPayloadLeniently(p)
+	return coverage{}
 }
 
 func (c *checker) bindPayloadLeniently(p *ast.VariantPattern) {
@@ -61,7 +78,7 @@ func (c *checker) bindPayloadLeniently(p *ast.VariantPattern) {
 	}
 }
 
-func (c *checker) enumVariantPattern(p *ast.VariantPattern, resolved pathee, subject types.Type) {
+func (c *checker) enumVariantPattern(p *ast.VariantPattern, resolved pathee, subject types.Type) coverage {
 	enum := resolved.variantEnum
 	variant := resolved.variant
 
@@ -76,17 +93,27 @@ func (c *checker) enumVariantPattern(p *ast.VariantPattern, resolved pathee, sub
 		c.errorf(p.Offset, "a %s pattern can never match %s", enum.Name, subject)
 	}
 
-	if len(p.Payload) != len(variant.Payload) {
+	arityMatches := len(p.Payload) == len(variant.Payload)
+	if !arityMatches {
 		c.errorf(p.Offset, "%s::%s carries %d value(s), the pattern binds %d",
 			enum.Name, variant.Name, len(variant.Payload), len(p.Payload))
 	}
+
+	payloadsIrrefutable := true
 	for i, payload := range p.Payload {
+		var elem types.Type = types.Unknown
 		if i < len(variant.Payload) {
-			c.pattern(payload, variant.Payload[i])
-		} else {
-			c.pattern(payload, types.Unknown)
+			elem = variant.Payload[i]
+		}
+		if !c.pattern(payload, elem).irrefutable {
+			payloadsIrrefutable = false
 		}
 	}
+
+	if !arityMatches || !payloadsIrrefutable {
+		return coverage{}
+	}
+	return coverage{variant: variant.Name}
 }
 
 func sameEnumOrigin(a, b *types.Enum) bool {

@@ -162,7 +162,7 @@ func TestExamplesRunNative(t *testing.T) {
 
 func TestClosuresSynchronizedNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println, spawn, Array } from "@gyro/stdlib"
+import { println, spawn, Array } from "stdlib"
 
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
   var out = Array<i32>::new()
@@ -206,7 +206,7 @@ fn main() {
 // round-trip float printing.
 func TestFloatFormattingNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   println(12.0)
@@ -224,7 +224,7 @@ fn main() {
 
 func TestShiftEdgesNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var one: u64 = 1
@@ -244,7 +244,7 @@ fn main() {
 
 func TestSelectReadyChannelNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var values = chan<i32>(4)
@@ -263,7 +263,7 @@ fn main() {
 
 func TestMutexNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println, Mutex } from "@gyro/stdlib"
+import { println, Mutex } from "stdlib"
 
 fn main() {
   var total = Mutex::new(10)
@@ -278,7 +278,7 @@ fn main() {
 
 func TestArrayOperationsNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println, Array } from "@gyro/stdlib"
+import { println, Array } from "stdlib"
 
 fn main() {
   var values = Array<i32>::new()
@@ -302,7 +302,7 @@ fn main() {
 
 func TestRunesNative(t *testing.T) {
 	diffNativeSource(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   var text = "héllo"
@@ -320,7 +320,7 @@ fn main() {
 
 func TestOverflowPanicsNative(t *testing.T) {
 	diffNativePanic(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   println("before")
@@ -333,7 +333,7 @@ fn main() {
 
 func TestIndexOutOfRangePanicsNative(t *testing.T) {
 	diffNativePanic(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   println("before")
@@ -346,7 +346,7 @@ fn main() {
 
 func TestDivisionByZeroPanicsNative(t *testing.T) {
 	diffNativePanic(t, `
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 fn main() {
   println("before")

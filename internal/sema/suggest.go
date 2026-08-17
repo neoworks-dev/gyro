@@ -247,6 +247,168 @@ func minimum(a, b, c int) int {
 }
 
 // ---------------------------------------------------------------------------
+// Conversions
+// ---------------------------------------------------------------------------
+
+// operandHelp says how to reach operands the operator will take. `as` is the
+// only conversion in the language, so the help names the direction that is
+// safe: a widening cannot fail, and its opposite panics on a value that does
+// not fit.
+func operandHelp(integerOnly bool, left, right types.Type) []string {
+	if help, ok := unconvertibleHelp(integerOnly, left, right); ok {
+		return help
+	}
+	return conversionHelp(left, right)
+}
+
+// compoundHelp is the same for `target op= value`, where only the value can
+// move: the target's type is fixed by the declaration it came from.
+func compoundHelp(integerOnly bool, target, value types.Type) []string {
+	if help, ok := unconvertibleHelp(integerOnly, target, value); ok {
+		return help
+	}
+
+	convert := fmt.Sprintf("the target is %s, so convert the value: `x as %s`", target, target)
+	if widensTo(value, target) {
+		return []string{convert + " widens and always succeeds"}
+	}
+	if isRune(target) || isRune(value) {
+		return []string{convert}
+	}
+	return []string{convert, fmt.Sprintf("that is not a widening, so a value outside %s panics", target)}
+}
+
+// unconvertibleHelp covers the mismatches a conversion does not answer: one
+// side is outside what `as` takes at all, or the two already agree and the
+// operator is refusing the type itself.
+func unconvertibleHelp(integerOnly bool, left, right types.Type) ([]string, bool) {
+	if !convertsWithAs(left) || !convertsWithAs(right) {
+		return []string{"`as` converts between the numeric types and rune; nothing else converts, implicitly or otherwise"}, true
+	}
+	if !types.Identical(left, right) {
+		return nil, false
+	}
+	if integerOnly {
+		return []string{"this operator takes integers; convert first, as in `x as i64`"}, true
+	}
+	return []string{fmt.Sprintf("%s does no arithmetic; convert first, as in `x as i32`", left)}, true
+}
+
+func conversionHelp(left, right types.Type) []string {
+	if isRune(left) || isRune(right) {
+		// Whether a code point outside the Unicode range survives the trip
+		// through an integer is not settled, so no direction is promised.
+		return []string{fmt.Sprintf("convert one side with `as`: `x as %s` or `x as %s`", left, right)}
+	}
+
+	leftWidens, rightWidens := widensTo(left, right), widensTo(right, left)
+	switch {
+	case leftWidens && rightWidens:
+		// One range under two names, u64 and usize: either way is safe.
+		return []string{fmt.Sprintf("convert either side with `as`: `x as %s` and `x as %s` both always succeed",
+			left, right)}
+	case leftWidens:
+		return widenHelp(left, right)
+	case rightWidens:
+		return widenHelp(right, left)
+	}
+	return []string{
+		fmt.Sprintf("convert one side with `as`: `x as %s` or `x as %s`", left, right),
+		"neither direction is a widening, so a value outside the target's range panics",
+	}
+}
+
+func widenHelp(narrow, wide types.Type) []string {
+	return []string{
+		fmt.Sprintf("convert the %s side: `x as %s` widens and always succeeds", narrow, wide),
+		fmt.Sprintf("the other direction, `x as %s`, panics when the value does not fit", narrow),
+	}
+}
+
+// convertsWithAs reports whether `as` accepts the type at all.
+func convertsWithAs(t types.Type) bool {
+	return types.IsNumeric(t) || isRune(t)
+}
+
+func isRune(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Kind == types.RuneKind
+}
+
+// widensTo reports whether every value of from is also a value of to, which
+// is exactly when `as` cannot panic. Integer to float counts only while the
+// float's mantissa holds the integer exactly; a lossy conversion does not
+// panic, but it is not a widening either.
+func widensTo(from, to types.Type) bool {
+	fromBits, fromSigned, fromFloat := numericShape(from)
+	toBits, toSigned, toFloat := numericShape(to)
+	if fromBits == 0 || toBits == 0 {
+		return false
+	}
+	if fromBits == toBits && fromSigned == toSigned && fromFloat == toFloat {
+		// Two names for one range, u64 and usize.
+		return true
+	}
+
+	if toFloat {
+		if fromFloat {
+			return fromBits <= toBits
+		}
+		return fromBits <= mantissaBits(toBits)
+	}
+	if fromFloat {
+		return false
+	}
+	if fromSigned == toSigned {
+		return fromBits <= toBits
+	}
+	// An unsigned value fits a signed type only with a bit to spare for the
+	// sign; the reverse never fits, since negatives have nowhere to go.
+	return !fromSigned && toSigned && fromBits < toBits
+}
+
+// numericShape describes a numeric primitive as width, signedness and
+// whether it is a float. Width 0 means the type is not one; rune is left
+// out, since its range is narrower than its width.
+func numericShape(t types.Type) (bits int, signed, isFloat bool) {
+	basic, ok := t.(*types.Basic)
+	if !ok {
+		return 0, false, false
+	}
+	switch basic.Kind {
+	case types.I8:
+		return 8, true, false
+	case types.I16:
+		return 16, true, false
+	case types.I32:
+		return 32, true, false
+	case types.I64:
+		return 64, true, false
+	case types.U8:
+		return 8, false, false
+	case types.U16:
+		return 16, false, false
+	case types.U32:
+		return 32, false, false
+	case types.U64, types.Usize:
+		return 64, false, false
+	case types.F32:
+		return 32, false, true
+	case types.F64:
+		return 64, false, true
+	}
+	return 0, false, false
+}
+
+// mantissaBits is how wide an integer a float represents exactly.
+func mantissaBits(floatBits int) int {
+	if floatBits == 32 {
+		return 24
+	}
+	return 53
+}
+
+// ---------------------------------------------------------------------------
 // Candidate lists for member lookups
 // ---------------------------------------------------------------------------
 

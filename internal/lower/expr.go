@@ -799,7 +799,7 @@ func (f *funcLowerer) toStringMethod(t types.Type) *types.Method {
 	var method *types.Method
 	switch t := t.(type) {
 	case *types.Struct:
-		if isStdlibStruct(t) {
+		if isOpaqueHandle(t) {
 			return nil
 		}
 		origin := t

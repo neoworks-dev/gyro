@@ -3,7 +3,7 @@
 // no bounds; whatever its body calls is what the type argument must have,
 // checked when the generic is instantiated.
 
-import { println } from "@gyro/stdlib"
+import { println } from "stdlib"
 
 export struct Version {
   export major: i32

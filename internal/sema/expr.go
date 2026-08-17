@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/token"
@@ -123,6 +124,7 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 	if sym == nil {
 		return types.Unknown
 	}
+	c.checkAssigned(sym, e.Offset, e.Name)
 	return c.symbolValueType(sym, e.Offset, e.Name)
 }
 
@@ -379,6 +381,14 @@ func (c *checker) satisfiesError(t types.Type) bool {
 // ---------------------------------------------------------------------------
 
 func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
+	// &x names a place rather than reading one. The storage is there and
+	// sized whether or not anything has been written to it yet, so taking
+	// the address is what puts the local beyond this analysis: writes
+	// through the pointer are the point, and they cannot be followed here.
+	if e.Op == token.Amp {
+		c.markAssignedTarget(e.X)
+	}
+
 	operand := c.expr(e.X)
 
 	switch e.Op {
@@ -474,6 +484,12 @@ func (c *checker) arithmetic(e *ast.BinaryExpr) types.Type {
 		return c.foldBinary(e, left, right)
 	}
 
+	// Adapting reports its own error when a literal does not fit, and the
+	// poisoned type it hands back would only produce a second one here.
+	if flexible(left) || flexible(right) {
+		return c.pickTyped(left, right)
+	}
+
 	integerOnly := isIntegerOnlyOp(e.Op)
 	valid := types.IsNumeric(left)
 	if integerOnly {
@@ -502,11 +518,13 @@ func (c *checker) operandError(e *ast.BinaryExpr, left, right types.Type) {
 			return
 		}
 	}
+	integerOnly := isIntegerOnlyOp(e.Op)
 	kind := "matching numeric operands"
-	if isIntegerOnlyOp(e.Op) {
+	if integerOnly {
 		kind = "matching integer operands"
 	}
-	c.errorf(e.Offset, "operator %s needs %s, got %s and %s",
+	c.errorHintf(e.Offset, operandHelp(integerOnly, left, right),
+		"operator %s needs %s, got %s and %s",
 		e.Op, kind, describeType(left), describeType(right))
 }
 
@@ -1064,34 +1082,108 @@ func (c *checker) matchExpr(e *ast.MatchExpr, want types.Type) types.Type {
 	subject := c.expr(e.Subject)
 
 	var result types.Type
+	covered := map[string]bool{}
+	irrefutable := false
+
+	// One arm runs, so what survives the match is what every arm assigned.
+	// Falling off the end aborts, so it contributes nothing to the merge.
+	var merged flow
+	firstArm := true
+
 	for _, arm := range e.Arms {
-		c.pushScope(func() {
-			c.pattern(arm.Pattern, subject)
-
-			exprStmt, ok := arm.Body.(*ast.ExprStmt)
-			if !ok {
-				c.stmt(arm.Body)
-				return
-			}
-
-			armType := types.Default(c.exprWith(exprStmt.X, want))
-			if types.Identical(armType, types.Void) || flexible(armType) {
-				return
-			}
-			if result == nil {
-				result = armType
-				return
-			}
-			if !flexible(result) && !types.Identical(result, armType) && !c.assignableType(armType, result) {
-				c.errorf(arm.Offset, "the match arms disagree: %s here, %s before", armType, result)
-			}
+		var armCoverage coverage
+		armFlow := c.branchFlow(func() {
+			c.pushScope(func() {
+				armCoverage, result = c.matchArm(arm, subject, want, result)
+			})
 		})
+
+		if armCoverage.irrefutable {
+			irrefutable = true
+		}
+		if armCoverage.variant != "" {
+			covered[armCoverage.variant] = true
+		}
+
+		if firstArm {
+			merged, firstArm = armFlow, false
+			continue
+		}
+		merged = mergeFlow(merged, armFlow)
 	}
+
+	if !firstArm {
+		c.flow = merged
+	}
+
+	c.checkExhaustive(e, subject, covered, irrefutable)
 
 	if result == nil {
 		return types.Void
 	}
 	return result
+}
+
+// matchArm checks one arm against the subject, returning what its pattern
+// covers and the match's result type with this arm folded in.
+func (c *checker) matchArm(arm ast.MatchArm, subject, want, result types.Type) (coverage, types.Type) {
+	armCoverage := c.pattern(arm.Pattern, subject)
+
+	exprStmt, ok := arm.Body.(*ast.ExprStmt)
+	if !ok {
+		c.stmt(arm.Body)
+		return armCoverage, result
+	}
+
+	armType := types.Default(c.exprWith(exprStmt.X, want))
+	if types.Identical(armType, types.Void) || flexible(armType) {
+		return armCoverage, result
+	}
+	if result == nil {
+		return armCoverage, armType
+	}
+	if !flexible(result) && !types.Identical(result, armType) && !c.assignableType(armType, result) {
+		c.errorf(arm.Offset, "the match arms disagree: %s here, %s before", armType, result)
+	}
+	return armCoverage, result
+}
+
+// checkExhaustive demands that a match over an enum name every variant or
+// end in a `_`. Adding a variant then breaks every match that enumerated
+// the old set, which is the point of the check.
+func (c *checker) checkExhaustive(e *ast.MatchExpr, subject types.Type, covered map[string]bool, irrefutable bool) {
+	if irrefutable {
+		return
+	}
+	enum, ok := subject.(*types.Enum)
+	if !ok {
+		return
+	}
+
+	var missing []string
+	for _, variant := range enum.Variants {
+		if !covered[variant.Name] {
+			missing = append(missing, enum.Name+"::"+variant.Name)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	c.errorHintf(e.Offset, missingVariantHelp(missing), "this match leaves %s uncovered", strings.Join(missing, ", "))
+}
+
+// missingVariantHelp offers the two ways out, with the arms spelled so the
+// first is a paste.
+func missingVariantHelp(missing []string) []string {
+	arms := make([]string, len(missing))
+	for i, name := range missing {
+		arms[i] = name + ": ..."
+	}
+	return []string{
+		"add the missing arm(s): " + strings.Join(arms, ", "),
+		"or add `_: ...` to accept everything else, which stops a new variant from breaking this match",
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,7 +1247,11 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 		c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType}
 
 		if e.Body != nil {
-			c.blockInPlace(e.Body)
+			// A closure runs at a time this analysis cannot pin down, so its
+			// writes do not count outside it. Reads inside still check
+			// against the state here, which is what makes capturing a local
+			// that holds nothing an error.
+			c.isolateFlow(func() { c.blockInPlace(e.Body) })
 			sig.Result = result
 		}
 		if e.BodyExpr != nil {

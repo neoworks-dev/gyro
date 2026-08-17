@@ -60,9 +60,9 @@ func TestUndeclaredNames(t *testing.T) {
 }
 
 func TestImportsBindNames(t *testing.T) {
-	checkOK(t, "import { println } from \"@gyro/stdlib\"\n\nfn t() {\n  println(1)\n}\n")
-	checkOK(t, "import { open as fopen } from \"@gyro/fs\"\n\nfn t() {\n  var f = fopen(\"x\")\n}\n")
-	checkOK(t, "import * as mem from \"@gyro/mem\"\n\nfn t() {\n  var p = mem::size()\n}\n")
+	checkOK(t, "import { println } from \"stdlib\"\n\nfn t() {\n  println(1)\n}\n")
+	checkOK(t, "import { open as fopen } from \"fs\"\n\nfn t() {\n  var f = fopen(\"x\")\n}\n")
+	checkOK(t, "import * as mem from \"mem\"\n\nfn t() {\n  var p = mem::size()\n}\n")
 }
 
 func TestNoUniverseScope(t *testing.T) {

@@ -64,10 +64,17 @@ For `.gyro` files:
 - **Hover**: the checked type of the name under the cursor, and for
   functions the declared signature, sliced verbatim from the source.
 - **Go to definition**: through `sema.Info.Refs`, across files; jumps
-  into imported modules (bundled `@gyro/...` stubs have no file and
-  return nothing).
+  into imported modules (bundled stubs have no file and return nothing).
 - **Document symbols**: functions (methods as `Type::name`), structs with
   fields, enums with variants, module-level bindings.
+- **Inlay hints**: the inferred type after a `var`/`const` name, a `for ... in`
+  loop variable, an unannotated closure parameter and a `match` binding;
+  the parameter name before a positional argument. A hint is dropped when
+  the argument already spells the parameter (`f(count)`), when the argument
+  is written named, and when the callee has no declaration to read names
+  from (the built-in method surface, calls through a function value, enum
+  construction). Hints come from the current analysis only, never from the
+  last good one: its offsets belong to text the editor has already changed.
 - **Completion**: names in scope, struct fields and methods after `.`,
   variants/associated functions after `::`, exported names after a
   wildcard import's `namespace::`, keywords. Member completion resolves
@@ -108,7 +115,8 @@ The install script compiles the committed `parser.c`/`scanner.c` with cc
 `parser/` on the runtimepath. The spec registers the `gyro` and `metals`
 filetypes, starts tree-sitter highlighting and folding, and runs the
 language server with `bin/gyro lsp` (adjust `REPO_ROOT` inside if the
-repo lives elsewhere).
+repo lives elsewhere). Inlay hints are off by default in Neovim, so the
+spec enables them on attach and binds `<leader>ih` to toggle them.
 
 After a grammar change: rerun `install.sh`. After a compiler or LSP
 change: `make build`; the server restarts with the next editor session
@@ -127,4 +135,7 @@ paste it into `init.lua` and drop the surrounding spec table.
 - Scope completion approximates lexical scope by declaration order within
   the enclosing top-level declaration; it can offer a name from a sibling
   block.
+- A generic body has no types of its own — sema records one set per
+  instantiation — so inlay hints appear inside one only when a single
+  instantiation pins them, and vanish as soon as there is a second.
 - No rename, no find-references, no signature help yet.
