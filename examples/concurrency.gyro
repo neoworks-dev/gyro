@@ -87,6 +87,12 @@ async fn main() {
 
   // `spawn` is an ordinary stdlib function, not grammar: it takes a closure,
   // which is what carries the arguments across to the new thread.
+  //
+  // The captures here are channels, which is why this is quiet. A closure
+  // captures by copy, so capturing a `*T` or a `T[]` instead would leave
+  // both threads reaching the same memory, and the compiler warns about it.
+  // Hand a reference over with `fn[move x]()`, or share through a channel
+  // or a Mutex as these do.
   spawn(fn() produce(values, 10))
   spawn(fn() consume(values, done))
   var _ = <-done

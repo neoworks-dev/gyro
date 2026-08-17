@@ -378,6 +378,50 @@ func TestTupleAssignability(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Spawn races
+// ---------------------------------------------------------------------------
+
+const racePrelude = "import { println, spawn } from \"stdlib\"\n" +
+	"import { alloc, free } from \"mem\"\n\n" +
+	"struct Node {\n  value: i32\n}\n\n"
+
+func raceSource(body string) map[string]string {
+	return map[string]string{"main.gyro": racePrelude + body}
+}
+
+// A capture copies, and copying a reference shares what it points at.
+func TestSpawnedClosureSharingAReferenceWarns(t *testing.T) {
+	programWarning(t, raceSource("fn t(node: *Node) {\n  spawn(fn() {\n    node.value = 1\n  })\n}\n"),
+		"main.gyro", "captures node, so both threads reach the same memory")
+	programWarning(t, raceSource("fn t(xs: i32[]) {\n  spawn(fn() {\n    println(xs.len())\n  })\n}\n"),
+		"main.gyro", "captures xs, so both threads reach the same elements")
+	// A nullable pointer is still a pointer.
+	programWarning(t, raceSource("fn t(node: *Node?) {\n  spawn(fn() {\n    if node != null {\n      println(node.value)\n    }\n  })\n}\n"),
+		"main.gyro", "captures node, so both threads reach the same memory")
+}
+
+// Copying a value shares nothing, a channel is the sanctioned way across, and
+// a move hands the binding over rather than sharing it.
+func TestSpawnedClosureWithoutSharingIsQuiet(t *testing.T) {
+	programOK(t, raceSource("fn t(n: i32) {\n  spawn(fn() {\n    println(n)\n  })\n}\n"), "main.gyro")
+	programOK(t, raceSource("fn t(ch: chan<i32>) {\n  spawn(fn() {\n    ch <- 1\n  })\n}\n"), "main.gyro")
+	programOK(t, raceSource("fn t() {\n  var node = alloc<Node>()\n  spawn(fn[move node]() {\n    free(node)\n  })\n}\n"), "main.gyro")
+	programOK(t, raceSource("fn t() {\n  spawn(fn() {\n    println(\"hi\")\n  })\n}\n"), "main.gyro")
+}
+
+// Only a spawned closure is reported: an ordinary one runs on this thread.
+func TestUnspawnedClosureIsNotARace(t *testing.T) {
+	programOK(t, raceSource("fn t(xs: i32[]): fn() {\n  return fn() {\n    println(xs.len())\n  }\n}\n"), "main.gyro")
+}
+
+// The pointer reaches the spawned closure through an intermediate one, so
+// both of them capture it.
+func TestCaptureIsSeenThroughNestedClosures(t *testing.T) {
+	programWarning(t, raceSource("fn t(node: *Node) {\n  var outer = fn() {\n    spawn(fn() {\n      node.value = 1\n    })\n  }\n  outer()\n}\n"),
+		"main.gyro", "captures node")
+}
+
+// ---------------------------------------------------------------------------
 // Leak analysis
 // ---------------------------------------------------------------------------
 

@@ -52,6 +52,9 @@ type symbol struct {
 	kind   symbolKind
 	offset int
 	decl   ast.Node
+	// name is the source spelling. The scopes are keyed by it, but a
+	// diagnostic reached through a symbol needs it back.
+	name string
 	// typ is the symbol's type: the value's type for symValue, the named
 	// type itself for symType, the bound type for symTypeParam. nil means
 	// not yet computed; Unknown means it failed or cannot be known.
@@ -70,9 +73,14 @@ type symbol struct {
 	// holdsAllocation marks a local bound to an alloc call, which the leak
 	// analysis follows until something settles it.
 	holdsAllocation bool
-	// memIntrinsic names the mem function an imported symbol stands for,
-	// "alloc" or "free", and is empty for everything else.
-	memIntrinsic string
+	// intrinsic names the bundled function an imported symbol stands for —
+	// "alloc", "free" or "spawn" — and is empty for everything else. The
+	// analyses that care about these have to know the import they came
+	// through, since the names are ordinary and can be aliased.
+	intrinsic string
+	// closureDepth is how many closures deep the symbol was declared. A name
+	// used at a greater depth than it was declared at is captured.
+	closureDepth int
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -209,6 +217,18 @@ type checker struct {
 	// to, which is how `alloc` is told from a local function of that name.
 	importPaths map[string]string
 
+	// closureDepth counts the closures enclosing the expression being
+	// checked. A name used deeper than it was declared is captured.
+	closureDepth int
+
+	// captures is the stack of open closures, each collecting the outer
+	// names its body reads.
+	captures []*captureSet
+
+	// closureCaptures keeps what each closure captured, so a `spawn` can ask
+	// about the closure it was handed after that closure has been checked.
+	closureCaptures map[*ast.ClosureExpr][]*symbol
+
 	// lenient marks a generic body being checked without concrete type
 	// arguments: operations involving a type parameter poison to Unknown
 	// instead of erroring, because the real check happens per instantiation.
@@ -231,8 +251,9 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		facts:       map[*symbol]bool{},
 		flow:        newFlow(),
 		guarded:       map[*symbol][]*symbol{},
-		importPaths:   map[string]string{},
-		reportedLeaks: map[*symbol]bool{},
+		importPaths:     map[string]string{},
+		reportedLeaks:   map[*symbol]bool{},
+		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
 	}
 	c.scope = c.module
 	return c
@@ -302,6 +323,8 @@ func (c *checker) declareValue(name string, offset int, decl ast.Node, typ types
 }
 
 func (c *checker) declareSymbol(name string, sym *symbol) {
+	sym.name = name
+	sym.closureDepth = c.closureDepth
 	if name == "" || name == "_" {
 		return
 	}
@@ -387,6 +410,23 @@ func makeTypeParams(params []ast.TypeParam) []*types.TypeParam {
 	return out
 }
 
+// bundledIntrinsic names the bundled function an import binds, so that the
+// analyses recognize it through an alias and do not mistake a local function
+// of the same name for it.
+func bundledIntrinsic(modulePath, name string) string {
+	switch modulePath {
+	case stdlib.Path("mem"):
+		if name == "alloc" || name == "free" {
+			return name
+		}
+	case stdlib.Path("stdlib"):
+		if name == "spawn" {
+			return name
+		}
+	}
+	return ""
+}
+
 func (c *checker) collectImport(imp *ast.Import) {
 	exports := c.imports[imp.Path]
 
@@ -406,12 +446,7 @@ func (c *checker) collectImport(imp *ast.Import) {
 		}
 
 		local := &symbol{kind: symImport, offset: name.Offset, decl: imp, typ: types.Unknown}
-		if c.importPaths[imp.Path] == stdlib.Path("mem") {
-			switch name.Name {
-			case "alloc", "free":
-				local.memIntrinsic = name.Name
-			}
-		}
+		local.intrinsic = bundledIntrinsic(c.importPaths[imp.Path], name.Name)
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {

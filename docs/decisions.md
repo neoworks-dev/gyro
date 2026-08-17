@@ -639,13 +639,30 @@ carries the intent instead. Channel creation stays call-shaped grammar
 (`chan<i32>(64)`) because `chan` is already a type keyword, not a library
 name.
 
-### Data races: unchecked today, warning planned *(new)*
+### Data races: the direct case warns *(new)*
 
-**Status: planned.** Nothing stops a captured `*T` from crossing `spawn` and
-racing. A sema pass that warns when a pointer crosses a spawn boundary is
-planned; full Send/Sync-style checking (Rust) was rejected as a mechanism
-the language just chose not to afford. Until the pass lands, races sit next
-to dangling slices in the accepted-costs column.
+**Status: done, partially.** A closure handed to `spawn` that captures a `*T`
+or a `T[]` shares it with the thread that spawned it, because captures copy
+and copying a reference copies the reference. That warns.
+
+Full Send/Sync-style checking (Rust) stays rejected: it is a mechanism the
+language chose not to afford, and it would need a trait system that was
+removed on purpose.
+
+Channels and `move` captures are exempt. A channel is the sanctioned way to
+reach another thread, and a move hands the binding over rather than sharing
+it, which is exactly the distinction the capture list exists to draw.
+
+What the pass does not see: a pointer reached through a struct field or a
+returned value, two spawns over one channel, anything a captured function's
+callee does, and a `Mutex` or `Array` captured by copy — those are structs,
+and telling the one that is meant to be shared from the one that is not
+needs more than the type. Warning on the direct case and saying so beats
+claiming a guarantee that does not hold.
+
+The choice between reporting at the `spawn` call and at the capture: the
+call, because that is where the decision to cross a thread boundary is
+made, and a closure is only a race once something spawns it.
 
 ### Async is a function colour
 

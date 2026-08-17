@@ -68,6 +68,7 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 	case *ast.CallExpr:
 		result := c.callExpr(e)
 		c.settleCallArgs(e)
+		c.checkSpawnRace(e)
 		return result
 
 	case *ast.SelectorExpr:
@@ -127,6 +128,7 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 		return types.Unknown
 	}
 	c.checkAssigned(sym, e.Offset, e.Name)
+	c.noteCapture(sym)
 	return c.symbolValueType(sym, e.Offset, e.Name)
 }
 
@@ -1237,54 +1239,56 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 	}
 	c.facts = inherited
 
-	c.pushScope(func() {
-		for i, param := range e.Params {
-			var paramType types.Type
-			switch {
-			case param.Type != nil:
-				paramType = c.resolveType(param.Type)
-			case wantFunc != nil && i < len(wantFunc.Params):
-				paramType = wantFunc.Params[i]
-			default:
-				c.errorf(param.Offset, "the parameter %s needs a type; nothing here says what the closure is", param.Name)
-				paramType = types.Unknown
+	c.closureCaptures[e] = c.pushCaptures(func() {
+		c.pushScope(func() {
+			for i, param := range e.Params {
+				var paramType types.Type
+				switch {
+				case param.Type != nil:
+					paramType = c.resolveType(param.Type)
+				case wantFunc != nil && i < len(wantFunc.Params):
+					paramType = wantFunc.Params[i]
+				default:
+					c.errorf(param.Offset, "the parameter %s needs a type; nothing here says what the closure is", param.Name)
+					paramType = types.Unknown
+				}
+				sig.Params = append(sig.Params, paramType)
+				if param.Default != nil {
+					c.assignExpr(param.Default, paramType, "the default value")
+				}
+				c.declareValue(param.Name, param.Offset, e, paramType)
 			}
-			sig.Params = append(sig.Params, paramType)
-			if param.Default != nil {
-				c.assignExpr(param.Default, paramType, "the default value")
+
+			result := c.closureResult(e, wantFunc)
+
+			inMethod := savedFn != nil && savedFn.inMethod
+			var selfType types.Type
+			if savedFn != nil {
+				selfType = savedFn.selfType
 			}
-			c.declareValue(param.Name, param.Offset, e, paramType)
-		}
+			c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType}
 
-		result := c.closureResult(e, wantFunc)
-
-		inMethod := savedFn != nil && savedFn.inMethod
-		var selfType types.Type
-		if savedFn != nil {
-			selfType = savedFn.selfType
-		}
-		c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType}
-
-		if e.Body != nil {
-			// A closure runs at a time this analysis cannot pin down, so its
-			// writes do not count outside it. Reads inside still check
-			// against the state here, which is what makes capturing a local
-			// that holds nothing an error.
-			c.isolateFlow(func() { c.blockInPlace(e.Body) })
-			sig.Result = result
-		}
-		if e.BodyExpr != nil {
-			bodyType := types.Default(c.exprWith(e.BodyExpr, result))
-			if result == nil {
-				sig.Result = bodyType
-			} else {
-				c.assignValue(e.BodyExpr.Pos(), e.BodyExpr, bodyType, result, "the closure body")
+			if e.Body != nil {
+				// A closure runs at a time this analysis cannot pin down, so its
+				// writes do not count outside it. Reads inside still check
+				// against the state here, which is what makes capturing a local
+				// that holds nothing an error.
+				c.isolateFlow(func() { c.blockInPlace(e.Body) })
 				sig.Result = result
 			}
-		}
-		if sig.Result == nil {
-			sig.Result = types.Void
-		}
+			if e.BodyExpr != nil {
+				bodyType := types.Default(c.exprWith(e.BodyExpr, result))
+				if result == nil {
+					sig.Result = bodyType
+				} else {
+					c.assignValue(e.BodyExpr.Pos(), e.BodyExpr, bodyType, result, "the closure body")
+					sig.Result = result
+				}
+			}
+			if sig.Result == nil {
+				sig.Result = types.Void
+			}
+		})
 	})
 
 	if wantFunc != nil && len(e.Params) != len(wantFunc.Params) {

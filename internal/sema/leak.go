@@ -131,11 +131,11 @@ func (c *checker) settleCallArgs(e ast.Expr) {
 // allocationCall reports whether an expression is a call to mem's alloc, so
 // that the local it initializes becomes this block's responsibility.
 func (c *checker) allocationCall(e ast.Expr) bool {
-	return c.memIntrinsicCall(e) == "alloc"
+	return c.intrinsicCall(e) == "alloc"
 }
 
-// memIntrinsicCall names the mem intrinsic a call invokes, or "".
-func (c *checker) memIntrinsicCall(e ast.Expr) string {
+// intrinsicCall names the mem intrinsic a call invokes, or "".
+func (c *checker) intrinsicCall(e ast.Expr) string {
 	call, ok := e.(*ast.CallExpr)
 	if !ok {
 		return ""
@@ -144,7 +144,7 @@ func (c *checker) memIntrinsicCall(e ast.Expr) string {
 	if sym == nil {
 		return ""
 	}
-	return sym.memIntrinsic
+	return sym.intrinsic
 }
 
 // calleeSymbol resolves the name a call goes through without reporting

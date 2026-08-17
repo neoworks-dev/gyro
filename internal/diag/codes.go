@@ -92,6 +92,9 @@ const (
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
+
+	// Concurrency.
+	WSpawnRace Code = "W0801"
 )
 
 // explanation is the long form behind a code, printed by `gyro explain`.
@@ -232,6 +235,8 @@ var explanations = map[Code]explanation{
 		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes()."},
 	EPrivateField: {"field is private to its module",
 		"Field visibility is explicit; construct the value with an associated\nfunction instead."},
+	WSpawnRace: {"spawned closure shares a reference with its spawner",
+		"A closure captures by copy, which is safe for a value and not for a\nreference: copying a *T copies the pointer, and copying a T[] copies a\npointer and a length over storage it does not own. Both threads then\nreach the same memory with nothing ordering them.\n\nHand the binding over with fn[move x](), or share through a channel or a\nMutex. A channel capture is never reported, since carrying work between\nthreads is what it is for.\n\nThis does not prove the absence of a race: a pointer reached through a\nstruct field, or two spawns over one channel, are both invisible here."},
 	WPossibleLeak: {"allocation reaches the end of its block unfreed",
 		"Memory is manual: alloc<T>() is released by free, usually as a defer\nbeside the allocation. Returning it, sending it, passing it to a call or\nmoving it into a closure all hand it on and end the question here.\n\nThis is a warning because an arena and a process-lifetime allocation\nfree nothing on purpose."},
 }

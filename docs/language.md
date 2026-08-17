@@ -737,9 +737,26 @@ explicit: `guard.unlock()`, usually as `defer guard.unlock()`. (Gyro has no
 destructors, so nothing can release a guard implicitly; if a drop-based
 design ever lands, the explicit call becomes sugar.)
 
-Nothing yet stops a captured `*T` from crossing `spawn` and racing; a sema
-pass that warns about it is planned. Until then, data races are the
-programmer's problem, like dangling slices.
+A closure captures by copy, which is safe for a value and not for a
+reference: copying a `*T` copies the pointer, and copying a `T[]` copies a
+pointer and a length over storage it does not own. Both threads then reach
+the same memory. Handing a reference to `spawn` that way **warns**:
+
+```gyro
+var node = alloc<Node>()
+spawn(fn() { node.value = 1 })      // warns: both threads reach node
+
+spawn(fn[move node]() { ... })      // fine: the binding goes with it
+spawn(fn() { ch <- 1 })             // fine: a channel is built for this
+```
+
+A channel capture is never reported, since carrying work between threads is
+what a channel is for, and a `move` capture hands the binding over rather
+than sharing it. A closure that is not spawned is not reported either.
+
+This does not prove the absence of a race. A pointer reached through a struct
+field, and two spawns over one channel, are both invisible to it; so is
+anything the callee of a captured function does. It catches the direct case.
 
 ### Channels — communication
 
@@ -861,6 +878,9 @@ unresolved name is an error — and **types every expression**:
   at the match, and a payload pattern that tests rather than binds leaves
   its variant uncovered. Open subjects — integers, strings, `error` — are
   exempt.
+- **Spawn races** warn: a closure handed to `spawn` that captures a `*T`
+  or a `T[]` shares it with the thread that spawned it, since captures
+  copy. Channels and `move` captures are exempt.
 - **Leak analysis** warns when an `alloc<T>()` reaches the end of its
   block with nothing having freed or taken it. `free`, a return, a send, a
   call argument, a literal field and a `move` capture all settle it; a
@@ -922,7 +942,6 @@ Still to come:
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | overflow, bounds and cast panics | checked statically for literals only; runtime checks need codegen |
 | `Array<T>` `String` `Mutex` `spawn` | declaration stubs bundled; no implementations, no runtime |
-| race-detection warning for `spawn` captures | planned sema pass |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
 | METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle) |
