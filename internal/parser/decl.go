@@ -371,6 +371,12 @@ func (p *Parser) parseEffectEntry(row *ast.EffectRow) {
 	if p.at(token.Amp) {
 		offset := p.offset()
 		p.next()
+		// `self` is a keyword, and naming a method's receiver is exactly
+		// what it is for here.
+		if p.accept(token.Self) {
+			row.Borrows = append(row.Borrows, ast.Borrow{Offset: offset, Name: "self"})
+			return
+		}
 		name, _ := p.expectIdent()
 		row.Borrows = append(row.Borrows, ast.Borrow{Offset: offset, Name: name})
 		return

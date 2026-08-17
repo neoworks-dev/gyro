@@ -260,7 +260,9 @@ fn Pair<T>::sum(self): T {
   return self.first
 }
 
-fn pick<T>(a: T, b: T, takeFirst: bool): T {
+// The row is vacuous at T=i32 and load-bearing at T=string, which is a
+// view; a generic signature states it once for every instantiation.
+fn pick<T>(a: T, b: T, takeFirst: bool): T !{ &a, &b } {
   if takeFirst {
     return a
   }

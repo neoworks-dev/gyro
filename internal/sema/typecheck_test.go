@@ -261,8 +261,9 @@ func TestCrossModuleFieldVisibility(t *testing.T) {
 	shared := "export struct Config {\n  export host: string\n  secret: i32\n}\n\n" +
 		"export fn Config::new(): Config {\n  return Config{ host: \"h\", secret: 1 }\n}\n"
 
+	// `string` is a view, so handing a field back borrows the struct.
 	programOK(t, map[string]string{
-		"main.gyro": "import { Config } from \"./lib\"\n\nfn t(c: Config): string {\n  return c.host\n}\n",
+		"main.gyro": "import { Config } from \"./lib\"\n\nfn t(c: Config): string !{ &c } {\n  return c.host\n}\n",
 		"lib.gyro":  shared,
 	}, "main.gyro")
 
@@ -419,10 +420,22 @@ func TestNonViewResultsAreNotBorrowChecked(t *testing.T) {
 	checkOK(t, "fn t(): string {\n  return \"a literal is static\"\n}\n")
 }
 
-// Whether T is a view depends on the instantiation, so a generic signature
-// cannot state a borrow that is right for every T.
-func TestGenericFunctionsAreExemptFromBorrowChecking(t *testing.T) {
-	checkOK(t, "fn pick<T>(a: T, b: T, f: bool): T {\n  if f {\n    return a\n  }\n  return b\n}\n")
+// A generic row is conditional: load-bearing where T is a view, vacuous
+// where it is not, and stated once for every instantiation.
+const genericPick = "fn pick<T>(a: T, b: T, f: bool): T !{ &a, &b } {\n  if f {\n    return a\n  }\n  return b\n}\n\n"
+
+func TestGenericBorrowsAreConditional(t *testing.T) {
+	// Vacuous at i32: the row says nothing and costs nothing.
+	checkOK(t, genericPick+"fn t(): i32 {\n  return pick(1, 2, true)\n}\n")
+	// Load-bearing at string, which is a view.
+	checkOK(t, genericPick+"fn t(x: string, y: string): string !{ &x, &y } {\n  return pick(x, y, true)\n}\n")
+	checkError(t, genericPick+"fn t(x: string, y: string): string {\n  return pick(x, y, true)\n}\n",
+		"this returns a view into x, which the row does not name")
+	// A generic body returning a parameter still needs its row, and the
+	// instantiation at a view type is what surfaces it.
+	checkError(t, "fn identity<T>(x: T): T {\n  return x\n}\n\nfn t(s: string): string !{ &s } {\n  return identity(s)\n}\n",
+		"this returns a view into x, which the row does not name")
+	checkOK(t, "fn identity<T>(x: T): T !{ &x } {\n  return x\n}\n\nfn t(s: string): string !{ &s } {\n  return identity(s)\n}\n")
 }
 
 // A callee's row answers what its result views, which is what carries the
@@ -452,6 +465,32 @@ func TestBorrowSurvivesALocalBinding(t *testing.T) {
 	checkOK(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] !{ &xs } {\n  var v = pick(xs, ys)\n  return v\n}\n")
 	checkError(t, pickPrelude+"fn t(xs: i32[], ys: i32[]): i32[] {\n  var v = pick(xs, ys)\n  return v\n}\n",
 		"this returns a view into xs, which the row does not name")
+}
+
+// `&self` names a method's receiver, and a field chain roots at whatever
+// holds it, so `self.items.slice()` is a view of self.
+func TestMethodsBorrowTheirReceiver(t *testing.T) {
+	stack := "struct Stack {\n  items: i32[]\n}\n\n"
+
+	checkOK(t, stack+"fn Stack::view(self): i32[] !{ &self } {\n  return self.items\n}\n")
+	checkError(t, stack+"fn Stack::view(self): i32[] {\n  return self.items\n}\n",
+		"this returns a view into self, which the row does not name")
+	// The same rooting works for a named parameter holding storage.
+	checkOK(t, stack+"fn contents(s: Stack): i32[] !{ &s } {\n  return s.items\n}\n")
+	checkError(t, stack+"fn contents(s: Stack): i32[] {\n  return s.items\n}\n",
+		"this returns a view into s, which the row does not name")
+	// &self on a plain function has no receiver to name.
+	checkError(t, stack+"fn loose(s: Stack): i32[] !{ &self } {\n  return s.items\n}\n",
+		"&self names no parameter of this function")
+}
+
+// A struct carries what its fields carry: frame storage behind a field
+// still ends with the frame, while a heap buffer does not.
+func TestStructsCarryTheirFieldsStorage(t *testing.T) {
+	view := "struct View {\n  data: i32[]\n}\n\n"
+	checkError(t, view+"fn t(): i32[] {\n  var xs = [1, 2, 3]\n  var v = View{ data: xs }\n  return v.data\n}\n",
+		"view into storage that ends with this function")
+	checkOK(t, view+"fn t(xs: i32[]): i32[] !{ &xs } {\n  var v = View{ data: xs }\n  return v.data\n}\n")
 }
 
 // The row travels with the declaration, so an imported function's borrows

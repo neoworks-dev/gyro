@@ -50,11 +50,18 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 
 	selfType := c.selfTypeFor(decl)
 	c.fn = &funcContext{
-		result:        c.resultType(decl.Results),
-		async:         decl.Async,
-		inMethod:      decl.Recv != nil,
-		selfType:      selfType,
-		borrowChecked: !generic,
+		result:   c.resultType(decl.Results),
+		async:    decl.Async,
+		inMethod: decl.Recv != nil,
+		selfType: selfType,
+		// A generic body checked without type arguments cannot answer
+		// whether T is a view; the instantiation can, and does.
+		borrowChecked: !c.lenient,
+		generic:       generic,
+	}
+	if decl.Recv != nil && selfType != nil {
+		c.fn.selfSymbol = &symbol{kind: symValue, name: "self", offset: decl.Offset, decl: decl, typ: selfType}
+		c.fn.selfSymbol.origin = borrowOrigin{params: []*symbol{c.fn.selfSymbol}}
 	}
 	c.recordLocal(decl, "return", c.fn.result)
 	if selfType != nil {
@@ -67,9 +74,10 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 			c.assignExpr(param.Default, paramType, "the default value")
 		}
 		sym := c.declareValue(param.Name, param.Offset, decl, paramType)
-		// A view parameter is storage the caller owns; anything derived from
-		// it views the caller's memory rather than this frame's.
-		if sym != nil && viewType(paramType) {
+		// A parameter holding storage belongs to the caller, so anything
+		// rooted at it views the caller's memory rather than this frame's.
+		// A struct counts: `s.items.slice()` is a view of s.
+		if sym != nil && !scalarType(paramType) {
 			sym.origin = borrowOrigin{params: []*symbol{sym}}
 		}
 	}

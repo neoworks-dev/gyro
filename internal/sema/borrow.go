@@ -62,28 +62,65 @@ func (c *checker) declareBorrows(decl *ast.FuncDecl) map[*symbol]bool {
 
 	sources := map[*symbol]bool{}
 	for _, borrow := range row.Borrows {
-		sym := c.scope.lookup(borrow.Name)
-		if sym == nil || sym.kind != symValue {
-			c.errorHintf(borrow.Offset, []string{
-				"a borrow names a parameter of this function, as in fn f(xs: i32[]): i32[] !{ &xs }",
-			}, "&%s names no parameter of this function", borrow.Name)
-			continue
-		}
-		if !viewType(sym.typ) {
-			c.errorHintf(borrow.Offset, []string{
-				"only a slice or a string is a view; " + sym.typ.String() + " owns what it holds",
-			}, "&%s borrows from %s, which is not a view", borrow.Name, sym.typ)
+		sym := c.borrowSource(borrow)
+		if sym == nil {
 			continue
 		}
 		sources[sym] = true
 	}
 
-	if !viewType(c.fn.result) && len(sources) > 0 {
+	if !c.fn.generic && !viewType(c.fn.result) && len(sources) > 0 {
 		c.errorHintf(row.Offset, []string{
 			"a borrow says what the result is a view into; this function returns " + describeType(c.fn.result),
 		}, "this row borrows, but the result is not a view")
 	}
 	return sources
+}
+
+// borrowSource resolves one `&name` entry. `&self` names a method's
+// receiver, which is not a scope symbol but is every bit as much a place a
+// view can sit on.
+func (c *checker) borrowSource(borrow ast.Borrow) *symbol {
+	if borrow.Name == "self" {
+		if c.fn.selfSymbol == nil {
+			c.errorHintf(borrow.Offset, []string{
+				"&self borrows a method's receiver; this function has none",
+			}, "&%s names no parameter of this function", borrow.Name)
+			return nil
+		}
+		return c.fn.selfSymbol
+	}
+
+	sym := c.scope.lookup(borrow.Name)
+	if sym == nil || sym.kind != symValue {
+		c.errorHintf(borrow.Offset, []string{
+			"a borrow names a parameter of this function, as in fn f(xs: i32[]): i32[] !{ &xs }",
+			"a method's receiver is named &self",
+		}, "&%s names no parameter of this function", borrow.Name)
+		return nil
+	}
+	// A source is anything a view can sit on: a slice or string directly, a
+	// struct or array that owns storage, a pointer to one. A number holds
+	// nothing a view could point into — except on a generic, where the same
+	// row has to serve `T = string` and `T = i32`, and being vacuous at one
+	// of them is the arrangement rather than a mistake.
+	if !c.fn.generic && scalarType(sym.typ) {
+		c.errorHintf(borrow.Offset, []string{
+			"a view sits on storage; " + sym.typ.String() + " is a single value with none",
+		}, "&%s borrows from %s, which is not a view", borrow.Name, sym.typ)
+		return nil
+	}
+	return sym
+}
+
+// scalarType reports a type holding no storage a view could point into.
+// `string` is excluded: it is itself a view.
+func scalarType(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	if !ok {
+		return false
+	}
+	return basic.Kind != types.StringKind
 }
 
 // checkReturnedBorrow reports a returned view whose storage the row did not
@@ -148,6 +185,28 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 		// The literal is storage in the enclosing scope.
 		return borrowOrigin{local: true}
 
+	case *ast.StructLit:
+		// A struct carries whatever its fields carry. `View{ data: xs }`
+		// with a frame-local xs holds frame storage; `Stack{ items:
+		// Array<i32>::new() }` holds a heap buffer and is not this frame's
+		// to lose.
+		var origin borrowOrigin
+		for _, field := range e.Fields {
+			origin = origin.merge(c.originOf(field.Value))
+		}
+		return origin
+
+	case *ast.SelfExpr:
+		if c.fn == nil || c.fn.selfSymbol == nil {
+			return borrowOrigin{}
+		}
+		return c.fn.selfSymbol.origin
+
+	case *ast.SelectorExpr:
+		// A field belongs to whatever holds it, so a chain roots at its
+		// base: `self.items` is the receiver's storage, `s.items` is s's.
+		return c.originOf(e.X)
+
 	case *ast.IndexExpr:
 		// Slicing a view yields a view of the same storage.
 		return c.originOf(e.X)
@@ -163,13 +222,18 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 // answered by that function's own row, which is what carries the fact across
 // a call and across a module.
 func (c *checker) callOrigin(call *ast.CallExpr) borrowOrigin {
-	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
-		switch selector.Name {
-		case "slice", "runes", "view":
-			return c.originOf(selector.X)
-		}
+	// A declared row answers for itself, including a user method that
+	// happens to be named `slice` and does not lend anything out.
+	if c.calleeDecl(call) != nil {
+		return c.declaredCallOrigin(call)
 	}
-	return c.declaredCallOrigin(call)
+
+	// The built-in method surface has no declaration to carry a row, and
+	// `s.runes()` is the one entry that hands back a view of its receiver.
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Name == "runes" {
+		return c.originOf(selector.X)
+	}
+	return borrowOrigin{}
 }
 
 // declaredCallOrigin maps a callee's `&param` entries onto the arguments
@@ -180,14 +244,17 @@ func (c *checker) declaredCallOrigin(call *ast.CallExpr) borrowOrigin {
 	if decl == nil || decl.Effects == nil || len(decl.Effects.Borrows) == 0 {
 		return borrowOrigin{}
 	}
-	// A generic callee's row is not checked at its definition, so it is not
-	// trustworthy here either.
-	if len(decl.TypeParams) > 0 || len(decl.OwnerParams) > 0 {
-		return borrowOrigin{}
-	}
 
 	var origin borrowOrigin
 	for _, borrow := range decl.Effects.Borrows {
+		// `&self` on a method points at the receiver, which is the value the
+		// call was made on rather than one of the arguments.
+		if borrow.Name == "self" {
+			if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+				origin = origin.merge(c.originOf(selector.X))
+			}
+			continue
+		}
 		index := paramIndex(decl, borrow.Name)
 		if index < 0 || index >= len(call.Args) {
 			continue
@@ -231,7 +298,9 @@ func (c *checker) noteOrigin(sym *symbol, value ast.Expr, typ types.Type) {
 		sym.origin = borrowOrigin{local: true}
 		return
 	}
-	if !viewType(typ) {
+	// Anything holding storage can be the root of a view, a struct included,
+	// so a local carries wherever its value came from.
+	if scalarType(typ) {
 		return
 	}
 	sym.origin = c.originOf(value)

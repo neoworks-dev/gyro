@@ -157,10 +157,19 @@ type funcContext struct {
 	// borrows is the set of parameters the signature's row says the result
 	// is a view into. Empty means the result must own what it holds.
 	borrows map[*symbol]bool
-	// borrowChecked is false for a generic function. Whether `T` is a view
-	// depends on the instantiation, so a row naming a borrow would be wrong
-	// for every T that owns, and demanding one is worse than not checking.
+	// borrowChecked is false while a generic body is checked without
+	// concrete type arguments: whether `T` is a view is not known yet, so
+	// the row is taken on faith until an instantiation makes it answerable.
 	borrowChecked bool
+	// selfSymbol stands for a method's receiver, which `&self` names. The
+	// receiver is not a scope symbol — `self` is its own expression — so
+	// borrows need something to point at.
+	selfSymbol *symbol
+	// generic marks a function with type parameters. Its borrows are
+	// conditional: `&a` where `a: T` is load-bearing when T is a view and
+	// vacuous when it is not, so whether the source or the result is a view
+	// cannot be judged from the declaration.
+	generic bool
 }
 
 // checker holds the state of one module's check.

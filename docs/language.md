@@ -873,11 +873,24 @@ fn worse(): i32[] {
 }
 ```
 
-Because a slice never owns, **a function returning `T[]` needs a `&` entry
-in practice.** There is no way to hand back storage through a `T[]`; a
+Because a view never owns, **a function returning `T[]` or `string` needs a
+`&` entry in practice.** There is no way to hand back storage through one; a
 function that means to give the caller ownership returns `Array<T>`, or
 `String` rather than `string`. The exception is a view of something static,
 like a string literal, which no frame owns.
+
+This reaches further than it first looks. `string` is a view, so an accessor
+handing back a string field borrows the struct it came from:
+
+```gyro
+fn host(c: Config): string !{ &c } {
+  return c.host
+}
+```
+
+That is not a quirk of the checker — the caller really does have to keep `c`
+alive to use the result. It is the price of `string` being a borrowed view
+and of borrows being written out rather than inferred.
 
 The name must be a parameter of the function, and that parameter has to be a
 view itself — there is nothing to borrow from an `i32`. A borrow entry on a
@@ -903,16 +916,59 @@ Frame storage travels through a call the same way. A caller has to account
 for every source the callee names: `both(xs, ys)` with `!{ &a, &b }` on
 `both` needs `!{ &xs, &ys }`.
 
-Two boundaries worth naming:
+### Receivers and fields
 
-- **Generic functions are not borrow-checked.** Whether `T` is a view depends
-  on the instantiation, so no single row is right for every `T`, and demanding
-  one would be wrong more often than not. A generic callee's row is not
-  trusted at a call site either, for the same reason.
-- **Methods lending out the receiver are not checked.** `&` names a
-  parameter, and `self` is a receiver, so `fn Stack::view(self): i32[]` has
-  nothing to name. Views reached through a struct field are unchecked for the
-  same reason.
+`&self` names a method's receiver, and a field chain roots at whatever holds
+it — `self.items` is the receiver's storage, `s.items` is `s`'s:
+
+```gyro
+export fn Stack::view(self): i32[] !{ &self } {
+  return self.items.slice()
+}
+
+fn contents(s: Stack): i32[] !{ &s } {
+  return s.items.slice()
+}
+```
+
+A struct carries what its fields carry, so frame storage behind a field is
+still the frame's:
+
+```gyro
+struct View { data: i32[] }
+
+fn bad(): i32[] {
+  var xs = [1, 2, 3]
+  var v = View{ data: xs }
+  return v.data          // error: xs ends with this function
+}
+```
+
+A heap buffer does not — `Stack{ items: Array<i32>::new() }` holds storage
+that outlives the frame, and lending a view of it is fine.
+
+### Borrows on a generic
+
+A generic row is **conditional**: load-bearing where `T` turns out to be a
+view, vacuous where it does not. It is stated once and serves every
+instantiation.
+
+```gyro
+fn pick<T>(a: T, b: T, f: bool): T !{ &a, &b } {
+  if f {
+    return a
+  }
+  return b
+}
+
+pick(1, 2, true)        // vacuous: i32 is not a view
+pick("a", "b", false)   // checked: string is
+```
+
+The cost is that a generic returning one of its parameters needs the row even
+where it never means anything — `fn identity<T>(x: T): T !{ &x }`. The
+alternative was inferring generic rows from the body, which would make the
+one place the annotation is hardest to read also the one place it is invisible.
 
 ---
 

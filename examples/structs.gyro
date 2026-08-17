@@ -30,8 +30,10 @@ export fn Stack::push(*self, value: i32) {
   self.top += 1
 }
 
-// Lending the contents out as a borrowed view costs nothing.
-export fn Stack::view(self): i32[] {
+// Lending the contents out as a borrowed view costs nothing. `&self` says
+// the view sits on the receiver, so the stack has to outlive what this
+// returns — a field chain roots at whatever holds it.
+export fn Stack::view(self): i32[] !{ &self } {
   return self.items.slice()
 }
 

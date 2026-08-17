@@ -734,10 +734,29 @@ Consequence worth stating: since a slice never owns, a function returning
 `T[]` needs a `&` entry in practice. Handing ownership back means returning
 `Array<T>`. That is not a new restriction, only a visible one.
 
-Generic functions are exempt. Whether `T` is a view depends on the
-instantiation, so no single row is right for every `T` — `fn pick<T>(a: T, b:
-T): T` is correct for `i32` and a borrow for `string`. Demanding a row would
-be wrong more often than right.
+A generic row is **conditional**: `&a` where `a: T` is load-bearing when `T`
+is a view and vacuous when it is not, checked per instantiation and stated
+once. Whether a source or a result is a view is therefore not judged on a
+generic declaration — being vacuous at one instantiation is the arrangement,
+not a mistake.
+
+The cost is a row on every generic pass-through, including where it never
+means anything: `fn identity<T>(x: T): T !{ &x }`. Rejected inferring generic
+rows from the body, which would make the one place the annotation is hardest
+to read also the one place it is invisible. Rejected leaving generics exempt,
+which leaves generic containers — where views actually flow — unchecked.
+
+`&self` names a method's receiver. The receiver is not a scope symbol, so it
+gets a synthetic one; the alternative of making receivers implicitly borrow
+was rejected because it would leave one borrow unstated and make a lending
+method indistinguishable from an owning one at a glance.
+
+A field chain roots at whatever holds it, which is what makes `&self` usable
+at all: `self.items.slice()` is a view of the receiver, not of `items`. The
+same rooting closes the struct-field case for named parameters. A struct
+literal carries the origins of its fields, so frame storage behind a field is
+still the frame's while a heap buffer is not — that distinction is why local
+structs could not simply be treated as frame storage.
 
 Reading the row at call sites is what makes it a real check rather than a
 local one, and it is the reason the annotation earns its cost: the fact a
@@ -1148,7 +1167,7 @@ one position never told the reader anything the first did not.
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
 | literal payload patterns do not lower | `Shape::Circle(1.0)` type-checks and the interpreter matches it, but the lowering only binds names and `_` in a payload; making it work means the payload test joins the tag test in the arm's condition. The exhaustiveness check already treats such an arm as not covering its variant |
-| borrows from a receiver | `&` names a parameter, and `self` is not one, so a method lending out a view of its receiver — `fn Stack::view(self): i32[]` — states nothing and is unchecked. Whether the spelling is `&self` or the receiver becomes nameable some other way is undecided |
+| views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
