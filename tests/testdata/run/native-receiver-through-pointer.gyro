@@ -1,0 +1,38 @@
+// A runtime object is a handle, which is already a reference, so a
+// method on one needs no pointer. The receiver expression may still be
+// one — inside a function taking *Array<T> — and then it is loaded
+// through before the call.
+
+import { println, Array, String } from "stdlib"
+
+fn fill(values: *Array<i32>, upto: i32) {
+  for i in 0..upto {
+    values.push(i)
+  }
+}
+
+fn total(values: *Array<i32>): i32 {
+  var sum = 0
+  for value in values.slice() {
+    sum += value
+  }
+  return sum
+}
+
+fn shout(out: *String, text: string) {
+  out.push(text)
+  out.push_rune('!')
+}
+
+fn main() {
+  var values = Array<i32>::new()
+  defer values.free()
+  fill(&values, 5)
+  println(values.len())
+  println(total(&values))
+
+  var message = String::new()
+  defer message.free()
+  shout(&message, "hello")
+  println(message.text())
+}

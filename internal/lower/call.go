@@ -166,10 +166,22 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 		if !ok {
 			f.l.fail("@%s: a method call without a receiver expression", f.fn.Name)
 		}
-		args = append(args, f.lowerExpr(selector.X, nil))
+		args = append(args, f.nativeReceiver(selector.X))
 	}
 	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
+}
+
+// nativeReceiver produces the receiver of a runtime method. A runtime
+// object is a handle, which is already a reference, so `*self` needs no
+// pointer — but the receiver expression may still be one, as it is inside
+// a function taking `*Array<T>`, and then it has to be loaded through.
+func (f *funcLowerer) nativeReceiver(recv ast.Expr) string {
+	if pointer, ok := f.typeOf(recv).(*types.Pointer); ok {
+		ptr := f.lowerExpr(recv, nil)
+		return f.pointerPlace(ptr, pointer.Elem).load()
+	}
+	return f.lowerExpr(recv, nil)
 }
 
 func isPrintName(name string) bool {
