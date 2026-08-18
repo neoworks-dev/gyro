@@ -186,6 +186,9 @@ func (c *checker) selfTypeFor(decl *ast.FuncDecl) types.Type {
 	if decl.Owner == "" || decl.Recv == nil {
 		return nil
 	}
+	if builtin := builtinOwner(decl.Owner); builtin != nil {
+		return builtin
+	}
 	owner := c.module.lookup(decl.Owner)
 	if owner == nil || owner.kind != symType {
 		return types.Unknown

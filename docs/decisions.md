@@ -1169,6 +1169,36 @@ The alternative — a native `String` beside `Array<T>` — would have meant
 three implementations (interpreter, evaluator, C runtime) of a builder
 with no interesting runtime requirement.
 
+### Built-in types are extensible; an extension is an ordinary name *(new)*
+
+**Status: decided.** `fn string::trim(self): string` attaches a method to
+a built-in type from ordinary Gyro, and any module may write one.
+
+What forced the question: the stdlib's text helpers were free functions
+while `len` and `runes` were methods, and the line between them was not a
+language rule at all — it was "what the compiler already knew about"
+versus "what could be added from Gyro". A reader has no way to predict
+which is which, and the docs already said operations on built-in types
+are methods on those types.
+
+The obvious objection to letting anyone extend a built-in is that a
+method declared anywhere becomes callable everywhere, which is the
+universe scope the language rules out. The resolution is that an
+extension is **not** attached to the type: it is a module-scope name
+under its own method name, exported and imported like a function, and
+callable exactly where that name is in scope. `line.trim()` works because
+`trim` was imported.
+
+That also disposes of coherence without a trait system. Two modules may
+each define `string::trim`; importing both is the duplicate-name error
+Gyro already reports, and importing one is unambiguous. Nothing is
+global, so nothing can conflict globally.
+
+The compiler's own surface stays separate and wins on a name clash: `len`
+and `runes` are part of the type, not additions to it, and they need no
+import. `void` and `error` are not extensible — nothing has type void,
+and `error` is a duck-typed contract rather than a type.
+
 ### `bytes()` and `from_utf8` both copy *(new)*
 
 **Status: decided, reluctantly.** Neither direction between `string` and

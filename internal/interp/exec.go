@@ -5,6 +5,7 @@ import (
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/token"
+	"github.com/gyro-lang/gyro/internal/types"
 )
 
 // frame is the execution context of one function activation: the module
@@ -449,7 +450,61 @@ func (f *frame) userMethodOf(v Value, name string) *funcDef {
 	case EnumVal:
 		return v.Def.module.methodOf(v.Def.name, name)
 	}
-	return nil
+	return f.extensionMethodOf(v, name)
+}
+
+// extensionMethodOf finds a method declared on a built-in type. Sema
+// resolved it through the name in scope, so this looks it up the same
+// way: the calling module's scope, not the receiver's, which is what
+// makes an extension travel by import.
+func (f *frame) extensionMethodOf(v Value, name string) *funcDef {
+	owner := builtinTypeName(v)
+	if owner == "" {
+		return nil
+	}
+	binding, ok := f.module.scope[name]
+	if !ok || binding.fn == nil || binding.fn.decl == nil {
+		return nil
+	}
+	if binding.fn.decl.Owner != owner || binding.fn.decl.Recv == nil {
+		return nil
+	}
+	return binding.fn
+}
+
+// builtinTypeName spells the built-in type a value inhabits, or "" when
+// it is not one an extension can name.
+func builtinTypeName(v Value) string {
+	switch v := v.(type) {
+	case StringVal:
+		return "string"
+	case BoolVal:
+		return "bool"
+	case IntVal:
+		return basicKindName(v.Kind)
+	case UintVal:
+		return basicKindName(v.Kind)
+	case FloatVal:
+		return basicKindName(v.Kind)
+	}
+	return ""
+}
+
+// basicKindName spells a value's type. An untyped literal takes its
+// default, the way it would anywhere else: 4.double() is i32's.
+func basicKindName(kind types.BasicKind) string {
+	switch kind {
+	case types.UntypedInt:
+		return "i32"
+	case types.UntypedFloat:
+		return "f64"
+	}
+	for name, basic := range types.Builtin {
+		if basic.Kind == kind {
+			return name
+		}
+	}
+	return ""
 }
 
 // receiverFor shapes the receiver the way the method wants it: a pointer

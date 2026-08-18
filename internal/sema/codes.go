@@ -150,11 +150,13 @@ var codes = map[string]diag.Code{
 	"this closure takes %d parameter(s), the context wants %s":                             diag.EClosureParams,
 
 	// Methods and receivers
-	"self is only available inside a method":                        diag.ESelfOutsideMethod,
-	"a receiver needs an owning type: write fn Type::%s(self, ...)": diag.ESelfOutsideMethod,
-	"%s already has a method %s":                                    diag.EMethodConflict,
-	"cannot attach a method to %s: it is not a type":                diag.EMethodConflict,
-	"cannot attach a method to %s: no such type in this module":     diag.EMethodConflict,
+	"self is only available inside a method":                          diag.ESelfOutsideMethod,
+	"a receiver needs an owning type: write fn Type::%s(self, ...)":   diag.ESelfOutsideMethod,
+	"%s already has a method %s":                                      diag.EMethodConflict,
+	"cannot attach a method to %s: it is not a type":                  diag.EMethodConflict,
+	"cannot attach a method to %s: no such type in this module":       diag.EMethodConflict,
+	"%s takes no type parameters":                                     diag.ETypeArgs,
+	"an extension of %s needs a receiver: write fn %s::%s(self, ...)": diag.ESelfOutsideMethod,
 
 	// The entry point
 	"main takes no type parameters":                          diag.EEntryPointSignature,

@@ -288,6 +288,29 @@ fn Stack::push(*self, v: i32) {
 Methods on a generic type name the parameter in the qualifier:
 `fn Pair<T>::first(self): T`.
 
+A built-in type can be extended the same way:
+
+```gyro
+export fn string::shout(self): string {
+  return "#{self}!"
+}
+```
+
+An extension method is an **ordinary module-scope name**: it is exported
+and imported like a function, and it is callable exactly where that name
+is in scope. That is what keeps it out of universe scope — `line.trim()`
+works because `trim` was imported, not because some module somewhere
+declared it. Two modules may both extend `string` with `trim`; importing
+both is the collision Gyro already reports, and importing one is
+unambiguous. Being a method, it cannot be called without a receiver.
+
+The compiler's own surface — `len`, `runes`, `bytes`, `close`, `compare`,
+`message` — is part of the type rather than an addition to it. It needs
+no import and an extension of the same name does not displace it.
+
+`void` and `error` cannot be extended: nothing has type void, and `error`
+is a contract satisfied by whatever carries `message()`, not a type.
+
 There is no `impl` block, no trait, and no `Self`; a method writes its type's
 name out.
 
@@ -516,11 +539,12 @@ out.push_rune('!')
 println(out.text())
 ```
 
-`String` and the text helpers — `split`, `join`, `trim`, `contains`,
+`String` and the text methods — `split`, `trim`, `contains`,
 `starts_with`, `ends_with`, `index_of`, `substring`, `repeat` — are
 ordinary Gyro in the standard library, written on `Array<u8>`, `bytes()`
 and one intrinsic, `from_utf8(bytes: u8[]): string`. A bundled module is
-only a declaration stub where a declaration has no body.
+only a declaration stub where a declaration has no body. `join(parts,
+sep)` stays a function: its receiver would be the slice, not a string.
 
 Known cost, accepted: `from_utf8` and `text()` copy, so building text
 allocates, and nothing frees those allocations yet.

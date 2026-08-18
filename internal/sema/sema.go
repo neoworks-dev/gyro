@@ -379,8 +379,10 @@ func (c *checker) collectModule(tree *ast.File) {
 	for _, decl := range tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			// A method lives under its owner, not in the module namespace.
-			if d.Owner == "" {
+			// A method lives under its owner, not in the module namespace
+			// — unless the owner is a built-in, which has no declaration
+			// to live under. Those are ordinary names, so they import.
+			if d.Owner == "" || extendsBuiltin(d) {
 				c.declare(d.Name, d.Offset, symValue, d)
 			}
 		case *ast.StructDecl:
@@ -483,8 +485,10 @@ func (c *checker) collectExports(tree *ast.File) *Exports {
 	for _, decl := range tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			// Methods ride along with their owner type, not by name.
-			if d.Exported && d.Owner == "" {
+			// Methods ride along with their owner type, not by name. An
+			// extension of a built-in has no such owner and exports like
+			// any other name.
+			if d.Exported && (d.Owner == "" || extendsBuiltin(d)) {
 				c.exportLocal(exports, d.Name)
 			}
 		case *ast.StructDecl:

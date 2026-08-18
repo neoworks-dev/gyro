@@ -156,6 +156,22 @@ func (c *checker) ownerTypeParams(decl *ast.FuncDecl) []*types.TypeParam {
 		return nil
 	}
 
+	// A built-in type has no declaration to look up. It takes no owner
+	// parameters either: an extension applies to one concrete type.
+	if builtinOwner(decl.Owner) != nil {
+		if decl.Recv == nil {
+			c.errorf(decl.Offset, "an extension of %s needs a receiver: write fn %s::%s(self, ...)",
+				decl.Owner, decl.Owner, decl.Name)
+		}
+		if len(decl.OwnerParams) > 0 {
+			c.errorf(decl.Offset, "%s takes no type parameters", decl.Owner)
+			// The names still have to bind, or the body checks against a
+			// parameter list the declaration does not have.
+			return makeTypeParams(decl.OwnerParams)
+		}
+		return nil
+	}
+
 	owner := c.module.lookup(decl.Owner)
 	if owner == nil {
 		c.errorf(decl.Offset, "cannot attach a method to %s: no such type in this module", decl.Owner)

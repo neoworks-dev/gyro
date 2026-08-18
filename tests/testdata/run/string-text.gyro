@@ -1,29 +1,31 @@
-// The text helpers, all ordinary Gyro in the stdlib.
+// The text helpers extend the built-in `string`, so they are spelled as
+// methods. They are ordinary names all the same: importable, and an
+// error to call without a receiver.
 
-import { println, Array } from "stdlib"
-import { split, join, trim, contains, starts_with, ends_with } from "stdlib"
-import { index_of, substring, repeat, from_utf8 } from "stdlib"
+import { println, Array, join, from_utf8 } from "stdlib"
+import { split, trim, contains, starts_with, ends_with } from "stdlib"
+import { index_of, substring, repeat } from "stdlib"
 
 fn main() {
-  println("[#{trim("  padded\t\n")}]")
-  println("[#{trim("")}]")
-  println(starts_with("hello", "he"))
-  println(starts_with("he", "hello"))
-  println(ends_with("hello", "lo"))
-  println(contains("hello", "ell"))
-  println(contains("hello", "xyz"))
-  println(substring("hello", 1, 4))
-  println(repeat("ab", 3))
-  println("[#{repeat("ab", 0)}]")
+  println("[#{"  padded\t\n".trim()}]")
+  println("[#{"".trim()}]")
+  println("hello".starts_with("he"))
+  println("he".starts_with("hello"))
+  println("hello".ends_with("lo"))
+  println("hello".contains("ell"))
+  println("hello".contains("xyz"))
+  println("hello".substring(1, 4))
+  println("ab".repeat(3))
+  println("[#{"ab".repeat(0)}]")
 
-  var at = index_of("hello", "ll")
+  var at = "hello".index_of("ll")
   if at != null {
     println(at)
   }
-  println(index_of("hello", "zz") == null)
+  println("hello".index_of("zz") == null)
 
   // An empty field between two separators is a field.
-  var parts = split("a,b,,c", ",")
+  var parts = "a,b,,c".split(",")
   defer parts.free()
   println(parts.len())
   for part in parts.slice() {
@@ -32,9 +34,15 @@ fn main() {
   println(join(parts.slice(), "-"))
 
   // A separator that does not occur leaves one field.
-  var whole = split("abc", ",")
+  var whole = "abc".split(",")
   defer whole.free()
   println(whole.len())
+
+  // Extensions chain like any other method.
+  var fields = "  a, b ,c  ".trim().split(",")
+  defer fields.free()
+  println(fields.len())
+  println(fields.get(0).trim())
 
   // Bytes round-trip through a slice.
   println(from_utf8("héllo".bytes()))

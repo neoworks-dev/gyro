@@ -8,6 +8,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/types"
 )
 
 // env is one lexical scope. Cells are addressable so & can point at them.
@@ -181,7 +182,10 @@ func (in *interp) setupModule(module *loader.Module) {
 			if d.Body == nil {
 				def.native = nativeFor(module.Path, d.Owner, d.Name)
 			}
-			if d.Owner != "" {
+			// A method on a built-in type is an ordinary module-scope
+			// name, since the type it extends has no declaration to hang
+			// it off; that is also what makes it travel by import.
+			if d.Owner != "" && types.Builtin[d.Owner] == nil {
 				table := m.methods[d.Owner]
 				if table == nil {
 					table = map[string]*funcDef{}
@@ -254,7 +258,7 @@ func (in *interp) collectExports(module *loader.Module, m *moduleEnv) {
 	for _, decl := range module.Tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			if d.Exported && d.Owner == "" {
+			if d.Exported && (d.Owner == "" || types.Builtin[d.Owner] != nil) {
 				m.exports[d.Name] = m.scope[d.Name]
 			}
 		case *ast.StructDecl:

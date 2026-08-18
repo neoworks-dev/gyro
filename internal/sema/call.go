@@ -97,6 +97,12 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 		return callee{bad: true}
 	}
 
+	// An extension of a built-in is in scope under its own name, but it is
+	// still a method: it has a receiver and cannot be called without one.
+	if decl, ok := sym.decl.(*ast.FuncDecl); ok && extendsBuiltin(decl) {
+		c.errorf(fun.Offset, "%s takes a receiver; call it on a value: value.%s(...)", fun.Name, fun.Name)
+		return callee{bad: true}
+	}
 	if sym.fn != nil {
 		return callee{name: fun.Name, method: sym.fn}
 	}
@@ -445,7 +451,12 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 		}
 	}
 
+	// The compiler's own surface wins: len and runes are part of the type,
+	// and an extension may not shadow them.
 	if method := builtinMethod(t, name); method != nil {
+		return method, nil, nil
+	}
+	if method := c.extensionMethod(t, name); method != nil {
 		return method, nil, nil
 	}
 	return nil, nil, nil

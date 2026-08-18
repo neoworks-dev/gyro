@@ -13,7 +13,7 @@ fn main(args: string[]) {
 
   var flags = 0
   for arg in args {
-    if starts_with(arg, "--") {
+    if arg.starts_with("--") {
       flags += 1
     }
   }
