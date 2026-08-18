@@ -1153,6 +1153,45 @@ checked — so every error in a signature was reported twice. Deduplicating
 in the bag fixes it for every pass at once, and two identical messages at
 one position never told the reader anything the first did not.
 
+## Testing
+
+### One execution corpus, run by every tier *(new)*
+
+**Status: decided.** A test program is a `.gyro` file in
+`tests/testdata/run` beside the output it must produce, and it runs
+through the interpreter, the METALS evaluator and a native binary, all
+held to the same golden.
+
+Before this, each tier kept its own programs as Go string literals, so a
+case was only cross-checked if someone remembered to paste it into all
+three test files. Most were not. Running the ported cases everywhere
+immediately surfaced five divergences none of the per-tier tests could
+have found: `println(null)` did not lower, a deferred call's arguments
+were evaluated at exit rather than at registration, printing a tuple
+needed the same synthesized repr as a struct, and the native runtime
+detected neither use after free nor an uninitialized read.
+
+The interpreter defines the answer, so `-update` regenerates goldens from
+it. A known gap is a case carrying `//gyro:skip <tier> <reason>` — a gap
+with a program attached and a test that will fail the day it closes,
+rather than a line in a table.
+
+### A diagnostics fixture claims its own diagnostics *(new)*
+
+**Status: decided.** A checker test is Gyro in
+`internal/sema/testdata/check`, with a `//~` marker on the line each
+diagnostic must land on. Every diagnostic must be claimed and every
+marker must be satisfied.
+
+The old form matched a substring anywhere in the bag, which asserts
+nothing about position: a diagnostic pointing at the wrong line passed,
+and so did an extra one nobody meant to emit. Writing the case as Gyro
+also means it parses, highlights and reads like the language.
+
+Fixtures go through the loader, so imports resolve for real. The
+single-file `sema.Check` entry point existed only to serve the old tests
+and bound imports opaquely; it is deleted.
+
 ## Still open
 
 | question | why it matters |
@@ -1163,15 +1202,14 @@ one position never told the reader anything the first did not.
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, Gyro lowering, evaluator); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
-| mutable METALS globals | METALS globals are constant literals, so module-level `var` does not lower; module-level `const` re-evaluates per use through a synthesized getter until `@comptime` folding exists |
+| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use; `@comptime` folding will subsume this. Module-level `var` does have identity and lowers to METALS storage |
 | checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
 | shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
-| literal payload patterns do not lower | `Shape::Circle(1.0)` type-checks and the interpreter matches it, but the lowering only binds names and `_` in a payload; making it work means the payload test joins the tag test in the arm's condition. The exhaustiveness check already treats such an arm as not covering its variant |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
 | memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
-| printing composites natively | the lowering imports `println<T>` even for records and slices; per `metals.md` it should synthesize a per-type `-> str` function so the runtime only formats primitives — required before a program may print a composite natively |
+| native use-after-free and uninitialized reads | the interpreter and the evaluator poison freed cells and unwritten storage and abort on a read; the C runtime frees for real and leaves storage as the allocator returned it, so a native binary silently reads garbage where the other two tiers panic |
 | green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
 | select fairness | the evaluator picks a ready arm at random (Go semantics); the native runtime polls arms in order — programs whose output depends on the choice among simultaneously-ready arms may diverge |

@@ -1052,18 +1052,25 @@ quoted names (`@"Pair<i32>::sum"`), lifted closures with heap
 environment records, defers inlined at every exit, match as tag tests,
 narrowing as explicit `opt.unwrap`, `error` as a closed program-wide
 enum, stdlib natives as `gyro:rt` imports. The module verifies, and
-`internal/meval` — a METALS evaluator — executes it; the lowering's test
-suite runs every example through `gyro run` and through
-lower→verify→evaluate and demands byte-identical output. Module-level
-`const` lowers to a synthesized getter; module-level `var` does not
-lower yet (METALS has no mutable globals).
+`internal/meval` — a METALS evaluator — executes it. Module-level `const`
+lowers to a synthesized getter; module-level `var` lowers to METALS
+storage, zero-initialized, with the initializers run before main's own
+body in declaration order. Derived printing is synthesized here rather
+than in each backend: one function per composite type, which every tier
+reaches as an ordinary call.
 
 **Programs compile**: `gyro build file.gyro -o prog` takes the verified
 module to a native Linux x86-64 executable — NASM assembly linked with
-a small C runtime ([`native.md`](native.md)). The native test suite
-builds every example and demands stdout, stderr and exit status
-byte-identical to `gyro run`; channels, `spawn` and `async` run on OS
-threads. `gyro nasm file.gyro` prints the assembly.
+a small C runtime ([`native.md`](native.md)); channels, `spawn` and
+`async` run on OS threads. `gyro nasm file.gyro` prints the assembly.
+
+**The three tiers are one corpus.** `tests/testdata/run` holds programs
+paired with the output they must produce, and every case runs through the
+interpreter, the evaluator and a native binary, all held to the same
+golden file. A gap is a case carrying a `//gyro:skip <tier>` with its
+reason attached. The checker has the same arrangement in
+`internal/sema/testdata/check`, where a fixture claims each diagnostic
+with a `//~` marker on its line.
 
 Still to come:
 
@@ -1071,15 +1078,13 @@ Still to come:
 | --- | --- |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
-| derived printing / `to_string` override | needs codegen |
-| effect rows | parsed, unchecked |
+| concrete effects (`io`, `alloc`) | parsed and reserved; only borrows are checked |
 | module resolution | done; `.stack/` packages await the Stack package manager |
-| overflow, bounds and cast panics | checked statically for literals only; runtime checks need codegen |
-| `Array<T>` `String` `Mutex` `spawn` | declaration stubs bundled; no implementations, no runtime |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
+| use-after-free and uninitialized reads | caught by the interpreter and the evaluator; the C runtime frees for real and does not poison, so a native binary misses both |
 | METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle) |
-| native backend | v1 done: [`native.md`](native.md); `internal/nasm` emits NASM, links a C runtime, every example diffs clean against the interpreter; still open: register allocation, printing composites, memory reclamation, green threads |
+| native backend | v1 done: [`native.md`](native.md); `internal/nasm` emits NASM and links a C runtime; still open: register allocation, memory reclamation, green threads |
 | editor tooling | v1 done: [`tooling.md`](tooling.md); tree-sitter grammars for Gyro and METALS, `gyro lsp` with diagnostics, hover, definition, symbols, completion |
 
 See [`decisions.md`](decisions.md) for why each of these is the way it is,

@@ -41,7 +41,36 @@ internal/lsp/        language server (gyro lsp): diagnostics, hover, defs, compl
 tree-sitter-gyro/    tree-sitter grammar for Gyro: external scanner, queries, corpus
 tree-sitter-metals/  tree-sitter grammar for the METALS text format
 examples/            reference programs, all must parse cleanly
+tests/               execution corpus: one .gyro beside the .out it must print
 ```
+
+## Tests
+
+Two corpora carry most of the suite; prefer adding to them over writing
+another Go test.
+
+- `tests/testdata/run/NAME.gyro` + `NAME.out` — a program and its output.
+  Every case runs through the interpreter, the METALS evaluator and a
+  native binary, and all three are held to the golden. A multi-module case
+  is a directory with `main.gyro` and `expected.out`.
+  `go test ./tests -update` rewrites the goldens from what the interpreter
+  produced; the interpreter is the specification, so it defines the answer.
+  Directives in the source say the rest: `//gyro:panic <fragment>` for a
+  program that must abort, `//gyro:unordered` for concurrent output, and
+  `//gyro:skip <tier> <why>` for a known gap. **A gap belongs in the
+  corpus as a skip with its reason, not in prose.**
+
+- `internal/sema/testdata/check/NAME.gyro` — a diagnostics fixture. Every
+  diagnostic the checker reports must be claimed by a `//~` marker on its
+  line, and every marker must be satisfied, so a file with no markers must
+  check clean and an unexpected second diagnostic fails. `//~^` claims the
+  line above, once per caret. A marker may pin the code
+  (`//~ E0301 does not fit u8`) and may claim a `help:` or `note:` line
+  instead of the message.
+
+What stays in Go is what neither can express: parser and lexer structure,
+the METALS printer round trip, `interp.Panic`'s source position, the
+`Info` the backends read, and unit tests like `editDistance`.
 
 `docs/tooling.md` covers the editor tooling: what the grammars and the
 language server support, and how they wire into Neovim.
