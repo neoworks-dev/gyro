@@ -1,0 +1,12 @@
+// One module's storage is the same storage the other module writes: a
+// global has identity, unlike a const.
+
+import { println } from "stdlib"
+import { hits, record } from "./state"
+
+fn main() {
+  println(hits)
+  record()
+  record()
+  println(hits)
+}

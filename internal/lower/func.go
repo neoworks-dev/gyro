@@ -886,7 +886,10 @@ func (f *funcLowerer) placeOf(e ast.Expr) *place {
 		if entry := f.lookup(e.Name); entry != nil {
 			return f.localPlace(entry)
 		}
-		f.l.fail("@%s: %s does not name a local place", f.fn.Name, e.Name)
+		if decl, ok := f.refOf(e).(*ast.VarDecl); ok && !decl.Const {
+			return f.globalPlace(decl, e.Name)
+		}
+		f.l.fail("@%s: %s does not name an assignable place", f.fn.Name, e.Name)
 
 	case *ast.SelfExpr:
 		if entry := f.lookup("self"); entry != nil {
@@ -1000,6 +1003,9 @@ func (f *funcLowerer) placeOfAddressable(e ast.Expr) *place {
 	case *ast.Ident:
 		if entry := f.lookup(e.Name); entry != nil {
 			return f.localPlace(entry)
+		}
+		if decl, ok := f.refOf(e).(*ast.VarDecl); ok && !decl.Const {
+			return f.globalPlace(decl, e.Name)
 		}
 	case *ast.SelfExpr:
 		if entry := f.lookup("self"); entry != nil {

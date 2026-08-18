@@ -63,6 +63,12 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 
 	case *Slot:
 		return fv.def(state, i.Dst, &Ptr{Elem: i.Type})
+	case *GlobalPtr:
+		typ, ok := fv.globals[i.Name]
+		if !ok {
+			return fmt.Errorf("no global @%s", i.Name)
+		}
+		return fv.def(state, i.Dst, &Ptr{Elem: typ})
 	case *New:
 		return fv.def(state, i.Dst, &Ptr{Elem: i.Type})
 

@@ -60,6 +60,12 @@ type (
 		Dst  string
 		Type Type
 	}
+	// GlobalPtr is `%p = global.ptr @name`: ptr<T> to module storage.
+	// Reads and writes go through the ordinary load and store.
+	GlobalPtr struct {
+		Dst  string
+		Name string
+	}
 	// New is `%p = new T`: an uninitialized heap cell.
 	New struct {
 		Dst  string
@@ -218,6 +224,7 @@ func (*Bin) isInstr()          {}
 func (*Un) isInstr()           {}
 func (*Conv) isInstr()         {}
 func (*Slot) isInstr()         {}
+func (*GlobalPtr) isInstr()    {}
 func (*New) isInstr()          {}
 func (*Free) isInstr()         {}
 func (*Load) isInstr()         {}

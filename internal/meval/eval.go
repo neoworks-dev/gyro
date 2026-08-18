@@ -19,6 +19,7 @@ func Run(module *metals.Module, stdout, stderr io.Writer) (err error) {
 		funcs:   map[string]*metals.Func{},
 		imports: map[string]*metals.FnType{},
 		types:   map[string]*metals.TypeDecl{},
+		globals: map[string]*value{},
 		stdout:  stdout,
 		stderr:  stderr,
 	}
@@ -32,6 +33,12 @@ func Run(module *metals.Module, stdout, stderr io.Writer) (err error) {
 	}
 	for _, decl := range module.Types {
 		m.types[decl.Name] = decl
+	}
+	// Module storage is live for the whole run and starts uninitialized,
+	// so reading one before its initializer ran aborts the same way an
+	// unwritten local does.
+	for _, global := range module.Globals {
+		m.globals[global.Name] = m.freshCell(global.Type).(ptrVal).cell
 	}
 
 	main := m.funcs["main"]
@@ -64,6 +71,7 @@ type machine struct {
 	funcs   map[string]*metals.Func
 	imports map[string]*metals.FnType
 	types   map[string]*metals.TypeDecl
+	globals map[string]*value
 	stdout  io.Writer
 	stderr  io.Writer
 }
@@ -180,6 +188,12 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 
 	case *metals.Slot:
 		regs[i.Dst] = m.freshCell(i.Type)
+	case *metals.GlobalPtr:
+		cell, ok := m.globals[i.Name]
+		if !ok {
+			m.throw("no global @%s", i.Name)
+		}
+		regs[i.Dst] = ptrVal{cell: cell}
 	case *metals.New:
 		regs[i.Dst] = m.freshCell(i.Type)
 

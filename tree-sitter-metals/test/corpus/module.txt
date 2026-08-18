@@ -15,7 +15,7 @@ import "js:./widgets" {
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
 
-global @MAX: i32 = 100
+global @counter: i32
 
 export fn @add(%a: i32, %b: i32) -> i32 {
   %sum = iadd %a, %b
@@ -68,8 +68,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
         (identifier))))
   (global_declaration
     (global_name)
-    (primitive_type)
-    (number))
+    (primitive_type))
   (function_declaration
     (global_name)
     (parameter

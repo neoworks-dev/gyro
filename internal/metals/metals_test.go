@@ -293,8 +293,17 @@ func TestGlobalsAndConversions(t *testing.T) {
 	roundTrip(t, `
 module "gyro:test/misc"
 
-global @MAX: i32 = 100
-global @NAME: str = "gyro"
+global @counter: i32
+global @name: str
+
+fn @bump() -> i32 {
+	%p = global.ptr @counter
+	%n = load %p
+	%one = const.i32 1
+	%n = iadd %n, %one
+	store %p, %n
+	return %n
+}
 
 fn @mask(%x: i32) -> u8 {
 	%ff = const.i32 255

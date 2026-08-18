@@ -34,6 +34,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		imports:    map[string]*metals.FnType{},
 		declared:   map[string]*metals.TypeDecl{},
 		reprs:      map[string]string{},
+		globalOf:   map[*ast.VarDecl][]int{},
 		lowered:    map[string]bool{},
 		errVariant: map[*types.Struct]int{},
 	}
@@ -56,8 +57,10 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	}
 
 	l.module = &metals.Module{Name: l.moduleName()}
-	l.ensureFunc(main, nil)
+	l.collectGlobals()
+	mainName := l.ensureFunc(main, nil)
 	l.drain()
+	l.emitGlobalInit(mainName)
 	l.finishErrorType()
 	l.attachImports()
 	return l.module, nil
@@ -91,6 +94,11 @@ type lowerer struct {
 	// reprs maps a type to the synthesized function that renders it, so a
 	// recursive type reaches its own repr while it is still being built.
 	reprs map[string]string
+
+	// globals is every module-level var, in declaration order; globalOf
+	// indexes back from the declaration that introduced them.
+	globals  []moduleGlobal
+	globalOf map[*ast.VarDecl][]int
 
 	// queue holds functions waiting to be lowered; lowered marks METALS
 	// names already emitted or queued.

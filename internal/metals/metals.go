@@ -261,12 +261,12 @@ type VariantDecl struct {
 	Payload []Type
 }
 
-// Global is a module-level constant. Only literals: front ends lower
-// computed initialization into a function.
+// Global is module-level storage, zero-initialized before main runs.
+// There is no initializer here: front ends lower one into main, where
+// evaluation order is theirs to decide.
 type Global struct {
-	Name  string
-	Type  Type
-	Value string
+	Name string
+	Type Type
 }
 
 // Func is one function. Result nil means it returns nothing.

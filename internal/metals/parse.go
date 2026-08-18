@@ -497,14 +497,7 @@ func (p *parser) globalDecl(m *Module) error {
 	if err != nil {
 		return err
 	}
-	if err := p.punct("="); err != nil {
-		return err
-	}
-	value := p.scan.next()
-	if value.kind != tNumber && value.kind != tString && value.kind != tChar && value.kind != tWord {
-		return p.errf("a global takes a literal value")
-	}
-	m.Globals = append(m.Globals, &Global{Name: name, Type: typ, Value: value.text})
+	m.Globals = append(m.Globals, &Global{Name: name, Type: typ})
 	return p.endOfLine()
 }
 

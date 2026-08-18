@@ -331,6 +331,10 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("lea rax, %s", memLoc{"rbp", area})
 		g.ins("mov %s, rax", f.slot(i.Dst))
 
+	case *metals.GlobalPtr:
+		g.ins("lea rax, [%s]", g.globalSymbol(i.Name))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+
 	case *metals.New:
 		g.ins("mov rdi, %d", g.sizeOf(i.Type))
 		g.ins("call %s", g.extern("gy_alloc"))

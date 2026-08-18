@@ -66,7 +66,7 @@ import "js:./widgets" {
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
 
-global @MAX: i32 = 100
+global @counter: i32
 
 export fn @add(%a: i32, %b: i32) -> i32 {
   %sum = iadd %a, %b
@@ -75,7 +75,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 ```
 
 - A module has a name, imports grouped by source module, named type
-  declarations, constant globals, and functions.
+  declarations, globals, and functions.
 - `@name` is a function or global; `%name` is a register or a named type;
   `$name` is a control-flow label. The three sigils keep the namespaces
   from colliding.
@@ -84,8 +84,10 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   produce names like `@"Pair<i32>::sum"`, `@"list/util::helper"` and
   `%"Pair<i32>"`. Both spellings name the same namespace; the printer
   quotes exactly when it must.
-- Globals are constants (literals only). A front end lowers module-level
-  initialization into an ordinary function it arranges to run first.
+- A global is module storage, zero-initialized and reached through
+  `global.ptr`. It carries no initializer: a front end lowers module-level
+  initialization into an ordinary function it arranges to run first, which
+  is where evaluation order is decided.
 - Module names carry the producing language as a scheme prefix
   (`gyro:`, `js:`, `py:`); `metals:` is reserved. Runtime intrinsics are
   imports from runtime modules such as `gyro:rt`, not IR constructs.
@@ -161,6 +163,7 @@ the IR either.
 ```metals
 %p = slot i32        ; a stack cell, for locals whose address is taken
 %p = new %Point      ; heap cell, uninitialized
+%p = global.ptr @counter ; module storage, live for the whole program
 free %p
 %v = load %p
 store %p, %v

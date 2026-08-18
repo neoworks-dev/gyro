@@ -495,18 +495,6 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_literal"
-          }
-        },
-        {
           "type": "SYMBOL",
           "name": "_end"
         }

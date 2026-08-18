@@ -23,7 +23,12 @@ func RegisterTypes(m *Module) (map[string]map[string]Type, error) {
 }
 
 func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
-	v := &verifier{module: m, types: map[string]*TypeDecl{}, callables: map[string]*FnType{}}
+	v := &verifier{
+		module:    m,
+		types:     map[string]*TypeDecl{},
+		callables: map[string]*FnType{},
+		globals:   map[string]Type{},
+	}
 	if collect {
 		v.regTypes = map[string]map[string]Type{}
 	}
@@ -70,6 +75,10 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		if err := v.checkType(global.Type); err != nil {
 			return nil, fmt.Errorf("global @%s: %w", global.Name, err)
 		}
+		if _, dup := v.globals[global.Name]; dup {
+			return nil, fmt.Errorf("global @%s is declared twice", global.Name)
+		}
+		v.globals[global.Name] = global.Type
 	}
 
 	for _, fn := range m.Funcs {
@@ -92,6 +101,7 @@ type verifier struct {
 	module    *Module
 	types     map[string]*TypeDecl
 	callables map[string]*FnType
+	globals   map[string]Type
 	// regTypes collects each function's register types when non-nil;
 	// clones share one types map per function, so after a body checks
 	// out the map holds every register the function ever assigns.

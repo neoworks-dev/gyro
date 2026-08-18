@@ -36,7 +36,7 @@ func Print(m *Module) string {
 	}
 
 	for _, global := range m.Globals {
-		p.printf("global %s: %s = %s", at(global.Name), global.Type, global.Value)
+		p.printf("global %s: %s", at(global.Name), global.Type)
 	}
 	if len(m.Globals) > 0 {
 		p.line("")
@@ -165,6 +165,8 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = conv %s -> %s", reg(i.Dst), reg(i.X), i.To)
 	case *Slot:
 		p.printf("%s = slot %s", reg(i.Dst), i.Type)
+	case *GlobalPtr:
+		p.printf("%s = global.ptr %s", reg(i.Dst), at(i.Name))
 	case *New:
 		p.printf("%s = new %s", reg(i.Dst), i.Type)
 	case *Free:

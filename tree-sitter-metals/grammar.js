@@ -106,13 +106,13 @@ module.exports = grammar({
       optional(seq('(', commaSep($._type), ')')),
     ),
 
+    // Module storage, zero-initialized. There is no initializer: a front
+    // end lowers one into a function that runs before main.
     global_declaration: $ => seq(
       'global',
       field('name', $.global_name),
       ':',
       field('type', $._type),
-      '=',
-      field('value', $._literal),
       $._end,
     ),
 

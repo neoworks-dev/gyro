@@ -173,7 +173,7 @@ func (f *funcLowerer) evalIdent(e *ast.Ident) string {
 	case *ast.FuncDecl:
 		return f.fnValue(decl)
 	case *ast.VarDecl:
-		return f.moduleConst(decl, e.Name)
+		return f.moduleValue(decl, e.Name)
 	}
 	f.l.fail("@%s: %s resolves to nothing lowerable", f.fn.Name, e.Name)
 	return ""
@@ -199,7 +199,7 @@ func (f *funcLowerer) evalPath(e *ast.Path) string {
 	case *ast.FuncDecl:
 		return f.fnValue(decl)
 	case *ast.VarDecl:
-		return f.moduleConst(decl, e.Segments[len(e.Segments)-1].Name)
+		return f.moduleValue(decl, e.Segments[len(e.Segments)-1].Name)
 	}
 	// A payload-less enum variant used as a value.
 	if enum, ok := f.typeOf(e).(*types.Enum); ok {
@@ -236,12 +236,12 @@ func (f *funcLowerer) fnValue(decl *ast.FuncDecl) string {
 	return out
 }
 
-// moduleConst reads a module-level constant by calling its synthesized
-// getter. There are no mutable METALS globals yet, so a const's
-// initializer re-evaluates per use; @comptime folding will subsume this.
-func (f *funcLowerer) moduleConst(decl *ast.VarDecl, name string) string {
+// moduleValue reads a module-level binding. A var has storage and is read
+// through it; a const has no identity to share, so its initializer stays a
+// getter that re-evaluates per use. @comptime folding will subsume that.
+func (f *funcLowerer) moduleValue(decl *ast.VarDecl, name string) string {
 	if !decl.Const {
-		f.l.fail("@%s: module-level var %s is not lowerable yet; only const is", f.fn.Name, name)
+		return f.globalPlace(decl, name).load()
 	}
 	getter := f.l.ensureConstGetter(decl, name)
 	out := f.newReg(name)

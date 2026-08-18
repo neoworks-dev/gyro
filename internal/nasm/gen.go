@@ -32,6 +32,11 @@ func Generate(module *metals.Module) (asm string, err error) {
 		eqHelpers:      map[string]string{},
 		thunks:         map[string]string{},
 		indirectThunks: map[string]string{},
+		globals:        map[string]metals.Type{},
+		globalSyms:     map[string]string{},
+	}
+	for _, global := range module.Globals {
+		g.globals[global.Name] = global.Type
 	}
 	for _, decl := range module.Types {
 		g.types[decl.Name] = decl
@@ -55,9 +60,6 @@ func Generate(module *metals.Module) (asm string, err error) {
 		}
 	}()
 
-	if len(module.Globals) > 0 {
-		g.fail("globals are not supported yet")
-	}
 	if g.funcs["main"] == nil {
 		g.fail("the module has no main")
 	}
@@ -78,6 +80,10 @@ type generator struct {
 
 	text strings.Builder
 	data strings.Builder
+	bss  strings.Builder
+
+	globals    map[string]metals.Type
+	globalSyms map[string]string
 
 	symbols  map[string]string // METALS function name -> asm symbol
 	usedSyms map[string]bool
@@ -129,7 +135,31 @@ func (g *generator) assemble() string {
 	out.WriteString(g.text.String())
 	out.WriteString("\nsection .rodata\n")
 	out.WriteString(g.data.String())
+	if g.bss.Len() > 0 {
+		out.WriteString("\nsection .bss\n")
+		out.WriteString(g.bss.String())
+	}
 	return out.String()
+}
+
+// globalSymbol names module storage, reserving its bytes on first use.
+// Zeroed storage belongs in .bss, and every global is zeroed: METALS has
+// no initializer, so the front end runs one before main.
+func (g *generator) globalSymbol(name string) string {
+	if symbol, ok := g.globalSyms[name]; ok {
+		return symbol
+	}
+	typ, ok := g.globals[name]
+	if !ok {
+		g.fail("no global @%s", name)
+	}
+	symbol := uniqueSymbol("G_"+sanitize(name), g.usedSyms)
+	g.usedSyms[symbol] = true
+	g.globalSyms[name] = symbol
+
+	g.bss.WriteString(symbol + ":\n")
+	fmt.Fprintf(&g.bss, "\tresb %d\n", g.sizeOf(typ))
+	return symbol
 }
 
 // ---------------------------------------------------------------------------

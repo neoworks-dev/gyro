@@ -151,6 +151,13 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		return p.line(&DynUnwrap{Dst: dst, X: x, To: to}, nil)
 
+	case "global.ptr":
+		name, err := p.global()
+		if err != nil {
+			return nil, err
+		}
+		return p.line(&GlobalPtr{Dst: dst, Name: name}, nil)
+
 	case "slot", "new":
 		typ, err := p.typeExpr()
 		if err != nil {
