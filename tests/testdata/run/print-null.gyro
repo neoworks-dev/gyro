@@ -1,9 +1,9 @@
-// A bare null has no optional to take its type from.
-//gyro:skip metals lowering needs an optional context for null
-//gyro:skip native lowering needs an optional context for null
+// A bare null has no optional to take a type from, and needs none: there
+// is no value, so there is nothing to show but the word.
 
 import { println } from "stdlib"
 
 fn main() {
   println(null)
+  println("nothing: #{null}")
 }

@@ -20,17 +20,18 @@ func Generate(module *metals.Module) (asm string, err error) {
 	}
 
 	g := &generator{
-		module:    module,
-		regTypes:  registerTypes,
-		types:     map[string]*metals.TypeDecl{},
-		imports:   map[string]*metals.FnType{},
-		funcs:     map[string]*metals.Func{},
-		symbols:   map[string]string{},
-		usedSyms:  map[string]bool{},
-		externs:   map[string]bool{},
-		strLits:   map[string]string{},
-		eqHelpers: map[string]string{},
-		thunks:    map[string]string{},
+		module:         module,
+		regTypes:       registerTypes,
+		types:          map[string]*metals.TypeDecl{},
+		imports:        map[string]*metals.FnType{},
+		funcs:          map[string]*metals.Func{},
+		symbols:        map[string]string{},
+		usedSyms:       map[string]bool{},
+		externs:        map[string]bool{},
+		strLits:        map[string]string{},
+		eqHelpers:      map[string]string{},
+		thunks:         map[string]string{},
+		indirectThunks: map[string]string{},
 	}
 	for _, decl := range module.Types {
 		g.types[decl.Name] = decl
@@ -87,7 +88,10 @@ type generator struct {
 
 	eqHelpers map[string]string // type string -> helper symbol
 	thunks    map[string]string // async callee -> thunk symbol
-	pending   []func()          // helpers and thunks queued during emission
+	// indirectThunks keys on the signature instead: a call through a
+	// function value has no callee symbol to name.
+	indirectThunks map[string]string
+	pending        []func() // helpers and thunks queued during emission
 }
 
 type genError struct{ err error }

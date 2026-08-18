@@ -66,6 +66,13 @@ func isCondShaped(e ast.Expr) bool {
 	return false
 }
 
+// text materializes a string literal.
+func (f *funcLowerer) text(value string) string {
+	out := f.newReg("lit")
+	f.emit(&metals.Const{Dst: out, Type: metals.TStr, Value: strconv.Quote(value)})
+	return out
+}
+
 func (f *funcLowerer) nullConst(want types.Type) string {
 	optional, ok := want.(*types.Optional)
 	if !ok {
@@ -582,6 +589,9 @@ func (f *funcLowerer) equality(e *ast.BinaryExpr) string {
 	return out
 }
 
+// isNullLiteral reports a bare `null` written in the source. It has no
+// optional to take a type from, which is fine where it is only shown:
+// there is no value, so there is nothing to represent but the word.
 func isNullLiteral(e ast.Expr) bool {
 	lit, ok := e.(*ast.BasicLit)
 	return ok && lit.Kind == token.Null
@@ -799,6 +809,9 @@ func (f *funcLowerer) evalStringLit(e *ast.StringLit) string {
 // display renders a value the way #{} and println show it: strings pass
 // through, a to_string method wins, everything else goes to the runtime.
 func (f *funcLowerer) display(e ast.Expr) string {
+	if isNullLiteral(e) {
+		return f.text("null")
+	}
 	t := f.typeOf(e)
 	if isStringType(t) {
 		return f.lowerExpr(e, nil)

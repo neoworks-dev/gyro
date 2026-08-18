@@ -1,5 +1,3 @@
-//gyro:skip native calling an async closure is an indirect async call
-
 import { println } from "stdlib"
 
 async fn compute(n: i32): i32 {

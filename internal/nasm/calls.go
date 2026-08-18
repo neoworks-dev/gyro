@@ -136,7 +136,8 @@ func (f *frame) emitCallIndirect(i *metals.CallIndirect) {
 		g.fail("@%s: call.indirect through a %s", f.fn.Name, f.typeOf(i.Fn))
 	}
 	if sig.Async {
-		g.fail("@%s: indirect async calls are not supported yet", f.fn.Name)
+		f.emitAsyncCallIndirect(i.Fn, sig, i.Args, i.Dst)
+		return
 	}
 
 	var sret []callArg
@@ -204,6 +205,109 @@ func (f *frame) emitAsyncCall(callee string, sig *metals.FnType, argRegs []strin
 	if dst != "" {
 		g.ins("mov %s, rax", f.slot(dst))
 	}
+}
+
+// emitAsyncCallIndirect starts a call through a function value. The value
+// itself rides in the argument buffer ahead of the arguments, since there
+// is no callee symbol to key a thunk on: one thunk per signature serves
+// every function value of that shape.
+func (f *frame) emitAsyncCallIndirect(fnReg string, sig *metals.FnType, argRegs []string, dst string) {
+	g := f.g
+	scratch := memLoc{"rbp", scratchSlot}
+
+	bufferSize := 2 * wordSize
+	for _, param := range sig.Params {
+		bufferSize += g.sizeOf(param)
+	}
+	g.ins("mov rdi, %d", bufferSize)
+	g.ins("call %s", g.extern("gy_alloc"))
+	g.ins("mov %s, rax", scratch)
+
+	g.ins("mov rdx, %s", scratch)
+	f.copyMem(memLoc{base: "rdx"}, f.slot(fnReg), 2*wordSize)
+
+	offset := 2 * wordSize
+	for index, reg := range argRegs {
+		g.ins("mov rdx, %s", scratch)
+		f.copyMem(memLoc{base: "rdx", off: offset}, f.slot(reg), g.sizeOf(sig.Params[index]))
+		offset += g.sizeOf(sig.Params[index])
+	}
+
+	resultSize := 0
+	if sig.Result != nil {
+		resultSize = g.sizeOf(sig.Result)
+	}
+	g.ins("lea rdi, [%s]", g.indirectThunkFor(sig))
+	g.ins("mov rsi, %s", scratch)
+	g.ins("mov rdx, %d", resultSize)
+	g.ins("call %s", g.extern("gy_future_start"))
+	if dst != "" {
+		g.ins("mov %s, rax", f.slot(dst))
+	}
+}
+
+// indirectThunkFor returns the thunk that unpacks a function value and
+// the arguments behind it. Keyed on the signature, since that is all the
+// thunk depends on.
+func (g *generator) indirectThunkFor(sig *metals.FnType) string {
+	key := sig.String()
+	if symbol, ok := g.indirectThunks[key]; ok {
+		return symbol
+	}
+	symbol := fmt.Sprintf("TI_%d", len(g.indirectThunks))
+	g.indirectThunks[key] = symbol
+	g.pending = append(g.pending, func() { g.emitIndirectThunk(symbol, sig) })
+	return symbol
+}
+
+func (g *generator) emitIndirectThunk(symbol string, sig *metals.FnType) {
+	g.text.WriteString("\n")
+	g.comment("async thunk for a %s value", sig)
+	g.label(symbol)
+	g.ins("push rbp")
+	g.ins("mov rbp, rsp")
+	g.ins("sub rsp, 16")
+	g.ins("mov [rbp-8], rdi")  // argument buffer
+	g.ins("mov [rbp-16], rsi") // result cell
+	g.ins("mov r10, [rbp-8]")
+
+	plain := make([]callArg, len(sig.Params))
+	offset := 2 * wordSize
+	for index, param := range sig.Params {
+		plain[index] = callArg{loc: memLoc{base: "r10", off: offset}, class: g.classOf(param)}
+		offset += g.sizeOf(param)
+	}
+
+	var sret []callArg
+	if sig.Result != nil && g.classOf(sig.Result) == classMem {
+		sret = []callArg{{loc: memLoc{"rbp", -16}, class: classInt}}
+	}
+
+	// The environment pointer is the closure's; a bare function has none
+	// and takes its arguments unshifted.
+	env := callArg{loc: memLoc{base: "r10", off: 8}, class: classInt}
+	bare := g.newLabel()
+	done := g.newLabel()
+	g.ins("mov r11, [r10]")
+	g.ins("mov rax, [r10+8]")
+	g.ins("test rax, rax")
+	g.ins("jz %s", bare)
+	g.emitSysVCall("r11", append(append(append([]callArg{}, sret...), env), plain...))
+	g.ins("jmp %s", done)
+	g.label(bare)
+	g.emitSysVCall("r11", append(append([]callArg{}, sret...), plain...))
+	g.label(done)
+
+	if sig.Result != nil && g.classOf(sig.Result) != classMem {
+		g.ins("mov rcx, [rbp-16]")
+		if g.classOf(sig.Result) == classSSE {
+			g.ins("movsd [rcx], xmm0")
+		} else {
+			g.ins("mov [rcx], rax")
+		}
+	}
+	g.ins("leave")
+	g.ins("ret")
 }
 
 // thunkFor returns the symbol of the callee's async thunk, emitting it

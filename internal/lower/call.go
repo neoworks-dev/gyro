@@ -190,6 +190,9 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 	var value string
 	displayType := argType
 	switch {
+	case isNullLiteral(arg):
+		value = f.text("null")
+		displayType = types.String
 	case isStringType(argType):
 		value = f.lowerExpr(arg, nil)
 		displayType = types.String
