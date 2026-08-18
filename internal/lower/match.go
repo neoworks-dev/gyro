@@ -120,12 +120,69 @@ func (f *funcLowerer) enumArmTest(subj string, enum *types.Enum, tag string, p *
 	if index < 0 {
 		f.l.fail("@%s: %s has no variant %s", f.fn.Name, enum.Name, name)
 	}
-	cond := f.tagEquals(tag, index)
-	return cond, func() {
+
+	bind := func() {
 		for i, payload := range p.Payload {
 			f.bindPayload(payload, subj, index, i)
 		}
 	}
+	cond := f.tagEquals(tag, index)
+	if !refutablePayload(p.Payload) {
+		return cond, bind
+	}
+	return f.payloadTest(subj, enum, index, p.Payload, cond), bind
+}
+
+// refutablePayload reports whether any payload pattern tests rather than
+// binds, which is what puts it in the arm's condition.
+func refutablePayload(patterns []ast.Pattern) bool {
+	for _, pattern := range patterns {
+		if _, ok := pattern.(*ast.LiteralPattern); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// payloadTest folds the payload comparisons into the arm's condition. The
+// comparisons nest inside the tag test rather than joining it with an and:
+// reading a payload the value does not carry is only safe once the tag
+// says it does.
+func (f *funcLowerer) payloadTest(subj string, enum *types.Enum, index int, patterns []ast.Pattern, tagCond string) string {
+	matched := f.newReg("armMatch")
+	f.emit(&metals.Const{Dst: matched, Type: metals.TBool, Value: "false"})
+
+	payloads := enum.Variants[index].Payload
+	f.emit(&metals.If{Cond: tagCond, Then: f.nested(func() {
+		f.emitPayloadTests(subj, index, 0, patterns, payloads, matched)
+	})})
+	return matched
+}
+
+// emitPayloadTests walks the payload patterns from `from` onwards, each
+// test nested inside the last, and sets matched where they all held.
+func (f *funcLowerer) emitPayloadTests(subj string, index, from int, patterns []ast.Pattern, payloads []types.Type, matched string) {
+	for at := from; at < len(patterns); at++ {
+		literal, ok := patterns[at].(*ast.LiteralPattern)
+		if !ok {
+			continue
+		}
+		if at >= len(payloads) {
+			f.l.fail("@%s: variant %d carries no payload %d", f.fn.Name, index, at)
+		}
+
+		value := f.newReg("p")
+		f.emit(&metals.VariantField{Dst: value, X: subj, Variant: index, Index: at})
+		want := f.lowerExpr(literal.Value, types.Default(payloads[at]))
+		same := f.newReg("is")
+		f.emit(&metals.Bin{Dst: same, Op: "eq", A: value, B: want})
+
+		f.emit(&metals.If{Cond: same, Then: f.nested(func() {
+			f.emitPayloadTests(subj, index, at+1, patterns, payloads, matched)
+		})})
+		return
+	}
+	f.emit(&metals.Const{Dst: matched, Type: metals.TBool, Value: "true"})
 }
 
 // errorArmTest is the type test: does this error hold a RangeError?
@@ -163,6 +220,9 @@ func (f *funcLowerer) tagEquals(tag string, index int) string {
 func (f *funcLowerer) bindPayload(pattern ast.Pattern, subj string, variant, index int) {
 	switch pattern := pattern.(type) {
 	case *ast.WildcardPattern:
+		return
+	case *ast.LiteralPattern:
+		// Already in the arm's condition; there is nothing to bind.
 		return
 	case *ast.BindingPattern:
 		declared := f.localType(pattern, pattern.Name)

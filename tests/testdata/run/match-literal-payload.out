@@ -1,4 +1,10 @@
 unit circle
-circle
-rect
+circle 2
+unit square
+tall 3
+rect 2x3
 point
+the root
+root 7
+leaf 2
+empty
