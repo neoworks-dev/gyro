@@ -431,8 +431,11 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 			return nativePlan{symbol: "gy_file_close", args: values(0)}
 		}
 	case "string":
-		if method == "runes" {
+		switch method {
+		case "runes":
 			return nativePlan{symbol: "gy_str_runes", sret: true, args: values(0)}
+		case "bytes":
+			return nativePlan{symbol: "gy_str_bytes", sret: true, args: values(0)}
 		}
 	}
 	g.fail("no native mapping for @%s", name)
@@ -455,6 +458,8 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_str_" + suffix, args: values(0)}
 	case "spawn":
 		return nativePlan{symbol: "gy_spawn", args: values(0)}
+	case "from_utf8":
+		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0)}}
 	case "to_i32":
 		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
 	case "to_f64":

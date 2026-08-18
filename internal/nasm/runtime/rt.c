@@ -315,6 +315,31 @@ int64_t gy_str_eq(const gy_str *a, const gy_str *b) {
     return a->len == b->len && memcmp(a->bytes, b->bytes, (size_t)a->len) == 0;
 }
 
+/* gy_str_bytes widens a string's UTF-8 into a slice of u8. It copies,
+ * because a slice element is a qword under the v1 layout (native.md)
+ * while a string's bytes are packed: the two cannot alias. gy_str_runes
+ * below has the same shape for the same reason. */
+void gy_str_bytes(void **out, const gy_str *s) {
+    int64_t *bytes = malloc((size_t)s->len * 8 + 8);
+    for (int64_t i = 0; i < s->len; i++) {
+        bytes[i] = (unsigned char)s->bytes[i];
+    }
+    out[0] = bytes;
+    out[1] = (void *)s->len;
+}
+
+/* gy_from_utf8 is the other direction: qword elements narrowed back into
+ * packed bytes. Also a copy, so the result owns what it holds. */
+const gy_str *gy_from_utf8(const void **slice) {
+    const int64_t *elems = (const int64_t *)slice[0];
+    int64_t len = (int64_t)slice[1];
+    gy_str *out = gy_str_alloc(len);
+    for (int64_t i = 0; i < len; i++) {
+        out->bytes[i] = (char)(unsigned char)elems[i];
+    }
+    return out;
+}
+
 /* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
  * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
 void gy_str_runes(void *out, const gy_str *s) {

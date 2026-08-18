@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -46,14 +45,12 @@ var natives = map[string]nativeFunc{
 	"gyro:stdlib||print":    nativePrint,
 	"gyro:stdlib||println":  nativePrintln,
 	"gyro:stdlib||eprintln": nativeEprintln,
-	"gyro:stdlib||spawn":    nativeSpawn,
+	"gyro:stdlib||spawn":     nativeSpawn,
+	"gyro:stdlib||from_utf8": nativeFromUTF8,
 
-	"gyro:stdlib|Array|new":            nativeArrayNew,
-	"gyro:stdlib|Array|with_capacity":  nativeArrayNew,
-	"gyro:stdlib|String|new":           nativeStringNew,
-	"gyro:stdlib|String|with_capacity": nativeStringNew,
-	"gyro:stdlib|String|from":          nativeStringFrom,
-	"gyro:stdlib|Mutex|new":            nativeMutexNew,
+	"gyro:stdlib|Array|new":           nativeArrayNew,
+	"gyro:stdlib|Array|with_capacity": nativeArrayNew,
+	"gyro:stdlib|Mutex|new":           nativeMutexNew,
 
 	"gyro:mem||alloc": nativeAlloc,
 	"gyro:mem||free":  nativeFree,
@@ -104,13 +101,27 @@ func nativeArrayNew(c *nativeCall) Value {
 	return &ArrayObj{}
 }
 
-func nativeStringNew(c *nativeCall) Value {
-	return &StringObj{}
-}
-
-func nativeStringFrom(c *nativeCall) Value {
-	text, _ := c.arg(0).(StringVal)
-	return &StringObj{Bytes: []byte(text)}
+// nativeFromUTF8 reads a byte slice as text. It copies: a string owns its
+// bytes, so the result does not depend on the slice staying alive.
+func nativeFromUTF8(c *nativeCall) Value {
+	slice, ok := c.arg(0).(SliceVal)
+	if !ok {
+		c.panicf("from_utf8 takes a u8 slice")
+	}
+	bytes := make([]byte, len(slice.Elems))
+	for i, elem := range slice.Elems {
+		// An untyped literal pushed into an Array<u8> keeps its signed
+		// representation, so both integer shapes reach here.
+		switch value := elem.(type) {
+		case UintVal:
+			bytes[i] = byte(value.V)
+		case IntVal:
+			bytes[i] = byte(value.V)
+		default:
+			c.panicf("from_utf8 takes a u8 slice")
+		}
+	}
+	return StringVal(bytes)
 }
 
 func nativeMutexNew(c *nativeCall) Value {
@@ -208,8 +219,6 @@ func (f *frame) nativeMethodThunk(cell *Value, name string, args []Value, offset
 	switch recv := recv.(type) {
 	case *ArrayObj:
 		return arrayMethod(recv, name, call)
-	case *StringObj:
-		return stringMethod(recv, name, call)
 	case *MutexObj:
 		return mutexMethod(recv, name, call)
 	case *GuardObj:
@@ -232,6 +241,14 @@ func (f *frame) nativeMethodThunk(cell *Value, name string, args []Value, offset
 		switch name {
 		case "len":
 			return func() Value { return UintVal{V: uint64(len(recv)), Kind: types.Usize} }
+		case "bytes":
+			return func() Value {
+				elems := make([]Value, len(recv))
+				for i := 0; i < len(recv); i++ {
+					elems[i] = UintVal{V: uint64(recv[i]), Kind: types.U8}
+				}
+				return SliceVal{Elems: elems}
+			}
 		case "runes":
 			return func() Value {
 				runes := []rune(string(recv))
@@ -305,47 +322,6 @@ func arrayMethod(a *ArrayObj, name string, c *nativeCall) func() Value {
 				c.panicf("double free of an Array")
 			}
 			a.Freed = true
-			return VoidVal{}
-		}
-	}
-	return nil
-}
-
-func stringMethod(s *StringObj, name string, c *nativeCall) func() Value {
-	guard := func() {
-		if s.Freed {
-			c.panicf("use after free of a String")
-		}
-	}
-
-	switch name {
-	case "push":
-		return func() Value {
-			guard()
-			text, _ := c.arg(0).(StringVal)
-			s.Bytes = append(s.Bytes, text...)
-			return VoidVal{}
-		}
-	case "push_rune":
-		return func() Value {
-			guard()
-			value, _ := c.arg(0).(IntVal)
-			s.Bytes = utf8.AppendRune(s.Bytes, rune(value.V))
-			return VoidVal{}
-		}
-	case "len":
-		return func() Value {
-			guard()
-			return UintVal{V: uint64(len(s.Bytes)), Kind: types.Usize}
-		}
-	case "view":
-		return func() Value { guard(); return StringVal(s.Bytes) }
-	case "free":
-		return func() Value {
-			if s.Freed {
-				c.panicf("double free of a String")
-			}
-			s.Freed = true
 			return VoidVal{}
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/gyro-lang/gyro/internal/metals"
 )
@@ -27,8 +26,6 @@ func (m *machine) native(name string, args []value) value {
 		return m.freeNative(method, arg)
 	case "Array":
 		return m.arrayNative(method, arg)
-	case "String":
-		return m.stringNative(method, arg)
 	case "Mutex":
 		return m.mutexNative(method, arg)
 	case "MutexGuard":
@@ -36,12 +33,20 @@ func (m *machine) native(name string, args []value) value {
 	case "File":
 		return m.fileNative(method, arg)
 	case "string":
-		if method == "runes" {
+		switch method {
+		case "runes":
 			text := arg(0).(strVal)
 			runes := []rune(string(text))
 			elems := make([]value, len(runes))
 			for i, r := range runes {
 				elems[i] = intVal{v: int64(r), kind: metals.Rune}
+			}
+			return sliceVal{elems: elems}
+		case "bytes":
+			text := arg(0).(strVal)
+			elems := make([]value, len(text))
+			for i := 0; i < len(text); i++ {
+				elems[i] = uintVal{v: uint64(text[i]), kind: metals.U8}
 			}
 			return sliceVal{elems: elems}
 		}
@@ -79,6 +84,23 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 		return nil
 	case "str":
 		return strVal(m.repr(arg(0)))
+	case "from_utf8":
+		slice, ok := arg(0).(sliceVal)
+		if !ok {
+			m.throw("from_utf8 takes a u8 slice")
+		}
+		bytes := make([]byte, len(slice.elems))
+		for i, elem := range slice.elems {
+			switch value := elem.(type) {
+			case uintVal:
+				bytes[i] = byte(value.v)
+			case intVal:
+				bytes[i] = byte(value.v)
+			default:
+				m.throw("from_utf8 takes a u8 slice")
+			}
+		}
+		return strVal(bytes)
 	case "spawn":
 		fn, ok := arg(0).(fnVal)
 		if !ok {
@@ -141,52 +163,6 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 // nativeError mints variant 0 of the closed %error sum: Native(str).
 func (m *machine) nativeError(message string) value {
 	return enumVal{typeName: "error", tag: 0, payload: []value{strVal(message)}}
-}
-
-func (m *machine) stringNative(method string, arg func(int) value) value {
-	switch method {
-	case "new", "with_capacity":
-		return handleVal{obj: &stringObj{}}
-	case "from":
-		text, _ := arg(0).(strVal)
-		return handleVal{obj: &stringObj{bytes: []byte(text)}}
-	}
-
-	handle, ok := arg(0).(handleVal)
-	if !ok {
-		m.throw("a String method needs its String")
-	}
-	text, ok := handle.obj.(*stringObj)
-	if !ok {
-		m.throw("a String method needs its String")
-	}
-	if text.freed && method != "free" {
-		m.throw("use after free of a String")
-	}
-
-	switch method {
-	case "push":
-		added, _ := arg(1).(strVal)
-		text.bytes = append(text.bytes, added...)
-		return nil
-	case "push_rune":
-		value, _ := arg(1).(intVal)
-		text.bytes = utf8.AppendRune(text.bytes, rune(value.v))
-		return nil
-	case "len":
-		return uintVal{v: uint64(len(text.bytes)), kind: metals.Usize}
-	case "view":
-		return strVal(text.bytes)
-	case "free":
-		if text.freed {
-			m.throw("double free of a String")
-		}
-		text.freed = true
-		text.bytes = nil
-		return nil
-	}
-	m.throw("String has no method %s", method)
-	return nil
 }
 
 func (m *machine) arrayNative(method string, arg func(int) value) value {

@@ -1,4 +1,5 @@
-// stdlib — declarations only; the runtime supplies the bodies.
+// stdlib. A declaration with no body is a runtime intrinsic; everything
+// with a body is ordinary Gyro, compiled like any other module.
 
 export fn print<T>(value: T)
 export fn println<T>(value: T)
@@ -21,18 +22,227 @@ export fn Array<T>::len(self): usize
 export fn Array<T>::slice(self): T[] !{ &self }
 export fn Array<T>::free(*self)
 
-// String owns its bytes, in contrast to the borrowed view `string`. It is
-// the builder: append to it, then hand out a view with `view()`, which
-// borrows and so must outlive nothing.
-export struct String {}
+// from_utf8 reads a byte slice as text, and `s.bytes()` is the other
+// direction. Both copy: a string's bytes are packed UTF-8 while a slice
+// element is a full word, so the two representations cannot alias. Each
+// result owns what it holds, which is why neither carries a borrow row.
+export fn from_utf8(bytes: u8[]): string
 
-export fn String::new(): String
-export fn String::with_capacity(capacity: usize): String
-export fn String::push(*self, text: string)
-export fn String::push_rune(*self, value: rune)
-export fn String::len(self): usize
-export fn String::view(self): string !{ &self }
-export fn String::free(*self)
+// String owns its bytes, in contrast to the borrowed view `string`. It is
+// the builder: append to it, then read it back with `text()`.
+//
+// Everything below this line is ordinary Gyro. The only things the
+// runtime supplies are Array<T>, from_utf8 and the `bytes()` method on
+// string; the builder and the text helpers are written in the language
+// they serve.
+export struct String {
+  bytes: Array<u8>
+}
+
+export fn String::new(): String {
+  return String{ bytes: Array<u8>::new() }
+}
+
+export fn String::with_capacity(capacity: usize): String {
+  return String{ bytes: Array<u8>::with_capacity(capacity) }
+}
+
+export fn String::of(text: string): String {
+  var out = String::new()
+  out.push(text)
+  return out
+}
+
+export fn String::push(*self, text: string) {
+  for byte in text.bytes() {
+    self.bytes.push(byte)
+  }
+}
+
+// push_rune encodes one code point as UTF-8. The four cases are the four
+// lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
+// what runes() produces for an invalid sequence.
+export fn String::push_rune(*self, value: rune) {
+  var point = value as u32
+  if point > 1114111 || (point >= 55296 && point <= 57343) {
+    point = 65533
+  }
+
+  if point < 128 {
+    self.bytes.push(point as u8)
+    return
+  }
+  if point < 2048 {
+    self.bytes.push((192 | (point >> 6)) as u8)
+    self.bytes.push((128 | (point & 63)) as u8)
+    return
+  }
+  if point < 65536 {
+    self.bytes.push((224 | (point >> 12)) as u8)
+    self.bytes.push((128 | ((point >> 6) & 63)) as u8)
+    self.bytes.push((128 | (point & 63)) as u8)
+    return
+  }
+  self.bytes.push((240 | (point >> 18)) as u8)
+  self.bytes.push((128 | ((point >> 12) & 63)) as u8)
+  self.bytes.push((128 | ((point >> 6) & 63)) as u8)
+  self.bytes.push((128 | (point & 63)) as u8)
+}
+
+export fn String::len(self): usize {
+  return self.bytes.len()
+}
+
+export fn String::text(self): string {
+  return from_utf8(self.bytes.slice())
+}
+
+export fn String::to_string(self): string {
+  return self.text()
+}
+
+export fn String::free(*self) {
+  self.bytes.free()
+}
+
+// ---------------------------------------------------------------------------
+// Text
+//
+// Free functions rather than methods: `string` is a built-in type, and
+// only the compiler can add to a built-in's method surface. These are
+// what a library would write anyway.
+// ---------------------------------------------------------------------------
+
+// slice_at reports whether needle sits at `at` in haystack.
+fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
+  if at + needle.len() > haystack.len() {
+    return false
+  }
+  for var i: usize = 0; i < needle.len(); i += 1 {
+    if haystack[at + i] != needle[i] {
+      return false
+    }
+  }
+  return true
+}
+
+export fn starts_with(text: string, prefix: string): bool {
+  return slice_at(text.bytes(), prefix.bytes(), 0)
+}
+
+export fn ends_with(text: string, suffix: string): bool {
+  var body = text.bytes()
+  var tail = suffix.bytes()
+  if tail.len() > body.len() {
+    return false
+  }
+  return slice_at(body, tail, body.len() - tail.len())
+}
+
+// index_of returns the byte offset of the first match, or null. An empty
+// needle matches at 0, which is what makes split terminate.
+export fn index_of(text: string, needle: string): usize? {
+  var body = text.bytes()
+  var want = needle.bytes()
+  if want.len() > body.len() {
+    return null
+  }
+  for var at: usize = 0; at + want.len() <= body.len(); at += 1 {
+    if slice_at(body, want, at) {
+      return at
+    }
+  }
+  return null
+}
+
+export fn contains(text: string, needle: string): bool {
+  return index_of(text, needle) != null
+}
+
+// substring takes the half-open byte range [from, to). It does not
+// validate that the ends fall on rune boundaries.
+export fn substring(text: string, from: usize, to: usize): string {
+  var body = text.bytes()
+  var out = String::new()
+  var stop = to
+  if stop > body.len() {
+    stop = body.len()
+  }
+  for var i = from; i < stop; i += 1 {
+    out.bytes.push(body[i])
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
+
+fn is_space(byte: u8): bool {
+  return byte == 32 || byte == 9 || byte == 10 || byte == 13
+}
+
+export fn trim(text: string): string {
+  var body = text.bytes()
+  var start: usize = 0
+  while start < body.len() && is_space(body[start]) {
+    start += 1
+  }
+  var stop = body.len()
+  while stop > start && is_space(body[stop - 1]) {
+    stop -= 1
+  }
+  return substring(text, start, stop)
+}
+
+// split cuts on every occurrence of sep. An empty sep would not advance,
+// so it yields the whole text unsplit.
+export fn split(text: string, sep: string): Array<string> {
+  var parts = Array<string>::new()
+  if sep.len() == 0 {
+    parts.push(text)
+    return parts
+  }
+
+  var body = text.bytes()
+  var want = sep.bytes()
+  var start: usize = 0
+  var at: usize = 0
+  while at + want.len() <= body.len() {
+    if slice_at(body, want, at) {
+      parts.push(substring(text, start, at))
+      at += want.len()
+      start = at
+      continue
+    }
+    at += 1
+  }
+  parts.push(substring(text, start, body.len()))
+  return parts
+}
+
+export fn join(parts: string[], sep: string): string {
+  var out = String::new()
+  var first = true
+  for part in parts {
+    if !first {
+      out.push(sep)
+    }
+    out.push(part)
+    first = false
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
+
+export fn repeat(text: string, times: i32): string {
+  var out = String::new()
+  for i in 0..times {
+    out.push(text)
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
 
 // Mutex<T> owns the value it guards; lock() returns the guard directly.
 // There is no poisoning: a panic aborts the whole process, so no thread

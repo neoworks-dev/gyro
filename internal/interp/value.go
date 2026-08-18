@@ -95,13 +95,6 @@ type (
 		Elems []Value
 		Freed bool
 	}
-	// StringObj is the stdlib String: an owned, growable byte buffer. The
-	// bytes are UTF-8 and nothing validates that, the same way `string`
-	// does not.
-	StringObj struct {
-		Bytes []byte
-		Freed bool
-	}
 	MutexObj struct {
 		mu    sync.Mutex
 		value Value
@@ -230,8 +223,6 @@ func (in *interp) repr(v Value) string {
 		return "awaitable"
 	case *ArrayObj:
 		return "Array" + in.elemsRepr(v.Elems)
-	case *StringObj:
-		return "String(" + strconv.Quote(string(v.Bytes)) + ")"
 	case *MutexObj:
 		return "Mutex"
 	case *GuardObj:

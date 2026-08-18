@@ -1,0 +1,43 @@
+// The text helpers, all ordinary Gyro in the stdlib.
+
+import { println, Array } from "stdlib"
+import { split, join, trim, contains, starts_with, ends_with } from "stdlib"
+import { index_of, substring, repeat, from_utf8 } from "stdlib"
+
+fn main() {
+  println("[#{trim("  padded\t\n")}]")
+  println("[#{trim("")}]")
+  println(starts_with("hello", "he"))
+  println(starts_with("he", "hello"))
+  println(ends_with("hello", "lo"))
+  println(contains("hello", "ell"))
+  println(contains("hello", "xyz"))
+  println(substring("hello", 1, 4))
+  println(repeat("ab", 3))
+  println("[#{repeat("ab", 0)}]")
+
+  var at = index_of("hello", "ll")
+  if at != null {
+    println(at)
+  }
+  println(index_of("hello", "zz") == null)
+
+  // An empty field between two separators is a field.
+  var parts = split("a,b,,c", ",")
+  defer parts.free()
+  println(parts.len())
+  for part in parts.slice() {
+    println("[#{part}]")
+  }
+  println(join(parts.slice(), "-"))
+
+  // A separator that does not occur leaves one field.
+  var whole = split("abc", ",")
+  defer whole.free()
+  println(whole.len())
+
+  // Bytes round-trip through a slice.
+  println(from_utf8("héllo".bytes()))
+  println("héllo".bytes().len())
+  println("héllo".runes().len())
+}

@@ -283,6 +283,14 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 		})
 		return f.emitCall("string::runes", []string{value}, &types.Slice{Elem: types.Rune}, false)
 
+	case "bytes":
+		value := f.lowerExpr(recv, nil)
+		f.l.ensureImport("string::bytes", &metals.FnType{
+			Params: []metals.Type{metals.TStr},
+			Result: &metals.SliceOf{Elem: metals.TUint8},
+		})
+		return f.emitCall("string::bytes", []string{value}, &types.Slice{Elem: types.Uint8}, false)
+
 	case "compare":
 		name := f.ensureCompareFn(recvType)
 		left := f.lowerExpr(recv, nil)

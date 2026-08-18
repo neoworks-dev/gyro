@@ -77,10 +77,6 @@ type (
 		elems []value
 		freed bool
 	}
-	stringObj struct {
-		bytes []byte
-		freed bool
-	}
 	mutexObj struct {
 		mu  sync.Mutex
 		val value
@@ -310,8 +306,6 @@ func (m *machine) handleRepr(v handleVal) string {
 	switch obj := v.obj.(type) {
 	case *arrayObj:
 		return "Array" + m.elemsRepr(obj.elems)
-	case *stringObj:
-		return "String(" + strconv.Quote(string(obj.bytes)) + ")"
 	case *mutexObj:
 		return "Mutex"
 	case *guardObj:

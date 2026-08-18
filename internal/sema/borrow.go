@@ -228,11 +228,9 @@ func (c *checker) callOrigin(call *ast.CallExpr) borrowOrigin {
 		return c.declaredCallOrigin(call)
 	}
 
-	// The built-in method surface has no declaration to carry a row, and
-	// `s.runes()` is the one entry that hands back a view of its receiver.
-	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Name == "runes" {
-		return c.originOf(selector.X)
-	}
+	// Nothing on the built-in method surface hands back a view of its
+	// receiver: `runes()` and `bytes()` both decode into storage of their
+	// own, since a slice element is wider than a UTF-8 byte.
 	return borrowOrigin{}
 }
 

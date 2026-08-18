@@ -478,6 +478,10 @@ func builtinMethod(t types.Type, name string) *types.Method {
 			return valueMethod(&types.Func{Result: types.USize})
 		case t.Kind == types.StringKind && name == "runes":
 			return valueMethod(&types.Func{Result: &types.Slice{Elem: types.Rune}})
+		// bytes() views the string's storage; runes() decodes it into new
+		// storage. Only the first borrows.
+		case t.Kind == types.StringKind && name == "bytes":
+			return valueMethod(&types.Func{Result: &types.Slice{Elem: types.Uint8}})
 		case t.Kind == types.ErrorKind && name == "message":
 			return valueMethod(&types.Func{Result: types.String})
 		case name == "compare" && types.IsOrdered(t) && !types.IsUntyped(t):
