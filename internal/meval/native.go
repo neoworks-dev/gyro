@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gyro-lang/gyro/internal/metals"
 )
@@ -26,6 +27,8 @@ func (m *machine) native(name string, args []value) value {
 		return m.freeNative(method, arg)
 	case "Array":
 		return m.arrayNative(method, arg)
+	case "String":
+		return m.stringNative(method, arg)
 	case "Mutex":
 		return m.mutexNative(method, arg)
 	case "MutexGuard":
@@ -138,6 +141,52 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 // nativeError mints variant 0 of the closed %error sum: Native(str).
 func (m *machine) nativeError(message string) value {
 	return enumVal{typeName: "error", tag: 0, payload: []value{strVal(message)}}
+}
+
+func (m *machine) stringNative(method string, arg func(int) value) value {
+	switch method {
+	case "new", "with_capacity":
+		return handleVal{obj: &stringObj{}}
+	case "from":
+		text, _ := arg(0).(strVal)
+		return handleVal{obj: &stringObj{bytes: []byte(text)}}
+	}
+
+	handle, ok := arg(0).(handleVal)
+	if !ok {
+		m.throw("a String method needs its String")
+	}
+	text, ok := handle.obj.(*stringObj)
+	if !ok {
+		m.throw("a String method needs its String")
+	}
+	if text.freed && method != "free" {
+		m.throw("use after free of a String")
+	}
+
+	switch method {
+	case "push":
+		added, _ := arg(1).(strVal)
+		text.bytes = append(text.bytes, added...)
+		return nil
+	case "push_rune":
+		value, _ := arg(1).(intVal)
+		text.bytes = utf8.AppendRune(text.bytes, rune(value.v))
+		return nil
+	case "len":
+		return uintVal{v: uint64(len(text.bytes)), kind: metals.Usize}
+	case "view":
+		return strVal(text.bytes)
+	case "free":
+		if text.freed {
+			m.throw("double free of a String")
+		}
+		text.freed = true
+		text.bytes = nil
+		return nil
+	}
+	m.throw("String has no method %s", method)
+	return nil
 }
 
 func (m *machine) arrayNative(method string, arg func(int) value) value {

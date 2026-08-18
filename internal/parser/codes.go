@@ -15,6 +15,7 @@ var codes = map[string]diag.Code{
 	"expected end of statement, found %s":   diag.EUnterminatedStmt,
 
 	"expected { or * after import; Gyro has no default exports":        diag.EImportForm,
+	"expected from after an import list":                               diag.EImportForm,
 	"generic parameters take no bounds; Gyro generics are duck-typed":  diag.EGenericBounds,
 	"capture lists hold only `move name` entries; copies are implicit": diag.ECaptureForm,
 	"declaration needs either a type annotation or an initializer":     diag.EBindingNeedsType,

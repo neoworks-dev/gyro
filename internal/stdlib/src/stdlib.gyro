@@ -21,6 +21,19 @@ export fn Array<T>::len(self): usize
 export fn Array<T>::slice(self): T[] !{ &self }
 export fn Array<T>::free(*self)
 
+// String owns its bytes, in contrast to the borrowed view `string`. It is
+// the builder: append to it, then hand out a view with `view()`, which
+// borrows and so must outlive nothing.
+export struct String {}
+
+export fn String::new(): String
+export fn String::with_capacity(capacity: usize): String
+export fn String::push(*self, text: string)
+export fn String::push_rune(*self, value: rune)
+export fn String::len(self): usize
+export fn String::view(self): string !{ &self }
+export fn String::free(*self)
+
 // Mutex<T> owns the value it guards; lock() returns the guard directly.
 // There is no poisoning: a panic aborts the whole process, so no thread
 // ever observes a lock its holder abandoned.

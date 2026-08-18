@@ -155,6 +155,10 @@ under `.stack/`. Circular imports are rejected.
 There is **no default export**, and therefore no `import name from "path"`.
 A name is spelled the same where it is defined and everywhere it is used.
 
+`from` is contextual, the way `move` and `copy` are: it separates an import
+list from its path and is an ordinary identifier everywhere else, so
+`String::from` and `var from = 1` both parse.
+
 **If a name is not part of the formal syntax, it has to be imported.** There
 is no universe scope and no predeclared functions: operations on built-in
 types are methods on those types, so `ch.close()`, `xs.len()` and

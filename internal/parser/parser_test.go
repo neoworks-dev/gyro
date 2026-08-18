@@ -414,6 +414,29 @@ func TestImportsAndExports(t *testing.T) {
 	}
 }
 
+// `from` separates an import list from its path and is an ordinary
+// identifier everywhere else, the way `move` and `copy` are. A library
+// that wants a `from` constructor must be able to write one.
+func TestFromIsContextual(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{"fn String::from(text: string): String {\n}\n",
+			"File test.gyro Func String::from Param text: Type: NamedType string Result: NamedType String Body: Block"},
+		{"fn t() {\n  var from = 1\n}\n",
+			"File test.gyro Func t Body: Block Var from Value: Lit int literal 1"},
+		{"fn t(from: i32): i32 {\n  return from\n}\n",
+			"File test.gyro Func t Param from: Type: NamedType i32 Result: NamedType i32 Body: Block Return Ident from"},
+	}
+
+	for _, test := range tests {
+		if got := dumpOf(t, test.src); got != test.want {
+			t.Errorf("parsing %q\n got: %s\nwant: %s", test.src, got, test.want)
+		}
+	}
+}
+
 func TestDefaultImportIsRejected(t *testing.T) {
 	// There are no default exports, so a bare name has nothing to bind to.
 	var bag diag.Bag

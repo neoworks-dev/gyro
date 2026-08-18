@@ -641,3 +641,40 @@ fn pick(a: i32[], b: i32[]): i32[] !{ io, &a }
       (identifier)
       (borrow
         (identifier)))))
+
+==================
+from is contextual
+==================
+
+import { a } from "m"
+
+fn String::from(text: string): String {
+  var from = text
+  return from
+}
+
+---
+
+(source_file
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier))
+      (return_statement
+        (identifier)))))

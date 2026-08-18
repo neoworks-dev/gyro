@@ -60,10 +60,31 @@ func (p *Parser) parseImport() *ast.Import {
 		return node
 	}
 
-	p.expect(token.From)
+	p.expectFrom()
 	node.Path = lexer.Unescape(p.expect(token.String).Text)
 	p.expectTerminator()
 	return node
+}
+
+// `from` is contextual, the way `move` and `copy` are: it separates an
+// import list from its path and is an ordinary identifier everywhere
+// else, so a method may be named `String::from`.
+func (p *Parser) atFrom() bool {
+	return p.at(token.Ident) && p.tok().Text == "from"
+}
+
+func (p *Parser) acceptFrom() bool {
+	if !p.atFrom() {
+		return false
+	}
+	p.next()
+	return true
+}
+
+func (p *Parser) expectFrom() {
+	if !p.acceptFrom() {
+		p.errorf(p.offset(), "expected from after an import list")
+	}
 }
 
 // parseNameList parses a braced `{ a, b as c }` list, shared by imports and
@@ -105,9 +126,9 @@ func (p *Parser) parseExportDecl() *ast.ExportDecl {
 
 	// `from` is required for a star export and optional for a name list.
 	if decl.Star {
-		p.expect(token.From)
+		p.expectFrom()
 		decl.Path = lexer.Unescape(p.expect(token.String).Text)
-	} else if p.accept(token.From) {
+	} else if p.acceptFrom() {
 		decl.Path = lexer.Unescape(p.expect(token.String).Text)
 	}
 

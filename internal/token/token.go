@@ -98,7 +98,6 @@ const (
 	Chan
 	Select
 	Import
-	From
 	As
 	Export
 	Self
@@ -192,7 +191,6 @@ var kindNames = map[Kind]string{
 	Chan:       "chan",
 	Select:     "select",
 	Import:     "import",
-	From:       "from",
 	As:         "as",
 	Export:     "export",
 	Self:       "self",
@@ -235,7 +233,6 @@ var keywords = map[string]Kind{
 	"chan":     Chan,
 	"select":   Select,
 	"import":   Import,
-	"from":     From,
 	"as":       As,
 	"export":   Export,
 	"self":     Self,
