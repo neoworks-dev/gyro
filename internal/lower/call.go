@@ -177,8 +177,9 @@ func isPrintName(name string) bool {
 }
 
 // preparePrint lowers the print family with display semantics: strings
-// pass raw, a to_string method wins, everything else goes to a
-// monomorphized runtime import.
+// pass raw, a to_string method wins, a composite goes through its
+// synthesized repr, and only the leaves reach a monomorphized runtime
+// import.
 func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	if len(call.Args) != 1 {
 		f.l.fail("@%s: %s takes one argument", f.fn.Name, decl.Name)
@@ -188,13 +189,17 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 
 	var value string
 	displayType := argType
-	if isStringType(argType) {
+	switch {
+	case isStringType(argType):
 		value = f.lowerExpr(arg, nil)
 		displayType = types.String
-	} else if method := f.toStringMethod(argType); method != nil {
-		value = f.callToString(arg, argType, method)
+	case f.toStringMethod(argType) != nil:
+		value = f.callToString(arg, argType, f.toStringMethod(argType))
 		displayType = types.String
-	} else {
+	case f.l.reprFor(argType) != "":
+		value = f.displayReg(f.lowerExpr(arg, nil), argType)
+		displayType = types.String
+	default:
 		value = f.lowerExpr(arg, nil)
 	}
 

@@ -782,20 +782,29 @@ func (f *funcLowerer) display(e ast.Expr) string {
 	return f.displayReg(value, t)
 }
 
-// displayReg converts an already-evaluated value to its display string.
+// displayReg converts an already-evaluated value to its display string. A
+// composite has a synthesized repr; the runtime answers for the leaves.
 func (f *funcLowerer) displayReg(value string, t types.Type) string {
-	name := "str<" + t.String() + ">"
-	f.l.ensureImport(name, &metals.FnType{
-		Params: []metals.Type{f.l.metalsType(t)},
-		Result: metals.TStr,
-	})
+	name := f.l.reprFor(t)
+	if name == "" {
+		name = "str<" + t.String() + ">"
+		f.l.ensureImport(name, &metals.FnType{
+			Params: []metals.Type{f.l.metalsType(t)},
+			Result: metals.TStr,
+		})
+	}
 	out := f.newReg("shown")
 	f.emit(&metals.Call{Dst: out, Callee: name, Args: []string{value}})
 	return out
 }
 
-// toStringMethod finds a user-defined to_string(): string on a named type.
 func (f *funcLowerer) toStringMethod(t types.Type) *types.Method {
+	return toStringMethodOf(t)
+}
+
+// toStringMethodOf finds a user-defined to_string(): string on a named
+// type.
+func toStringMethodOf(t types.Type) *types.Method {
 	var method *types.Method
 	switch t := t.(type) {
 	case *types.Struct:

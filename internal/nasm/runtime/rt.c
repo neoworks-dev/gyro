@@ -296,6 +296,10 @@ void gy_print_str(const gy_str *s) { gy_print_dispatch(stdout, 0, s->bytes, (siz
 void gy_println_str(const gy_str *s) { gy_print_dispatch(stdout, 1, s->bytes, (size_t)s->len); }
 void gy_eprintln_str(const gy_str *s) { gy_print_dispatch(stderr, 1, s->bytes, (size_t)s->len); }
 
+/* A string prints raw but renders quoted: str<string> is only ever
+   reached from inside a composite's representation. */
+gy_str *gy_str_str(const gy_str *s) { return gy_quote(s); }
+
 /* ------------------------------------------------------------------ */
 /* String operations.                                                 */
 /* ------------------------------------------------------------------ */

@@ -33,6 +33,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		tags:       map[string]string{},
 		imports:    map[string]*metals.FnType{},
 		declared:   map[string]*metals.TypeDecl{},
+		reprs:      map[string]string{},
 		lowered:    map[string]bool{},
 		errVariant: map[*types.Struct]int{},
 	}
@@ -86,6 +87,10 @@ type lowerer struct {
 
 	// declared maps METALS type names to their emitted declarations.
 	declared map[string]*metals.TypeDecl
+
+	// reprs maps a type to the synthesized function that renders it, so a
+	// recursive type reaches its own repr while it is still being built.
+	reprs map[string]string
 
 	// queue holds functions waiting to be lowered; lowered marks METALS
 	// names already emitted or queued.
