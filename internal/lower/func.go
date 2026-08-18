@@ -34,6 +34,11 @@ type funcLowerer struct {
 	// closure copied into its environment record, in field order. The
 	// env pointer arrives as the first parameter, named env.
 	captures []capture
+
+	// deferring counts the deferred calls being prepared. A deferred
+	// call's arguments are evaluated where it is written, so while this
+	// is non-zero a local's register is snapshotted rather than named.
+	deferring int
 }
 
 type scopeInfo struct {
@@ -753,7 +758,10 @@ func (f *funcLowerer) deferStmt(s *ast.DeferStmt) {
 	if !ok {
 		f.l.fail("@%s: defer takes a call", f.fn.Name)
 	}
+	f.deferring++
 	run := f.prepareCall(call)
+	f.deferring--
+
 	top := f.scopes[len(f.scopes)-1]
 	top.defers = append(top.defers, func() { run() })
 }

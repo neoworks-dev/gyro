@@ -19,9 +19,37 @@ func (f *funcLowerer) lowerExpr(e ast.Expr, want types.Type) string {
 	// A condition-shaped node is bool by construction, and sema's
 	// condition checker does not record the node itself.
 	if isCondShaped(e) {
+		return f.snapshot(reg)
+	}
+	return f.snapshot(f.coerce(reg, f.typeOf(e), want))
+}
+
+// snapshot pins a value that a later instruction will read. An assignment
+// writes a local's register in place, so a deferred call naming one would
+// otherwise run against whatever the local holds at block exit rather
+// than what it held where the defer was written.
+//
+// Only a local's own register needs it: every other register is written
+// once, and a local that lives in a slot was already loaded into a fresh
+// one.
+func (f *funcLowerer) snapshot(reg string) string {
+	if f.deferring == 0 || !f.namesLocal(reg) {
 		return reg
 	}
-	return f.coerce(reg, f.typeOf(e), want)
+	held := f.newReg("held")
+	f.emit(&metals.Copy{Dst: held, X: reg})
+	return held
+}
+
+func (f *funcLowerer) namesLocal(reg string) bool {
+	for _, scope := range f.scopes {
+		for _, entry := range scope.locals {
+			if entry.reg == reg && !entry.slot {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isCondShaped(e ast.Expr) bool {

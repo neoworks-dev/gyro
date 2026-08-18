@@ -1,9 +1,19 @@
 // A loop body is a block, so its defers run every iteration. Arguments are
 // evaluated where the defer is written, not where it runs.
-//gyro:skip metals lowering evaluates a deferred call's arguments at exit
-//gyro:skip native lowering evaluates a deferred call's arguments at exit
 
 import { println } from "stdlib"
+
+struct Counter {
+  n: i32
+}
+
+fn Counter::show(self) {
+  println("counter #{self.n}")
+}
+
+fn report(label: string, value: i32) {
+  println("#{label} #{value}")
+}
 
 fn main() {
   for i in 0..2 {
@@ -16,5 +26,23 @@ fn main() {
     defer println(x)
     x = 2
     println(x)
+  }
+
+  // Every argument is pinned, not just a bare name: a computed one and a
+  // receiver too.
+  {
+    var a = 10
+    var b = 5
+    defer report("computed", a + b)
+    a = 100
+    b = 200
+    println(a + b)
+  }
+
+  {
+    var c = Counter{ n: 1 }
+    defer c.show()
+    c.n = 99
+    println(c.n)
   }
 }
