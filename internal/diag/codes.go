@@ -79,6 +79,7 @@ const (
 	ENotCallable         Code = "E0520"
 	EMatchNotExhaustive  Code = "E0521"
 	EUnassignedRead      Code = "E0522"
+	EEntryPointSignature Code = "E0523"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -215,6 +216,8 @@ var explanations = map[Code]explanation{
 		"A match is an expression, so every arm produces the same type."},
 	EUnassignedRead: {"value is read before it is assigned",
 		"Gyro has no zero values, so `var x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
+	EEntryPointSignature: {"main has the wrong signature",
+		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing: a\nfailing program prints and aborts rather than handing back a status."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",

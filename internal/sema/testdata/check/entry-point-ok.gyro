@@ -1,0 +1,15 @@
+// The accepted shape, and `main` as an ordinary method name elsewhere.
+
+import { println } from "stdlib"
+
+struct Runner {
+  n: i32
+}
+
+fn Runner::main(self): i32 {
+  return self.n
+}
+
+fn main(args: string[]) {
+  println(args.len())
+}

@@ -5,9 +5,46 @@ import (
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
+// isStringSlice reports the one parameter shape main may take.
+
 func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 	c.checkDecorators(decl.Decorators)
+	c.checkEntryPoint(decl)
 	c.checkFuncBody(decl, nil)
+}
+
+// checkEntryPoint holds `main` to the two shapes the runtimes call. A
+// signature nobody supplies arguments for used to check clean and then
+// read whatever happened to be in the register.
+func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
+	if decl.Name != "main" || decl.Owner != "" || decl.Recv != nil {
+		return
+	}
+	if len(decl.TypeParams) > 0 {
+		c.errorf(decl.Offset, "main takes no type parameters")
+		return
+	}
+	if len(decl.Results) > 0 {
+		c.errorf(decl.Offset, "main returns nothing")
+		return
+	}
+	if len(decl.Params) == 0 {
+		return
+	}
+	if len(decl.Params) > 1 || !isStringSlice(c.resolveType(decl.Params[0].Type)) {
+		c.errorHintf(decl.Offset, []string{
+			"the entry point is fn main() or fn main(args: string[])",
+		}, "main takes no parameters, or one string[] of arguments")
+	}
+}
+
+func isStringSlice(t types.Type) bool {
+	slice, ok := t.(*types.Slice)
+	if !ok {
+		return false
+	}
+	elem, ok := slice.Elem.(*types.Basic)
+	return ok && elem.Kind == types.StringKind
 }
 
 // checkFuncBody checks a function's parameters, defaults and body.

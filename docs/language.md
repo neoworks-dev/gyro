@@ -172,6 +172,21 @@ a slice: `T[]` borrows memory it cannot grow. Growth lives in
 and the OS calls it, so it needs no `export` — nothing imports it. `async fn
 main` is allowed; the runtime drives it.
 
+It takes nothing, or the command line:
+
+```gyro
+fn main(args: string[]) {
+  for arg in args { ... }
+}
+```
+
+`args[0]` is the name the program was invoked as, so a program run with no
+arguments still sees one element. `gyro run app.gyro a b` passes
+`["app.gyro", "a", "b"]`, matching what the built binary sees. main returns
+nothing — a failing program prints and aborts rather than handing back a
+status — and any other signature is an error, since nothing would supply
+the arguments.
+
 ### Variables
 
 ```gyro
@@ -488,8 +503,27 @@ panics on overflow, `xs.len() - 1` on an empty slice panics loudly instead of
 wrapping around.
 
 `string` is the same arrangement over UTF-8 bytes: a borrowed view, with
-`String` as the owning builder. `len()` counts bytes and `runes()` iterates
-code points as `rune`.
+`String` as the owning builder. `len()` counts bytes, `runes()` iterates
+code points as `rune`, and `bytes()` yields the bytes as `u8[]`. Both
+`runes()` and `bytes()` copy — a slice element is a full word while a
+string's bytes are packed — so neither borrows its receiver.
+
+```gyro
+var out = String::new()
+defer out.free()
+out.push("hello")
+out.push_rune('!')
+println(out.text())
+```
+
+`String` and the text helpers — `split`, `join`, `trim`, `contains`,
+`starts_with`, `ends_with`, `index_of`, `substring`, `repeat` — are
+ordinary Gyro in the standard library, written on `Array<u8>`, `bytes()`
+and one intrinsic, `from_utf8(bytes: u8[]): string`. A bundled module is
+only a declaration stub where a declaration has no body.
+
+Known cost, accepted: `from_utf8` and `text()` copy, so building text
+allocates, and nothing frees those allocations yet.
 
 Known cost, accepted: a slice can outlive the memory behind it, and nothing
 currently detects that.

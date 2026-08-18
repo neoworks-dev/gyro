@@ -971,10 +971,20 @@ void gy_future_get(gy_future *fut, void *out) {
 /* Entry point.                                                       */
 /* ------------------------------------------------------------------ */
 
-extern void gy_user_main(void);
+/* fn main may take the command line. The slice is always built and always
+ * passed; a main that declares no parameters simply ignores the register,
+ * which costs one argv walk and keeps the entry point one symbol.
+ * argv[0] is included: a program may want the name it was invoked as. */
+extern void gy_user_main(void *args);
 
-int main(void) {
-    gy_user_main();
+int main(int argc, char **argv) {
+    void **elems = malloc((size_t)argc * 8 + 8);
+    for (int i = 0; i < argc; i++) {
+        elems[i] = (void *)gy_str_c(argv[i]);
+    }
+    void *slice[2] = {elems, (void *)(int64_t)argc};
+
+    gy_user_main(slice);
     fflush(stdout);
     fflush(stderr);
     return 0;

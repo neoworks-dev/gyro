@@ -13,9 +13,13 @@ import (
 // Run executes a verified module's exported main. Runtime failures —
 // overflow, null unwraps, index errors, explicit aborts — come back as
 // an *Abort error after printing nothing; the caller owns reporting.
-func Run(module *metals.Module, stdout, stderr io.Writer) (err error) {
+//
+// args is the command line as main would see it, args[0] included; it is
+// ignored when main takes no parameters.
+func Run(module *metals.Module, args []string, stdout, stderr io.Writer) (err error) {
 	m := &machine{
 		module:  module,
+		args:    args,
 		funcs:   map[string]*metals.Func{},
 		imports: map[string]*metals.FnType{},
 		types:   map[string]*metals.TypeDecl{},
@@ -54,11 +58,23 @@ func Run(module *metals.Module, stdout, stderr io.Writer) (err error) {
 			panic(failure)
 		}
 	}()
-	result := m.call(main.Name, nil)
+	result := m.call(main.Name, m.entryArgs(main))
 	if future, ok := result.(*futureVal); ok {
 		future.await()
 	}
 	return nil
+}
+
+// entryArgs supplies main's arguments, or none when it declares none.
+func (m *machine) entryArgs(main *metals.Func) []value {
+	if len(main.Params) == 0 {
+		return nil
+	}
+	elems := make([]value, len(m.args))
+	for i, arg := range m.args {
+		elems[i] = strVal(arg)
+	}
+	return []value{sliceVal{elems: elems}}
 }
 
 // Abort is a METALS abort: the runtime equivalent of a Gyro panic.
@@ -72,6 +88,7 @@ type machine struct {
 	imports map[string]*metals.FnType
 	types   map[string]*metals.TypeDecl
 	globals map[string]*value
+	args    []string
 	stdout  io.Writer
 	stderr  io.Writer
 }

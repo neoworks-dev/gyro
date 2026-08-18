@@ -45,7 +45,7 @@ func run(t *testing.T, source string) (string, *interp.Panic) {
 	}
 
 	var stdout, stderr strings.Builder
-	runErr := interp.Run(program, &stdout, &stderr)
+	runErr := interp.Run(program, []string{"main.gyro"}, &stdout, &stderr)
 	if runErr == nil {
 		return stdout.String(), nil
 	}

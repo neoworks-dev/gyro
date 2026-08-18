@@ -1,0 +1,6 @@
+3
+program
+--verbose
+input.txt
+program --verbose input.txt
+1

@@ -1,0 +1,5 @@
+// A failing program prints and aborts; it does not hand back a status.
+
+fn main(): i32 {                 //~ E0523 main returns nothing
+  return 1
+}

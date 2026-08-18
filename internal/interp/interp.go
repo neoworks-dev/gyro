@@ -81,6 +81,7 @@ func (m *moduleEnv) methodOf(typeName, method string) *funcDef {
 type interp struct {
 	stdout  io.Writer
 	stderr  io.Writer
+	args    []string
 	modules map[*loader.Module]*moduleEnv
 	// exit aborts the process on panic; tests replace it.
 	exit func(code int)
@@ -103,14 +104,30 @@ func (p *Panic) Error() string {
 }
 
 // Run executes a loaded, checked program from its root module's main.
-func Run(program *loader.Program, stdout, stderr io.Writer) error {
+// args is the command line as main would see it, args[0] included; it is
+// ignored when main declares no parameters.
+func Run(program *loader.Program, args []string, stdout, stderr io.Writer) error {
 	in := &interp{
 		stdout:  stdout,
 		stderr:  stderr,
+		args:    args,
 		modules: map[*loader.Module]*moduleEnv{},
 		exit:    os.Exit,
 	}
 	return in.run(program)
+}
+
+// entryArgs supplies main's arguments, or none when it takes none. Sema
+// has already held the signature to those two shapes.
+func (in *interp) entryArgs(def *funcDef) []Value {
+	if def.decl == nil || len(def.decl.Params) == 0 {
+		return nil
+	}
+	elems := make([]Value, len(in.args))
+	for i, arg := range in.args {
+		elems[i] = StringVal(arg)
+	}
+	return []Value{SliceVal{Elems: elems}}
 }
 
 func (in *interp) run(program *loader.Program) (err error) {
@@ -138,7 +155,7 @@ func (in *interp) run(program *loader.Program) (err error) {
 		return fmt.Errorf("%s has no fn main", root.file.Name)
 	}
 
-	result := in.callFunction(mainBinding.fn, nil, nil)
+	result := in.callFunction(mainBinding.fn, nil, in.entryArgs(mainBinding.fn))
 	if future, ok := result.(*FutureVal); ok {
 		future.await()
 	}

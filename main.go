@@ -135,8 +135,10 @@ func runCheck(args []string) int {
 }
 
 // runProgram checks a program and executes it in the interpreter.
+// Anything after the file is the program's own command line, with the
+// file standing in for argv[0] the way the binary's path would.
 func runProgram(args []string) int {
-	if len(args) != 1 {
+	if len(args) < 1 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
@@ -154,7 +156,7 @@ func runProgram(args []string) int {
 		return code
 	}
 
-	if err := interp.Run(program, os.Stdout, os.Stderr); err != nil {
+	if err := interp.Run(program, args, os.Stdout, os.Stderr); err != nil {
 		// A panic already printed itself; anything else needs a voice.
 		if _, isPanic := err.(*interp.Panic); !isPanic {
 			fmt.Fprintf(os.Stderr, "gyro: %v\n", err)

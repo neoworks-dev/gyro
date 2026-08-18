@@ -169,7 +169,7 @@ fn main() {
 	}
 
 	var out bytes.Buffer
-	if err := meval.Run(module, &out, &out); err != nil {
+	if err := meval.Run(module, []string{"program"}, &out, &out); err != nil {
 		t.Fatalf("meval: %v\n%s", err, printed)
 	}
 	if out.String() != "1\n42\n" {

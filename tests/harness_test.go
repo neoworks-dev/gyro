@@ -44,15 +44,22 @@ var update = flag.Bool("update", false, "rewrite the golden files from what the 
 //	//gyro:unordered          concurrent output; the tiers must all succeed
 //	                          but their output is not compared
 //	//gyro:skip <tier> <why>  a known gap: interp, metals or native
+//	//gyro:args a b c         main's arguments, after a fixed argv[0]
 type directives struct {
 	panicFragment string
 	unordered     bool
 	skipped       map[string]string
+	args          []string
 }
+
+// entryName is argv[0] for every case. The three tiers would otherwise
+// disagree — a source path, a temp binary — over something no program
+// should depend on.
+const entryName = "program"
 
 func parseDirectives(t *testing.T, source string) directives {
 	t.Helper()
-	found := directives{skipped: map[string]string{}}
+	found := directives{skipped: map[string]string{}, args: []string{entryName}}
 	for _, line := range strings.Split(source, "\n") {
 		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "//gyro:")
 		if !ok {
@@ -65,6 +72,8 @@ func parseDirectives(t *testing.T, source string) directives {
 			found.panicFragment = argument
 		case "unordered":
 			found.unordered = true
+		case "args":
+			found.args = append([]string{entryName}, strings.Fields(argument)...)
 		case "skip":
 			tier, reason, _ := strings.Cut(argument, " ")
 			if tier != "interp" && tier != "metals" && tier != "native" {
@@ -222,7 +231,7 @@ func compile(t *testing.T, rootPath string) (*loader.Program, *sema.Info) {
 func runInterp(t *testing.T, program *loader.Program, found directives) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := interp.Run(program, &stdout, &stderr)
+	err := interp.Run(program, found.args, &stdout, &stderr)
 	got := result{stdout: stdout.String(), stderr: stderr.String(), failed: err != nil}
 	if err != nil {
 		got.message = err.Error()
@@ -282,7 +291,7 @@ func lowerVerified(t *testing.T, program *loader.Program, info *sema.Info, found
 func runMetals(t *testing.T, module *metals.Module, found directives) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := meval.Run(module, &stdout, &stderr)
+	err := meval.Run(module, found.args, &stdout, &stderr)
 	got := result{stdout: stdout.String(), stderr: stderr.String(), failed: err != nil}
 	if err != nil {
 		got.message = err.Error()
@@ -300,7 +309,11 @@ func runNative(t *testing.T, module *metals.Module, found directives) result {
 		t.Fatalf("build: %v", err)
 	}
 
+	// argv[0] is set explicitly: the temp binary's path would differ from
+	// what the other two tiers see, over something no program should care
+	// about.
 	command := exec.Command(binary)
+	command.Args = found.args
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr

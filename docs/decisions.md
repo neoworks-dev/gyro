@@ -1153,6 +1153,41 @@ checked — so every error in a signature was reported twice. Deduplicating
 in the bag fixes it for every pass at once, and two identical messages at
 one position never told the reader anything the first did not.
 
+### The stdlib is Gyro wherever it can be *(new)*
+
+**Status: decided.** A bundled module is a declaration stub only where a
+declaration has no body. `String` has one, and so do `split`, `join`,
+`trim`, `contains`, `starts_with`, `ends_with`, `index_of`, `substring`
+and `repeat`; the UTF-8 encoder in `push_rune` is Gyro too.
+
+The runtime supplies `Array<T>`, the `bytes()` method on `string`, and
+`from_utf8`. Everything above that is written in the language it serves,
+which means it is auditable from Gyro, tested by the same corpus as user
+code, and implemented once rather than once per tier.
+
+The alternative — a native `String` beside `Array<T>` — would have meant
+three implementations (interpreter, evaluator, C runtime) of a builder
+with no interesting runtime requirement.
+
+### `bytes()` and `from_utf8` both copy *(new)*
+
+**Status: decided, reluctantly.** Neither direction between `string` and
+`u8[]` can be a view, so neither carries a borrow row.
+
+The reason is the v1 native layout: every scalar occupies a full word
+([`native.md`](native.md)), so a `u8[]` slice is word-strided, while a
+string's bytes are packed UTF-8. The two representations cannot alias.
+The first attempt returned the string's own storage as a slice, which the
+interpreter read correctly and a native binary read as garbage.
+
+If the layout ever packs small scalars, both directions can become views
+and the rows can come back.
+
+This also retired a rule that was wrong from the start: the borrow
+checker treated `s.runes()` as a view of its receiver. `runes()` decodes
+into storage of its own and always did, so the rule only ever reported
+borrows that were not there.
+
 ## Testing
 
 ### One execution corpus, run by every tier *(new)*

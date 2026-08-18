@@ -156,6 +156,11 @@ var codes = map[string]diag.Code{
 	"cannot attach a method to %s: it is not a type":                diag.EMethodConflict,
 	"cannot attach a method to %s: no such type in this module":     diag.EMethodConflict,
 
+	// The entry point
+	"main takes no type parameters":                          diag.EEntryPointSignature,
+	"main returns nothing":                                   diag.EEntryPointSignature,
+	"main takes no parameters, or one string[] of arguments": diag.EEntryPointSignature,
+
 	// Concurrency
 	"await needs a call to an async fn, not %s":                    diag.EAwaitMisuse,
 	"await only works inside an async fn":                          diag.EAwaitMisuse,
