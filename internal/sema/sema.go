@@ -278,16 +278,6 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 	return c
 }
 
-// Check resolves and types one file. Without a loader, imports bind
-// opaquely and everything reached through them is unchecked; use
-// CheckProgram to validate against what the imported modules export.
-func Check(tree *ast.File, file *diag.File, bag *diag.Bag) *Info {
-	p := newProgram(bag)
-	c := newChecker(p, file, file.Name, nil)
-	c.run(tree)
-	return p.info
-}
-
 // CheckProgram checks every module of a loaded program in dependency
 // order, so each module's imports are validated against what its
 // dependencies actually export. The returned Info is only meaningful

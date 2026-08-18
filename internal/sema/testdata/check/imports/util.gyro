@@ -1,0 +1,24 @@
+export fn helper() {
+}
+
+export struct Shape {
+}
+
+export enum Kind {
+  Circle(f64),
+  Point,
+}
+
+export fn add(a: i32, b: i32): i32 {
+  return a + b
+}
+
+export fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {          //~ E0405 NoCompare has no method compare
+    return a
+  }
+  return b
+}
+
+fn hidden() {
+}

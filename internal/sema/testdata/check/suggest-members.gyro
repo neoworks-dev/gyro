@@ -1,0 +1,37 @@
+struct Point {
+  count: i32
+}
+
+fn Point::length(self): i32 {
+  return self.count
+}
+
+fn Point::new(): Point {
+  return Point{ count: 0 }
+}
+
+enum Shape {
+  Square(i32),
+  Point,
+}
+
+fn misspelledField(p: Point): i32 {
+  return p.conut                 //~ help: did you mean count?
+}
+
+fn misspelledMethod(p: Point): i32 {
+  return p.lenght()              //~ help: did you mean length?
+}
+
+fn misspelledLiteralField() {
+  var p = Point{ conut: 1 }      //~ help: did you mean count?
+                                 //~^ E0508 the literal misses the field count
+}
+
+fn misspelledAssociatedFunction(): Point {
+  return Point::mew()            //~ help: did you mean new?
+}
+
+fn misspelledVariant(): Shape {
+  return Shape::Squere(1)        //~ help: did you mean Square?
+}

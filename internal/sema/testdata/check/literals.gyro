@@ -1,0 +1,61 @@
+// Literals take their type from context, default to i32 and f64, and fold
+// before they are checked against a width.
+
+fn adaptToContext() {
+  var h: u32 = 2166136261
+  var b: u8[] = [104, 105]
+  var f: f64 = 1
+  var x: i8 = -128
+}
+
+fn defaultParameter(n: i64 = 4) {
+}
+
+fn mustFit() {
+  var a: u8 = 300                //~ does not fit u8
+  var b: i8 = -129               //~ does not fit i8
+  var c: u8[] = [104, 300]       //~ does not fit u8
+  var d: i32 = 1.5               //~ a float literal cannot become i32
+}
+
+fn constantsFold() {
+  var ok: u8 = 200 + 55
+  var over: u8 = 200 + 56        //~ does not fit u8
+  var wide: u64 = 1 << 40
+  var narrow: i32 = 1 << 40      //~ does not fit i32
+  var zero = 1 / 0               //~ division by zero
+}
+
+fn want32(v: i32) {
+}
+
+fn want64(v: i64) {
+}
+
+fn wantFloat(v: f64) {
+}
+
+// An integer literal defaults to i32, a float literal to f64.
+fn literalDefaults() {
+  var x = 1
+  want32(x)
+  want64(x)                      //~ cannot use i32 as i64
+  var f = 1.5
+  wantFloat(f)
+}
+
+fn typedValuesNeverConvert() {
+  var a: i32 = 1
+  var b: i64 = a                 //~ cannot use i32 as i64
+  var c: u8 = 1
+  var d: u16 = c                 //~ cannot use u8 as u16
+  var e: f32 = 1.0
+  var g: f64 = e                 //~ cannot use f32 as f64
+}
+
+fn otherLiterals() {
+  var r: rune = 'a'
+  var s: string = "hi"
+  var b: bool = true
+  var n: i32 = 'a'               //~ cannot use rune as i32
+}

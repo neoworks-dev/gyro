@@ -1,0 +1,163 @@
+// Generics are duck-typed and checked per instantiation: the requirement
+// is whatever the body uses, and the error names the call site.
+
+// The requirement is reported in the body that has it, with the
+// instantiation that could not meet it pointed at the call.
+fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {          //~ E0405 NoCompare has no method compare
+    return a
+  }
+  return b
+}
+
+struct WithCompare {
+  n: i32
+}
+
+fn WithCompare::compare(self, other: WithCompare): i32 {
+  return 0
+}
+
+struct NoCompare {
+  n: i32
+}
+
+fn builtinCompare(): i32 {
+  return max(3, 7)
+}
+
+fn userCompare(a: WithCompare, b: WithCompare): WithCompare {
+  return max(a, b)
+}
+
+fn missingCompare(a: NoCompare, b: NoCompare) {
+  var x = max(a, b)              //~ E0505 in the instantiation max<NoCompare>
+}
+
+fn first<T>(a: T, b: T): T !{ &a } {
+  return a
+}
+
+fn none<T>(): T? {
+  return null
+}
+
+fn inference(): i32 {
+  var mixed = first(1, "two")    //~ cannot use string as i32
+  var uninferable = none()       //~ cannot infer T
+  return first(1, 2)
+}
+
+fn zero<T>(v: T): T !{ &v } {
+  return v
+}
+
+fn explicitArguments(): i64 {
+  var a = zero<i32>("s")         //~ cannot use string as i32
+  var b = zero<i32, i32>(1)      //~ takes 1 type argument(s), got 2
+  return zero<i64>(3)
+}
+
+fn plain(v: i32) {
+}
+
+fn plainTakesNoTypeArguments() {
+  plain<i32>(1)                  //~ takes 0 type argument(s), got 1
+}
+
+// A generic is a template, not a value: it has no type until it is called.
+fn genericsAreCalledNotReferenced() {
+  var f = zero                   //~ must be called
+}
+
+struct Pair<T> {
+  first: T
+  second: T
+}
+
+fn Pair<T>::swap(*self) {
+  var tmp = self.first
+  self.first = self.second
+  self.second = tmp
+}
+
+fn genericStructs() {
+  var p = Pair<i32>{ 1, 2 }
+  p.swap()
+  var x: i32 = p.first
+}
+
+fn badGenericStructs(q: Pair<i32, bool>) {   //~ takes 1 type argument(s), got 2
+  var a = Pair<i32>{ 1, "two" }              //~ cannot use string as i32
+  var b = Pair<i32>{ 1, 2 }
+  var c: string = b.first                    //~ cannot use i32 as string
+}
+
+// A literal infers its argument from the fields.
+fn literalInference(s: string): i32 {
+  var words = Pair{ first: s, second: s }
+  var numbers = Pair{ 1, 2 }
+  return numbers.first
+}
+
+struct Box<T> {
+  value: T
+}
+
+fn Box<T>::new(value: T): Box<T> {
+  return Box{ value: value }
+}
+
+fn Box<T>::get(self): T !{ &self } {
+  return self.value
+}
+
+// The owner's argument comes from the associated function's arguments.
+fn ownerInference(): i32 {
+  var b = Box::new(1)
+  return b.get()
+}
+
+fn ownerInferenceIsChecked(): string {
+  var b = Box::new(1)
+  return b.get()                 //~ cannot use i32 as string
+}
+
+struct Holder<T> {
+  value: T
+}
+
+fn Holder<T>::shout(self) {
+  self.value.speak()             //~ E0405 Silent has no method speak
+}
+
+struct Silent {
+  n: i32
+}
+
+fn methodDuckCheck(h: Holder<Silent>) {
+  h.shout()                      //~ E0505 in the instantiation shout<Silent>
+}
+
+// Instantiation is cached, so a recursive generic converges.
+fn count<T>(v: T, n: i32): i32 {
+  if n <= 0 {
+    return 0
+  }
+  return count(v, n - 1) + 1
+}
+
+fn recursion(): i32 {
+  return count("x", 3)
+}
+
+struct Tree<T> {
+  value: T
+  left: *Tree<T>?
+}
+
+fn selfReferential(root: Tree<i32>): i32 {
+  if root.left != null {
+  }
+  return root.value
+}

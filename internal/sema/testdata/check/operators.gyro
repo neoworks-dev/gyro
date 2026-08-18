@@ -1,0 +1,88 @@
+// Operators enforce matching operand types. There are no implicit
+// conversions, so a mixed pair is an error rather than a promotion.
+
+fn arithmetic(a: i32, b: i32): i32 {
+  return a + b * 2
+}
+
+// A literal that cannot take the other operand's type is one error. The
+// poisoned type it leaves behind used to produce a second, blaming
+// <unknown> for a mismatch the author never wrote. An unclaimed second
+// diagnostic here fails the fixture, which is what pins it.
+fn aBadLiteralOperandReportsOnce(x: i32) {
+  var c = 1.5 + x                //~ E0501 a float literal cannot become i32
+}
+
+fn mismatchedArithmetic(a: i32, b: u8, c: i64, s: string, f: bool) {
+  var x = a + b                  //~ operator + needs matching numeric operands
+  var y = a * c                  //~ matching numeric operands
+  var z = s + s                  //~ interpolate instead
+  var w = f + f                  //~ matching numeric operands
+}
+
+fn wrappingAndBitwise(h: u32): u32 {
+  return h *% 16777619 +% 1
+}
+
+fn integerOnly(f: f64, a: u8, b: u8): u8 {
+  var x = f +% f                 //~ matching integer operands
+  var y = f % f                  //~ matching integer operands
+  return (a & b) | (a ^ b)
+}
+
+fn shifts(x: u32): u32 {
+  return x << 3
+}
+
+fn badShifts(f: f64, n: i32) {
+  var x = f << 1                 //~ shifts integers
+  var y = n << f                 //~ a shift count is an integer
+}
+
+fn comparisons(a: i32, b: i32): bool {
+  return a < b
+}
+
+fn runeComparison(a: rune): bool {
+  return a >= 'a'
+}
+
+fn badComparisons(s: string, t: string, a: i32, b: i64) {
+  var x = s < t                  //~ a.compare(b)
+  var y = a < b                  //~ orders numeric types
+}
+
+struct P {
+  x: i32
+}
+
+fn equality(a: i32, p: P, q: P, t: (i32, bool), u: (i32, bool)): bool {
+  var byValue = a == 3
+  var byStruct = p == q
+  return t != u
+}
+
+fn badEquality(a: i32[], b: i32[], n: i32, s: string) {
+  var x = a == b                 //~ slices do not compare
+  var y = n == s                 //~ cannot compare i32 with string
+  var z = n == null              //~ can never be null
+}
+
+fn logical(a: bool, b: bool): bool {
+  return a && !b || true
+}
+
+fn badLogical(n: i32, f: f64, s: string) {
+  if n && true {                 //~ a condition is a bool
+  }
+  var x = !n                     //~ operator ! needs a bool
+  var y = ~f                     //~ inverts integers
+  var z = -s                     //~ negates numeric values
+}
+
+fn conditionsAreBool(n: i32) {
+  if 1 {                         //~ a condition is a bool
+  }
+  while n {                      //~ a condition is a bool
+  }
+}

@@ -1,0 +1,56 @@
+// An import is validated against what the target module exports, and the
+// name it binds carries its kind.
+
+import { helper, Shape, Kind, add, max } from "./util"
+import { helper as run } from "./util"
+import * as util from "./util"
+
+fn boundNames(s: Shape) {
+  helper()
+  run()
+  util::helper()
+}
+
+fn namespaceTypes(s: util::Shape) {
+}
+
+fn valuesAreNotTypes(x: helper) {        //~ helper is a value, not a type
+}
+
+fn namespaceValuesAreNotTypes(x: util::helper) {   //~ util::helper is a value, not a type
+}
+
+fn missingNamespaceMember() {
+  util::nope()                   //~ util does not export nope
+}
+
+fn variants(): Kind {
+  return Kind::Point
+}
+
+fn missingVariant(): Kind {
+  return Kind::Square            //~ Kind has no variant Square
+}
+
+// An imported signature is checked like any other.
+fn signatures(): i32 {
+  return add(1, 2)
+}
+
+fn badSignature() {
+  var x = add(1, "two")          //~ cannot use string as i32
+  var y: string = add(1, 2)      //~ cannot use i32 as string
+}
+
+// An imported generic instantiates in the importing module.
+fn importedGeneric(): i32 {
+  return max(3, 7)
+}
+
+struct NoCompare {
+  n: i32
+}
+
+fn importedGenericIsDuckChecked(a: NoCompare, b: NoCompare) {
+  var x = max(a, b)              //~ E0505 in the instantiation max<NoCompare>
+}

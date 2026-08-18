@@ -1,0 +1,36 @@
+fn access() {
+  var pair = (200, "ok")
+  var code: i32 = pair.0
+  var text: string = pair.1
+  var missing = pair.2           //~ no element 2
+}
+
+fn notATuple(x: i32) {
+  var v = x.0                    //~ needs a tuple
+}
+
+fn fallible(): (i32, error?) {
+  return 0, null
+}
+
+fn twoValues(): (i32, bool) {
+  return 0, true
+}
+
+fn destructuring() {
+  var value, err = fallible()
+  var v: i32 = value
+  var a, b, c = twoValues()      //~ has 2 elements, the declaration binds 3
+}
+
+fn destructuringNeedsATuple(x: i32) {
+  var a, b = x                   //~ needs a tuple
+}
+
+fn assignability(ch: chan<(string, error?)>) {
+  ch <- ("body", null)
+}
+
+fn badSend(ch: chan<(string, error?)>) {
+  ch <- (1, null)                //~ cannot use
+}

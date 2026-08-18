@@ -1,0 +1,8 @@
+export struct Config {
+  export host: string
+  secret: i32
+}
+
+export fn Config::new(): Config {
+  return Config{ host: "h", secret: 1 }
+}

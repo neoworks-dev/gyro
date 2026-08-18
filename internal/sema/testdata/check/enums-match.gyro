@@ -1,0 +1,91 @@
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Point,
+}
+
+fn construction(): Shape {
+  return Shape::Circle(2.0)
+}
+
+fn constructionWithoutPayload(): Shape {
+  return Shape::Point
+}
+
+fn badConstruction() {
+  var a = Shape::Circle(2.0, 3.0)  //~ carries 1 value(s), got 2
+  var b = Shape::Circle("big")     //~ cannot use string as f64
+  var c = Shape::Circle            //~ carries a payload
+  var d = Shape::Point()           //~ carries no payload
+  var e = Shape::Square            //~ Shape has no variant Square
+}
+
+fn area(s: Shape): f64 {
+  return match s {
+    Shape::Circle(r): 3.14 * r * r
+    Shape::Rect(w, h): w * h
+    Shape::Point: 0.0
+  }
+}
+
+fn armsMustAgree(s: Shape) {
+  var x = match s {
+    Shape::Circle(r): r
+    Shape::Point: "zero"         //~ match arms disagree
+    _: 0.0
+  }
+}
+
+fn matchHasAType(s: Shape) {
+  var x = match s {
+    Shape::Circle(r): r > 0
+    _: false
+  }
+  var y: string = x              //~ cannot use bool as string
+}
+
+fn patternsMustMatchTheSubject(n: i32) {
+  var x = match n {
+    "zero": 1                    //~ can never match i32
+    _: 0
+  }
+  var y = match n {
+    Shape::Point: 1              //~ can never match i32
+    _: 0
+  }
+}
+
+fn payloadArity(s: Shape) {
+  var x = match s {
+    Shape::Circle(r, extra): r   //~ carries 1 value(s), the pattern binds 2
+    _: 0.0
+  }
+}
+
+fn payloadsAreTyped(s: Shape) {
+  var x = match s {
+    Shape::Circle(r): r && true  //~ a condition is a bool
+    _: false
+  }
+}
+
+// A binding scopes to its arm and no further.
+enum E {
+  A(i32),
+  B,
+}
+
+fn bindingScopesToItsArm(e: E): i32 {
+  return match e {
+    E::A(v): v
+    E::B: 0
+  }
+}
+
+fn bindingDoesNotLeak(e: E): i32 {
+  var x = match e {
+    E::A(v): v
+    E::B: 0
+  }
+  return v                       //~ undeclared name v
+}

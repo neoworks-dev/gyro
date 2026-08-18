@@ -1,0 +1,58 @@
+fn sources(xs: i32[], fixed: i32[4], ch: chan<string>) {
+  for x in xs {
+    var a: i32 = x
+  }
+  for x in fixed {
+    var b: i32 = x
+  }
+  for s in ch {
+    var c: string = s
+  }
+  for i in 0..10 {
+    var d: i32 = i
+  }
+  for i in 0..xs.len() {
+    var e: usize = i
+  }
+}
+
+fn badSources(x: i32, s: string, a: i32, b: i64) {
+  for v in x {                   //~ not iterable
+  }
+  for v in s {                   //~ use .runes()
+  }
+  for v in a..b {                //~ matching integer endpoints
+  }
+}
+
+// `for..in` accepts anything with next(*self): (T, bool), or an iter()
+// that produces something that has it.
+struct Counter {
+  n: i32
+  limit: i32
+}
+
+fn Counter::next(*self): (i32, bool) {
+  if self.n >= self.limit {
+    return 0, false
+  }
+  self.n += 1
+  return self.n, true
+}
+
+struct Bag {
+  size: i32
+}
+
+fn Bag::iter(self): Counter {
+  return Counter{ 0, self.size }
+}
+
+fn duckTyped(b: Bag) {
+  for x in (Counter{ 0, 5 }) {
+    var v: i32 = x
+  }
+  for x in b {
+    var w: i32 = x
+  }
+}

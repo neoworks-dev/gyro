@@ -1,22 +1,31 @@
 package sema
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gyro-lang/gyro/internal/diag"
-	"github.com/gyro-lang/gyro/internal/parser"
+	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
-// checkInfo parses and checks src, requiring a clean bag, and returns the
-// recorded Info.
+// checkInfo checks src, requiring a clean bag, and returns the recorded
+// Info: what sema hands the backends and the language server.
 func checkInfo(t *testing.T, src string) *Info {
 	t.Helper()
 
-	file := diag.NewFile("test.gyro", src)
+	path := filepath.Join(t.TempDir(), "main.gyro")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	var bag diag.Bag
-	tree := parser.ParseFile(file, &bag)
-	info := Check(tree, file, &bag)
+	program, err := loader.Load(path, &bag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := CheckProgram(program, &bag)
 	for _, item := range bag.Items() {
 		t.Errorf("unexpected diagnostic: %s", item)
 	}

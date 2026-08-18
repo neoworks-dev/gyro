@@ -1,0 +1,75 @@
+// A capture copies, and copying a reference shares what it points at.
+
+import { println, spawn } from "stdlib"
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+}
+
+fn sharedPointer(node: *Node) {
+  spawn(fn() {                   //~ W0801 captures node, so both threads reach the same memory
+    node.value = 1
+  })
+}
+
+fn sharedSlice(xs: i32[]) {
+  spawn(fn() {                   //~ W0801 captures xs, so both threads reach the same elements
+    println(xs.len())
+  })
+}
+
+// A nullable pointer is still a pointer.
+fn sharedNullablePointer(node: *Node?) {
+  spawn(fn() {                   //~ W0801 captures node, so both threads reach the same memory
+    if node != null {
+      println(node.value)
+    }
+  })
+}
+
+// The pointer reaches the spawned closure through an intermediate one, so
+// both of them capture it.
+fn sharedThroughNesting(node: *Node) {
+  var outer = fn() {
+    spawn(fn() {                 //~ W0801 captures node
+      node.value = 1
+    })
+  }
+  outer()
+}
+
+// Copying a value shares nothing.
+fn copiedValue(n: i32) {
+  spawn(fn() {
+    println(n)
+  })
+}
+
+// A channel is the sanctioned way across.
+fn overAChannel(ch: chan<i32>) {
+  spawn(fn() {
+    ch <- 1
+  })
+}
+
+// A move hands the binding over rather than sharing it.
+fn moved() {
+  var node = alloc<Node>()
+  spawn(fn[move node]() {
+    free(node)
+  })
+}
+
+fn capturesNothing() {
+  spawn(fn() {
+    println("hi")
+  })
+}
+
+// Only a spawned closure is reported: an ordinary one runs on this thread.
+fn unspawned(xs: i32[]): fn() {
+  return fn() {
+    println(xs.len())
+  }
+}
