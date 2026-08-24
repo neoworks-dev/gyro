@@ -132,6 +132,9 @@ type program struct {
 	// instantiated caches which (declaration, type arguments) pairs have
 	// been duck-checked, including in-progress ones so recursion converges.
 	instantiated map[string]bool
+	// inferredEffects memoizes what each rowless function's body does,
+	// which is what a same-module call to it contributes.
+	inferredEffects map[*ast.FuncDecl]effectSet
 	// depth guards against infinitely growing instantiations such as a
 	// generic function calling itself with Pair<T>.
 	depth int
@@ -145,6 +148,7 @@ func newProgram(bag *diag.Bag) *program {
 		structInstances: map[*types.Struct]map[string]*types.Struct{},
 		enumInstances:   map[*types.Enum]map[string]*types.Enum{},
 		instantiated:    map[string]bool{},
+		inferredEffects: map[*ast.FuncDecl]effectSet{},
 	}
 }
 
@@ -285,7 +289,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	p := newProgram(bag)
 	computed := map[*loader.Module]*Exports{}
-	for _, module := range prog.Modules {
+	checkers := make([]*checker, len(prog.Modules))
+	for i, module := range prog.Modules {
 		imports := map[string]*Exports{}
 		paths := map[string]string{}
 		for specifier, dependency := range module.Deps {
@@ -295,6 +300,12 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 		c := newChecker(p, module.File, module.Path, imports)
 		c.importPaths = paths
 		computed[module] = c.run(module.Tree)
+		checkers[i] = c
+	}
+	// Concrete effects are judged after every module has run, so a row sees
+	// every same-module body resolved and every instantiation recorded.
+	for i, module := range prog.Modules {
+		checkers[i].checkModuleEffects(module.Tree)
 	}
 	return p.info
 }

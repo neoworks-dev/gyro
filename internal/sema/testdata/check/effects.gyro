@@ -1,0 +1,66 @@
+// Concrete effects. A declared row is a complete statement of what the
+// function does: a row without io promises no io, a row without alloc
+// promises no allocation, and a row holding only borrows promises both.
+// A function with no row is unconstrained in v1.
+
+import { println, Array } from "stdlib"
+
+fn quiet(n: i32) !{} {
+  println(n)             //~ E0611 println does io, which the row does not name
+                         //~^ help: name it in the row: !{ io }
+}
+
+// Inference is module-internal: a same-module helper without a row
+// contributes whatever its body does.
+fn helper(n: i32) {
+  println(n)
+}
+
+fn indirect(n: i32) !{} {
+  helper(n)              //~ E0611 helper does io, which the row does not name
+                         //~^ help: name it in the row: !{ io }
+}
+
+// A borrow-only row still promises no concrete effects.
+fn fill(xs: Array<i32>, v: i32): i32[] !{ &xs } {
+  xs.push(v)             //~ E0611 push does alloc, which the row does not name
+                         //~^ help: name it in the row: !{ alloc, &xs }
+  return xs.slice()
+}
+
+// Interpolation builds new text, which allocates.
+fn describe(n: i32): string !{} {
+  return "n = #{n}"      //~ E0611 this string interpolation allocates, which the row does not name
+                         //~^ help: name it in the row: !{ alloc }
+}
+
+struct Logger {
+  count: i32
+}
+
+fn Logger::log(*self, message: string) !{} {
+  println(message)       //~ E0611 println does io, which the row does not name
+}
+
+// A generic body is judged per instantiation, where a call on the type
+// parameter has a concrete callee to answer for it.
+struct Shout {
+  n: i32
+}
+
+fn Shout::speak(self) {
+  println(self.n)
+}
+
+fn callSpeak<T>(v: T) !{} {
+  v.speak()              //~ E0611 speak does io, which the row does not name
+}
+
+fn trigger() {
+  callSpeak(Shout{ n: 1 })
+}
+
+// The row that names what the body does checks clean.
+fn loud(message: string) !{ io, alloc } {
+  println("message: #{message}")
+}

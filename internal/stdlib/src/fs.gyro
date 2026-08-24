@@ -2,6 +2,6 @@
 
 export struct File {}
 
-export fn open(path: string): (File, error?)
-export fn read_all(file: File): (string, error?)
-export fn File::close(*self)
+export fn open(path: string): (File, error?) !{ io, alloc }
+export fn read_all(file: File): (string, error?) !{ io, alloc }
+export fn File::close(*self) !{ io }

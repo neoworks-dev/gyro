@@ -2,7 +2,9 @@
 
 import { println } from "stdlib"
 
-fn greet(name: string) {
+// The row is a complete statement of what greet does: println is io, and
+// building the interpolated text allocates.
+fn greet(name: string) !{ io, alloc } {
   println("Hello, #{name}!")
 }
 
