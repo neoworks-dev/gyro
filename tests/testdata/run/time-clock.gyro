@@ -1,0 +1,16 @@
+// Clock readings are nondeterministic, so the golden holds only derived
+// facts: the wall clock is past November 2023, and monotonic advances
+// across a sleep by at least the slept time.
+
+import { println } from "stdlib"
+import { now, monotonic, sleep } from "time"
+
+fn main() {
+  println(now() > 1700000000000)
+
+  var before = monotonic()
+  sleep(10)
+  var after = monotonic()
+  println(after > before)
+  println(after - before >= 10000000)
+}

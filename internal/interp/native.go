@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -63,6 +64,10 @@ var natives = map[string]nativeFunc{
 
 	"gyro:convert||to_i32": nativeToI32,
 	"gyro:convert||to_f64": nativeToF64,
+
+	"gyro:time||now":       nativeNow,
+	"gyro:time||monotonic": nativeMonotonic,
+	"gyro:time||sleep":     nativeSleep,
 }
 
 func nativePrint(c *nativeCall) Value {
@@ -185,6 +190,27 @@ func nativeReadAll(c *nativeCall) Value {
 
 func nativeNetGet(c *nativeCall) Value {
 	return TupleVal{StringVal(""), NativeError{Message: "the interpreter has no network"}}
+}
+
+// monotonicStart anchors the arbitrary epoch: time.Since reads Go's
+// monotonic clock, so the difference never steps with the wall clock.
+var monotonicStart = time.Now()
+
+func nativeNow(c *nativeCall) Value {
+	return IntVal{V: time.Now().UnixMilli(), Kind: types.I64}
+}
+
+func nativeMonotonic(c *nativeCall) Value {
+	return IntVal{V: time.Since(monotonicStart).Nanoseconds(), Kind: types.I64}
+}
+
+func nativeSleep(c *nativeCall) Value {
+	millis, ok := c.arg(0).(IntVal)
+	if !ok {
+		c.panicf("sleep takes a millisecond count")
+	}
+	time.Sleep(time.Duration(millis.V) * time.Millisecond)
+	return VoidVal{}
 }
 
 func nativeToI32(c *nativeCall) Value {

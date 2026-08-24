@@ -1218,6 +1218,36 @@ checker treated `s.runes()` as a view of its receiver. `runes()` decodes
 into storage of its own and always did, so the rule only ever reported
 borrows that were not there.
 
+### Time is two i64 clocks and a sleep *(new)*
+
+**Status: decided.** A bundled `time` module with three intrinsics —
+every one needs the OS, so all three tiers implement each:
+
+- `now(): i64` — the wall clock, milliseconds since the Unix epoch. It
+  dates events; it can step when the system clock is adjusted.
+- `monotonic(): i64` — nanoseconds since an arbitrary epoch, never
+  stepping backwards. It measures; only differences mean anything. The
+  nanosecond resolution is deliberate: this is the clock that benchmarks
+  generated code, and native `clock_gettime(CLOCK_MONOTONIC)` delivers
+  nanoseconds anyway.
+- `sleep(millis: i64)` — blocks at least that long, on the calling
+  thread only. Interpreter and evaluator use Go's `time.Sleep`; the
+  native runtime loops `nanosleep` across `EINTR`. Spawned threads are
+  goroutines or pthreads, so a sleeping thread never stalls the rest of
+  the program.
+
+Rejected: a `Time` struct or opaque handle. A reading with no methods on
+it is just a number, and `i64` already subtracts, compares and prints;
+a handle would add three tiers of plumbing to hide arithmetic the caller
+wants. Rejected: one clock serving both jobs — a wall reading cannot
+measure (it steps) and a monotonic reading cannot date (its epoch is
+arbitrary); gluing them together is how other languages got timers that
+misfire on NTP adjustments. Rejected: `f64` seconds, which silently
+loses precision as the magnitude grows. Rejected: wall nanoseconds —
+wall clocks are not trustworthy below a millisecond, and millisecond
+timestamps are what the reading is for. Durations stay plain `i64`
+until a units design earns its keep.
+
 ## Testing
 
 ### One execution corpus, run by every tier *(new)*
