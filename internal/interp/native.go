@@ -2,6 +2,7 @@ package interp
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -66,6 +67,10 @@ var natives = map[string]nativeFunc{
 	"gyro:fs||exists":      nativeExists,
 
 	"gyro:net||get": nativeNetGet,
+
+	"gyro:os||env":        nativeEnv,
+	"gyro:os||read_stdin": nativeReadStdin,
+	"gyro:os||exit":       nativeExit,
 
 	"gyro:convert||to_i32": nativeToI32,
 	"gyro:convert||to_f64": nativeToF64,
@@ -272,6 +277,31 @@ func nativeSleep(c *nativeCall) Value {
 	}
 	time.Sleep(time.Duration(millis.V) * time.Millisecond)
 	return VoidVal{}
+}
+
+func nativeEnv(c *nativeCall) Value {
+	name, _ := c.arg(0).(StringVal)
+	value, found := os.LookupEnv(string(name))
+	if !found {
+		return NullVal{}
+	}
+	return StringVal(value)
+}
+
+func nativeReadStdin(c *nativeCall) Value {
+	data, err := io.ReadAll(c.frame.in.stdin)
+	if err != nil {
+		c.panicf("read_stdin: %v", err)
+	}
+	return StringVal(data)
+}
+
+func nativeExit(c *nativeCall) Value {
+	code, ok := c.arg(0).(IntVal)
+	if !ok {
+		c.panicf("exit takes an i32")
+	}
+	panic(exitSignal{code: int(code.V)})
 }
 
 func nativeToI32(c *nativeCall) Value {

@@ -669,6 +669,51 @@ int64_t gy_exists(const gy_str *path) {
     return found;
 }
 
+/* ------------------------------------------------------------------ */
+/* os: the environment, stdin, and the exit code.                     */
+/* ------------------------------------------------------------------ */
+
+/* out: opt<str> = { flag, value } — flag 0 when the variable is unset. */
+void gy_env(int64_t *out, const gy_str *name) {
+    char *cname = malloc((size_t)name->len + 1);
+    memcpy(cname, name->bytes, (size_t)name->len);
+    cname[name->len] = 0;
+    const char *value = getenv(cname);
+    free(cname);
+    if (value == NULL) {
+        out[0] = 0;
+        out[1] = 0;
+        return;
+    }
+    out[0] = 1;
+    out[1] = (int64_t)gy_str_c(value);
+}
+
+/* Reads stdin to end of file. One shot: a second call finds the stream
+ * drained and returns "". */
+gy_str *gy_read_stdin(void) {
+    size_t cap = 4096;
+    size_t len = 0;
+    char *buf = malloc(cap);
+    size_t got;
+    while ((got = fread(buf + len, 1, cap - len, stdin)) > 0) {
+        len += got;
+        if (len == cap) {
+            cap *= 2;
+            buf = realloc(buf, cap);
+        }
+    }
+    gy_str *out = gy_str_from(buf, len);
+    free(buf);
+    return out;
+}
+
+_Noreturn void gy_exit(int64_t code) {
+    fflush(stdout);
+    fflush(stderr);
+    exit((int)code);
+}
+
 /* out: tuple<str, opt<error>> */
 void gy_get(int64_t *out, const gy_str *url) {
     (void)url;

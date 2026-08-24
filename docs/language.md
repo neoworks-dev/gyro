@@ -1154,7 +1154,7 @@ printing with `to_string` override, spawn/channels/select on real threads,
 async as futures. The stdlib stubs have native bodies: `println`,
 `Array<T>`, `Mutex` (explicit `guard.unlock()`), `alloc`/`free` with
 use-after-free and double-free detection, `fs`, `convert`, `time` (wall
-and monotonic clocks, `sleep`).
+and monotonic clocks, `sleep`), and `os` (`env`, `read_stdin`, `exit`).
 
 **Programs lower**: `gyro metals file.gyro` compiles a checked program
 into one self-contained METALS module — monomorphized generics under

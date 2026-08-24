@@ -613,6 +613,46 @@ Rejected Rust's debug-checked/release-wrapping split, where one expression
 means different things in different build modes, and rejected always-wrap,
 which optimizes for the rare intentional case.
 
+### The process interface is a bundled `os` module *(new)*
+
+**Status: decided.** Environment variables, stdin and the exit code live
+in a module named `os`, as three intrinsics:
+
+```gyro
+export fn env(name: string): string?
+export fn read_stdin(): string
+export fn exit(code: i32)
+```
+
+`env` returns null for an unset variable — absence is a nullable, not an
+empty string, since an empty value is a value. `read_stdin` reads to end
+of file in one shot; a second call finds the stream drained and returns
+`""`. A line-buffered reader wants a design of its own (buffering state,
+an EOF signal) and can arrive later without disturbing this surface.
+
+`exit` is an ordinary `fn(i32)`. Gyro has no noreturn concept and this
+does not introduce one: code after `exit` type-checks like code after any
+other call, it just never runs. It terminates like a panic does — output
+flushed, deferred calls not run — but silently and with the caller's
+code. The interpreter and the evaluator run in-process, so they model
+exit as a control-flow signal handed back to the driver (`interp.Exit`,
+`meval.Exit`) rather than calling `os.Exit` under a test runner; a native
+binary and `gyro run` genuinely exit with the code.
+
+Rejected: `main` returning an exit code — `fn main()` /
+`fn main(args: string[])` is settled, and threading a return through
+every early exit is what `exit` is for. Rejected for now: `set_env`;
+mutating process-global state buys little until something reads it back,
+and spelling only the read keeps the module honest. Rejected: divergence
+typing for `exit`; one library function does not justify a type-system
+feature.
+
+The test harness grew the matching directives: `//gyro:stdin <line>`
+feeds a line of stdin to every tier, `//gyro:exit <code>` asserts the
+process exit code across tiers (a panic case still exits 1), and the
+corpus runs with `GYRO_TEST_ENV=corpus` pinned so `env` has a
+deterministic value to observe.
+
 ---
 
 ## Concurrency

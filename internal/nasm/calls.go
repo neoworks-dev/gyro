@@ -490,6 +490,12 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_monotonic"}
 	case "sleep":
 		return nativePlan{symbol: "gy_sleep", args: values(0)}
+	case "env":
+		return nativePlan{symbol: "gy_env", sret: true, args: values(0)}
+	case "read_stdin":
+		return nativePlan{symbol: "gy_read_stdin"}
+	case "exit":
+		return nativePlan{symbol: "gy_exit", args: values(0)}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}

@@ -160,7 +160,11 @@ func runProgram(args []string) int {
 		return code
 	}
 
-	if err := interp.Run(program, args, os.Stdout, os.Stderr); err != nil {
+	if err := interp.Run(program, args, os.Stdin, os.Stdout, os.Stderr); err != nil {
+		// os.exit carries the program's own exit code.
+		if exit, isExit := err.(*interp.Exit); isExit {
+			return exit.Code
+		}
 		// A panic already printed itself; anything else needs a voice.
 		if _, isPanic := err.(*interp.Panic); !isPanic {
 			fmt.Fprintf(os.Stderr, "gyro: %v\n", err)

@@ -1,0 +1,15 @@
+// exit ends the process with its code: output written before it must
+// arrive, nothing after it may, and deferred calls do not run.
+
+//gyro:exit 3
+
+import { println, eprintln } from "stdlib"
+import { exit } from "os"
+
+fn main() {
+  defer println("never deferred")
+  println("before exit")
+  eprintln("stderr before exit")
+  exit(3)
+  println("after exit")
+}

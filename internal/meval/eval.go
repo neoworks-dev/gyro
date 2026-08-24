@@ -16,7 +16,7 @@ import (
 //
 // args is the command line as main would see it, args[0] included; it is
 // ignored when main takes no parameters.
-func Run(module *metals.Module, args []string, stdout, stderr io.Writer) (err error) {
+func Run(module *metals.Module, args []string, stdin io.Reader, stdout, stderr io.Writer) (err error) {
 	m := &machine{
 		module:  module,
 		args:    args,
@@ -24,6 +24,7 @@ func Run(module *metals.Module, args []string, stdout, stderr io.Writer) (err er
 		imports: map[string]*metals.FnType{},
 		types:   map[string]*metals.TypeDecl{},
 		globals: map[string]*value{},
+		stdin:   stdin,
 		stdout:  stdout,
 		stderr:  stderr,
 	}
@@ -50,13 +51,19 @@ func Run(module *metals.Module, args []string, stdout, stderr io.Writer) (err er
 		return fmt.Errorf("meval: the module exports no main")
 	}
 	defer func() {
-		if failure := recover(); failure != nil {
-			if abort, ok := failure.(*Abort); ok {
-				err = abort
-				return
-			}
-			panic(failure)
+		failure := recover()
+		if failure == nil {
+			return
 		}
+		if exit, ok := failure.(*Exit); ok {
+			err = exit
+			return
+		}
+		if abort, ok := failure.(*Abort); ok {
+			err = abort
+			return
+		}
+		panic(failure)
 	}()
 	result := m.call(main.Name, m.entryArgs(main))
 	if future, ok := result.(*futureVal); ok {
@@ -82,6 +89,12 @@ type Abort struct{ Message string }
 
 func (a *Abort) Error() string { return "panic: " + a.Message }
 
+// Exit is returned by Run when the program called os.exit: a
+// termination, not a failure. The caller owns the process exit code.
+type Exit struct{ Code int }
+
+func (e *Exit) Error() string { return fmt.Sprintf("exit %d", e.Code) }
+
 type machine struct {
 	module  *metals.Module
 	funcs   map[string]*metals.Func
@@ -89,6 +102,7 @@ type machine struct {
 	types   map[string]*metals.TypeDecl
 	globals map[string]*value
 	args    []string
+	stdin   io.Reader
 	stdout  io.Writer
 	stderr  io.Writer
 }

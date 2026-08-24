@@ -81,6 +81,7 @@ func (m *moduleEnv) methodOf(typeName, method string) *funcDef {
 
 // interp is one program run.
 type interp struct {
+	stdin   io.Reader
 	stdout  io.Writer
 	stderr  io.Writer
 	args    []string
@@ -110,11 +111,29 @@ func (p *Panic) Error() string {
 	return fmt.Sprintf("panic: %s\n  at %s", p.Message, p.Position)
 }
 
+// exitSignal carries os.exit out of the program. It is not a gyroPanic:
+// nothing is reported, and deferred calls do not run on the way out.
+type exitSignal struct {
+	code int
+}
+
+// Exit is returned by Run when the program called os.exit. It is a
+// termination, not a failure; the driver owns turning it into the
+// process exit code.
+type Exit struct {
+	Code int
+}
+
+func (e *Exit) Error() string {
+	return fmt.Sprintf("exit %d", e.Code)
+}
+
 // Run executes a loaded, checked program from its root module's main.
 // args is the command line as main would see it, args[0] included; it is
 // ignored when main declares no parameters.
-func Run(program *loader.Program, args []string, stdout, stderr io.Writer) error {
+func Run(program *loader.Program, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	in := &interp{
+		stdin:        stdin,
 		stdout:       stdout,
 		stderr:       stderr,
 		args:         args,
@@ -140,14 +159,20 @@ func (in *interp) entryArgs(def *funcDef) []Value {
 
 func (in *interp) run(program *loader.Program) (err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			p, ok := r.(gyroPanic)
-			if !ok {
-				panic(r)
-			}
-			err = &Panic{Message: p.message, Position: p.position}
-			fmt.Fprintf(in.stderr, "panic: %s\n  at %s\n", p.message, p.position)
+		r := recover()
+		if r == nil {
+			return
 		}
+		if signal, ok := r.(exitSignal); ok {
+			err = &Exit{Code: signal.code}
+			return
+		}
+		p, ok := r.(gyroPanic)
+		if !ok {
+			panic(r)
+		}
+		err = &Panic{Message: p.message, Position: p.position}
+		fmt.Fprintf(in.stderr, "panic: %s\n  at %s\n", p.message, p.position)
 	}()
 
 	for _, module := range program.Modules {
@@ -340,6 +365,10 @@ func (in *interp) panicf(m *moduleEnv, offset int, format string, args ...any) {
 // abortFromGoroutine implements "a panic aborts the whole process" for
 // panics raised on spawned threads and async bodies.
 func (in *interp) abortFromGoroutine(r any) {
+	if signal, ok := r.(exitSignal); ok {
+		in.exit(signal.code)
+		return
+	}
 	p, ok := r.(gyroPanic)
 	if !ok {
 		panic(r)
