@@ -480,10 +480,13 @@ Kept honest in `docs/language.md` ("Still to come") and
 
 **Blocking real applications:**
 
-- **no `Map<K, V>`** — the first thing you hit writing real code
 - **memory reclamation** — every `#{}`, `split`, `text()` allocates and
   nothing frees it. Fine for a CLI that exits; fatal for a server.
-- no file writing (only `open`/`read_all`), no stdin, no sorting
+- no sorting
+
+Closed since this list was written: `Map<K, V>` (ordinary Gyro over
+`Array<T>`), file writing and directory listing (`fs`), stdin, env vars
+and exit codes (`os`), clocks and sleep (`time`).
 
 **Safety holes:**
 
