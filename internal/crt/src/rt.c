@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* ------------------------------------------------------------------ */
@@ -613,6 +614,33 @@ void gy_get(int64_t *out, const gy_str *url) {
     (void)url;
     out[0] = (int64_t)gy_str_c("");
     gy_write_error(out + 1, gy_str_c("the interpreter has no network"));
+}
+
+/* ------------------------------------------------------------------ */
+/* Clocks. now() dates events on the wall clock; monotonic() measures */
+/* them; sleep blocks only the calling thread — spawn runs pthreads,  */
+/* so the rest of the program keeps going.                            */
+/* ------------------------------------------------------------------ */
+
+int64_t gy_now(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+int64_t gy_monotonic(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+void gy_sleep(int64_t millis) {
+    if (millis <= 0) {
+        return;
+    }
+    struct timespec left = {millis / 1000, (millis % 1000) * 1000000};
+    while (nanosleep(&left, &left) != 0 && errno == EINTR) {
+    }
 }
 
 /* ------------------------------------------------------------------ */

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gyro-lang/gyro/internal/metals"
 )
@@ -164,10 +165,25 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 		return tupleVal{strVal(data), nullVal{}}
 	case "get":
 		return tupleVal{strVal(""), m.nativeError("the interpreter has no network")}
+	case "now":
+		return intVal{v: time.Now().UnixMilli(), kind: metals.I64}
+	case "monotonic":
+		return intVal{v: time.Since(monotonicStart).Nanoseconds(), kind: metals.I64}
+	case "sleep":
+		millis, ok := arg(0).(intVal)
+		if !ok {
+			m.throw("sleep takes a millisecond count")
+		}
+		time.Sleep(time.Duration(millis.v) * time.Millisecond)
+		return nil
 	}
 	m.throw("unknown runtime function %s", method)
 	return nil
 }
+
+// monotonicStart anchors the arbitrary epoch: time.Since reads Go's
+// monotonic clock, so the difference never steps with the wall clock.
+var monotonicStart = time.Now()
 
 // nativeError mints variant 0 of the closed %error sum: Native(str).
 func (m *machine) nativeError(message string) value {
