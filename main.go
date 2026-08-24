@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/cgen"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/interp"
 	"github.com/gyro-lang/gyro/internal/lexer"
@@ -33,7 +34,8 @@ usage:
   gyro run <file.gyro>      check a program and run its fn main in the interpreter
   gyro metals <file.gyro>   check a program and print its lowered METALS module
   gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
-  gyro build <file.gyro> [-o out]
+  gyro cgen <file.gyro>     lower a program and print its generated C
+  gyro build <file.gyro> [-o out] [--backend nasm|c]
                             compile a program to a native executable
   gyro lsp                  run the language server over stdio
   gyro explain [CODE]       explain a diagnostic code, or list them all
@@ -62,6 +64,8 @@ func main() {
 		os.Exit(runMetals(args))
 	case "nasm":
 		os.Exit(runNasm(args))
+	case "cgen":
+		os.Exit(runCgen(args))
 	case "build":
 		os.Exit(runBuild(args))
 	case "explain":
@@ -228,19 +232,46 @@ func runNasm(args []string) int {
 	return 0
 }
 
-// runBuild compiles a program to a native executable.
+// runCgen lowers a program and prints its generated C.
+func runCgen(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	module, code := lowerFile(args[0])
+	if module == nil {
+		return code
+	}
+	source, err := cgen.Generate(module)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 1
+	}
+	fmt.Print(source)
+	return 0
+}
+
+// runBuild compiles a program to a native executable. The backend is the
+// x86-64 assembler by default; `--backend c` goes through the C emitter
+// instead, which is what the two are benchmarked against each other with.
 func runBuild(args []string) int {
 	var inputs []string
 	output := ""
+	backend := "nasm"
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-o" && i+1 < len(args) {
 			output = args[i+1]
 			i++
 			continue
 		}
+		if args[i] == "--backend" && i+1 < len(args) {
+			backend = args[i+1]
+			i++
+			continue
+		}
 		inputs = append(inputs, args[i])
 	}
-	if len(inputs) != 1 {
+	if len(inputs) != 1 || (backend != "nasm" && backend != "c") {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
@@ -249,7 +280,11 @@ func runBuild(args []string) int {
 		output = strings.TrimSuffix(base, ".gyro")
 	}
 
-	if err := nasm.Toolchain(); err != nil {
+	toolchain, build := nasm.Toolchain, nasm.Build
+	if backend == "c" {
+		toolchain, build = cgen.Toolchain, cgen.Build
+	}
+	if err := toolchain(); err != nil {
 		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
 		return 1
 	}
@@ -257,7 +292,7 @@ func runBuild(args []string) int {
 	if module == nil {
 		return code
 	}
-	if err := nasm.Build(module, output); err != nil {
+	if err := build(module, output); err != nil {
 		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
 		return 1
 	}

@@ -450,7 +450,42 @@ func (f *frame) userMethodOf(v Value, name string) *funcDef {
 	case EnumVal:
 		return v.Def.module.methodOf(v.Def.name, name)
 	}
+	if def := f.in.runtimeMethodOf(v, name); def != nil {
+		return def
+	}
 	return f.extensionMethodOf(v, name)
+}
+
+// runtimeMethodOf finds a method written in Gyro on a type whose values
+// the runtime owns. Array<T> and friends are declared like any other
+// struct — the runtime only supplies the bodies that have none — so a
+// method beside that declaration is found where a struct's own methods
+// are: in the module that declares the type.
+func (in *interp) runtimeMethodOf(v Value, name string) *funcDef {
+	owner := runtimeTypeName(v)
+	if owner == "" {
+		return nil
+	}
+	def := in.runtimeTypes[owner]
+	if def == nil {
+		return nil
+	}
+	return def.module.methodOf(owner, name)
+}
+
+// runtimeTypeName spells the declared type a runtime value inhabits.
+func runtimeTypeName(v Value) string {
+	switch v.(type) {
+	case *ArrayObj:
+		return "Array"
+	case *MutexObj:
+		return "Mutex"
+	case *GuardObj:
+		return "MutexGuard"
+	case *FileObj:
+		return "File"
+	}
+	return ""
 }
 
 // extensionMethodOf finds a method declared on a built-in type. Sema

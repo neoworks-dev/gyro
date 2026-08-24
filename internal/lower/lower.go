@@ -34,6 +34,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		imports:    map[string]*metals.FnType{},
 		declared:   map[string]*metals.TypeDecl{},
 		reprs:      map[string]string{},
+		hashes:     map[string]bool{},
 		globalOf:   map[*ast.VarDecl][]int{},
 		lowered:    map[string]bool{},
 		errVariant: map[*types.Struct]int{},
@@ -94,6 +95,10 @@ type lowerer struct {
 	// reprs maps a type to the synthesized function that renders it, so a
 	// recursive type reaches its own repr while it is still being built.
 	reprs map[string]string
+
+	// hashes records which types already have a synthesized hash, for the
+	// same reason.
+	hashes map[string]bool
 
 	// globals is every module-level var, in declaration order; globalOf
 	// indexes back from the declaration that introduced them.

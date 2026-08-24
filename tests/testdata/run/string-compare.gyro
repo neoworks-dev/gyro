@@ -1,0 +1,47 @@
+// compare on a string orders it lexicographically by byte, which is the
+// order its code points are in. It is part of the type, so a generic body
+// that calls compare works at T = string as it does at T = i32.
+
+import { println, Array } from "stdlib"
+
+fn max<T>(a: T, b: T): T !{ &a, &b } {
+  if a.compare(b) > 0 {
+    return a
+  }
+  return b
+}
+
+fn sort(xs: *Array<string>) {
+  for var i: usize = 1; i < xs.len(); i += 1 {
+    var j = i
+    while j > 0 && xs.get(j).compare(xs.get(j - 1)) < 0 {
+      var earlier = xs.get(j - 1)
+      var later = xs.get(j)
+      xs.set(j - 1, later)
+      xs.set(j, earlier)
+      j -= 1
+    }
+  }
+}
+
+fn main() {
+  println("abc".compare("abd"))
+  println("abd".compare("abc"))
+  println("abc".compare("abc"))
+  println("ab".compare("abc"))
+  println("".compare(""))
+  println("é".compare("e"))
+
+  println(max("pear", "apple"))
+  println(max(3, 7))
+
+  var names = Array<string>::new()
+  defer names.free()
+  names.push("pear")
+  names.push("apple")
+  names.push("fig")
+  sort(&names)
+  for name in names.slice() {
+    println(name)
+  }
+}

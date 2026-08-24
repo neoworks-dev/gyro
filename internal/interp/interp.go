@@ -8,6 +8,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -84,6 +85,11 @@ type interp struct {
 	stderr  io.Writer
 	args    []string
 	modules map[*loader.Module]*moduleEnv
+	// runtimeTypes are the bundled types whose values the runtime owns —
+	// Array, Mutex, File — keyed by name. A runtime value carries no
+	// declaration of its own, so this is how a method written beside the
+	// declaration is found.
+	runtimeTypes map[string]*typeDef
 	// exit aborts the process on panic; tests replace it.
 	exit func(code int)
 }
@@ -109,11 +115,12 @@ func (p *Panic) Error() string {
 // ignored when main declares no parameters.
 func Run(program *loader.Program, args []string, stdout, stderr io.Writer) error {
 	in := &interp{
-		stdout:  stdout,
-		stderr:  stderr,
-		args:    args,
-		modules: map[*loader.Module]*moduleEnv{},
-		exit:    os.Exit,
+		stdout:       stdout,
+		stderr:       stderr,
+		args:         args,
+		modules:      map[*loader.Module]*moduleEnv{},
+		runtimeTypes: map[string]*typeDef{},
+		exit:         os.Exit,
 	}
 	return in.run(program)
 }
@@ -196,7 +203,13 @@ func (in *interp) setupModule(module *loader.Module) {
 			}
 			m.scope[d.Name] = &binding{fn: def}
 		case *ast.StructDecl:
-			m.scope[d.Name] = &binding{typ: &typeDef{name: d.Name, module: m, structDecl: d}}
+			def := &typeDef{name: d.Name, module: m, structDecl: d}
+			m.scope[d.Name] = &binding{typ: def}
+			// A bundled struct with no fields is an opaque handle: its
+			// values come from the runtime and carry no declaration.
+			if stdlib.IsBundled(module.Path) && len(d.Fields) == 0 {
+				in.runtimeTypes[d.Name] = def
+			}
 		case *ast.EnumDecl:
 			m.scope[d.Name] = &binding{typ: &typeDef{name: d.Name, module: m, enumDecl: d}}
 		case *ast.VarDecl:

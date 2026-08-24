@@ -1,18 +1,15 @@
 package nasm
 
 import (
-	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/gyro-lang/gyro/internal/crt"
 	"github.com/gyro-lang/gyro/internal/metals"
 )
-
-//go:embed runtime/rt.c
-var runtimeSource string
 
 // Toolchain reports what `gyro build` needs from the system.
 func Toolchain() error {
@@ -44,7 +41,7 @@ func Build(module *metals.Module, output string) error {
 	if err := os.WriteFile(asmPath, []byte(asm), 0o644); err != nil {
 		return fmt.Errorf("nasm: %w", err)
 	}
-	if err := os.WriteFile(runtimePath, []byte(runtimeSource), 0o644); err != nil {
+	if err := os.WriteFile(runtimePath, []byte(crt.Source), 0o644); err != nil {
 		return fmt.Errorf("nasm: %w", err)
 	}
 

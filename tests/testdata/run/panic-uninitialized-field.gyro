@@ -2,6 +2,7 @@
 // the same bug as reading an unwritten local.
 //gyro:panic uninitialized
 //gyro:skip native the C runtime does not poison uninitialized storage
+//gyro:skip cnative the C runtime does not poison uninitialized storage
 
 import { println } from "stdlib"
 import { alloc, free } from "mem"

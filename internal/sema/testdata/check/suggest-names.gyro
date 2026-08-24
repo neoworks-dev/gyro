@@ -12,7 +12,7 @@ fn suggestsAnImport() {
 }
 
 fn suggestsAMethod(xs: i32[]) {
-  var n = len(xs)                //~ help: len is a method on Array and String, not a free function
+  var n = len(xs)                //~ help: len is a method on Array and String and Map, not a free function
 }
 
 fn suggestsASpelling() {

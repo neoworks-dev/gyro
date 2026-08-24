@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -120,7 +121,7 @@ func (c *checker) instantiateStruct(origin *types.Struct, args []types.Type) *ty
 		return origin
 	}
 
-	key := types.Key(args)
+	key := instanceCacheKey(args)
 	cache := c.program.structInstances[origin]
 	if cache == nil {
 		cache = map[string]*types.Struct{}
@@ -154,7 +155,7 @@ func (c *checker) instantiateEnum(origin *types.Enum, args []types.Type) *types.
 		return origin
 	}
 
-	key := types.Key(args)
+	key := instanceCacheKey(args)
 	cache := c.program.enumInstances[origin]
 	if cache == nil {
 		cache = map[string]*types.Enum{}
@@ -181,6 +182,62 @@ func (c *checker) instantiateEnum(origin *types.Enum, args []types.Type) *types.
 		instance.Variants = append(instance.Variants, types.Variant{Name: variant.Name, Payload: payload})
 	}
 	return instance
+}
+
+// instanceCacheKey renders the cache key of one argument list. It is
+// types.Key with one refinement: a type parameter is keyed by identity,
+// not by name. Two declarations may both name a parameter K, and keying
+// by name would hand the second declaration the first one's Array<K> —
+// an instance whose Args mention a foreign parameter that pointer-keyed
+// substitution can never rewrite.
+func instanceCacheKey(args []types.Type) string {
+	parts := make([]string, len(args))
+	for i, arg := range args {
+		parts[i] = cacheString(arg)
+	}
+	return strings.Join(parts, ",")
+}
+
+func cacheString(t types.Type) string {
+	switch t := t.(type) {
+	case *types.TypeParam:
+		return fmt.Sprintf("%s@%p", t.Name, t)
+	case *types.Pointer:
+		return "*" + cacheString(t.Elem)
+	case *types.Optional:
+		return cacheString(t.Elem) + "?"
+	case *types.Slice:
+		return cacheString(t.Elem) + "[]"
+	case *types.Array:
+		return fmt.Sprintf("%s[%d]", cacheString(t.Elem), t.Length)
+	case *types.Chan:
+		return "chan<" + cacheString(t.Elem) + ">"
+	case *types.Future:
+		return "future<" + cacheString(t.Result) + ">"
+	case *types.Tuple:
+		parts := make([]string, len(t.Elems))
+		for i, elem := range t.Elems {
+			parts[i] = cacheString(elem)
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	case *types.Func:
+		parts := make([]string, len(t.Params))
+		for i, param := range t.Params {
+			parts[i] = cacheString(param)
+		}
+		return "fn(" + strings.Join(parts, ", ") + "): " + cacheString(t.Result)
+	case *types.Struct:
+		if len(t.Args) > 0 {
+			return t.Name + "<" + instanceCacheKey(t.Args) + ">"
+		}
+		return t.Name
+	case *types.Enum:
+		if len(t.Args) > 0 {
+			return t.Name + "<" + instanceCacheKey(t.Args) + ">"
+		}
+		return t.Name
+	}
+	return t.String()
 }
 
 // identityArgs reports whether the arguments are the origin's own type
@@ -231,6 +288,12 @@ func unify(pattern, actual types.Type, s subst) bool {
 		a, ok := actual.(*types.Optional)
 		return ok && unify(p.Elem, a.Elem, s)
 	case *types.Slice:
+		// A fixed-size array lends a view of itself wherever a slice is
+		// wanted, so unification has to see through that too — otherwise
+		// sort(xs) takes an Array<T> and refuses [1, 2, 3].
+		if a, ok := actual.(*types.Array); ok {
+			return unify(p.Elem, a.Elem, s)
+		}
 		a, ok := actual.(*types.Slice)
 		return ok && unify(p.Elem, a.Elem, s)
 	case *types.Array:

@@ -256,29 +256,29 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 	c.applyExplicitTypeArgs(call, method, s)
 
 	// Type the arguments: concrete parameters check directly, parameters
-	// mentioning free type parameters infer them from the argument.
+	// mentioning free type parameters infer them from the argument. A
+	// closure whose parameter types are left to context waits for the
+	// second pass, by which time the other arguments have said what the
+	// type parameters are — `pick(fn(x) x * 3, 5)` reads its shape from
+	// the 5, whichever side of the call that sits.
 	poisoned := false
+	var deferred []int
 	for i, arg := range call.Args {
 		c.checkNamedArg(arg)
 		if i >= len(sig.Params) {
 			c.expr(arg.Value)
 			continue
 		}
-
-		pattern := c.substType(sig.Params[i], s)
-		if !containsTypeParam(pattern) {
-			c.assignExpr(arg.Value, pattern, argContext(i, target.name))
+		if needsContext(arg.Value) && containsTypeParam(c.substType(sig.Params[i], s)) {
+			deferred = append(deferred, i)
 			continue
 		}
-
-		argType := types.Default(c.expr(arg.Value))
-		if flexible(argType) {
+		if !c.checkCallArg(call, target, sig, s, i) {
 			poisoned = true
-			continue
 		}
-		if !unify(pattern, argType, s) {
-			c.errorf(arg.Value.Pos(), "cannot use %s as %s in %s",
-				describeType(argType), c.substType(pattern, s), argContext(i, target.name))
+	}
+	for _, i := range deferred {
+		if !c.checkCallArg(call, target, sig, s, i) {
 			poisoned = true
 		}
 	}
@@ -303,6 +303,48 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 		return &types.Future{Result: result}
 	}
 	return result
+}
+
+// checkCallArg types one argument against its parameter, inferring the
+// free type parameters the pattern names. It reports whether the argument
+// came out clean enough to check the instantiation with.
+func (c *checker) checkCallArg(call *ast.CallExpr, target callee, sig *types.Func, s subst, i int) bool {
+	arg := call.Args[i]
+	pattern := c.substType(sig.Params[i], s)
+	if !containsTypeParam(pattern) {
+		c.assignExpr(arg.Value, pattern, argContext(i, target.name))
+		return true
+	}
+
+	argType := types.Default(c.expr(arg.Value))
+	if flexible(argType) {
+		return false
+	}
+	if !unify(pattern, argType, s) {
+		c.errorf(arg.Value.Pos(), "cannot use %s as %s in %s",
+			describeType(argType), c.substType(pattern, s), argContext(i, target.name))
+		return false
+	}
+	return true
+}
+
+// needsContext reports whether an expression can only be typed once the
+// type it is wanted at is known: a closure that leaves a parameter type
+// or its result to be filled in.
+func needsContext(e ast.Expr) bool {
+	closure, ok := e.(*ast.ClosureExpr)
+	if !ok {
+		return false
+	}
+	if len(closure.Results) == 0 {
+		return true
+	}
+	for _, param := range closure.Params {
+		if param.Type == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *checker) applyExplicitTypeArgs(call *ast.CallExpr, method *types.Method, s subst) {
@@ -464,10 +506,21 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 
 // builtinMethod is the method surface of the built-in types, which needs no
 // import: close on channels, len on the sliceable types, runes on strings,
-// compare on the ordered primitives, message on error.
+// compare on the ordered primitives, hash on the hashable ones, message on
+// error.
 func builtinMethod(t types.Type, name string) *types.Method {
 	valueMethod := func(sig *types.Func) *types.Method {
 		return &types.Method{Name: name, Recv: types.ValueRecv, Sig: sig}
+	}
+
+	// An untyped literal receiver takes its default type, the way it does
+	// in every other position: 8.hash() is i32's.
+	t = types.Default(t)
+
+	// hash is derived wherever == is: a type that compares field-wise
+	// hashes field-wise, so the two can never disagree.
+	if name == "hash" && types.IsHashable(t) {
+		return valueMethod(&types.Func{Result: types.Uint64})
 	}
 
 	switch t := t.(type) {
@@ -493,9 +546,15 @@ func builtinMethod(t types.Type, name string) *types.Method {
 		// storage. Only the first borrows.
 		case t.Kind == types.StringKind && name == "bytes":
 			return valueMethod(&types.Func{Result: &types.Slice{Elem: types.Uint8}})
+		// Strings order lexicographically by byte, which is the order
+		// their code points are in. compare is spelled the same way it is
+		// on the numeric primitives so a generic body can call it either
+		// way round.
+		case t.Kind == types.StringKind && name == "compare":
+			return valueMethod(&types.Func{Params: []types.Type{types.String}, Required: 1, Result: types.Int32})
 		case t.Kind == types.ErrorKind && name == "message":
 			return valueMethod(&types.Func{Result: types.String})
-		case name == "compare" && types.IsOrdered(t) && !types.IsUntyped(t):
+		case name == "compare" && types.IsOrdered(t):
 			return valueMethod(&types.Func{Params: []types.Type{t}, Required: 1, Result: types.Int32})
 		}
 	}

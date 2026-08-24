@@ -584,12 +584,17 @@ func foldInts(op token.Kind, x, y *big.Int) *big.Int {
 	return nil
 }
 
+// pickTyped resolves an operation with a flexible side: the concretely
+// typed side wins. An untyped literal is not a winner — defaulting it
+// against a generic operand would fix the type before instantiation gets
+// to see the real one, turning `xs.len() * 2` into i32 inside a generic
+// body. Flexible-versus-literal stays flexible instead.
 func (c *checker) pickTyped(left, right types.Type) types.Type {
-	if !flexible(left) {
-		return types.Default(left)
+	if !flexible(left) && !types.IsUntyped(left) {
+		return left
 	}
-	if !flexible(right) {
-		return types.Default(right)
+	if !flexible(right) && !types.IsUntyped(right) {
+		return right
 	}
 	return types.Unknown
 }

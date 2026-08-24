@@ -305,8 +305,8 @@ both is the collision Gyro already reports, and importing one is
 unambiguous. Being a method, it cannot be called without a receiver.
 
 The compiler's own surface — `len`, `runes`, `bytes`, `close`, `compare`,
-`message` — is part of the type rather than an addition to it. It needs
-no import and an extension of the same name does not displace it.
+`hash`, `message` — is part of the type rather than an addition to it. It
+needs no import and an extension of the same name does not displace it.
 
 `void` and `error` cannot be extended: nothing has type void, and `error`
 is a contract satisfied by whatever carries `message()`, not a type.
@@ -372,6 +372,19 @@ body consisting of one expression needs neither braces nor `return`:
 ```gyro
 xs.map(fn(x) x * 2)
 xs.filter(fn(x) x > 0)
+```
+
+"Known from context" includes a generic call, where the context is the
+instantiation. A closure argument is typed after the arguments that fix
+the type parameters, so it does not matter which side of the call the
+closure sits on:
+
+```gyro
+fn apply<T>(x: T, f: fn(T): T): T !{ &x }
+fn twice<T>(f: fn(T): T, x: T): T !{ &x }
+
+apply(5, fn(v) v * 3)      // T is i32, from the 5
+twice(fn(v) v + 1, 10)     // likewise, though the closure comes first
 ```
 
 A closure captures the locals it uses by **copy**, implicitly. The capture
@@ -549,6 +562,25 @@ sep)` stays a function: its receiver would be the slice, not a string.
 Known cost, accepted: `from_utf8` and `text()` copy, so building text
 allocates, and nothing frees those allocations yet.
 
+`Map<K, V>` is the hash map, ordinary Gyro over `Array<T>` in the same
+spirit: buckets of `(K, V)` pairs chained on the derived `hash()`. Any
+key that supports `==` works, because `hash()` is derived wherever `==`
+is and over the same parts. `insert` replaces on an equal key, `get`
+answers `V?` (so a value type must not itself be optional — optionals do
+not nest), `remove` reports whether the key was present, and `keys()`
+snapshots into a fresh `Array<K>` in deterministic bucket order. Like
+`Array<T>`, a map is freed explicitly with `free()`.
+
+```gyro
+var ages = Map<string, i32>::new()
+defer ages.free()
+ages.insert("ada", 36)
+var age = ages.get("ada")
+if age != null {
+  println(age)
+}
+```
+
 Known cost, accepted: a slice can outlive the memory behind it, and nothing
 currently detects that.
 
@@ -556,9 +588,22 @@ currently detects that.
 
 `==` and `!=` work on primitives, pointers (identity), tuples and enums, and
 on structs as compiler-derived field-wise comparison. Slices do not compare
-with `==` (compare contents explicitly). Comparison operators `< <= > >=`
-work on numeric primitives and `rune` only; ordering a user type is spelled
-`a.compare(b)`.
+with `==` (compare contents explicitly).
+
+`hash(): u64` is derived wherever `==` is, and over the same parts: a
+struct hashes its fields, a tuple its elements, an enum its tag and
+payload. Two values that compare equal therefore hash equal, without
+anything being written down. A type that wants a different rule declares
+its own `hash`, which displaces the derived one the way `to_string`
+displaces derived printing — and then it owns keeping the two agreed.
+Pointers are the one thing `==` accepts and `hash` does not: `==` on a
+pointer is identity, and an address is not the same from run to run.
+
+Comparison operators `< <= > >=`
+work on numeric primitives and `rune` only; ordering anything else is
+spelled `a.compare(b)`, which returns -1, 0 or 1. `string` carries one,
+ordering lexicographically by byte — the order its code points are in —
+and a user type orders by writing its own.
 
 ---
 
@@ -1067,7 +1112,9 @@ unresolved name is an error — and **types every expression**:
   `var _, _ =`. An un-awaited async call in statement position is too.
 - Built-in types carry a small fixed method surface, no import needed:
   `ch.close()`, `xs.len(): usize`, `s.len()`, `s.runes(): rune[]`,
-  `a.compare(b)` on numeric primitives and `rune`, `err.message()`.
+  `a.compare(b)` on the numeric primitives, `rune` and `string`,
+  `v.hash(): u64` on those and on tuples, structs and enums of them,
+  `err.message()`.
 - `for..in` handles slices, arrays, ranges, channels, and the duck-typed
   `next(*self): (T, bool)` / `iter()` contract.
 - A match over an enum is **exhaustive**: the missing variants are named

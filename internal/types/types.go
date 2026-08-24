@@ -325,12 +325,62 @@ func IsFloat(t Type) bool {
 
 func IsNumeric(t Type) bool { return IsInteger(t) || IsFloat(t) }
 
+func IsString(t Type) bool {
+	basic, ok := t.(*Basic)
+	return ok && basic.Kind == StringKind
+}
+
 func IsUntyped(t Type) bool {
 	basic, ok := t.(*Basic)
 	if !ok {
 		return false
 	}
 	return basic.Kind == UntypedInt || basic.Kind == UntypedFloat || basic.Kind == NullKind
+}
+
+// IsHashable reports whether hash() is derived for t. It follows == : the
+// primitives that compare by value, and the composites that compare
+// field-wise. A pointer is left out although == accepts one, because it
+// compares by address and an address is not the same run to run.
+func IsHashable(t Type) bool {
+	switch t := t.(type) {
+	case *Basic:
+		switch {
+		case IsUntyped(t):
+			return false
+		case IsNumeric(t):
+			return true
+		}
+		return t.Kind == StringKind || t.Kind == BoolKind || t.Kind == RuneKind
+	case *Tuple:
+		return everyHashable(t.Elems)
+	case *Struct:
+		for _, field := range t.Fields {
+			if !IsHashable(field.Type) {
+				return false
+			}
+		}
+		// A fieldless struct is an opaque runtime handle, which holds
+		// nothing to hash.
+		return len(t.Fields) > 0
+	case *Enum:
+		for _, variant := range t.Variants {
+			if !everyHashable(variant.Payload) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func everyHashable(list []Type) bool {
+	for _, elem := range list {
+		if !IsHashable(elem) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsOrdered reports whether < <= > >= apply: numeric primitives and rune.

@@ -1,0 +1,76 @@
+// hash() is derived wherever == is, and over the same parts, so two
+// values that compare equal hash equally. A type that declares its own
+// hash displaces the derived one, the way to_string displaces derived
+// printing.
+
+import { println } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+struct Named {
+  label: string
+  at: Point
+}
+
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Dot,
+}
+
+struct Version {
+  major: i32
+  minor: i32
+}
+
+// Only the major number identifies a version here, so both == and hash
+// would disagree with each other if hash were left derived. Declaring one
+// is how a type says so.
+fn Version::hash(self): u64 {
+  return self.major.hash()
+}
+
+fn main() {
+  var n: i32 = 7
+  var same: i32 = 7
+  println(n.hash() == same.hash())
+  println(n.hash() == 8.hash())
+
+  var big: u64 = 7
+  println(big.hash() == n.hash())
+
+  println("abc".hash() == "abc".hash())
+  println("abc".hash() == "abd".hash())
+  println("".hash())
+
+  println(true.hash() == true.hash())
+  println(false.hash())
+
+  var zero: f64 = 0.0
+  var negative: f64 = -0.0
+  println(zero == negative)
+  println(zero.hash() == negative.hash())
+
+  var here = Point{ x: 1, y: 2 }
+  var there = Point{ x: 1, y: 2 }
+  var elsewhere = Point{ x: 2, y: 1 }
+  println(here == there && here.hash() == there.hash())
+  println(here.hash() == elsewhere.hash())
+
+  var deep = Named{ label: "origin", at: here }
+  var alike = Named{ label: "origin", at: there }
+  println(deep == alike && deep.hash() == alike.hash())
+
+  println((1, "a").hash() == (1, "a").hash())
+  println((1, "a").hash() == (1, "b").hash())
+
+  println(Shape::Circle(2.5).hash() == Shape::Circle(2.5).hash())
+  println(Shape::Circle(2.5).hash() == Shape::Rect(2.5, 0.0).hash())
+  println(Shape::Dot.hash() == Shape::Dot.hash())
+
+  println(Version{ major: 3, minor: 1 }.hash() == Version{ major: 3, minor: 9 }.hash())
+  println(Version{ major: 3, minor: 1 }.hash() == 3.hash())
+}

@@ -216,6 +216,13 @@ func (f *frame) nativeMethodThunk(cell *Value, name string, args []Value, offset
 	recv := *cell
 	call := &nativeCall{frame: f, offset: offset, self: recv, args: defaultedArgs(args)}
 
+	// hash on a primitive is part of the type, so it answers before an
+	// extension of the same name can. A composite's is derived later,
+	// after any hash the type declares itself.
+	if name == "hash" && isPrimitive(recv) {
+		return f.hashThunk(recv, offset)
+	}
+
 	switch recv := recv.(type) {
 	case *ArrayObj:
 		return arrayMethod(recv, name, call)
@@ -248,6 +255,11 @@ func (f *frame) nativeMethodThunk(cell *Value, name string, args []Value, offset
 					elems[i] = UintVal{V: uint64(recv[i]), Kind: types.U8}
 				}
 				return SliceVal{Elems: elems}
+			}
+		case "compare":
+			return func() Value {
+				other, _ := call.arg(0).(StringVal)
+				return IntVal{V: int64(strings.Compare(string(recv), string(other))), Kind: types.I32}
 			}
 		case "runes":
 			return func() Value {

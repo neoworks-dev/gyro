@@ -1,0 +1,48 @@
+// A closure handed to a generic function reads its parameter types from
+// the instantiation, whichever argument fixes it and whichever side of
+// the call that argument sits on.
+
+import { println, Array } from "stdlib"
+
+fn each<T>(xs: T[], visit: fn(T)) {
+  for x in xs {
+    visit(x)
+  }
+}
+
+fn map_into<T, U>(xs: T[], out: *Array<U>, f: fn(T): U) {
+  for x in xs {
+    out.push(f(x))
+  }
+}
+
+fn apply<T>(x: T, f: fn(T): T): T !{ &x } {
+  return f(x)
+}
+
+// The closure comes first, so nothing before it says what T is.
+fn twice<T>(f: fn(T): T, x: T): T !{ &x } {
+  return f(f(x))
+}
+
+fn main() {
+  var xs = Array<i32>::new()
+  defer xs.free()
+  xs.push(1)
+  xs.push(2)
+  each(xs.slice(), fn(v) println(v))
+
+  var labels = Array<string>::new()
+  defer labels.free()
+  map_into(xs.slice(), &labels, fn(v) "<#{v}>")
+  each(labels.slice(), fn(v) println(v))
+
+  println(apply(5, fn(v) v * 3))
+  println(twice(fn(v) v + 1, 10))
+  println(apply("hi", fn(v) "#{v}!"))
+
+  // A fixed-size array lends a view of itself to a T[] parameter, and
+  // that is where T comes from.
+  var raw = [1, 2, 3]
+  each(raw, fn(v) println(v))
+}

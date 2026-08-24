@@ -304,10 +304,23 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 		return f.emitCall("string::bytes", []string{value}, &types.Slice{Elem: types.Uint8}, false)
 
 	case "compare":
-		name := f.ensureCompareFn(recvType)
 		left := f.lowerExpr(recv, nil)
 		right := f.lowerExpr(call.Args[0].Value, recvType)
-		return f.emitCall(name, []string{left, right}, types.Int32, false)
+		// Ordering strings walks their bytes, so it belongs to the
+		// runtime; the numeric comparisons are two instructions and are
+		// synthesized instead.
+		if types.IsString(recvType) {
+			f.l.ensureImport("string::compare", &metals.FnType{
+				Params: []metals.Type{metals.TStr, metals.TStr},
+				Result: metals.TInt32,
+			})
+			return f.emitCall("string::compare", []string{left, right}, types.Int32, false)
+		}
+		return f.emitCall(f.ensureCompareFn(recvType), []string{left, right}, types.Int32, false)
+
+	case "hash":
+		value := f.lowerExpr(recv, nil)
+		return f.emitCall(f.l.hashFor(recvType), []string{value}, types.Uint64, false)
 
 	case "message":
 		name := f.ensureErrorMessage()

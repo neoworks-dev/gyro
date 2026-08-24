@@ -34,6 +34,10 @@ func (m *machine) native(name string, args []value) value {
 		return m.fileNative(method, arg)
 	case "string":
 		switch method {
+		case "compare":
+			left := arg(0).(strVal)
+			right := arg(1).(strVal)
+			return intVal{v: int64(strings.Compare(string(left), string(right))), kind: metals.I32}
 		case "runes":
 			text := arg(0).(strVal)
 			runes := []rune(string(text))
@@ -101,6 +105,11 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 			}
 		}
 		return strVal(bytes)
+	case "hash":
+		// The import is named for its parameter type — hash<i32>,
+		// hash<str> — but the value already carries its shape, so one
+		// case answers for all of them.
+		return uintVal{v: hashOf(m, arg(0)), kind: metals.U64}
 	case "spawn":
 		fn, ok := arg(0).(fnVal)
 		if !ok {

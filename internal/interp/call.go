@@ -7,11 +7,13 @@ import (
 // prepareCall resolves the callee and evaluates the arguments now, and
 // returns the invocation as a thunk. Ordinary calls run it immediately;
 // defer registers it for block exit, which is exactly Go's argument
-// timing.
+// timing. The arguments copy where the callee's parameters say they
+// should, which is why the copy happens once the callee is known rather
+// than here — see adoptArgs.
 func (f *frame) prepareCall(call *ast.CallExpr, env *env) func() Value {
 	args := make([]Value, len(call.Args))
 	for i, arg := range call.Args {
-		args[i] = copyValue(f.eval(arg.Value, env))
+		args[i] = f.eval(arg.Value, env)
 	}
 	typeArgs := typeArgList(call)
 
@@ -44,9 +46,46 @@ func (f *frame) closureThunk(value Value, args []Value, offset int) func() Value
 	if !ok {
 		f.in.panicf(f.module, offset, "value is not callable")
 	}
+	settled := adoptArgs(closureParams(closure), args)
 	return func() Value {
-		return f.in.callClosure(closure, args)
+		return f.in.callClosure(closure, settled)
 	}
+}
+
+func closureParams(closure *ClosureVal) []ast.Param {
+	switch {
+	case closure.Decl != nil:
+		return closure.Decl.Params
+	case closure.Def != nil && closure.Def.decl != nil:
+		return closure.Def.decl.Params
+	}
+	return nil
+}
+
+// adoptArgs settles the arguments against the parameters they fill. An
+// argument copies, since a call passes by value — except into a slice
+// parameter, which is a borrowed view: a fixed-size array lends its
+// elements there rather than handing over a copy of them.
+//
+// This runs where the callee becomes known, which is also where a defer
+// registers, so a deferred call still snapshots its arguments.
+func adoptArgs(params []ast.Param, args []Value) []Value {
+	out := make([]Value, len(args))
+	for i, arg := range args {
+		if i < len(params) && isSliceType(params[i].Type) {
+			if array, ok := arg.(ArrayVal); ok {
+				out[i] = SliceVal{Elems: array.Elems}
+				continue
+			}
+		}
+		out[i] = copyValue(arg)
+	}
+	return out
+}
+
+func isSliceType(t ast.Type) bool {
+	array, ok := t.(*ast.ArrayType)
+	return ok && array.Length == nil
 }
 
 // prepareNamedCall handles f(...) for a bare name: a local closure, a
@@ -73,6 +112,9 @@ func (f *frame) prepareNamedCall(fun *ast.Ident, args []Value, typeArgs []ast.Ty
 // defThunk invokes a declared function: native bodies dispatch to the
 // runtime, async declarations produce a future.
 func (f *frame) defThunk(def *funcDef, self Value, args []Value, typeArgs []ast.Type, offset int) func() Value {
+	if def.decl != nil {
+		args = adoptArgs(def.decl.Params, args)
+	}
 	if def.native != nil {
 		return func() Value {
 			result := def.native(&nativeCall{
@@ -93,10 +135,13 @@ func (f *frame) defThunk(def *funcDef, self Value, args []Value, typeArgs []ast.
 	}
 }
 
+// defaultedArgs settles the arguments of a runtime call, which has no
+// declared parameters to adopt them against: an untyped literal takes its
+// default type, and the value copies the way any other argument does.
 func defaultedArgs(args []Value) []Value {
 	out := make([]Value, len(args))
 	for i, arg := range args {
-		out[i] = defaultUntyped(arg)
+		out[i] = copyValue(defaultUntyped(arg))
 	}
 	return out
 }
@@ -121,6 +166,12 @@ func (f *frame) prepareMethodCall(fun *ast.SelectorExpr, args []Value, env *env)
 	if def := f.userMethodOf(*cell, fun.Name); def != nil {
 		self := f.receiverFor(def, cell)
 		return f.defThunk(def, self, args, nil, fun.Offset)
+	}
+
+	// A composite's derived hash, which a declared hash displaces the way
+	// a declared to_string displaces the derived representation.
+	if fun.Name == "hash" {
+		return f.hashThunk(*cell, fun.Offset)
 	}
 
 	// A struct field holding a closure.

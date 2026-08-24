@@ -1,19 +1,28 @@
-# The native backend
+# The native backends
 
-The native backend compiles a verified METALS module to x86-64 NASM
-assembly, assembles it, and links it with a small C runtime into a Linux
-executable:
+There are two, and they are siblings. The assembler backend compiles a
+verified METALS module to x86-64 NASM assembly, assembles it, and links
+it with a small C runtime into a Linux executable; the C backend emits
+one C translation unit instead and hands it to `cc` with the same
+runtime:
 
 ```sh
-gyro build examples/hello.gyro -o hello   # nasm + cc must be installed
+gyro build examples/hello.gyro -o hello              # nasm + cc
+gyro build examples/hello.gyro --backend c -o hello  # cc alone
 ./hello
 ```
 
-The Go code lives in `internal/nasm`; the runtime is `internal/nasm/rt.c`,
-embedded into the compiler and handed to `cc` at link time. Correctness
-is defined by the oracle chain: for every example, the native binary's
-stdout, stderr and exit code must be byte-identical to `gyro run`, which
-is itself diff-tested against the METALS evaluator.
+The Go code lives in `internal/nasm` and `internal/cgen`; the runtime is
+`internal/crt/src/rt.c`, embedded into the compiler and handed to `cc` at
+link time by both. Correctness is defined by the oracle chain: for every
+example, a native binary's stdout, stderr and exit code must be
+byte-identical to `gyro run`, which is itself diff-tested against the
+METALS evaluator.
+
+Everything below — the value layout, the semantics the codegen must
+preserve, the runtime contract — belongs to both backends. Only the
+"Frames and the ABI" section is the assembler's alone; the C backend's
+own section, at the end, says what it does instead.
 
 The four decisions that shape the backend — C runtime on libc, System V
 ABI, spill-everything codegen, OS-thread concurrency — are recorded in
@@ -50,6 +59,9 @@ outlives the frame of the array it borrows dangles — the same
 already-accepted hazard `decisions.md` records for the language.
 
 ## Frames and the ABI
+
+This section is the assembler backend's alone; the C backend leaves
+frames and calling conventions to the C compiler.
 
 Every METALS register gets one frame slot of its type's size; every
 instruction loads its operands from slots, computes in `rax`/`rcx`/
@@ -116,6 +128,11 @@ Obligations beyond the obvious:
   errors (`stat gyro.toml: no such file or directory`) and the
   interpreter's own messages (`"x" is not an i32`, even
   `the interpreter has no network`).
+- **Hashing matches the oracle bit for bit.** `hash<T>` covers the
+  scalars only — splitmix64 over an integer's word or a float's bits,
+  FNV-1a over a string's bytes, `-0.0` folded into `0.0`. The
+  composites never reach C: the lowering synthesizes one function per
+  type and those call these.
 - **Channels.** Mutex + condvar ring buffer; capacity 0 is a true
   rendezvous (the sender blocks until a receiver takes the element).
   `recv` fills a `(element, open)` tuple; a closed channel yields
@@ -137,6 +154,65 @@ Obligations beyond the obvious:
   *not* detected natively — the evaluator's poisoned cells have no
   cheap equivalent — so programs that would abort there diverge
   instead of matching.
+
+## The C backend
+
+`internal/cgen` emits one self-contained C file per program and compiles
+it with `cc -O1 -fno-strict-aliasing program.c rt.c -lpthread -lm`. It
+exists for two reasons, neither of them replacing the assembler: it
+checks the METALS lowering without the assembler-level bug surface — a
+disagreement between the two native tiers on the same module is a codegen
+bug, and the C one is far easier to read — and it gives us a second
+binary from the same IR to benchmark the assembler's output against.
+`gyro cgen file.gyro` prints the C the way `gyro nasm` prints the asm.
+
+What it does the same way:
+
+- **The layout table above, exactly.** Every generated struct has
+  8-byte members only, so C's natural layout *is* the documented one and
+  needs no packing attributes. Each typedef carries a `_Static_assert` on
+  its size, which turns any drift into a build error rather than a wrong
+  answer at the runtime boundary.
+- **The runtime.** The same `rt.c`, the same `gy_*` symbols, the same
+  monomorphized-import table (`Array<Point>::push` becomes
+  `gy_array_push(handle, &value, 32)`), the same abort messages.
+- **Structured control flow.** `block`/`loop`/`br`/`br_if` become C
+  labels and `goto`; a `br` only ever targets an enclosing label, so
+  every jump is a legal one. `if` and `switch` map straight across.
+  Nothing inside a case body emits a C loop or switch of its own, so no
+  `break` can be captured by the wrong construct.
+- **The semantics C would otherwise get wrong.** Checked arithmetic,
+  Go's shift semantics, `idiv`'s zero and MIN/−1 tests, and the checked
+  conversions are a block of `static inline` helpers at the top of the
+  file. The tests come *before* the operation, because C's signed
+  overflow, division by zero and shift counts past the width are
+  undefined rather than trapping.
+
+What it does differently:
+
+- **Registers are C locals.** A METALS register is not SSA but its type
+  is fixed at the first assignment, which is exactly what a C local
+  wants. `slot` gets a second, addressable local that the instruction
+  re-zeroes, so a slot inside a loop is a fresh cell each pass;
+  `slice.of` borrows it with `&`, the same borrow the asm makes of a
+  stack slot.
+- **Aggregates pass and return by value.** There is no sret and no
+  argument-pointer convention between generated functions: C's own
+  struct passing already does that job, and the runtime boundary is
+  untouched because `rt.c` only ever sees scalars and pointers. The
+  entry point is the one exception — `rt.c` calls
+  `gy_user_main(void *args)` with a pointer to the command-line slice,
+  so a small wrapper dereferences it.
+- **Register allocation is the C compiler's.** The asm backend spills
+  every register by design; `cc -O1` does not. That difference is the
+  point of having both.
+
+The C compiler must accept two GNU extensions: a zero-length array
+member, which is what keeps `array<T, 0>` at size 0, and casting between
+`void *` and a function pointer. `-fno-strict-aliasing` is not optional:
+aggregates move through `void *` all over the generated code — array
+elements, channel payloads, future cells — and type-based aliasing would
+let the optimizer assume those accesses cannot touch the same storage.
 
 ## v1 limitations
 

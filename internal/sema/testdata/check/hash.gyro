@@ -1,0 +1,41 @@
+// hash() is derived wherever == is derived, and refused everywhere else.
+
+import { println, Array } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+struct Held {
+  at: *Point
+}
+
+enum Shape {
+  Circle(f64),
+  Dot,
+}
+
+fn derived(p: Point, s: Shape, pair: (i32, string), text: string, n: i32, flag: bool): u64 {
+  return p.hash() + s.hash() + pair.hash() + text.hash() + n.hash() + flag.hash()
+}
+
+// A literal receiver takes its default type, as it does anywhere else.
+fn literals(): u64 {
+  return 8.hash() + 1.5.hash()
+}
+
+fn slicesHaveNone(xs: i32[]) {
+  println(xs.hash())              //~ E0405 i32[] has no method hash
+}
+
+// A struct is hashable only where every field is: a pointer compares by
+// address, which is not the same run to run.
+fn pointersHaveNone(held: Held) {
+  println(held.hash())            //~ E0405 Held has no method hash
+}
+
+// An opaque runtime handle holds nothing to hash.
+fn handlesHaveNone(xs: Array<i32>) {
+  println(xs.hash())              //~ E0405 Array<i32> has no method hash
+}

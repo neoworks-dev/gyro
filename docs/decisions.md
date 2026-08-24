@@ -829,6 +829,20 @@ method is used, once at the call site that demanded the instantiation.
 Rejected checking generic bodies once against inferred constraints — that
 is traits by the back door, and traits were removed.
 
+Inference reads the arguments left to right, with one exception: an
+argument that cannot be typed without knowing what is wanted — a closure
+that leaves a parameter type or its result to context — waits until the
+others have bound the type parameters. Otherwise `map(xs, fn(x) x * 2)`
+would work and `twice(fn(x) x + 1, 10)` would not, which is an argument
+order rule nobody could predict. A closure that spells its types out
+still infers *for* the call, so `run(fn(): i32 { ... })` binds T as
+before.
+
+A fixed-size array unifies with a slice pattern, since it lends a view
+of itself wherever a slice is wanted. Without that, a generic over `T[]`
+took an `Array<T>::slice()` and refused `[1, 2, 3]`, while the same
+non-generic signature accepted both.
+
 ### Narrowing is symbol-level and syntactic *(new)*
 
 **Status: done (v1).** `x != null` narrows the local x inside the guarded
@@ -851,11 +865,85 @@ an evaluator anyway.
 
 **Status: done.** `close` on channels; `len` on slices, arrays and
 strings (`usize`); `runes(): rune[]` on strings; `compare(other): i32` on
-the numeric primitives and `rune` — which is what lets `max(3, 7)`
-instantiate; `message(): string` on `error`. There is no `append` on a
+the numeric primitives, `rune` and `string` — which is what lets
+`max(3, 7)` and `max("pear", "apple")` both instantiate;
+`message(): string` on `error`. There is no `append` on a
 slice: `T[]` borrows memory it cannot grow, so growth lives in
 `Array<T>::push`. The docs briefly said `xs.append(v)`; that was a relic
 and was removed.
+
+`hash` joined later still; it has its own entry below.
+
+`compare` on `string` came later, for the same reason the numeric one
+exists: without it a generic body that orders its operands has no
+instantiation at `T = string`, and nothing in the language can sort
+text. It orders lexicographically by byte, which for UTF-8 is code point
+order. Numeric compare is synthesized into two IR instructions during
+lowering; the string one walks bytes, so it is a runtime import beside
+`runes` and `bytes` instead.
+
+### `hash` is derived, alongside `==` *(new)*
+
+**Status: decided.** `hash(): u64` is part of the built-in method
+surface, derived over exactly what `==` compares: the primitives by
+value, a struct by its fields, a tuple by its elements, an enum by its
+tag and payload. A type may declare its own `hash`, which displaces the
+derived one the way `to_string` displaces derived printing.
+
+What forced it: a hash map cannot be written in Gyro without one.
+Generics are duck-typed, so `Map<K, V>` calling `key.hash()` means `K` is
+a key only if it has that method — and the alternatives both fail.
+Shipping `hash` as stdlib extension methods would mean
+`import { hash }` is a prerequisite for using a map, and every struct
+used as a key needs a hand-written hash. Leaving it to the user is worse
+still: `==` on a struct is already derived, so a hand-written hash that
+disagrees with derived equality silently breaks every map it is a key
+of. Deriving both from the same parts makes the pairing unbreakable by
+construction.
+
+A pointer is left out although `==` accepts one: `==` on a pointer is
+identity and an address is not stable from run to run, so a derived hash
+over one would differ between the three tiers. A struct holding a
+pointer is therefore not hashable either, which is the duck-typed error
+the checker already knows how to report.
+
+The numbers are pinned rather than left to each tier: a scalar goes
+through the splitmix64 finalizer, a string is FNV-1a over its bytes, and
+a composite folds its parts with FNV's prime. The composites are
+synthesized during lowering, one function per type, the way derived
+printing already is; only the scalars are runtime imports, since there
+is nothing to walk in them. `-0.0` hashes as `0.0`, because the two
+compare equal.
+
+### `Map<K, V>` is ordinary Gyro over `Array<T>` *(new)*
+
+**Status: done.** The hash map is written in the standard library in the
+language it serves: `Array<Array<(K, V)>>` buckets chained on the derived
+`hash()`, growth by doubling past two entries per bucket. The runtime
+supplies only the buffer; nothing map-shaped exists in any tier, which is
+the point — one implementation cannot diverge three ways.
+
+Chaining over open addressing, forced rather than chosen: Gyro has no
+zero values, so an empty probe slot would need a fabricated `K` to
+occupy it, while an empty bucket needs nothing. For the same reason
+`get` answers `V?` instead of Go's `(V, bool)` — the miss case has no
+`V` to return. The cost is that a value type must not itself be
+optional, since optionals do not nest; accepted until a real program
+needs `Map<K, V?>`.
+
+`insert` replaces the stored key as well as the value on an equal key
+(either is defensible; replacing is simpler than Go's keep-the-first).
+`keys()` snapshots in bucket order — deterministic across tiers because
+the hash is pinned bit for bit, but not insertion order, and not
+promised. Rejected: an iteration protocol on the map itself, which
+should arrive with `next()` iterators rather than as a one-off.
+
+Writing it surfaced two checker bugs now kept dead by
+`tests/testdata/run/generic-nested-instantiation.gyro`: an untyped
+literal against a generic operand defaulted to i32 instead of waiting
+for instantiation, and the generic-instance cache keyed type parameters
+by name, so two declarations both naming `K` shared one `Array<K>` whose
+foreign parameter substitution could never rewrite.
 
 ### Tuples assign structurally *(new)*
 
@@ -1035,6 +1123,40 @@ long-term answer for cheap spawning and are recorded as still open;
 a sequential-only v1 was rejected because it leaves the concurrent
 examples untested.
 
+### A C emitter sits beside the assembler, sharing one runtime *(new)*
+
+**Status: decided.** `internal/cgen` compiles the same verified METALS
+module to one C translation unit and links it against the same
+`rt.c`, and the execution corpus runs it as a fourth tier, `cnative`.
+It is a sibling of `internal/nasm`, not a replacement.
+
+Two jobs. It checks the lowering: when the two native tiers disagree on
+one module, the bug is in codegen rather than in METALS, and the C is
+readable where the assembly is not. And it gives us a second binary from
+the same IR, which is what the spill-everything assembler is benchmarked
+against — the gap between them is a measurement of how much the codegen
+leaves on the table, not a guess.
+
+Everything that defines behaviour is shared rather than reimplemented:
+the layout table, the abort messages, the monomorphized-import mapping,
+and above all the runtime itself, which moved to `internal/crt` so
+neither backend owns it. What differs is only the spelling — registers
+become C locals, aggregates pass by value because C's struct passing
+already does what the assembler hand-rolls with sret, and register
+allocation is `cc`'s problem.
+
+Rejected: **replacing the assembler with the C emitter.** The point of a
+native backend is to own the code generation; handing it to `cc` makes
+the compiler a source-to-source translator and forfeits both the
+learning and the ability to answer for what the binary does. Rejected:
+**forking the runtime**, one copy per backend. Two copies of Go's float
+formatter is two chances to diverge from the oracle, and the divergence
+would show up as a backend bug in whichever copy was edited second.
+Rejected: **a C backend for portability off x86-64.** That is a real
+motivation and may become one later, but it is not why this exists, and
+designing for it now would have meant giving up the byte-identical
+layout that keeps `rt.c` shared.
+
 ## Editor tooling
 
 ### Grammars and language server live in this repository *(new)*
@@ -1169,6 +1291,14 @@ The alternative — a native `String` beside `Array<T>` — would have meant
 three implementations (interpreter, evaluator, C runtime) of a builder
 with no interesting runtime requirement.
 
+That applies to the runtime-backed types themselves: `Array<T>` is
+declared like any other struct, so a method written in Gyro beside the
+declaration — `is_empty` — is called exactly like the intrinsic ones and
+exists once rather than three times. It travels with the type, the way
+any struct's methods do, so importing `Array` brings it along; only an
+extension of a *built-in* type is a module-scope name that has to be
+imported by name.
+
 ### Built-in types are extensible; an extension is an ordinary name *(new)*
 
 **Status: decided.** `fn string::trim(self): string` attaches a method to
@@ -1224,8 +1354,8 @@ borrows that were not there.
 
 **Status: decided.** A test program is a `.gyro` file in
 `tests/testdata/run` beside the output it must produce, and it runs
-through the interpreter, the METALS evaluator and a native binary, all
-held to the same golden.
+through the interpreter, the METALS evaluator and both native backends,
+all held to the same golden.
 
 Before this, each tier kept its own programs as Go string literals, so a
 case was only cross-checked if someone remembered to paste it into all

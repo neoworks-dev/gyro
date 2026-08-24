@@ -1,0 +1,20 @@
+// Array<T> is declared like any other struct; the runtime only supplies
+// the bodies that have none. A method written in Gyro beside that
+// declaration is called the same way the intrinsic ones are.
+
+// A method on a struct travels with the type, not as a name of its own,
+// so importing Array is what brings it along.
+import { println, Array } from "stdlib"
+
+fn main() {
+  var xs = Array<i32>::new()
+  defer xs.free()
+  println(xs.is_empty())
+
+  xs.push(4)
+  println(xs.is_empty())
+
+  var text = Array<string>::new()
+  defer text.free()
+  println(text.is_empty())
+}

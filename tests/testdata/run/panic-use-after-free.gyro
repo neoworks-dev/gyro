@@ -1,5 +1,6 @@
 //gyro:panic use after free
 //gyro:skip native the C runtime frees for real and cannot see the reuse
+//gyro:skip cnative the C runtime frees for real and cannot see the reuse
 
 import { println } from "stdlib"
 import { alloc, free } from "mem"

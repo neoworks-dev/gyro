@@ -105,7 +105,10 @@ void gy_free(void *p) {
 
 /* gy_format_float reproduces strconv.FormatFloat(v, 'g', -1, 64):
  * shortest round-trip digits, %e form when the decimal exponent is
- * below -4 or 21 and above, exponent at least two digits. */
+ * below -4 or 6 and above, exponent at least two digits. The upper
+ * threshold is 6 and not the width of the digits, because Go decides the
+ * form at precision 6 whenever the digits themselves are the shortest
+ * round trip: 123456 prints plainly, 1234567 prints as 1.234567e+06. */
 static void gy_format_float(double v, char *out, size_t cap) {
     if (isnan(v)) {
         snprintf(out, cap, "NaN");
@@ -144,7 +147,7 @@ static void gy_format_float(double v, char *out, size_t cap) {
         digitCount--;
     }
 
-    if (exponent < -4 || exponent >= 21) {
+    if (exponent < -4 || exponent >= 6) {
         *w++ = digits[0];
         if (digitCount > 1) {
             *w++ = '.';
@@ -315,6 +318,20 @@ int64_t gy_str_eq(const gy_str *a, const gy_str *b) {
     return a->len == b->len && memcmp(a->bytes, b->bytes, (size_t)a->len) == 0;
 }
 
+/* Lexicographic by byte, -1/0/1, matching Go's strings.Compare: the
+ * shorter string loses when it is a prefix of the longer one. */
+int64_t gy_str_compare(const gy_str *a, const gy_str *b) {
+    int64_t shared = a->len < b->len ? a->len : b->len;
+    int order = memcmp(a->bytes, b->bytes, (size_t)shared);
+    if (order != 0) {
+        return order < 0 ? -1 : 1;
+    }
+    if (a->len == b->len) {
+        return 0;
+    }
+    return a->len < b->len ? -1 : 1;
+}
+
 /* gy_str_bytes widens a string's UTF-8 into a slice of u8. It copies,
  * because a slice element is a qword under the v1 layout (native.md)
  * while a string's bytes are packed: the two cannot alias. gy_str_runes
@@ -375,6 +392,48 @@ void gy_str_runes(void *out, const gy_str *s) {
     void **slice = out;
     slice[0] = runes;
     slice[1] = (void *)count;
+}
+
+/* ------------------------------------------------------------------ */
+/* Derived hashing. The composites are folded by functions the         */
+/* lowering synthesizes; these answer for the scalars underneath them, */
+/* and must produce exactly what internal/interp/hash.go does.         */
+/* ------------------------------------------------------------------ */
+
+#define GY_FNV_OFFSET 14695981039346656037ULL
+#define GY_FNV_PRIME 1099511628211ULL
+
+/* The splitmix64 finalizer: an avalanche over one word, so small
+ * integers do not land in neighbouring buckets. */
+static uint64_t gy_hash_word(uint64_t x) {
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+    return x;
+}
+
+uint64_t gy_hash_int(int64_t v) { return gy_hash_word((uint64_t)v); }
+
+uint64_t gy_hash_uint(uint64_t v) { return gy_hash_word(v); }
+
+/* -0.0 == 0.0, so the two have to hash alike. */
+uint64_t gy_hash_float(double v) {
+    if (v == 0.0) {
+        v = 0.0;
+    }
+    uint64_t bits;
+    memcpy(&bits, &v, sizeof bits);
+    return gy_hash_word(bits);
+}
+
+uint64_t gy_hash_str(const gy_str *s) {
+    uint64_t h = GY_FNV_OFFSET;
+    for (int64_t i = 0; i < s->len; i++) {
+        h = (h ^ (unsigned char)s->bytes[i]) * GY_FNV_PRIME;
+    }
+    return h;
 }
 
 /* ------------------------------------------------------------------ */

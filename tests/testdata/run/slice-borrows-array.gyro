@@ -1,0 +1,40 @@
+// A T[] parameter is a borrowed view, so a fixed-size array passed as one
+// lends its storage: what the callee writes, the caller sees. A T[N]
+// parameter is a value and copies instead.
+
+import { println, Array } from "stdlib"
+
+fn bump(xs: i32[]) {
+  xs[0] = 99
+}
+
+fn bump_copy(xs: i32[3]) {
+  xs[0] = 77
+}
+
+fn sum(xs: i32[]): i32 {
+  var total = 0
+  for x in xs {
+    total += x
+  }
+  return total
+}
+
+fn main() {
+  var xs = [1, 2, 3]
+  bump(xs)
+  println(xs[0])
+
+  bump_copy(xs)
+  println(xs[0])
+
+  // The same holds through an owning Array's view.
+  var owned = Array<i32>::new()
+  defer owned.free()
+  owned.push(4)
+  owned.push(5)
+  bump(owned.slice())
+  println(owned.get(0))
+
+  println(sum(xs))
+}

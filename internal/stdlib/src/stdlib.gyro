@@ -22,6 +22,12 @@ export fn Array<T>::len(self): usize
 export fn Array<T>::slice(self): T[] !{ &self }
 export fn Array<T>::free(*self)
 
+// The runtime supplies the buffer; anything above it is ordinary Gyro,
+// written once here rather than once per tier.
+export fn Array<T>::is_empty(self): bool {
+  return self.len() == 0
+}
+
 // from_utf8 reads a byte slice as text, and `s.bytes()` is the other
 // direction. Both copy: a string's bytes are packed UTF-8 while a slice
 // element is a full word, so the two representations cannot alias. Each
@@ -244,6 +250,147 @@ export fn string::repeat(self, times: i32): string {
   var result = out.text()
   out.free()
   return result
+}
+
+// ---------------------------------------------------------------------------
+// Map
+//
+// A hash map in ordinary Gyro over Array<T>; the runtime supplies only
+// the buffer. Chaining rather than open addressing: Gyro has no zero
+// values, so an empty probe slot would need a fabricated key to occupy
+// it, while an empty bucket needs nothing.
+// ---------------------------------------------------------------------------
+
+// Map<K, V> hashes with the same derived hash() that == uses, so any key
+// that compares can be stored, and two keys that compare equal land in
+// one bucket. Values must not be optional: get() answers with V?, and
+// optionals do not nest.
+export struct Map<K, V> {
+  buckets: Array<Array<(K, V)>>
+  count: usize
+}
+
+// bucket_index folds a hash onto a bucket count. The count is never zero:
+// new() starts with eight buckets and grow() only doubles.
+fn bucket_index(hash: u64, buckets: usize): usize {
+  return (hash % (buckets as u64)) as usize
+}
+
+fn empty_buckets<K, V>(count: usize): Array<Array<(K, V)>> {
+  var buckets = Array<Array<(K, V)>>::with_capacity(count)
+  for i in 0..count {
+    buckets.push(Array<(K, V)>::new())
+  }
+  return buckets
+}
+
+export fn Map<K, V>::new(): Map<K, V> {
+  return Map<K, V>{ buckets: empty_buckets<K, V>(8), count: 0 }
+}
+
+fn Map<K, V>::bucket_of(self, key: K): Array<(K, V)> {
+  return self.buckets.get(bucket_index(key.hash(), self.buckets.len()))
+}
+
+// grow doubles the bucket count and redistributes every entry. Insertion
+// order within a bucket is not part of the contract; the walk order here
+// is still deterministic, so every tier agrees byte for byte.
+fn Map<K, V>::grow(*self) {
+  var wider = empty_buckets<K, V>(self.buckets.len() * 2)
+  for i in 0..self.buckets.len() {
+    var bucket = self.buckets.get(i)
+    for at in 0..bucket.len() {
+      var entry = bucket.get(at)
+      var home = wider.get(bucket_index(entry.0.hash(), wider.len()))
+      home.push(entry)
+    }
+    bucket.free()
+  }
+  self.buckets.free()
+  self.buckets = wider
+}
+
+// insert adds the pair, replacing the value (and the stored key) when an
+// equal key is already present.
+export fn Map<K, V>::insert(*self, key: K, value: V) {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      bucket.set(i, (key, value))
+      return
+    }
+  }
+  if self.count >= self.buckets.len() * 2 {
+    self.grow()
+    bucket = self.bucket_of(key)
+  }
+  bucket.push((key, value))
+  self.count += 1
+}
+
+export fn Map<K, V>::get(self, key: K): V? {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    var entry = bucket.get(i)
+    if entry.0 == key {
+      return entry.1
+    }
+  }
+  return null
+}
+
+export fn Map<K, V>::contains(self, key: K): bool {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      return true
+    }
+  }
+  return false
+}
+
+// remove takes the entry out by swapping the last one into its place,
+// and reports whether the key was present.
+export fn Map<K, V>::remove(*self, key: K): bool {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      bucket.set(i, bucket.get(bucket.len() - 1))
+      var _, _ = bucket.pop()
+      self.count -= 1
+      return true
+    }
+  }
+  return false
+}
+
+export fn Map<K, V>::len(self): usize {
+  return self.count
+}
+
+export fn Map<K, V>::is_empty(self): bool {
+  return self.count == 0
+}
+
+// keys snapshots the keys into a fresh array the caller frees. The order
+// follows the buckets: deterministic, but not insertion order.
+export fn Map<K, V>::keys(self): Array<K> {
+  var out = Array<K>::with_capacity(self.count)
+  for i in 0..self.buckets.len() {
+    var bucket = self.buckets.get(i)
+    for at in 0..bucket.len() {
+      out.push(bucket.get(at).0)
+    }
+  }
+  return out
+}
+
+export fn Map<K, V>::free(*self) {
+  for i in 0..self.buckets.len() {
+    self.buckets.get(i).free()
+  }
+  self.buckets.free()
+  self.count = 0
 }
 
 // Mutex<T> owns the value it guards; lock() returns the guard directly.

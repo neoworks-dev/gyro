@@ -432,6 +432,8 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 		}
 	case "string":
 		switch method {
+		case "compare":
+			return nativePlan{symbol: "gy_str_compare", args: values(0, 1)}
 		case "runes":
 			return nativePlan{symbol: "gy_str_runes", sret: true, args: values(0)}
 		case "bytes":
@@ -456,6 +458,8 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 			g.fail("@%s: formatting a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
 		}
 		return nativePlan{symbol: "gy_str_" + suffix, args: values(0)}
+	case "hash":
+		return nativePlan{symbol: "gy_hash_" + g.hashSuffix(name, sig.Params[0]), args: values(0)}
 	case "spawn":
 		return nativePlan{symbol: "gy_spawn", args: values(0)}
 	case "from_utf8":
@@ -531,6 +535,27 @@ func (g *generator) mutexPlan(name, method string, sig *metals.FnType) nativePla
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
+}
+
+// hashSuffix picks the entry point behind hash<T>. A rune hashes as the
+// signed integer it is, and the two float widths share one, since an f32
+// is already carried as a double.
+func (g *generator) hashSuffix(name string, t metals.Type) string {
+	prim, ok := t.(*metals.Prim)
+	if ok {
+		switch prim.Kind {
+		case metals.I8, metals.I16, metals.I32, metals.I64, metals.Rune:
+			return "int"
+		case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
+			return "uint"
+		case metals.F32, metals.F64:
+			return "float"
+		case metals.Str:
+			return "str"
+		}
+	}
+	g.fail("@%s: no native hash for %s", name, t)
+	return ""
 }
 
 func printSuffix(t metals.Type) (string, bool) {

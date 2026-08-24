@@ -1,12 +1,13 @@
 // Package tests holds the execution corpus: Gyro programs paired with the
 // output they must produce.
 //
-// A program is run three ways — the interpreter, the METALS evaluator, and
-// a native binary — and all three must agree with the golden file. The
-// three tiers are meant to be indistinguishable, so a case written once is
-// a case checked everywhere; before this corpus existed each tier kept its
-// own hand-picked subset and a program was only cross-checked if someone
-// remembered to paste it into all three test files.
+// A program is run four ways — the interpreter, the METALS evaluator, a
+// native binary from the assembler backend, and a native binary from the C
+// backend — and all four must agree with the golden file. The tiers are
+// meant to be indistinguishable, so a case written once is a case checked
+// everywhere; before this corpus existed each tier kept its own
+// hand-picked subset and a program was only cross-checked if someone
+// remembered to paste it into all of them.
 package tests
 
 import (
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gyro-lang/gyro/internal/cgen"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/interp"
 	"github.com/gyro-lang/gyro/internal/loader"
@@ -43,7 +45,7 @@ var update = flag.Bool("update", false, "rewrite the golden files from what the 
 //	                          whatever reached stdout first
 //	//gyro:unordered          concurrent output; the tiers must all succeed
 //	                          but their output is not compared
-//	//gyro:skip <tier> <why>  a known gap: interp, metals or native
+//	//gyro:skip <tier> <why>  a known gap: interp, metals, native or cnative
 //	//gyro:args a b c         main's arguments, after a fixed argv[0]
 type directives struct {
 	panicFragment string
@@ -51,6 +53,9 @@ type directives struct {
 	skipped       map[string]string
 	args          []string
 }
+
+// tiers are the names //gyro:skip accepts.
+var tiers = map[string]bool{"interp": true, "metals": true, "native": true, "cnative": true}
 
 // entryName is argv[0] for every case. The three tiers would otherwise
 // disagree — a source path, a temp binary — over something no program
@@ -76,7 +81,7 @@ func parseDirectives(t *testing.T, source string) directives {
 			found.args = append([]string{entryName}, strings.Fields(argument)...)
 		case "skip":
 			tier, reason, _ := strings.Cut(argument, " ")
-			if tier != "interp" && tier != "metals" && tier != "native" {
+			if !tiers[tier] {
 				t.Fatalf("//gyro:skip names an unknown tier %q", tier)
 			}
 			found.skipped[tier] = strings.TrimSpace(reason)
@@ -140,7 +145,19 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 		if module == nil {
 			t.Fatal("the program did not lower")
 		}
-		compare(t, "native", goldenBase, runNative(t, module, found), interpResult, found)
+		compare(t, "native", goldenBase, runBinary(t, module, found, nasm.Build), interpResult, found)
+	})
+	t.Run("cnative", func(t *testing.T) {
+		if reason, skip := found.skipped["cnative"]; skip {
+			t.Skip(reason)
+		}
+		if err := cgen.Toolchain(); err != nil {
+			t.Skipf("skipping: %v", err)
+		}
+		if module == nil {
+			t.Fatal("the program did not lower")
+		}
+		compare(t, "cnative", goldenBase, runBinary(t, module, found, cgen.Build), interpResult, found)
 	})
 }
 
@@ -263,13 +280,14 @@ func lowerVerified(t *testing.T, program *loader.Program, info *sema.Info, found
 	t.Helper()
 	_, skipMetals := found.skipped["metals"]
 	_, skipNative := found.skipped["native"]
-	if skipMetals && skipNative {
+	_, skipCNative := found.skipped["cnative"]
+	if skipMetals && skipNative && skipCNative {
 		return nil
 	}
 
 	module, err := lower.Lower(program, info)
 	if err != nil {
-		if skipMetals || skipNative {
+		if skipMetals || skipNative || skipCNative {
 			return nil
 		}
 		t.Fatalf("lower: %v", err)
@@ -302,10 +320,14 @@ func runMetals(t *testing.T, module *metals.Module, found directives) result {
 	return got
 }
 
-func runNative(t *testing.T, module *metals.Module, found directives) result {
+// runBinary compiles the module with one of the two native backends and
+// runs what comes out. Both produce a Linux executable from the same
+// verified module, so the harness only has to vary the builder.
+func runBinary(t *testing.T, module *metals.Module, found directives,
+	build func(*metals.Module, string) error) result {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "program")
-	if err := nasm.Build(module, binary); err != nil {
+	if err := build(module, binary); err != nil {
 		t.Fatalf("build: %v", err)
 	}
 
