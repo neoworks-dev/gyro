@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -31,6 +32,15 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files from what the interpreter produces")
 
+// TestMain pins one environment variable for every case, so os.env has a
+// value to observe deterministically: the in-process tiers read it
+// directly and a native child inherits it. Cases run in parallel, which
+// rules out t.Setenv.
+func TestMain(m *testing.M) {
+	os.Setenv("GYRO_TEST_ENV", "corpus")
+	os.Exit(m.Run())
+}
+
 // ---------------------------------------------------------------------------
 // Directives
 // ---------------------------------------------------------------------------
@@ -45,11 +55,17 @@ var update = flag.Bool("update", false, "rewrite the golden files from what the 
 //	                          but their output is not compared
 //	//gyro:skip <tier> <why>  a known gap: interp, metals or native
 //	//gyro:args a b c         main's arguments, after a fixed argv[0]
+//	//gyro:stdin <text>       one line of stdin, newline included; repeat
+//	                          the directive for more lines
+//	//gyro:exit <code>        the process exit code every tier must produce
+//	                          (default 0; a panic case always exits 1)
 type directives struct {
 	panicFragment string
 	unordered     bool
 	skipped       map[string]string
 	args          []string
+	stdin         string
+	exit          int
 }
 
 // entryName is argv[0] for every case. The three tiers would otherwise
@@ -74,6 +90,14 @@ func parseDirectives(t *testing.T, source string) directives {
 			found.unordered = true
 		case "args":
 			found.args = append([]string{entryName}, strings.Fields(argument)...)
+		case "stdin":
+			found.stdin += argument + "\n"
+		case "exit":
+			code, err := strconv.Atoi(argument)
+			if err != nil || code < 0 || code > 255 {
+				t.Fatalf("//gyro:exit needs a code in 0..255, got %q", argument)
+			}
+			found.exit = code
 		case "skip":
 			tier, reason, _ := strings.Cut(argument, " ")
 			if tier != "interp" && tier != "metals" && tier != "native" {
@@ -84,18 +108,30 @@ func parseDirectives(t *testing.T, source string) directives {
 			t.Fatalf("unknown directive //gyro:%s", name)
 		}
 	}
+	if found.panicFragment != "" && found.exit != 0 {
+		t.Fatal("//gyro:exit cannot combine with //gyro:panic; a panic always exits 1")
+	}
 	return found
+}
+
+// wantExit is the exit code every tier must produce.
+func (d directives) wantExit() int {
+	if d.panicFragment != "" {
+		return 1
+	}
+	return d.exit
 }
 
 // ---------------------------------------------------------------------------
 // Running a case
 // ---------------------------------------------------------------------------
 
-// result is what one tier produced.
+// result is what one tier produced. exit is the process exit code: 0 on
+// success, 1 for a panic, the given code after os.exit.
 type result struct {
 	stdout  string
 	stderr  string
-	failed  bool
+	exit    int
 	message string
 }
 
@@ -112,6 +148,9 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 
 	program, info := compile(t, rootPath)
 	interpResult := runInterp(t, program, found)
+	if interpResult.exit != found.wantExit() {
+		t.Errorf("interp exited with %d, the case expects %d", interpResult.exit, found.wantExit())
+	}
 
 	if *update {
 		writeGolden(t, goldenBase, interpResult, found)
@@ -148,9 +187,9 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 // the golden does not pin.
 func compare(t *testing.T, tier, goldenBase string, got, want result, found directives) {
 	t.Helper()
-	if got.failed != want.failed {
-		t.Errorf("%s failure state differs: interp failed=%v, %s failed=%v\n%s: %s",
-			tier, want.failed, tier, got.failed, tier, got.message)
+	if got.exit != want.exit {
+		t.Errorf("%s exit code differs: interp exited %d, %s exited %d\n%s: %s",
+			tier, want.exit, tier, got.exit, tier, got.message)
 	}
 	if found.unordered {
 		return
@@ -231,10 +270,16 @@ func compile(t *testing.T, rootPath string) (*loader.Program, *sema.Info) {
 func runInterp(t *testing.T, program *loader.Program, found directives) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := interp.Run(program, found.args, &stdout, &stderr)
-	got := result{stdout: stdout.String(), stderr: stderr.String(), failed: err != nil}
+	err := interp.Run(program, found.args, strings.NewReader(found.stdin), &stdout, &stderr)
+	got := result{stdout: stdout.String(), stderr: stderr.String()}
 	if err != nil {
 		got.message = err.Error()
+	}
+
+	var exit *interp.Exit
+	if errors.As(err, &exit) {
+		got.exit = exit.Code
+		return got
 	}
 
 	if found.panicFragment == "" {
@@ -251,6 +296,7 @@ func runInterp(t *testing.T, program *loader.Program, found directives) result {
 	if !strings.Contains(abort.Message, found.panicFragment) {
 		t.Errorf("panic %q does not contain %q", abort.Message, found.panicFragment)
 	}
+	got.exit = 1
 	// The panic text carries a source position and is not part of the
 	// golden, since the other tiers word a few of them differently.
 	got.stderr = ""
@@ -291,10 +337,15 @@ func lowerVerified(t *testing.T, program *loader.Program, info *sema.Info, found
 func runMetals(t *testing.T, module *metals.Module, found directives) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := meval.Run(module, found.args, &stdout, &stderr)
-	got := result{stdout: stdout.String(), stderr: stderr.String(), failed: err != nil}
+	err := meval.Run(module, found.args, strings.NewReader(found.stdin), &stdout, &stderr)
+	got := result{stdout: stdout.String(), stderr: stderr.String()}
 	if err != nil {
 		got.message = err.Error()
+		got.exit = 1
+		var exit *meval.Exit
+		if errors.As(err, &exit) {
+			got.exit = exit.Code
+		}
 	}
 	if found.panicFragment != "" {
 		got.stderr = ""
@@ -314,19 +365,19 @@ func runNative(t *testing.T, module *metals.Module, found directives) result {
 	// about.
 	command := exec.Command(binary)
 	command.Args = found.args
+	command.Stdin = strings.NewReader(found.stdin)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	err := command.Run()
+
+	got := result{stdout: stdout.String(), stderr: stderr.String()}
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
 			t.Fatalf("run: %v", err)
 		}
-	}
-
-	got := result{stdout: stdout.String(), stderr: stderr.String(), failed: err != nil}
-	if err != nil {
+		got.exit = exit.ExitCode()
 		got.message = stderr.String()
 	}
 	if found.panicFragment != "" {

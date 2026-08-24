@@ -2,6 +2,7 @@ package meval
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -155,6 +156,25 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 		return tupleVal{strVal(data), nullVal{}}
 	case "get":
 		return tupleVal{strVal(""), m.nativeError("the interpreter has no network")}
+	case "env":
+		name, _ := arg(0).(strVal)
+		value, found := os.LookupEnv(string(name))
+		if !found {
+			return nullVal{}
+		}
+		return strVal(value)
+	case "read_stdin":
+		data, err := io.ReadAll(m.stdin)
+		if err != nil {
+			m.throw("read_stdin: %v", err)
+		}
+		return strVal(data)
+	case "exit":
+		code, ok := arg(0).(intVal)
+		if !ok {
+			m.throw("exit takes an i32")
+		}
+		panic(&Exit{Code: int(code.v)})
 	}
 	m.throw("unknown runtime function %s", method)
 	return nil
