@@ -123,10 +123,9 @@ type Arg struct {
 
 // EffectRow is the `!{ io, alloc }` annotation on a signature.
 //
-// The concrete effects are reserved: the parser records them so that adding
-// the checker later is not a breaking change, but no stage validates them.
-// An absent row means "infer", which is the normal case for module-private
-// functions. The borrow entries are checked.
+// A declared row is a complete statement: sema checks the body against the
+// concrete effects it names and against its borrow entries. An absent row
+// means "infer", which is the normal case for module-private functions.
 type EffectRow struct {
 	Offset int
 	// Names are the concrete effects listed in the row.
@@ -172,8 +171,7 @@ type FuncDecl struct {
 	// returns. An empty list means the function returns nothing.
 	Results []Type
 	// Effects is the declared effect row, or nil when the row is left to be
-	// inferred. Reserved syntax: the parser records it, sema does not check
-	// it yet.
+	// inferred.
 	Effects *EffectRow
 	Body    *Block
 }

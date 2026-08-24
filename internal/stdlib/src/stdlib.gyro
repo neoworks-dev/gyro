@@ -1,9 +1,9 @@
 // stdlib. A declaration with no body is a runtime intrinsic; everything
 // with a body is ordinary Gyro, compiled like any other module.
 
-export fn print<T>(value: T)
-export fn println<T>(value: T)
-export fn eprintln<T>(value: T)
+export fn print<T>(value: T) !{ io }
+export fn println<T>(value: T) !{ io }
+export fn eprintln<T>(value: T) !{ io }
 
 // spawn starts a thread. The closure carries the arguments across; join by
 // receiving on a channel the closure captures.
@@ -12,9 +12,9 @@ export fn spawn(task: fn())
 // Array<T> owns its elements, in contrast to the borrowed view T[].
 export struct Array<T> {}
 
-export fn Array<T>::new(): Array<T>
-export fn Array<T>::with_capacity(capacity: usize): Array<T>
-export fn Array<T>::push(*self, value: T)
+export fn Array<T>::new(): Array<T> !{ alloc }
+export fn Array<T>::with_capacity(capacity: usize): Array<T> !{ alloc }
+export fn Array<T>::push(*self, value: T) !{ alloc }
 export fn Array<T>::pop(*self): (T, bool)
 export fn Array<T>::get(self, index: usize): T
 export fn Array<T>::set(*self, index: usize, value: T)
@@ -32,7 +32,7 @@ export fn Array<T>::is_empty(self): bool {
 // direction. Both copy: a string's bytes are packed UTF-8 while a slice
 // element is a full word, so the two representations cannot alias. Each
 // result owns what it holds, which is why neither carries a borrow row.
-export fn from_utf8(bytes: u8[]): string
+export fn from_utf8(bytes: u8[]): string !{ alloc }
 
 // String owns its bytes, in contrast to the borrowed view `string`. It is
 // the builder: append to it, then read it back with `text()`.
@@ -45,21 +45,21 @@ export struct String {
   bytes: Array<u8>
 }
 
-export fn String::new(): String {
+export fn String::new(): String !{ alloc } {
   return String{ bytes: Array<u8>::new() }
 }
 
-export fn String::with_capacity(capacity: usize): String {
+export fn String::with_capacity(capacity: usize): String !{ alloc } {
   return String{ bytes: Array<u8>::with_capacity(capacity) }
 }
 
-export fn String::of(text: string): String {
+export fn String::of(text: string): String !{ alloc } {
   var out = String::new()
   out.push(text)
   return out
 }
 
-export fn String::push(*self, text: string) {
+export fn String::push(*self, text: string) !{ alloc } {
   for byte in text.bytes() {
     self.bytes.push(byte)
   }
@@ -68,7 +68,7 @@ export fn String::push(*self, text: string) {
 // push_rune encodes one code point as UTF-8. The four cases are the four
 // lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
 // what runes() produces for an invalid sequence.
-export fn String::push_rune(*self, value: rune) {
+export fn String::push_rune(*self, value: rune) !{ alloc } {
   var point = value as u32
   if point > 1114111 || (point >= 55296 && point <= 57343) {
     point = 65533
@@ -99,11 +99,11 @@ export fn String::len(self): usize {
   return self.bytes.len()
 }
 
-export fn String::text(self): string {
+export fn String::text(self): string !{ alloc } {
   return from_utf8(self.bytes.slice())
 }
 
-export fn String::to_string(self): string {
+export fn String::to_string(self): string !{ alloc } {
   return self.text()
 }
 
@@ -167,7 +167,7 @@ export fn string::contains(self, needle: string): bool {
 
 // substring takes the half-open byte range [from, to). It does not
 // validate that the ends fall on rune boundaries.
-export fn string::substring(self, from: usize, to: usize): string {
+export fn string::substring(self, from: usize, to: usize): string !{ alloc } {
   var body = self.bytes()
   var out = String::new()
   var stop = to
@@ -186,7 +186,7 @@ fn is_space(byte: u8): bool {
   return byte == 32 || byte == 9 || byte == 10 || byte == 13
 }
 
-export fn string::trim(self): string {
+export fn string::trim(self): string !{ alloc } {
   var body = self.bytes()
   var start: usize = 0
   while start < body.len() && is_space(body[start]) {
@@ -201,7 +201,7 @@ export fn string::trim(self): string {
 
 // split cuts on every occurrence of sep. An empty sep would not advance,
 // so it yields the whole text unsplit.
-export fn string::split(self, sep: string): Array<string> {
+export fn string::split(self, sep: string): Array<string> !{ alloc } {
   var parts = Array<string>::new()
   if sep.len() == 0 {
     parts.push(self)
@@ -227,7 +227,7 @@ export fn string::split(self, sep: string): Array<string> {
 
 // join stays a function: its receiver would be the slice, not a string,
 // and `string[]` is not a type an extension can name.
-export fn join(parts: string[], sep: string): string {
+export fn join(parts: string[], sep: string): string !{ alloc } {
   var out = String::new()
   var first = true
   for part in parts {
@@ -242,7 +242,7 @@ export fn join(parts: string[], sep: string): string {
   return result
 }
 
-export fn string::repeat(self, times: i32): string {
+export fn string::repeat(self, times: i32): string !{ alloc } {
   var out = String::new()
   for i in 0..times {
     out.push(self)

@@ -923,11 +923,12 @@ export async fn fetch_all(urls: string[]): (Array<string>, error?) {
 ## Effect rows
 
 Signatures may carry an effect row describing what the function does and
-what its result borrows. The concrete effects are **reserved** — the parser
-records them and no stage checks them. The borrow entries **are** checked.
+what its result borrows. Both kinds of entry are checked: the concrete
+effects `io` and `alloc` against what the body performs, and the borrow
+entries against what the result views.
 
 ```gyro
-fn add(a: i32, b: i32): i32                       // no row: inferred
+fn add(a: i32, b: i32): i32                       // no row: unconstrained
 export fn log(msg: string) !{ io }
 export fn load(p: string): (string, error?) !{ io, alloc }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e     // effect-polymorphic
@@ -937,12 +938,50 @@ fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e     // effect-polymorphic
 Forms: `!{}`, `!{ a, b }`, `!e` for a bare row variable, and `!{ a, ..e }`
 for concrete effects plus a row variable.
 
-The intended rule is that module-private functions have their row inferred
-from the body, while anything `export`ed must state it. The decorators are
-the motivation: `@comptime` needs purity, `@gpu` forbids allocation and
-syscalls, and `@distributed` restricts what may cross a node boundary. Today
-each of those is a bespoke check; effect rows are how they become one
-mechanism.
+The decorators are the motivation: `@comptime` needs purity, `@gpu` forbids
+allocation and syscalls, and `@distributed` restricts what may cross a node
+boundary. Today each of those is a bespoke check; effect rows are how they
+become one mechanism.
+
+### Concrete effects
+
+**A declared row is a complete statement.** A function that writes any row
+— even one holding only borrows — promises that its body performs no
+concrete effect the row does not name: a row without `io` promises no io,
+and a row without `alloc` promises no allocation. A function with no row is
+unconstrained in v1; the intended end state, still open, is that anything
+`export`ed must state its row.
+
+```gyro
+fn quiet(n: i32) !{} {
+  println(n)         // error: println does io, which the row does not name
+}
+
+fn loud(n: i32) !{ io, alloc } {
+  println("n = #{n}")   // fine: the row names both effects
+}
+```
+
+What a body performs is judged from its sources:
+
+- A call contributes the callee's declared row when it states one — that is
+  what carries an effect across a module, exactly as borrows travel. When
+  the callee states no row and its body lives in the **same module**, its
+  effects are inferred from that body, transitively. A cross-module call to
+  an unstated row contributes nothing in v1.
+- String interpolation `#{...}` builds new text, which allocates.
+- The standard library states rows on its surface: `println` does
+  `!{ io }`, `Array<T>::push` does `!{ alloc }` (it may grow the buffer),
+  `read_all` does `!{ io, alloc }`, and so on.
+
+A generic body's effects are judged per instantiation, like its borrows:
+what a call on a type parameter reaches is only known once the parameter is
+concrete.
+
+Outside v1, deliberately: a row variable (`!e`, `!{ io, ..e }`) leaves the
+row open and unchecked; calling a function *value* — a closure or an `fn`
+parameter — contributes nothing; and `spawn`, channel operations and
+`Mutex` carry no effect yet.
 
 ### Borrows
 
@@ -1188,7 +1227,7 @@ Still to come:
 | --- | --- |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
-| concrete effects (`io`, `alloc`) | parsed and reserved; only borrows are checked |
+| concrete effects (`io`, `alloc`) | checked against declared rows; unstated rows, row variables, function values and spawn/channel effects remain unchecked |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |

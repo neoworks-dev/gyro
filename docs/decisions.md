@@ -802,8 +802,8 @@ Reading the row at call sites is what makes it a real check rather than a
 local one, and it is the reason the annotation earns its cost: the fact a
 signature states is usable by everyone who calls it, including across a
 module, without anyone re-deriving it from a body. It is also the machinery
-the concrete effects will need — `io` and `alloc` become checkable by the
-same "read the callee's row, apply it here" step.
+the concrete effects use — `io` and `alloc` are checked by the same "read
+the callee's row, apply it here" step.
 
 Frame storage propagates through a call: passing a local where the callee
 borrows makes the result view the caller's frame. That falls out of mapping
@@ -811,12 +811,58 @@ borrows makes the result view the caller's frame. That falls out of mapping
 
 ### Effect rows themselves
 
-**Status: sema.** Signatures may carry `!{ io, alloc }`. The parser records
-these and nothing checks them.
+**Status: checked, v1.** Signatures may carry `!{ io, alloc }`, and sema
+checks the concrete effects the same way it checks borrows: the signature
+states the fact and the body is held to it.
 
-Reserved now so that adding the checker later is not a breaking change to
-every signature ever written. The intended rule: module-private functions
-have their row inferred, exported ones must state it.
+**A declared row is a complete statement.** Any row — including one holding
+only borrows, like `!{ &xs }` — promises that the body performs no concrete
+effect the row does not name. The alternative, treating the effect list as
+merely additive, was rejected: a row that cannot say "and nothing else"
+states nothing a caller can rely on, and it would make `!{}` meaningless —
+which is exactly the row `@gpu` and `@comptime` need. A function with no
+row is unconstrained in v1.
+
+**Inference is module-internal.** A call contributes its callee's declared
+row; when the callee states none and its body lives in the same module, the
+effects are inferred from that body, bottom-up and transitively — the
+lattice is two bits, and a cycle guard makes recursion converge. A
+cross-module call to an unstated row contributes nothing. Rejected inferring
+across modules, which would turn every dependency's private body into part
+of its interface; the row is the interface, which is the same reasoning that
+made borrows explicit.
+
+The effect sources are calls, string interpolation (building text
+allocates), and the stdlib's declared rows: `print`/`println`/`eprintln`
+`!{ io }`; `mem`'s `alloc` `!{ alloc }`; `Array::new`/`with_capacity`/
+`push` `!{ alloc }` (push may grow; pop, get, set, len and free do not
+allocate); `from_utf8` and the text builders (`String`'s appenders,
+`substring`, `trim`, `split`, `join`, `repeat`) `!{ alloc }`; `fs`'s
+`open`/`read_all` `!{ io, alloc }` and `File::close` `!{ io }`; `net::get`
+`!{ io, alloc }`. `Array<T>::slice` keeps its borrow-only row — lending a
+view allocates nothing.
+
+A generic body's effects are judged per instantiation, mirroring borrows:
+what a call on a type parameter reaches is only known once the parameter is
+concrete. A finding at one site is reported once, not once per
+instantiation.
+
+Still open, deliberately out of v1:
+
+- **Exported functions stating their row.** The intended end state — private
+  rows inferred, exported ones written — is a breaking sweep over every
+  signature and awaits its own decision.
+- **Row variables.** `!e` and `!{ io, ..e }` parse and leave the row open;
+  an open row is not checked for completeness.
+- **Function values.** Calling a closure or an `fn`-typed parameter
+  contributes nothing, so higher-order functions under-report until effect
+  polymorphism (the row variables above) gives them something to say.
+- **Spawn, channels, Mutex.** No effect in v1. What concurrency should be
+  in the effect vocabulary is undecided — `async` was already rejected as
+  an effect in favour of colouring.
+- **`runes()`, `bytes()` and the built-in surface.** Both copy into new
+  storage at runtime but carry no `alloc` yet; they have no stdlib
+  declaration to hang a row on.
 
 The motivation is the decorators. `@comptime` needs purity, `@gpu` forbids
 allocation and syscalls, `@distributed` restricts what crosses a node

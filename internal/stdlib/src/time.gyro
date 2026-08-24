@@ -3,12 +3,12 @@
 // now is the wall clock: milliseconds since the Unix epoch. It can jump
 // when the system clock is adjusted, so it dates events; it does not
 // measure them.
-export fn now(): i64
+export fn now(): i64 !{ io }
 
 // monotonic is the measuring clock: nanoseconds since an arbitrary
 // epoch, never stepping backwards. Only differences mean anything.
-export fn monotonic(): i64
+export fn monotonic(): i64 !{ io }
 
 // sleep blocks the calling thread for at least millis milliseconds.
 // Other threads keep running; a value below one returns at once.
-export fn sleep(millis: i64)
+export fn sleep(millis: i64) !{ io }

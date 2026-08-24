@@ -95,6 +95,9 @@ const (
 	EUnnamedBorrow     Code = "E0609"
 	EEscapingLocalView Code = "E0610"
 
+	// Effects
+	EUnnamedEffect Code = "E0611"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -247,6 +250,8 @@ var explanations = map[Code]explanation{
 		"An entry written &xs in an effect row names a parameter of the same\nfunction, and that parameter has to be a view — a slice or a string.\nAnything else owns what it holds, so there is nothing to borrow from."},
 	EUnnamedBorrow: {"returned view is not named in the row",
 		"T[] and string are views over storage they do not own, so a function\nreturning one states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
+	EUnnamedEffect: {"effect is not named in the row",
+		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io, and a row without alloc promises\nno allocation. This body performs a concrete effect its row does not\nname. Name the effect — !{ io }, !{ alloc } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow and lives in the same module, its effects are inferred from its\nbody; a cross-module call to an unstated row contributes nothing.\nString interpolation builds new text, which allocates."},
 	EEscapingLocalView: {"view outlives the storage behind it",
 		"The storage belongs to this frame — an array literal, or a buffer this\nfunction owns — and the caller outlives the frame, so the view it gets\nback points at memory that is gone.\n\nReturn an owning Array<T> or String, or take the storage as a parameter\nand name it in the row."},
 	WSpawnRace: {"spawned closure shares a reference with its spawner",

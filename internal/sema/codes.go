@@ -138,6 +138,10 @@ var codes = map[string]diag.Code{
 	"this returns a view into %s, which the row does not name":      diag.EUnnamedBorrow,
 	"this returns a view into storage that ends with this function": diag.EEscapingLocalView,
 
+	// Effects
+	"%s does %s, which the row does not name":                          diag.EUnnamedEffect,
+	"this string interpolation allocates, which the row does not name": diag.EUnnamedEffect,
+
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
 	"cannot assign to this expression":                                                     diag.ENotAssignable,
