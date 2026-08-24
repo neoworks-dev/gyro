@@ -839,7 +839,13 @@ allocates), and the stdlib's declared rows: `print`/`println`/`eprintln`
 allocate); `from_utf8` and the text builders (`String`'s appenders,
 `substring`, `trim`, `split`, `join`, `repeat`) `!{ alloc }`; `fs`'s
 `open`/`read_all` `!{ io, alloc }` and `File::close` `!{ io }`; `net::get`
-`!{ io, alloc }`. `Array<T>::slice` keeps its borrow-only row — lending a
+`!{ io, alloc }`. The modules that landed alongside the checker follow the
+same scheme: `fs`'s one-shot writes, `remove` and `exists` are `!{ io }`
+and `read_dir` `!{ io, alloc }`; `os`'s `env` and `exit` are `!{ io }` and
+`read_stdin` `!{ io, alloc }`; all of `time` is `!{ io }` — a clock
+reading is an observation of the world, and marking it keeps `now()` out
+of anything `@comptime` will one day accept. `Array<T>::slice` keeps its
+borrow-only row — lending a
 view allocates nothing.
 
 A generic body's effects are judged per instantiation, mirroring borrows:
