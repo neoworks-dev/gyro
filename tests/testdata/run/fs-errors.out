@@ -1,0 +1,6 @@
+false
+stat /tmp/gyro-fs-nowhere: no such file or directory
+open /tmp/gyro-fs-nowhere/write.txt: no such file or directory
+open /tmp/gyro-fs-nowhere/append.txt: no such file or directory
+remove /tmp/gyro-fs-nowhere: no such file or directory
+open /tmp/gyro-fs-nowhere: no such file or directory

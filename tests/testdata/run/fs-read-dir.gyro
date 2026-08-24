@@ -1,0 +1,28 @@
+// read_dir lists entry names sorted bytewise on every tier. The case
+// writes its own files out of order, filters the shared directory down to
+// its own prefix, and cleans up after itself.
+import { println, starts_with } from "stdlib"
+import { write_file, remove, read_dir } from "fs"
+
+fn main() {
+  var third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
+  var first = write_file("/tmp/gyro-fs-listing-a.txt", "a")
+  var second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
+  println(first == null && second == null && third == null)
+
+  var names, err = read_dir("/tmp")
+  if err != null {
+    return
+  }
+  for name in names.slice() {
+    if name.starts_with("gyro-fs-listing-") {
+      println(name)
+    }
+  }
+  names.free()
+
+  var one = remove("/tmp/gyro-fs-listing-a.txt")
+  var two = remove("/tmp/gyro-fs-listing-b.txt")
+  var three = remove("/tmp/gyro-fs-listing-c.txt")
+  println(one == null && two == null && three == null)
+}

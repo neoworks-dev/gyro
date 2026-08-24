@@ -1,7 +1,21 @@
 // fs — declarations only; the runtime supplies the bodies.
 
+import { Array } from "stdlib"
+
 export struct File {}
 
 export fn open(path: string): (File, error?)
 export fn read_all(file: File): (string, error?)
 export fn File::close(*self)
+
+// The one-shot operations take a path, not a handle: each opens, acts and
+// closes in one call. write_file creates or truncates; append_file creates
+// or extends.
+export fn write_file(path: string, text: string): error?
+export fn append_file(path: string, text: string): error?
+export fn remove(path: string): error?
+
+// read_dir lists an existing directory's entry names, sorted, without
+// "." and "..".
+export fn read_dir(path: string): (Array<string>, error?)
+export fn exists(path: string): bool

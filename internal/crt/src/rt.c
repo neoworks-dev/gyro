@@ -6,6 +6,7 @@
 
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -559,11 +560,17 @@ typedef struct {
     int closed;
 } gy_file;
 
+/* gy_cstr copies a str into a NUL-terminated buffer for libc paths. */
+static char *gy_cstr(const gy_str *s) {
+    char *out = malloc((size_t)s->len + 1);
+    memcpy(out, s->bytes, (size_t)s->len);
+    out[s->len] = 0;
+    return out;
+}
+
 /* out: tuple<handle, opt<error>> = { handle, flag, tag, message } */
 void gy_open(int64_t *out, const gy_str *path) {
-    char *cpath = malloc((size_t)path->len + 1);
-    memcpy(cpath, path->bytes, (size_t)path->len);
-    cpath[path->len] = 0;
+    char *cpath = gy_cstr(path);
     struct stat info;
     if (stat(cpath, &info) != 0) {
         gy_str *reason = gy_errno_str(errno);
@@ -582,9 +589,7 @@ void gy_open(int64_t *out, const gy_str *path) {
 
 /* out: tuple<str, opt<error>> */
 void gy_read_all(int64_t *out, gy_file *file) {
-    char *cpath = malloc((size_t)file->name->len + 1);
-    memcpy(cpath, file->name->bytes, (size_t)file->name->len);
-    cpath[file->name->len] = 0;
+    char *cpath = gy_cstr(file->name);
     FILE *stream = fopen(cpath, "rb");
     if (stream == NULL) {
         gy_str *reason = gy_errno_str(errno);
@@ -608,6 +613,61 @@ void gy_read_all(int64_t *out, gy_file *file) {
 }
 
 void gy_file_close(gy_file *file) { file->closed = 1; }
+
+/* gy_write_text opens, writes and closes in one call; the error strings
+ * match Go's os package (open/write prefixes) byte for byte. */
+static void gy_write_text(int64_t *out, const gy_str *path, const gy_str *text, const char *mode) {
+    char *cpath = gy_cstr(path);
+    FILE *stream = fopen(cpath, mode);
+    free(cpath);
+    if (stream == NULL) {
+        gy_str *reason = gy_errno_str(errno);
+        gy_str *prefix = gy_concat3("open ", path, ": ");
+        gy_write_error(out, gy_str_concat(prefix, reason));
+        return;
+    }
+    if (text->len > 0 && fwrite(text->bytes, 1, (size_t)text->len, stream) != (size_t)text->len) {
+        gy_str *reason = gy_errno_str(errno);
+        gy_str *prefix = gy_concat3("write ", path, ": ");
+        gy_write_error(out, gy_str_concat(prefix, reason));
+        fclose(stream);
+        return;
+    }
+    fclose(stream);
+    out[0] = 0;
+}
+
+/* out: opt<error> = { flag, tag, message } */
+void gy_write_file(int64_t *out, const gy_str *path, const gy_str *text) {
+    gy_write_text(out, path, text, "wb");
+}
+
+/* out: opt<error> */
+void gy_append_file(int64_t *out, const gy_str *path, const gy_str *text) {
+    gy_write_text(out, path, text, "ab");
+}
+
+/* out: opt<error> */
+void gy_remove(int64_t *out, const gy_str *path) {
+    char *cpath = gy_cstr(path);
+    if (remove(cpath) != 0) {
+        gy_str *reason = gy_errno_str(errno);
+        gy_str *prefix = gy_concat3("remove ", path, ": ");
+        gy_write_error(out, gy_str_concat(prefix, reason));
+        free(cpath);
+        return;
+    }
+    free(cpath);
+    out[0] = 0;
+}
+
+int64_t gy_exists(const gy_str *path) {
+    char *cpath = gy_cstr(path);
+    struct stat info;
+    int64_t found = stat(cpath, &info) == 0;
+    free(cpath);
+    return found;
+}
 
 /* out: tuple<str, opt<error>> */
 void gy_get(int64_t *out, const gy_str *url) {
@@ -722,6 +782,60 @@ void gy_array_free(gy_array *a) {
     a->freed = 1;
     free(a->data);
     a->data = NULL;
+}
+
+/* fs::read_dir lives below the Array block because its result is one.  */
+
+/* gy_name_compare orders names bytewise, the way Go sorts a listing.   */
+static int gy_name_compare(const void *a, const void *b) {
+    gy_str *const *left = a;
+    gy_str *const *right = b;
+    int64_t shorter = (*left)->len < (*right)->len ? (*left)->len : (*right)->len;
+    int order = memcmp((*left)->bytes, (*right)->bytes, (size_t)shorter);
+    if (order != 0) {
+        return order;
+    }
+    return ((*left)->len > (*right)->len) - ((*left)->len < (*right)->len);
+}
+
+/* out: tuple<handle, opt<error>> = { handle, flag, tag, message } */
+void gy_read_dir(int64_t *out, const gy_str *path) {
+    char *cpath = gy_cstr(path);
+    DIR *dir = opendir(cpath);
+    free(cpath);
+    if (dir == NULL) {
+        gy_str *reason = gy_errno_str(errno);
+        gy_str *prefix = gy_concat3("open ", path, ": ");
+        out[0] = (int64_t)gy_array_new();
+        gy_write_error(out + 1, gy_str_concat(prefix, reason));
+        return;
+    }
+
+    size_t count = 0, capacity = 0;
+    gy_str **names = NULL;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        if (count == capacity) {
+            capacity = capacity == 0 ? 16 : capacity * 2;
+            names = realloc(names, capacity * sizeof(gy_str *));
+        }
+        names[count++] = gy_str_c(entry->d_name);
+    }
+    closedir(dir);
+    if (count > 0) {
+        qsort(names, count, sizeof(gy_str *), gy_name_compare);
+    }
+
+    gy_array *entries = gy_array_new();
+    for (size_t i = 0; i < count; i++) {
+        gy_array_push(entries, &names[i], 8);
+    }
+    free(names);
+    out[0] = (int64_t)entries;
+    out[1] = 0;
 }
 
 /* ------------------------------------------------------------------ */
