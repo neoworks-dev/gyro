@@ -76,6 +76,19 @@ void gy_open(void *out, const gy_str *path);
 void gy_read_all(void *out, void *file);
 void gy_file_close(void *file);
 void gy_get(void *out, const gy_str *url);
+void gy_write_file(void *out, const gy_str *path, const gy_str *text);
+void gy_append_file(void *out, const gy_str *path, const gy_str *text);
+void gy_remove(void *out, const gy_str *path);
+void gy_read_dir(void *out, const gy_str *path);
+int64_t gy_exists(const gy_str *path);
+
+int64_t gy_now(void);
+int64_t gy_monotonic(void);
+void gy_sleep(int64_t millis);
+
+void gy_env(void *out, const gy_str *name);
+gy_str *gy_read_stdin(void);
+_Noreturn void gy_exit(int64_t code);
 
 void *gy_array_new(void);
 void gy_array_push(void *a, const void *elem, int64_t elemSize);

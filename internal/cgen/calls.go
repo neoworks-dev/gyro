@@ -406,6 +406,28 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_read_all", sret: true, args: values(0)}
 	case "get":
 		return nativePlan{symbol: "gy_get", sret: true, args: values(0)}
+	case "write_file":
+		return nativePlan{symbol: "gy_write_file", sret: true, args: values(0, 1)}
+	case "append_file":
+		return nativePlan{symbol: "gy_append_file", sret: true, args: values(0, 1)}
+	case "remove":
+		return nativePlan{symbol: "gy_remove", sret: true, args: values(0)}
+	case "read_dir":
+		return nativePlan{symbol: "gy_read_dir", sret: true, args: values(0)}
+	case "exists":
+		return nativePlan{symbol: "gy_exists", args: values(0)}
+	case "now":
+		return nativePlan{symbol: "gy_now"}
+	case "monotonic":
+		return nativePlan{symbol: "gy_monotonic"}
+	case "sleep":
+		return nativePlan{symbol: "gy_sleep", args: values(0)}
+	case "env":
+		return nativePlan{symbol: "gy_env", sret: true, args: values(0)}
+	case "read_stdin":
+		return nativePlan{symbol: "gy_read_stdin"}
+	case "exit":
+		return nativePlan{symbol: "gy_exit", args: values(0)}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
