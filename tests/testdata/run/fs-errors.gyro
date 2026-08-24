@@ -1,0 +1,30 @@
+// Every fs error message matches Go's os formatting byte for byte, so the
+// three tiers cannot drift apart in what they tell the user.
+import { println } from "stdlib"
+import { open, write_file, append_file, remove, read_dir, exists } from "fs"
+
+fn main() {
+  const missing = "/tmp/gyro-fs-nowhere"
+  println(exists(missing))
+
+  var _, openErr = open(missing)
+  if openErr != null {
+    println(openErr.message())
+  }
+  var writeErr = write_file("/tmp/gyro-fs-nowhere/write.txt", "x")
+  if writeErr != null {
+    println(writeErr.message())
+  }
+  var appendErr = append_file("/tmp/gyro-fs-nowhere/append.txt", "x")
+  if appendErr != null {
+    println(appendErr.message())
+  }
+  var removeErr = remove(missing)
+  if removeErr != null {
+    println(removeErr.message())
+  }
+  var _, listErr = read_dir(missing)
+  if listErr != null {
+    println(listErr.message())
+  }
+}

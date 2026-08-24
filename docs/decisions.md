@@ -1218,6 +1218,37 @@ checker treated `s.runes()` as a view of its receiver. `runes()` decodes
 into storage of its own and always did, so the rule only ever reported
 borrows that were not there.
 
+### fs writes are path-based one-shots *(new)*
+
+**Status: decided.** The `fs` module grows `write_file`, `append_file`,
+`remove`, `read_dir` and `exists`, all taking a path: each call opens,
+acts and closes on its own. `File` stays what it was — a read handle for
+`open`/`read_all`/`close` — and gains nothing.
+
+The reason is the open drop/RAII question. A writable handle is a
+resource that must be closed on every path, and Gyro has no destructors,
+so every mode flag and `write` method added to `File` is another leak
+shaped exactly like the one `MutexGuard::unlock` already carries. A
+one-shot has no open state to forget. When the guard/resource-release
+question settles, a streaming write API can be designed against it;
+until then the path forms cover what a CLI needs.
+
+`read_dir` returns `(Array<string>, error?)`: entry names only, sorted
+bytewise, without `.` and `..` — the interpreter leans on Go's
+`os.ReadDir` and the C runtime sorts the same way, so a listing is
+deterministic on every tier. Rejected returning richer entries (name
+plus kind and size): that shape wants a struct and a stat per entry,
+and a caller who needs it can `open` the name. `exists` returns a bare
+`bool`; the two-valued form `(bool, error?)` was rejected because the
+boolean answer is the whole point — a path that cannot be stat'ed is
+absent for every purpose a caller has.
+
+Error strings mirror Go's `os` package byte for byte (`open <path>:
+no such file or directory`, `remove <path>: ...`), the same rule
+`gy_open` already followed: the interpreter is the oracle, and the C
+runtime reproduces its messages from `errno` rather than inventing its
+own wording.
+
 ## Testing
 
 ### One execution corpus, run by every tier *(new)*

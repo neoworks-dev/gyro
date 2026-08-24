@@ -56,8 +56,13 @@ var natives = map[string]nativeFunc{
 	"gyro:mem||free":  nativeFree,
 	"gyro:mem||size":  nativeSize,
 
-	"gyro:fs||open":     nativeOpen,
-	"gyro:fs||read_all": nativeReadAll,
+	"gyro:fs||open":        nativeOpen,
+	"gyro:fs||read_all":    nativeReadAll,
+	"gyro:fs||write_file":  nativeWriteFile,
+	"gyro:fs||append_file": nativeAppendFile,
+	"gyro:fs||remove":      nativeRemove,
+	"gyro:fs||read_dir":    nativeReadDir,
+	"gyro:fs||exists":      nativeExists,
 
 	"gyro:net||get": nativeNetGet,
 
@@ -181,6 +186,62 @@ func nativeReadAll(c *nativeCall) Value {
 		return TupleVal{StringVal(""), NativeError{Message: err.Error()}}
 	}
 	return TupleVal{StringVal(data), NullVal{}}
+}
+
+func nativeWriteFile(c *nativeCall) Value {
+	path, _ := c.arg(0).(StringVal)
+	text, _ := c.arg(1).(StringVal)
+	if err := os.WriteFile(string(path), []byte(text), 0o644); err != nil {
+		return NativeError{Message: err.Error()}
+	}
+	return NullVal{}
+}
+
+func nativeAppendFile(c *nativeCall) Value {
+	path, _ := c.arg(0).(StringVal)
+	text, _ := c.arg(1).(StringVal)
+	file, err := os.OpenFile(string(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return NativeError{Message: err.Error()}
+	}
+	_, err = file.WriteString(string(text))
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return NativeError{Message: err.Error()}
+	}
+	return NullVal{}
+}
+
+func nativeRemove(c *nativeCall) Value {
+	path, _ := c.arg(0).(StringVal)
+	if err := os.Remove(string(path)); err != nil {
+		return NativeError{Message: err.Error()}
+	}
+	return NullVal{}
+}
+
+// nativeReadDir lists a directory's entry names. os.ReadDir sorts them,
+// and the native runtime sorts the same way, so a listing is deterministic
+// on every tier.
+func nativeReadDir(c *nativeCall) Value {
+	path, _ := c.arg(0).(StringVal)
+	entries, err := os.ReadDir(string(path))
+	if err != nil {
+		return TupleVal{&ArrayObj{}, NativeError{Message: err.Error()}}
+	}
+	names := &ArrayObj{}
+	for _, entry := range entries {
+		names.Elems = append(names.Elems, StringVal(entry.Name()))
+	}
+	return TupleVal{names, NullVal{}}
+}
+
+func nativeExists(c *nativeCall) Value {
+	path, _ := c.arg(0).(StringVal)
+	_, err := os.Stat(string(path))
+	return BoolVal(err == nil)
 }
 
 func nativeNetGet(c *nativeCall) Value {

@@ -153,6 +153,49 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 			return tupleVal{strVal(""), m.nativeError(err.Error())}
 		}
 		return tupleVal{strVal(data), nullVal{}}
+	case "write_file":
+		path, _ := arg(0).(strVal)
+		text, _ := arg(1).(strVal)
+		if err := os.WriteFile(string(path), []byte(text), 0o644); err != nil {
+			return m.nativeError(err.Error())
+		}
+		return nullVal{}
+	case "append_file":
+		path, _ := arg(0).(strVal)
+		text, _ := arg(1).(strVal)
+		file, err := os.OpenFile(string(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return m.nativeError(err.Error())
+		}
+		_, err = file.WriteString(string(text))
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return m.nativeError(err.Error())
+		}
+		return nullVal{}
+	case "remove":
+		path, _ := arg(0).(strVal)
+		if err := os.Remove(string(path)); err != nil {
+			return m.nativeError(err.Error())
+		}
+		return nullVal{}
+	case "read_dir":
+		path, _ := arg(0).(strVal)
+		entries, err := os.ReadDir(string(path))
+		if err != nil {
+			return tupleVal{handleVal{obj: &arrayObj{}}, m.nativeError(err.Error())}
+		}
+		names := &arrayObj{}
+		for _, entry := range entries {
+			names.elems = append(names.elems, strVal(entry.Name()))
+		}
+		return tupleVal{handleVal{obj: names}, nullVal{}}
+	case "exists":
+		path, _ := arg(0).(strVal)
+		_, err := os.Stat(string(path))
+		return boolVal(err == nil)
 	case "get":
 		return tupleVal{strVal(""), m.nativeError("the interpreter has no network")}
 	}
