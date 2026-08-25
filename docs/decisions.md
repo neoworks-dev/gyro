@@ -546,17 +546,17 @@ shortcuts and one routing choice, and closing them is the roadmap:
    all three tiers. Since then: string literals and file-scope
    initializers, `switch`, `static` locals, function pointers, a program
    made of as many `.c` files as it takes, `void *` with the casts that
-   go with it, varargs, and pointers to incomplete types — the way every
-   library header hands out a handle. "Any existing C program" is still
-   the bar and is still a way off — the front end owes unions and
+   go with it, varargs, pointers to incomplete types — the way every
+   library header hands out a handle — and unions. "Any existing C
+   program" is still the bar and is still a way off — the front end owes
    bitfields, most of C11, VLAs, `_Generic`, and the relooper for
    irreducible `goto`, the piece `internal/wasm/clang.go` names as the
    hardest and currently outsources. See "The C front end emits types,
    the bridge emits bytes", "Pointer arithmetic is three instructions,
    and unchecked", "A callable is one word or two", "A C program is
    several files", "A `void *` is a pointer that forgot", "Varargs are an
-   array a caller builds", and "An incomplete type is a name with no
-   shape".
+   array a caller builds", "An incomplete type is a name with no shape",
+   and "A union is a shape".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2445,6 +2445,57 @@ this whole entry is about would be decorative.
 completed failed the module — which is right for a program that needs the
 size and wrong for every library header ever written, since the whole
 technique is to never provide one.
+
+### A union is a shape, not a record whose fields coincide *(new)*
+
+**Status: decided.** METALS grew `type %Name = union { ... }`: every
+member at offset zero, the size the widest member's rounded up to the
+strictest member's alignment. `field.ptr` reaches a member the way it
+reaches a record's field, and the offset is `metals.Layout`'s answer.
+
+**Rejected: a record with a layout flag.** It would produce the right
+address for every member and the wrong answer for every read, because
+**the difference between a record and a union is not where the members
+sit — it is that writing one unwrites the others**. That is a fact about
+reads, and a consumer given a record would have no way to learn it.
+
+**Rejected: reusing the enum payload.** An enum already overlaps its
+variants, and the shape is right there. But an enum *knows* which variant
+it holds and the format checks the tag; a union is C's, where nothing
+records the live member and the program is expected to know. Bolting a
+tag on would make every C union carry a word C does not, and `sizeof` is
+the whole reason to read C in.
+
+**The evaluator records what C throws away, and that is the interesting
+part.** The natives get C's own union, so reading a member other than the
+one written reinterprets bytes — which is what C leaves undefined, and no
+tier can be called wrong for it. The evaluator has no bytes to
+reinterpret. So it records which member is live, which is *strictly more
+than C keeps*, and uses it to tell C's two cases apart:
+
+- Reading across members that share an initial sequence is **defined**,
+  and it is what every tagged union in C is built on: `event.kind` beside
+  `event.key.kind`, in SDL, in X11, in every message queue anyone has
+  written. Those are answered, and answered without disturbing the live
+  member, because reading does not write in C either.
+- Everything else is **reported**, with a sentence naming both members,
+  rather than answered.
+
+That is the same asymmetry `ptr.cast` already has, and it lands the same
+way: the tiers agree on every defined program, and the evaluator is the
+tier that can see an undefined one. `union-punning.metals` is that case
+in the corpus, skipped on the two natives with the reason written down.
+
+A union does not compare and does not cross a runtime boundary, both
+because nothing records which member the storage means: equality has no
+question to answer, and a copy has nothing the far side could read. A
+record holding one inherits both refusals.
+
+On the C side a tag names a struct or a union in one namespace, so
+`struct P` beside `union P` is an error rather than two types — which is
+C's rule and also what keeps one METALS name from meaning two things. A
+braced initializer writes the first member and only the first, which is
+all one storage has room for.
 
 ## Native backend
 

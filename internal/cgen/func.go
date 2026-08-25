@@ -198,8 +198,10 @@ func (f *frame) instr(instr metals.Instr) {
 		f.line("%s = %s;", f.deref(i.Ptr, f.typeOf(i.Val)), f.reg(i.Val))
 
 	case *metals.FieldPtr:
-		record := f.recordBehindPtr(i.Ptr)
-		if i.Index >= len(record.Fields) {
+		// A union's members all begin where the union does. C says that
+		// with its own union, so the generated `&u->fN` is already the
+		// same address for every N.
+		if decl := f.declBehindPtr(i.Ptr); i.Index >= len(decl.Members()) {
 			g.fail("@%s: field.ptr %d past the record", f.fn.Name, i.Index)
 		}
 		named := f.typeOf(i.Ptr).(*metals.Ptr).Elem
@@ -659,7 +661,11 @@ func (f *frame) tupleOf(reg string) *metals.TupleOf {
 	return tuple
 }
 
-func (f *frame) recordBehindPtr(reg string) *metals.RecordShape {
+// declBehindPtr is the record or union a pointer addresses. The two
+// answer the same question about a member's name and type; where the
+// member sits is C's own answer here, because the generated type is a C
+// union when the METALS type is one.
+func (f *frame) declBehindPtr(reg string) *metals.TypeDecl {
 	pointer, ok := f.typeOf(reg).(*metals.Ptr)
 	if !ok {
 		f.g.fail("@%s: %%%s is not a pointer", f.fn.Name, reg)
@@ -669,10 +675,10 @@ func (f *frame) recordBehindPtr(reg string) *metals.RecordShape {
 		f.g.fail("@%s: %%%s does not point at a record", f.fn.Name, reg)
 	}
 	decl := f.g.types[named.Name]
-	if decl == nil || decl.Record == nil {
+	if decl == nil || decl.Members() == nil {
 		f.g.fail("@%s: %%%s does not point at a record", f.fn.Name, reg)
 	}
-	return decl.Record
+	return decl
 }
 
 // ---------------------------------------------------------------------------

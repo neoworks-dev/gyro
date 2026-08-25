@@ -38,6 +38,7 @@ const (
 	kPtr
 	kArray
 	kStruct
+	kUnion
 	kFunc
 )
 
@@ -48,8 +49,11 @@ type ctype struct {
 	// length is an array's element count, or -1 for the unspecified
 	// length a parameter may be written with.
 	length int64
-	// tag and fields describe a struct. The tag is also the METALS type
-	// name, so a C program's `struct Point` is a `%Point`.
+	// tag and fields describe a struct or a union. The tag is also the
+	// METALS type name, so a C program's `struct Point` is a `%Point`.
+	// C keeps one namespace for both, so `struct P` and `union P` in one
+	// program are an error rather than two types, which is also what
+	// keeps one METALS name from meaning two things.
 	tag    string
 	fields []field
 	// params and result describe a function. A function type has no
@@ -100,7 +104,22 @@ func (t *ctype) isVoid() bool    { return t.kind == kVoid }
 func (t *ctype) isPointer() bool { return t.kind == kPtr }
 func (t *ctype) isArray() bool   { return t.kind == kArray }
 func (t *ctype) isStruct() bool  { return t.kind == kStruct }
+func (t *ctype) isUnion() bool   { return t.kind == kUnion }
 func (t *ctype) isFunc() bool    { return t.kind == kFunc }
+
+// isMembered is a struct or a union: an aggregate whose parts have
+// names. The two are reached the same way and differ in where the parts
+// sit, which is the layout table's answer and not this one's.
+func (t *ctype) isMembered() bool { return t.kind == kStruct || t.kind == kUnion }
+
+// keyword is how a declaration of this type begins, which is what an
+// error message has to say to point at the right line.
+func (t *ctype) keyword() string {
+	if t.kind == kUnion {
+		return "union"
+	}
+	return "struct"
+}
 
 // isFuncPointer is what a call through a variable needs, and what a
 // callback table's fields are made of.
@@ -122,7 +141,7 @@ func (t *ctype) isVoidPointer() bool { return t.kind == kPtr && t.elem.isVoid() 
 // then `SDL_Window *` everywhere, so that the caller keeps the type and
 // never learns the shape.
 func (t *ctype) isOpaquePointer() bool {
-	return t.kind == kPtr && t.elem.isStruct() && t.elem.fields == nil
+	return t.kind == kPtr && t.elem.isMembered() && t.elem.fields == nil
 }
 
 // The two parameters a variadic function is given beyond the ones it
@@ -178,7 +197,7 @@ func (t *ctype) isComplete() bool {
 	switch t.kind {
 	case kVoid, kFunc:
 		return false
-	case kStruct:
+	case kStruct, kUnion:
 		return t.fields != nil
 	case kArray:
 		return t.length >= 0 && t.elem.isComplete()
@@ -253,8 +272,8 @@ func (t *ctype) String() string {
 			return t.elem.String() + "[]"
 		}
 		return t.elem.String() + "[" + strconv.FormatInt(t.length, 10) + "]"
-	case kStruct:
-		return "struct " + t.tag
+	case kStruct, kUnion:
+		return t.keyword() + " " + t.tag
 	case kFunc:
 		parts := make([]string, len(t.params))
 		for i, p := range t.params {
@@ -281,7 +300,7 @@ func (a *ctype) equals(b *ctype) bool {
 		return a.elem.equals(b.elem)
 	case kArray:
 		return a.length == b.length && a.elem.equals(b.elem)
-	case kStruct:
+	case kStruct, kUnion:
 		return a.tag == b.tag
 	case kFunc:
 		if len(a.params) != len(b.params) || a.variadic != b.variadic || !a.result.equals(b.result) {
@@ -358,7 +377,7 @@ func (t *ctype) metalsType() metals.Type {
 		// register, because C decays it to a pointer everywhere but a
 		// declaration and a sizeof.
 		return &metals.ArrayOf{Elem: t.elem.metalsType(), Len: t.length}
-	case kStruct:
+	case kStruct, kUnion:
 		return &metals.Named{Name: t.tag}
 	}
 	return nil

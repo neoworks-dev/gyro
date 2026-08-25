@@ -211,6 +211,34 @@ func (l *Layout) members(types []Type) (size, align int) {
 	return roundUp(size, align), align
 }
 
+// overlap lays a union out the way C lays one out: every member at
+// offset zero, the size the widest member's, the alignment the
+// strictest, and the size rounded up to it so that an array of them
+// keeps every element aligned.
+func (l *Layout) overlap(union *UnionShape) (size, align int) {
+	align = 1
+	for _, member := range union.Members {
+		if memberAlign := l.Align(member.Type); memberAlign > align {
+			align = memberAlign
+		}
+		if memberSize := l.Size(member.Type); memberSize > size {
+			size = memberSize
+		}
+	}
+	return roundUp(size, align), align
+}
+
+// MemberOffset is a member's offset inside a record or a union. A
+// union's members all begin at zero — that is the whole of what a union
+// is — so the two questions share an entry point and differ only in the
+// answer.
+func (l *Layout) MemberOffset(decl *TypeDecl, index int) int {
+	if decl.Union != nil {
+		return 0
+	}
+	return l.FieldOffset(decl.Record, index)
+}
+
 // Offsets gives every member's byte offset, which is what a record, a
 // tuple and an enum payload all need.
 func (l *Layout) Offsets(types []Type) []int {
@@ -272,9 +300,12 @@ func (l *Layout) namedSize(name string) int {
 	l.building[name] = true
 
 	size := 0
-	if decl.Record != nil {
+	switch {
+	case decl.Record != nil:
 		size, _ = l.members(fieldTypes(decl.Record))
-	} else {
+	case decl.Union != nil:
+		size, _ = l.overlap(decl.Union)
+	default:
 		size = roundUp(Word+l.PayloadSize(decl.Enum), Word) // { tag, payload }
 	}
 
@@ -293,8 +324,11 @@ func (l *Layout) namedAlign(name string) int {
 		return 1
 	}
 	align := Word
-	if decl.Record != nil {
+	switch {
+	case decl.Record != nil:
 		_, align = l.members(fieldTypes(decl.Record))
+	case decl.Union != nil:
+		_, align = l.overlap(decl.Union)
 	}
 	l.align[name] = align
 	return align

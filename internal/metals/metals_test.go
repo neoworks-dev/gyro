@@ -678,6 +678,104 @@ func TestVerifierChecksPointerErasure(t *testing.T) {
 `, "wants an opt<anyptr>")
 }
 
+// A union is one storage with several readings of it. What the format
+// carries is the members and their types; where they sit is the layout
+// table's answer, and it is the same answer for all of them.
+func TestUnionRoundTrip(t *testing.T) {
+	roundTrip(t, `
+module "cc:test/union"
+
+type %Key = record { kind: u32, code: u32 }
+type %Event = union { kind: u32, key: %Key }
+
+export fn @tag(%e: ptr<%Event>) -> u32 {
+  %p = field.ptr %e, 0
+  %k = load %p
+  return %k
+}
+`)
+}
+
+func TestUnionLayoutIsTheWidestMember(t *testing.T) {
+	module, err := metals.Parse(`module "cc:test/u"
+
+type %Wide = record { a: i64, b: i64 }
+type %Small = union { n: i32, wide: %Wide, pad: array<u8, 3> }
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	layout := metals.NewLayout(module, func(format string, args ...any) {
+		t.Fatalf("layout: "+format, args...)
+	})
+	union := &metals.Named{Name: "Small"}
+	if got := layout.Size(union); got != 16 {
+		t.Errorf("size of the union is %d, and its widest member is 16", got)
+	}
+	if got := layout.Align(union); got != 8 {
+		t.Errorf("alignment of the union is %d, and its strictest member wants 8", got)
+	}
+	// Every member begins where the union does. That is the whole of
+	// what a union is at this level.
+	decl := module.Types[1]
+	for index := range decl.Members() {
+		if got := layout.MemberOffset(decl, index); got != 0 {
+			t.Errorf("member %d of the union sits at %d, and a union's members all sit at 0", index, got)
+		}
+	}
+}
+
+func TestVerifierChecksUnions(t *testing.T) {
+	const shapes = header + "type %U = union { n: i32, f: f64 }\ntype %R = record { u: %U }\n\n"
+
+	// Comparing storage nothing records the meaning of has no answer,
+	// and a record holding a union is the same question one level down.
+	verifyError(t, shapes+`fn @f(%a: %U, %b: %U) {
+  %r = eq %a, %b
+  return
+}
+`, "nothing records which member %U holds")
+
+	verifyError(t, shapes+`fn @f(%a: %R, %b: %R) {
+  %r = eq %a, %b
+  return
+}
+`, "nothing records which member %U holds")
+
+	// A union is storage with nothing saying which member wrote it, so
+	// what would arrive on the other side of a boundary is a shape the
+	// far side has no way to read.
+	verifyError(t, `module "gyro:test/v"
+
+type %U = union { n: i32, f: f64 }
+
+import "js:./widgets" {
+  fn @render(%U)
+}
+`, "values copy at the boundary")
+
+	// The members are reached the way a record's fields are, and the
+	// shapes that have no members say so.
+	verifyError(t, shapes+`fn @f(%p: ptr<%U>) {
+  %m = field.ptr %p, 5
+  return
+}
+`, "field 5 out of range")
+
+	verifyError(t, shapes+`fn @f(%u: %U) {
+  %m = field.get %u, 0
+  return
+}
+`, "%U is a union, not a record")
+
+	verifyError(t, header+`type %U = union { }
+
+fn @f() {
+  return
+}
+`, "union of nothing")
+}
+
 // An opaque declaration says a name exists and nothing else. What that
 // buys is a pointer that keeps a type it cannot look inside; what it
 // costs is every operation that would measure the object, which is the

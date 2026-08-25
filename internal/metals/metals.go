@@ -382,11 +382,12 @@ type ImportedFunc struct {
 	Sig  *FnType
 }
 
-// TypeDecl is a module-local record, enum or opaque name. Exactly one of
-// the three is set.
+// TypeDecl is a module-local record, union, enum or opaque name. Exactly
+// one of the four is set.
 type TypeDecl struct {
 	Name   string
 	Record *RecordShape
+	Union  *UnionShape
 	Enum   *EnumShape
 
 	// Opaque is a name with no shape: a type the module knows exists and
@@ -410,9 +411,44 @@ type RecordShape struct {
 	Fields []FieldDecl
 }
 
+// UnionShape is a set of members over one storage. Every member begins
+// at offset 0, the size is the widest member's rounded up to the
+// strictest member's alignment, and at most one of them holds a value at
+// a time.
+//
+// It is a shape of its own rather than a record with a layout flag,
+// because the difference is not where the members sit — it is that
+// writing one unwrites the others. A consumer that treated a union as a
+// record with coincident offsets would be right about every address and
+// wrong about every read, and the evaluator is the tier that can tell.
+//
+// An enum's payload is not this. An enum knows which variant it holds
+// and the format checks the tag; a union is C's, where nothing records
+// which member is live and the program is expected to know. That is why
+// this carries no tag and why reading across members is the language's
+// rule and not the format's: defined for a common initial sequence,
+// undefined otherwise.
+type UnionShape struct {
+	Members []FieldDecl
+}
+
 type FieldDecl struct {
 	Name string
 	Type Type
+}
+
+// Members is the member list of a record or a union, and nil for
+// anything else. The two differ in where their members sit and not in
+// what they are, so a consumer that only needs the names and the types
+// asks once.
+func (d *TypeDecl) Members() []FieldDecl {
+	switch {
+	case d.Record != nil:
+		return d.Record.Fields
+	case d.Union != nil:
+		return d.Union.Members
+	}
+	return nil
 }
 
 type EnumShape struct {

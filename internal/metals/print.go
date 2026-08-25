@@ -119,12 +119,17 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		p.printf("type %s = opaque", reg(decl.Name))
 		return
 	}
-	if decl.Record != nil {
-		fields := make([]string, len(decl.Record.Fields))
-		for i, field := range decl.Record.Fields {
-			fields[i] = field.Name + ": " + field.Type.String()
+	if decl.Record != nil || decl.Union != nil {
+		shape := "record"
+		if decl.Union != nil {
+			shape = "union"
 		}
-		p.printf("type %s = record { %s }", reg(decl.Name), strings.Join(fields, ", "))
+		members := decl.Members()
+		text := make([]string, len(members))
+		for i, member := range members {
+			text[i] = member.Name + ": " + member.Type.String()
+		}
+		p.printf("type %s = %s { %s }", reg(decl.Name), shape, strings.Join(text, ", "))
 		return
 	}
 	variants := make([]string, len(decl.Enum.Variants))

@@ -14,6 +14,7 @@ import "js:./widgets" {
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
+type %Event = union { kind: u32, point: %Point }
 type %Session = opaque
 
 global @counter: i32
@@ -76,6 +77,15 @@ export fn @add(%a: i32, %b: i32) -> i32 {
         (primitive_type))
       (variant_declaration
         (identifier))))
+  (type_declaration
+    (type_name)
+    (union_shape
+      (field_declaration
+        (identifier)
+        (primitive_type))
+      (field_declaration
+        (identifier)
+        (type_name))))
   (type_declaration
     (type_name)
     (opaque_shape))

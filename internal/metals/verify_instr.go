@@ -231,14 +231,18 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !ok {
 			return fmt.Errorf("field.ptr wants a pointer, not %s", typ)
 		}
-		shape, err := fv.namedRecordOf(pointer.Elem)
+		// A union's members are reached the same way a record's are, and
+		// the only difference is that they all sit at zero. That is the
+		// layout's answer, not this one's.
+		decl, err := fv.memberedDecl(pointer.Elem)
 		if err != nil {
 			return err
 		}
-		if i.Index < 0 || i.Index >= len(shape.Fields) {
+		members := decl.Members()
+		if i.Index < 0 || i.Index >= len(members) {
 			return fmt.Errorf("field %d out of range", i.Index)
 		}
-		return fv.def(state, i.Dst, &Ptr{Elem: shape.Fields[i.Index].Type})
+		return fv.def(state, i.Dst, &Ptr{Elem: members[i.Index].Type})
 
 	case *ElemPtr:
 		typ, err := fv.use(state, i.Ptr)
@@ -904,6 +908,13 @@ func (fv *funcVerifier) checkBin(i *Bin, state *regState) error {
 	default: // eq, ne
 		if _, isChan := left.(*ChanOf); isChan {
 			return fmt.Errorf("channels do not compare")
+		}
+		// Comparing two unions would have to compare storage, and
+		// nothing records which member is live in either of them — C
+		// does not define this and neither does the format. A record
+		// with one inside is the same question one level down.
+		if bad := unionInside(left, fv.types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("%s does not compare: nothing records which member %s holds", left, bad)
 		}
 		return fv.def(state, i.Dst, TBool)
 	}

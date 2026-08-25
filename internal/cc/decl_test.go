@@ -161,7 +161,9 @@ int result(void) {
 }
 
 func TestDeclarationRefusals(t *testing.T) {
-	refused(t, `union U { int a; int b; }; int result(void) { return 0; }`, "a union has no METALS type")
+	refused(t, `union U { }; int result(void) { return 0; }`, "has no members")
+	refused(t, `struct P { int a; }; union P { int b; }; int result(void) { return 0; }`,
+		"one tag namespace for both")
 	refused(t, `int result(void) { return sizeof(void); }`, "sizeof(void) has no answer")
 	refused(t, `enum E { A }; int result(void) { A = 1; return 0; }`, "enumeration constant")
 	refused(t, `typedef int T; typedef long T; int result(void) { return 0; }`, "typedef'd twice")

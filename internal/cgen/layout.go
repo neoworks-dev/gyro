@@ -215,9 +215,9 @@ func (g *generator) memberOffsets(t metals.Type) []memberOffset {
 		if decl == nil {
 			return nil
 		}
-		if decl.Record != nil {
-			for index := range decl.Record.Fields {
-				add(fmt.Sprintf("f%d", index), g.layout.FieldOffset(decl.Record, index))
+		if decl.Record != nil || decl.Union != nil {
+			for index := range decl.Members() {
+				add(fmt.Sprintf("f%d", index), g.layout.MemberOffset(decl, index))
 			}
 			return out
 		}
@@ -262,10 +262,17 @@ func (g *generator) namedBody(typeName, name string) string {
 	}
 
 	var out strings.Builder
-	if decl.Record != nil {
-		out.WriteString("typedef struct {")
-		for index, field := range decl.Record.Fields {
-			fmt.Fprintf(&out, " %s f%d; /* %s */", g.memberType(field.Type), index, comment(field.Name))
+	if decl.Record != nil || decl.Union != nil {
+		// A METALS union becomes a C union, so C lays it out and the
+		// asserts below hold the format's arithmetic to C's answer — the
+		// same bargain every other type here makes.
+		keyword := "struct"
+		if decl.Union != nil {
+			keyword = "union"
+		}
+		fmt.Fprintf(&out, "typedef %s {", keyword)
+		for index, member := range decl.Members() {
+			fmt.Fprintf(&out, " %s f%d; /* %s */", g.memberType(member.Type), index, comment(member.Name))
 		}
 		fmt.Fprintf(&out, " } %s;", name)
 		return out.String()

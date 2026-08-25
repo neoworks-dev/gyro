@@ -227,9 +227,9 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 		if decl == nil || decl.Opaque {
 			return t
 		}
-		if decl.Record != nil {
-			for _, field := range decl.Record.Fields {
-				if bad := pointerInside(m, field.Type, seen); bad != nil {
+		if members := decl.Members(); decl.Enum == nil {
+			for _, member := range members {
+				if bad := pointerInside(m, member.Type, seen); bad != nil {
 					return bad
 				}
 			}
@@ -245,6 +245,50 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 		return nil
 	}
 	return t
+}
+
+// unionInside names a union reachable inside a type by value, or "". It
+// is what equality asks: comparing storage nothing records the meaning
+// of has no answer, and a record holding a union is that question one
+// level down. A pointer to one is not — an address compares whatever is
+// at the other end.
+func unionInside(t Type, types map[string]*TypeDecl, seen map[string]bool) string {
+	switch t := t.(type) {
+	case *ArrayOf:
+		return unionInside(t.Elem, types, seen)
+	case *TupleOf:
+		for _, elem := range t.Elems {
+			if bad := unionInside(elem, types, seen); bad != "" {
+				return bad
+			}
+		}
+	case *Opt:
+		return unionInside(t.Elem, types, seen)
+	case *Named:
+		decl := types[t.Name]
+		if decl == nil || seen[t.Name] {
+			return ""
+		}
+		seen[t.Name] = true
+		if decl.Union != nil {
+			return "%" + t.Name
+		}
+		for _, member := range decl.Members() {
+			if bad := unionInside(member.Type, types, seen); bad != "" {
+				return bad
+			}
+		}
+		if decl.Enum != nil {
+			for _, variant := range decl.Enum.Variants {
+				for _, payload := range variant.Payload {
+					if bad := unionInside(payload, types, seen); bad != "" {
+						return bad
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func findType(m *Module, name string) *TypeDecl {
@@ -274,8 +318,19 @@ type verifier struct {
 
 func (v *verifier) checkDeclShapes(decl *TypeDecl) error {
 	if decl.Opaque {
-		if decl.Record != nil || decl.Enum != nil {
+		if decl.Record != nil || decl.Union != nil || decl.Enum != nil {
 			return fmt.Errorf("type %%%s is opaque and also has a shape", decl.Name)
+		}
+		return nil
+	}
+	if decl.Union != nil {
+		if len(decl.Union.Members) == 0 {
+			return fmt.Errorf("type %%%s is a union of nothing, which has no storage to share", decl.Name)
+		}
+		for _, member := range decl.Union.Members {
+			if err := v.checkType(member.Type); err != nil {
+				return fmt.Errorf("type %%%s, member %s: %w", decl.Name, member.Name, err)
+			}
 		}
 		return nil
 	}
@@ -437,6 +492,13 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) 
 			return ""
 		}
 		seen[t.Name] = true
+		if decl.Union != nil {
+			// A union is storage with nothing recording which member is
+			// live. Copying it across a boundary would hand the far side
+			// a shape it has no way to read, so the copy rule refuses it
+			// rather than making one up.
+			return "%" + t.Name + ", a union"
+		}
 		if decl.Record != nil {
 			for _, field := range decl.Record.Fields {
 				if bad := boundaryOffender(field.Type, types, seen); bad != "" {
@@ -731,9 +793,33 @@ func (fv *funcVerifier) recordShape(name string) (*RecordShape, error) {
 		return nil, fmt.Errorf("%%%s is opaque, so it has no fields to reach", name)
 	}
 	if decl.Record == nil {
+		if decl.Union != nil {
+			return nil, fmt.Errorf("%%%s is a union, not a record", name)
+		}
 		return nil, fmt.Errorf("%%%s is an enum, not a record", name)
 	}
 	return decl.Record, nil
+}
+
+// memberedDecl is what field.ptr reaches into: a record or a union. The
+// two answer the same question about names and types and different ones
+// about offsets, which is the layout's business rather than this one's.
+func (fv *funcVerifier) memberedDecl(t Type) (*TypeDecl, error) {
+	named, ok := t.(*Named)
+	if !ok {
+		return nil, fmt.Errorf("%s has no members", t)
+	}
+	decl := fv.types[named.Name]
+	if decl == nil {
+		return nil, fmt.Errorf("unknown type %%%s", named.Name)
+	}
+	switch {
+	case decl.Opaque:
+		return nil, fmt.Errorf("%%%s is opaque, so it has no fields to reach", named.Name)
+	case decl.Enum != nil:
+		return nil, fmt.Errorf("%%%s is an enum, not a record or a union", named.Name)
+	}
+	return decl, nil
 }
 
 func (fv *funcVerifier) enumShape(name string) (*EnumShape, error) {

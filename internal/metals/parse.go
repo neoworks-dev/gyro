@@ -434,6 +434,10 @@ func (p *parser) typeDecl(m *Module) error {
 		if err := p.recordShape(decl); err != nil {
 			return err
 		}
+	case "union":
+		if err := p.unionShape(decl); err != nil {
+			return err
+		}
 	case "enum":
 		if err := p.enumShape(decl); err != nil {
 			return err
@@ -441,39 +445,56 @@ func (p *parser) typeDecl(m *Module) error {
 	case "opaque":
 		decl.Opaque = true
 	default:
-		return p.errf("a type is a record, an enum or opaque, not %q", kind.text)
+		return p.errf("a type is a record, a union, an enum or opaque, not %q", kind.text)
 	}
 	m.Types = append(m.Types, decl)
 	return p.endOfLine()
 }
 
 func (p *parser) recordShape(decl *TypeDecl) error {
-	if err := p.punct("{"); err != nil {
+	fields, err := p.memberList("field")
+	if err != nil {
 		return err
 	}
-	shape := &RecordShape{}
+	decl.Record = &RecordShape{Fields: fields}
+	return nil
+}
+
+func (p *parser) unionShape(decl *TypeDecl) error {
+	members, err := p.memberList("member")
+	if err != nil {
+		return err
+	}
+	decl.Union = &UnionShape{Members: members}
+	return nil
+}
+
+func (p *parser) memberList(what string) ([]FieldDecl, error) {
+	if err := p.punct("{"); err != nil {
+		return nil, err
+	}
+	var members []FieldDecl
 	for !p.atPunct("}") {
-		if len(shape.Fields) > 0 {
+		if len(members) > 0 {
 			if err := p.punct(","); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		name := p.scan.next()
 		if name.kind != tWord {
-			return p.errf("expected a field name, found %q", name.text)
+			return nil, p.errf("expected a %s name, found %q", what, name.text)
 		}
 		if err := p.punct(":"); err != nil {
-			return err
+			return nil, err
 		}
 		typ, err := p.typeExpr()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		shape.Fields = append(shape.Fields, FieldDecl{Name: name.text, Type: typ})
+		members = append(members, FieldDecl{Name: name.text, Type: typ})
 	}
 	p.scan.next() // }
-	decl.Record = shape
-	return nil
+	return members, nil
 }
 
 func (p *parser) enumShape(decl *TypeDecl) error {

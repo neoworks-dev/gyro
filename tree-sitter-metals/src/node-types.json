@@ -1078,6 +1078,10 @@
           {
             "type": "record_shape",
             "named": true
+          },
+          {
+            "type": "union_shape",
+            "named": true
           }
         ]
       },
@@ -1091,6 +1095,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "union_shape",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "field_declaration",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1374,6 +1393,10 @@
   },
   {
     "type": "u8",
+    "named": false
+  },
+  {
+    "type": "union",
     "named": false
   },
   {

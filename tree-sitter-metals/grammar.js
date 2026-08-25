@@ -80,8 +80,17 @@ module.exports = grammar({
       'type',
       field('name', alias($.register, $.type_name)),
       '=',
-      field('body', choice($.record_shape, $.enum_shape, $.opaque_shape)),
+      field('body', choice($.record_shape, $.union_shape, $.enum_shape, $.opaque_shape)),
       $._end,
+    ),
+
+    // A union: several members over one storage, all beginning where
+    // the union does.
+    union_shape: $ => seq(
+      'union',
+      '{',
+      commaSep($.field_declaration),
+      '}',
     ),
 
     // A name with no shape: a type the module knows exists and knows

@@ -656,8 +656,10 @@ func (f *frame) instr(instr metals.Instr) {
 		f.storeMember(memAt(memLoc{base: "rdx"}), f.slot(i.Val), f.typeOf(i.Val))
 
 	case *metals.FieldPtr:
-		record := f.recordBehindPtr(i.Ptr)
-		offset := g.fieldOffset(record, i.Index)
+		// A union's members all begin where the union does, so the
+		// offset is zero and the pointer is the same address — which is
+		// what sharing storage means at this level.
+		offset := g.layout.MemberOffset(f.declBehindPtr(i.Ptr), i.Index)
 		if offset == 0 {
 			f.copyMem(f.slot(i.Dst), f.slot(i.Ptr), wordSize)
 			return
@@ -1167,7 +1169,10 @@ func (f *frame) tupleOf(reg string) *metals.TupleOf {
 	return tuple
 }
 
-func (f *frame) recordBehindPtr(reg string) *metals.RecordShape {
+// declBehindPtr is the record or union a pointer addresses. The two
+// answer the same question about a member's name and type and different
+// ones about its offset, which is metals.Layout's to settle.
+func (f *frame) declBehindPtr(reg string) *metals.TypeDecl {
 	pointer, ok := f.typeOf(reg).(*metals.Ptr)
 	if !ok {
 		f.g.fail("@%s: %%%s is not a pointer", f.fn.Name, reg)
@@ -1177,10 +1182,10 @@ func (f *frame) recordBehindPtr(reg string) *metals.RecordShape {
 		f.g.fail("@%s: %%%s does not point at a record", f.fn.Name, reg)
 	}
 	decl := f.g.types[named.Name]
-	if decl == nil || decl.Record == nil {
+	if decl == nil || decl.Members() == nil {
 		f.g.fail("@%s: %%%s does not point at a record", f.fn.Name, reg)
 	}
-	return decl.Record
+	return decl
 }
 
 // ---------------------------------------------------------------------------

@@ -92,6 +92,7 @@ func Link(modules []*Module) (*Module, error) {
 			out.Types = append(out.Types, &TypeDecl{
 				Name:   l.typeName(decl.Name),
 				Record: l.record(decl.Record),
+				Union:  l.union(decl.Union),
 				Enum:   l.enum(decl.Enum),
 				Opaque: decl.Opaque,
 			})
@@ -296,6 +297,17 @@ func (l *linker) record(shape *RecordShape) *RecordShape {
 		fields[i] = FieldDecl{Name: field.Name, Type: l.rewrite(field.Type)}
 	}
 	return &RecordShape{Fields: fields}
+}
+
+func (l *linker) union(shape *UnionShape) *UnionShape {
+	if shape == nil {
+		return nil
+	}
+	members := make([]FieldDecl, len(shape.Members))
+	for i, member := range shape.Members {
+		members[i] = FieldDecl{Name: member.Name, Type: l.rewrite(member.Type)}
+	}
+	return &UnionShape{Members: members}
 }
 
 func (l *linker) enum(shape *EnumShape) *EnumShape {

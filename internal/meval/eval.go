@@ -277,34 +277,45 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 
 	case *metals.Load:
 		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "load")
-		switch (*cell).(type) {
+		switch stored := (*cell).(type) {
 		case freedVal:
 			m.throw("use after free")
 		case uninitVal:
 			m.throw("read of uninitialized memory")
+		case staleVal:
+			m.throw("%s", stored.why)
 		}
 		regs[i.Dst] = copyValue(*cell)
 
 	case *metals.Store:
-		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "store")
+		ptr := m.get(regs, i.Ptr).(ptrVal)
+		cell := m.deref(ptr, "store")
 		if _, freed := (*cell).(freedVal); freed {
 			m.throw("use after free")
 		}
 		*cell = copyValue(m.get(regs, i.Val))
+		// Writing a member is what makes it the one the union holds.
+		m.claimMember(ptr)
 
 	case *metals.FieldPtr:
-		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "field.ptr")
-		record, ok := (*cell).(recordVal)
-		if !ok {
-			if _, freed := (*cell).(freedVal); freed {
-				m.throw("use after free")
-			}
+		base := m.get(regs, i.Ptr).(ptrVal)
+		m.claimMember(base)
+		cell := m.deref(base, "field.ptr")
+		switch stored := (*cell).(type) {
+		case recordVal:
+			regs[i.Dst] = ptrVal{cells: stored.fields, index: i.Index}
+		case unionVal:
+			regs[i.Dst] = m.memberPtr(cell, stored, i.Index)
+		case freedVal:
+			m.throw("use after free")
+		default:
 			m.throw("field.ptr into a non-record cell")
 		}
-		regs[i.Dst] = ptrVal{cells: record.fields, index: i.Index}
 
 	case *metals.ElemPtr:
-		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "elem.ptr")
+		base := m.get(regs, i.Ptr).(ptrVal)
+		m.claimMember(base)
+		cell := m.deref(base, "elem.ptr")
 		array, ok := (*cell).(arrayVal)
 		if !ok {
 			if _, freed := (*cell).(freedVal); freed {
@@ -316,6 +327,7 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 
 	case *metals.PtrOffset:
 		ptr := m.get(regs, i.Ptr).(ptrVal)
+		m.claimMember(ptr)
 		regs[i.Dst] = ptrVal{cells: ptr.cells, index: ptr.index + int(m.intOf(m.get(regs, i.N)))}
 
 	case *metals.PtrDiff:
@@ -713,6 +725,167 @@ func (m *machine) deref(p ptrVal, what string) *value {
 // materialize with their members in place, because field.ptr and
 // elem.ptr have to reach into storage that has not been written yet —
 // which is exactly what a C local is until its first assignment.
+// ---------------------------------------------------------------------------
+// Unions
+// ---------------------------------------------------------------------------
+//
+// A union's members share storage, and this evaluator has no storage to
+// share — its values are structural. What it shares instead is the fact
+// that one member is live at a time, which is strictly more than C keeps
+// and is exactly what it takes to tell C's two cases apart:
+//
+//   - Reading a member other than the live one is defined where the two
+//     have a common initial sequence, and that is the case every tagged
+//     union in C is built on — `event.type` beside `event.key.type`.
+//     initialPrefix answers those, without disturbing the live member,
+//     because reading does not write in C either.
+//   - Everything else is undefined, and undefined is reported rather
+//     than answered. The natives will hand back whatever the bytes were;
+//     the evaluator is the tier that can see the difference, the same
+//     way it can for `ptr.cast`.
+
+// memberPtr is a pointer to one member of a union.
+//
+// The live member's pointer is an ordinary pointer into its value, so
+// everything downstream works without knowing a union was involved. Any
+// other member is read out of what is there and carried in cells of its
+// own, with the union linked as the owner so that writing through the
+// pointer — or reaching further in with it — makes that member the live
+// one.
+func (m *machine) memberPtr(cell *value, u unionVal, member int) ptrVal {
+	if u.member == member {
+		// The owner is carried even here, where nothing has to be
+		// installed, because it is also what says two members of one
+		// union are one address.
+		return ptrVal{cells: u.cell, index: 0, owner: cell, member: member}
+	}
+
+	decl := m.types[u.typeName]
+	if decl == nil || decl.Union == nil || member < 0 || member >= len(decl.Union.Members) {
+		m.throw("field.ptr %d into %%%s, which has no such member", member, u.typeName)
+	}
+	want := decl.Union.Members[member]
+
+	var held value
+	if u.member >= 0 {
+		if prefix, ok := m.initialPrefix(want.Type, u.cell[0]); ok {
+			held = prefix
+		} else {
+			held = m.staleValue(want.Type, fmt.Sprintf(
+				"reading member %s of union %%%s while it holds %s; their storage overlaps and only a common initial sequence reads across",
+				want.Name, u.typeName, decl.Union.Members[u.member].Name))
+		}
+	} else {
+		held = m.freshValue(want.Type)
+	}
+	return ptrVal{cells: []value{held}, index: 0, owner: cell, member: member}
+}
+
+// claimMember makes a member view's storage the union's own. A store
+// through the pointer does this because writing a member is what makes
+// it live; reaching further in with elem.ptr or field.ptr does it
+// because treating storage as a member's sub-object is treating it as
+// that member, and a write through the derived pointer would otherwise
+// have nowhere to land.
+func (m *machine) claimMember(p ptrVal) {
+	if p.owner == nil {
+		return
+	}
+	u, ok := (*p.owner).(unionVal)
+	if !ok {
+		return
+	}
+	*p.owner = unionVal{typeName: u.typeName, member: p.member, cell: p.cells}
+}
+
+// initialPrefix reads a value of type want out of the storage a union is
+// currently holding, and reports whether the two overlap in a way C
+// defines: the same type, or want laid over the front of what is there.
+//
+// That is C's common initial sequence and nothing wider. A `u32` reads
+// out of a record whose first field is a `u32`; a record reads out of
+// another whose fields begin the same way; anything that would need the
+// bytes reinterpreted answers no, and the caller reports it.
+func (m *machine) initialPrefix(want metals.Type, held value) (value, bool) {
+	if got := describe(held); got != nil && metals.TypesEqual(got, want) {
+		return copyValue(held), true
+	}
+
+	// Two aggregates that begin alike: every member of the narrower one
+	// reads out of the corresponding member of the wider.
+	if named, ok := want.(*metals.Named); ok {
+		if decl := m.types[named.Name]; decl != nil && decl.Record != nil {
+			if record, ok := held.(recordVal); ok && len(record.fields) >= len(decl.Record.Fields) {
+				fields := make([]value, len(decl.Record.Fields))
+				for i, field := range decl.Record.Fields {
+					got, ok := m.initialPrefix(field.Type, record.fields[i])
+					if !ok {
+						return nil, false
+					}
+					fields[i] = got
+				}
+				return recordVal{typeName: named.Name, fields: fields}, true
+			}
+		}
+	}
+	if array, ok := want.(*metals.ArrayOf); ok {
+		if held, ok := held.(arrayVal); ok && int64(len(held.elems)) >= array.Len {
+			elems := make([]value, array.Len)
+			for i := range elems {
+				got, ok := m.initialPrefix(array.Elem, held.elems[i])
+				if !ok {
+					return nil, false
+				}
+				elems[i] = got
+			}
+			return arrayVal{elems: elems}, true
+		}
+	}
+
+	// Otherwise want may be the narrower one, sitting over the front of
+	// what is here — which is the first field of a record, or the first
+	// element of an array, since both begin where their container does.
+	switch held := held.(type) {
+	case recordVal:
+		if len(held.fields) > 0 {
+			return m.initialPrefix(want, held.fields[0])
+		}
+	case arrayVal:
+		if len(held.elems) > 0 {
+			return m.initialPrefix(want, held.elems[0])
+		}
+	}
+	return nil, false
+}
+
+// staleValue is freshValue with a sentence in place of every leaf, so
+// that reading anywhere inside a member the union no longer holds says
+// which member it does hold rather than "uninitialized".
+func (m *machine) staleValue(t metals.Type, why string) value {
+	switch t := t.(type) {
+	case *metals.Named:
+		decl := m.types[t.Name]
+		switch {
+		case decl == nil:
+		case decl.Record != nil:
+			fields := make([]value, len(decl.Record.Fields))
+			for i, field := range decl.Record.Fields {
+				fields[i] = m.staleValue(field.Type, why)
+			}
+			return recordVal{typeName: t.Name, fields: fields}
+		case decl.Union != nil:
+			return unionVal{typeName: t.Name, member: -1, cell: []value{staleVal{why}}}
+		}
+	case *metals.ArrayOf:
+		elems := make([]value, t.Len)
+		for i := range elems {
+			elems[i] = m.staleValue(t.Elem, why)
+		}
+		return arrayVal{elems: elems}
+	}
+	return staleVal{why}
+}
+
 func (m *machine) freshCell(t metals.Type) value {
 	cells := []value{m.freshValue(t)}
 	return ptrVal{cells: cells, index: 0}
@@ -722,12 +895,19 @@ func (m *machine) freshValue(t metals.Type) value {
 	switch t := t.(type) {
 	case *metals.Named:
 		decl := m.types[t.Name]
-		if decl != nil && decl.Record != nil {
+		switch {
+		case decl == nil:
+		case decl.Record != nil:
 			fields := make([]value, len(decl.Record.Fields))
 			for i, field := range decl.Record.Fields {
 				fields[i] = m.freshValue(field.Type)
 			}
 			return recordVal{typeName: t.Name, fields: fields}
+		case decl.Union != nil:
+			// Storage no member has written yet. It is not any of them,
+			// which is what -1 says, and the first thing to be written
+			// through decides.
+			return unionVal{typeName: t.Name, member: -1, cell: []value{uninitVal{}}}
 		}
 	case *metals.ArrayOf:
 		elems := make([]value, t.Len)
@@ -791,12 +971,24 @@ func (m *machine) zeroValue(t metals.Type) value {
 
 	case *metals.Named:
 		decl := m.types[t.Name]
-		if decl != nil && decl.Record != nil {
+		switch {
+		case decl == nil:
+		case decl.Record != nil:
 			fields := make([]value, len(decl.Record.Fields))
 			for i, field := range decl.Record.Fields {
 				fields[i] = m.zeroValue(field.Type)
 			}
 			return recordVal{typeName: t.Name, fields: fields}
+		case decl.Union != nil:
+			// A zeroed page is every member zeroed at once, which is one
+			// of the few things every member of a union does agree on.
+			// The first is the one a read gets, which is also the member
+			// a braced initializer without a designator writes.
+			return unionVal{
+				typeName: t.Name,
+				member:   0,
+				cell:     []value{m.zeroValue(decl.Union.Members[0].Type)},
+			}
 		}
 	}
 	return uninitVal{}

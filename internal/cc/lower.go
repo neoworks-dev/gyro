@@ -166,8 +166,8 @@ func (l *lowerer) declareRecords(module string, units []*translation) {
 				where[s.tag] = t.path
 			case !sameShape(seen, s):
 				fail(position{file: t.path},
-					"struct %s is declared differently here than in %s, and one program has one of it",
-					s.tag, filepath.Base(where[s.tag]))
+					"%s %s is declared differently here than in %s, and one program has one of it",
+					s.keyword(), s.tag, filepath.Base(where[s.tag]))
 			}
 		}
 	}
@@ -185,10 +185,15 @@ func (l *lowerer) declareRecords(module string, units []*translation) {
 			l.out.Types = append(l.out.Types, &metals.TypeDecl{Name: tag, Opaque: true})
 			continue
 		}
-		decl := &metals.TypeDecl{Name: tag, Record: &metals.RecordShape{}}
-		for _, f := range s.fields {
-			decl.Record.Fields = append(decl.Record.Fields,
-				metals.FieldDecl{Name: f.name, Type: f.typ.metalsType()})
+		members := make([]metals.FieldDecl, len(s.fields))
+		for i, f := range s.fields {
+			members[i] = metals.FieldDecl{Name: f.name, Type: f.typ.metalsType()}
+		}
+		decl := &metals.TypeDecl{Name: tag}
+		if s.isUnion() {
+			decl.Union = &metals.UnionShape{Members: members}
+		} else {
+			decl.Record = &metals.RecordShape{Fields: members}
 		}
 		l.records[tag] = s
 		l.out.Types = append(l.out.Types, decl)
@@ -199,7 +204,7 @@ func (l *lowerer) declareRecords(module string, units []*translation) {
 // C's own rule is written in terms of compatible types member by member,
 // and for this subset that is the field list.
 func sameShape(a, b *ctype) bool {
-	if len(a.fields) != len(b.fields) {
+	if a.kind != b.kind || len(a.fields) != len(b.fields) {
 		return false
 	}
 	for i := range a.fields {

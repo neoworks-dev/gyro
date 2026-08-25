@@ -39,9 +39,33 @@ type (
 	// freedVal poisons a released cell.
 	freedVal struct{}
 
+	// staleVal is storage a union no longer holds: the member it names
+	// was overwritten by a member the two share no initial sequence
+	// with. Reading one is what C leaves undefined, and this carries the
+	// sentence to say so with.
+	staleVal struct{ why string }
+
 	recordVal struct {
 		typeName string
 		fields   []value
+	}
+
+	// unionVal is a union's storage: which member is live, and its
+	// value. C's union is bytes with nothing recording which member
+	// wrote them, and this evaluator has no bytes — so it records the
+	// member instead, which is strictly more than C keeps and exactly
+	// what it takes to tell a defined read from an undefined one.
+	//
+	// cell is one element rather than a bare value so that a pointer to
+	// the live member is an ordinary pointer into it, and everything
+	// downstream — load, store, elem.ptr, another field.ptr — works
+	// without knowing a union was involved.
+	unionVal struct {
+		typeName string
+		// member is which one holds the value, or -1 for storage nothing
+		// has written yet.
+		member int
+		cell   []value
 	}
 	enumVal struct {
 		typeName string
@@ -63,6 +87,20 @@ type (
 	ptrVal struct {
 		cells []value
 		index int
+
+		// owner and member are set on a pointer to a union member that
+		// is not the one the union currently holds. The cells are that
+		// member's storage read out of what is there — the common
+		// initial sequence, where C defines one — so a read through it
+		// is answered without disturbing the member that is live.
+		//
+		// A write is a different question: writing a member is what
+		// makes it live, so a store through such a pointer installs
+		// these cells as the union's, and so does reaching further in
+		// with elem.ptr or another field.ptr, because treating storage
+		// as a member's sub-object is treating it as that member.
+		owner  *value
+		member int
 	}
 	chanVal chan value
 
@@ -133,6 +171,13 @@ func (f *futureVal) await() value {
 // element. Two pointers into one object compare by index, which is what
 // makes a walk's `p == end` terminate.
 func samePointer(a, b ptrVal) bool {
+	// Two pointers into one union are one address, whichever members
+	// they name — sharing storage is the whole of what a union is. So
+	// is a pointer to the union itself, which is where its first member
+	// begins.
+	if a.owner != nil || b.owner != nil {
+		return unionAddress(a) == unionAddress(b)
+	}
 	if a.index != b.index || len(a.cells) != len(b.cells) {
 		return false
 	}
@@ -140,6 +185,18 @@ func samePointer(a, b ptrVal) bool {
 		return true
 	}
 	return &a.cells[0] == &b.cells[0]
+}
+
+// unionAddress is the cell a pointer to a union or to one of its
+// members names, which is the same cell either way.
+func unionAddress(p ptrVal) *value {
+	if p.owner != nil {
+		return p.owner
+	}
+	if p.index < 0 || p.index >= len(p.cells) {
+		return nil
+	}
+	return &p.cells[p.index]
 }
 
 func isNull(v value) bool {
@@ -163,6 +220,14 @@ func copyValue(v value) value {
 			payload[i] = copyValue(p)
 		}
 		return enumVal{typeName: v.typeName, tag: v.tag, payload: payload}
+	case unionVal:
+		// The cell is copied and not shared: a union assigns like every
+		// other aggregate, and the copy's members are its own.
+		return unionVal{
+			typeName: v.typeName,
+			member:   v.member,
+			cell:     []value{copyValue(v.cell[0])},
+		}
 	case tupleVal:
 		elems := make([]value, len(v))
 		for i, e := range v {

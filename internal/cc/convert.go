@@ -65,7 +65,7 @@ func (f *funcLowerer) convertTo(v value, to *ctype, pos position, written bool) 
 	if v.typ.isVoid() {
 		fail(pos, "cannot convert a %s to a %s", v.typ, to)
 	}
-	if v.typ.isStruct() || to.isStruct() {
+	if v.typ.isMembered() || to.isMembered() {
 		fail(pos, "cannot convert a %s to a %s", v.typ, to)
 	}
 

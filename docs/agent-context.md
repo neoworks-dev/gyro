@@ -589,16 +589,19 @@ Kept honest in `docs/language.md` ("Still to come") and
 - **`goto`** — needs the relooper LLVM does for the bridge. `switch` is
   done; it is a multiway branch into a linear body, which nested blocks
   express and arbitrary jumps do not.
-- **unions and bitfields**: a union's members share storage and a
-  record's do not, so there is no record shape to give one.
-- **Type punning runs on two tiers.** `void *` is in and a cast between
-  pointer types is `ptr.erase` then `ptr.cast`, which is the producer's
-  claim about what is at the address. The natives move a register; the
-  evaluator knows what is really in the cell and aborts when a cast names
-  something else. Round trips — the overwhelming majority — are fine;
-  reading an object's bytes as another type is undefined in C too, `char
-  *` aliasing included, and running it here would need a byte-addressable
-  object model in the evaluator.
+- **bitfields**: a run of them packs into storage units at bit
+  granularity, which no METALS shape says.
+- **Type punning runs on two tiers**, and so does reading across two
+  union members that share no initial sequence. `void *` is in and a cast
+  between pointer types is `ptr.erase` then `ptr.cast`, which is the
+  producer's claim about what is at the address; a union is one storage
+  with several readings of it. The natives reinterpret the bytes; the
+  evaluator knows what is really there and says so. Round trips — the
+  overwhelming majority — are fine, and so is the common initial sequence
+  every tagged union in C is built on. What is left is undefined in C
+  too, `char *` aliasing included, and running it here would need a
+  byte-addressable object model in the evaluator. See
+  `tests/testdata/run/union-punning.metals`.
 - **A callback cannot cross into Gyro**: a code pointer is an address in
   this program, and the copy rule settles what crosses a boundary. A
   `void *` does not cross either, and for the same reason — `gyroType`
@@ -623,9 +626,10 @@ Closed since this list was written: `Map<K, V>` (ordinary Gyro over
 and exit codes (`os`), clocks and sleep (`time`); string literals,
 file-scope and braced initializers, `static` locals, `switch`,
 `sizeof(char *)` answering 8, function pointers, a program made of as
-many `.c` files as it takes, `void *`, varargs, and pointers to
-incomplete types (`type %Name = opaque`, the way a library header hands
-out a handle).
+many `.c` files as it takes, `void *`, varargs, pointers to incomplete
+types (`type %Name = opaque`, the way a library header hands out a
+handle), and unions (`type %Name = union { ... }`, with the common
+initial sequence answered on every tier).
 
 **Safety holes:**
 

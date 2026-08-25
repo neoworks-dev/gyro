@@ -92,7 +92,7 @@ func (f *funcLowerer) declare(s *declStmt) {
 			// unwritten. What an initializer leaves out is zero in C, so
 			// an aggregate says so rather than depending on the tier —
 			// `char buf[6] = "ab"` has four of them at the end.
-			if v.typ.isArray() || v.typ.isStruct() {
+			if v.typ.isArray() || v.typ.isMembered() {
 				f.zeroObject(cell, v.typ, v.pos)
 			}
 			f.initialize(cell, v.typ, v.init)

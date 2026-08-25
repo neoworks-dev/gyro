@@ -141,7 +141,7 @@ func (p *parser) unit() *unit {
 		// else: `struct Node;` opens a tag a later line will define, and
 		// `struct Node { ... };` or `enum E { ... };` closes one.
 		if p.accept(";") {
-			if !base.isStruct() && !base.isInteger() {
+			if !base.isMembered() && !base.isInteger() {
 				p.fail(pos, "this declaration declares nothing")
 			}
 			continue
@@ -198,11 +198,11 @@ func (p *parser) unit() *unit {
 // `typedef struct { ... } Point;` idiom produce a `%Point` record and
 // not an anonymous one.
 func (p *parser) defineTypedef(name string, typ *ctype, pos position) {
-	if typ.isStruct() && strings.HasPrefix(typ.tag, p.stem+"$anon") {
+	if typ.isMembered() && strings.HasPrefix(typ.tag, p.stem+"$anon") {
 		delete(p.structs, typ.tag)
 		typ.tag = name
 		if other, taken := p.structs[name]; taken && other != typ {
-			p.fail(pos, "struct %s is defined twice", name)
+			p.fail(pos, "%s %s is defined twice", typ.keyword(), name)
 		}
 		p.structs[name] = typ
 	}
@@ -259,16 +259,13 @@ func (p *parser) declSpecifiers() (typ *ctype, static, isTypedef bool) {
 
 		case "struct":
 			only(tok, "struct")
-			named = p.structType()
+			named = p.aggregateType(kStruct)
+		case "union":
+			only(tok, "union")
+			named = p.aggregateType(kUnion)
 		case "enum":
 			only(tok, "enum")
 			named = p.enumType()
-		case "union":
-			// A union is one storage overlapping several readings of it,
-			// and METALS has one record shape and no such type. Giving it
-			// the largest member's layout would be a lie the verifier
-			// could not catch.
-			p.fail(tok.pos, "a union has no METALS type: its members share storage, and a record's do not")
 
 		case "void", "char", "short", "int", "long", "signed", "unsigned",
 			"float", "double", "_Bool":
@@ -441,13 +438,22 @@ func join(words []string) string {
 	return out
 }
 
-// structType reads `struct Tag` and, when a body follows, fills it in.
-// The tag is registered before the fields are read so that a struct may
-// hold a pointer to itself.
-func (p *parser) structType() *ctype {
-	pos := p.expect("struct").pos
+// aggregateType reads `struct Tag` or `union Tag` and, when a body
+// follows, fills it in. The tag is registered before the members are
+// read so that either may hold a pointer to itself.
+//
+// The two are one function because C makes them one declaration with two
+// layouts: the syntax is identical, the tag namespace is shared, and
+// what differs is only where the members end up — which is the layout
+// table's answer and not the parser's.
+func (p *parser) aggregateType(kind typeKind) *ctype {
+	keyword := "struct"
+	if kind == kUnion {
+		keyword = "union"
+	}
+	pos := p.expect(keyword).pos
 
-	// A struct with no tag still needs a METALS name, so it gets one it
+	// One with no tag still needs a METALS name, so it gets one it
 	// cannot collide with. `typedef struct { ... } Point;` renames it to
 	// Point, which is the spelling that idiom exists to produce.
 	tag := ""
@@ -455,7 +461,7 @@ func (p *parser) structType() *ctype {
 		tag = p.next().text
 	} else {
 		if !p.at("{") {
-			p.fail(pos, "a struct needs a tag or a body")
+			p.fail(pos, "a %s needs a tag or a body", keyword)
 		}
 		p.anonymous++
 		tag = fmt.Sprintf("%s$anon%d", p.stem, p.anonymous)
@@ -463,42 +469,48 @@ func (p *parser) structType() *ctype {
 
 	typ, known := p.structs[tag]
 	if !known {
-		typ = &ctype{kind: kStruct, tag: tag}
+		typ = &ctype{kind: kind, tag: tag}
 		p.structs[tag] = typ
 		p.order = append(p.order, typ)
+	}
+	// C keeps one namespace for struct, union and enum tags, so this is
+	// not two types that happen to share a name.
+	if typ.kind != kind {
+		p.fail(pos, "%s is a %s here and a %s elsewhere, and C has one tag namespace for both",
+			tag, keyword, typ.keyword())
 	}
 	if !p.at("{") {
 		return typ
 	}
 	if typ.fields != nil {
-		p.fail(pos, "struct %s is defined twice", tag)
+		p.fail(pos, "%s %s is defined twice", keyword, tag)
 	}
 
 	p.expect("{")
 	fields := []field{}
 	for !p.at("}") {
 		if p.peek().kind == tokEOF {
-			p.fail(pos, "this struct is never closed")
+			p.fail(pos, "this %s is never closed", keyword)
 		}
 		base, static, isTypedef := p.declSpecifiers()
 		if static || isTypedef {
-			p.fail(pos, "a struct field has no storage class")
+			p.fail(pos, "a %s member has no storage class", keyword)
 		}
 		for {
 			name, fieldType := p.declarator(base)
 			if fieldType.isFunc() {
-				p.fail(pos, "field %s is a function; a struct holds a pointer to one, not the function itself", name)
+				p.fail(pos, "member %s is a function; a %s holds a pointer to one, not the function itself", name, keyword)
 			}
 			if fieldType.isVoid() {
-				p.fail(pos, "field %s is declared void", name)
+				p.fail(pos, "member %s is declared void", name)
 			}
 			// A member needs storage, so its type has to be complete
-			// here — which is C's rule and also what rules out a struct
-			// holding itself. A pointer to an incomplete type is not
-			// affected: an address is a word whatever is at the far end,
-			// which is what makes the forward declaration useful.
+			// here — which is C's rule and also what rules out an
+			// aggregate holding itself. A pointer to an incomplete type
+			// is not affected: an address is a word whatever is at the
+			// far end, which is what makes a forward declaration useful.
 			if !fieldType.isComplete() {
-				p.fail(pos, "field %s is %s, which is not complete here", name, fieldType)
+				p.fail(pos, "member %s is %s, which is not complete here", name, fieldType)
 			}
 			fields = append(fields, field{name: name, typ: fieldType})
 			if !p.accept(",") {
@@ -509,7 +521,7 @@ func (p *parser) structType() *ctype {
 	}
 	p.expect("}")
 	if len(fields) == 0 {
-		p.fail(pos, "struct %s has no fields, which METALS has no record for", tag)
+		p.fail(pos, "%s %s has no members, and METALS has no shape with none", keyword, tag)
 	}
 	typ.fields = fields
 	return typ

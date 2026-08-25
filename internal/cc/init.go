@@ -101,6 +101,20 @@ func (l *lowerer) writeImage(image []byte, typ *ctype, init *initializer) bool {
 			}
 		}
 		return true
+
+	case typ.isUnion():
+		// A braced union initializer writes the first member and only
+		// the first: the members share storage, so one of them is all
+		// there is room for, and C picks that one. The rest of the
+		// image stays the zeros it already is.
+		if len(init.list) > 1 {
+			fail(init.pos, "%d initializers for a %s, which holds one member at a time",
+				len(init.list), typ)
+		}
+		if len(init.list) == 0 {
+			return true
+		}
+		return l.writeImage(image, typ.fields[0].typ, init.list[0])
 	}
 
 	// `int x = { 5 }` is C, and means what `int x = 5` means.
@@ -252,6 +266,19 @@ func (f *funcLowerer) initialize(ptr string, typ *ctype, init *initializer) {
 			f.initialize(field, typ.fields[i].typ, member)
 		}
 
+	case typ.isUnion():
+		// The first member and only the first, which is all one storage
+		// has room for and is what C writes.
+		if len(init.list) > 1 {
+			fail(init.pos, "%d initializers for a %s, which holds one member at a time",
+				len(init.list), typ)
+		}
+		if len(init.list) == 1 {
+			first := f.temp()
+			f.emit(&metals.FieldPtr{Dst: first, Ptr: ptr, Index: 0})
+			f.initialize(first, typ.fields[0].typ, init.list[0])
+		}
+
 	case len(init.list) == 0:
 		// `int x = {}` leaves the zero already there.
 
@@ -319,6 +346,14 @@ func (f *funcLowerer) zeroObject(ptr string, typ *ctype, pos position) {
 			f.emit(&metals.FieldPtr{Dst: at, Ptr: ptr, Index: i})
 			f.zeroObject(at, field.typ, pos)
 		}
+
+	case typ.isUnion():
+		// One storage, so one member is zeroed and it is the first —
+		// the same one a braced initializer writes, and the one a read
+		// of a zeroed union gets.
+		at := f.temp()
+		f.emit(&metals.FieldPtr{Dst: at, Ptr: ptr, Index: 0})
+		f.zeroObject(at, typ.fields[0].typ, pos)
 
 	default:
 		f.emit(&metals.Store{Ptr: ptr, Val: f.zero(typ)})

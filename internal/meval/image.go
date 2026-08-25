@@ -75,6 +75,17 @@ func (m *machine) decodeNamed(t *metals.Named, image []byte) value {
 		}
 		return recordVal{typeName: t.Name, fields: fields}
 	}
+	if decl.Union != nil {
+		// A union's image is its first member's, padded out. Nothing in
+		// the bytes says which member they are, so the format says: the
+		// first one, which is also what a braced C initializer with no
+		// designator writes.
+		return unionVal{
+			typeName: t.Name,
+			member:   0,
+			cell:     []value{m.decode(decl.Union.Members[0].Type, image)},
+		}
+	}
 
 	tag := int(binary.LittleEndian.Uint64(image))
 	if tag < 0 || tag >= len(decl.Enum.Variants) {

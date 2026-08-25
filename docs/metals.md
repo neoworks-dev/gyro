@@ -98,6 +98,7 @@ import "js:./widgets" {
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
+type %Event = union { kind: u32, point: %Point }
 type %Session = opaque
 
 global @counter: i32
@@ -173,7 +174,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `future<T>` | un-awaited async result |
 | `fn(A, B) -> R`, `async fn(A) -> R` | function values: `{ code, env }`, two words |
 | `code(A, B) -> R` | the address of a function, one word, no environment |
-| `%Name` | module-local record, enum, or opaque name |
+| `%Name` | module-local record, union, enum, or opaque name |
 | `any` | dynamically typed value, converted with checked ops |
 | `handle` | opaque foreign reference; compares by identity only |
 
@@ -192,6 +193,36 @@ Named types are module-local: linking qualifies each with its module's
 name, so two producers may declare the same one without colliding. A
 record shape that must cross a boundary is redeclared by the importer;
 matching the two declarations structurally is not implemented yet.
+
+**`type %Name = union { ... }` is one storage with several readings of
+it.** Every member begins at offset zero, the size is the widest
+member's rounded up to the strictest member's alignment, and `field.ptr`
+reaches a member the way it reaches a record's field — the same
+instruction, a different offset, which is `metals.Layout`'s answer and no
+consumer's.
+
+It is a shape of its own rather than a record with coincident offsets,
+because the difference is not where the members sit: **writing one member
+unwrites the others**, which is a fact about reads and not about
+addresses. A consumer that treated a union as a record would be right
+about every address and wrong about every read.
+
+An enum's payload is not this. An enum knows which variant it holds and
+the format checks the tag; a union is C's, where nothing records which
+member is live and the program is expected to know. So reading across
+members is the language's rule and not the format's — defined for a
+common initial sequence, undefined otherwise — and the tiers differ
+there on purpose. The natives have C's own union under them and read
+whatever the bytes were, which is what C leaves undefined; the evaluator
+has no bytes to reinterpret, so it records the live member instead and
+answers the defined reads while reporting the rest. That is the same
+asymmetry `ptr.cast` has, and `tests/testdata/run/union-punning.metals`
+is the case that says so.
+
+A union does not compare and does not cross a runtime boundary, both for
+the same reason: nothing records which member the storage means, so
+equality has no question to answer and a copy has nothing the far side
+could read. A record with one inside inherits both refusals.
 
 **`type %Name = opaque` is a name with no shape.** It has no size, no
 alignment and no fields, so the only position it may be written in is a
@@ -805,6 +836,14 @@ The mapping, where it is not obvious:
   handles would assign to each other freely and the distinction the
   header exists to keep would be decorative.
 
+- **A `union` is METALS' union**, and a C tag names one or the other in
+  one namespace, so `struct P` beside `union P` is an error rather than
+  two types. A braced initializer writes the first member and only the
+  first, which is all one storage has room for and what C picks. The
+  read every C event loop is built on — `event.kind` while `event.key`
+  is what was written — is the common initial sequence, and it is the
+  one cross-member read a program is entitled to.
+
 - **A `switch` is nested blocks**, one per group of case labels, in
   source order and innermost first, with the dispatch `switch` at the
   bottom. `br` to a group's label lands where that group begins, and
@@ -861,9 +900,8 @@ The mapping, where it is not obvious:
 
 What it does not do yet, each refused by name rather than
 mistranslated: **`goto`**, which is where the relooper LLVM does for the
-bridge will have to be written, and **unions and bitfields** (a union's
-members share storage and a record's do not, so there is no
-record shape to give one). **Type punning** compiles and is a program
+bridge will have to be written, and **bitfields**. **Type punning**
+compiles and is a program
 only two tiers can run: reading one object's bytes as another type is
 undefined in C, `char *` aliasing included, and the evaluator holds a
 producer to it. A C struct cannot cross into Gyro yet either: the generated

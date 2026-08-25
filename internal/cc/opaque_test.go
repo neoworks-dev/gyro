@@ -96,12 +96,12 @@ func TestRefusesAnIncompleteMember(t *testing.T) {
 struct session;
 struct holder { struct session s; };
 int result(void) { return 0; }
-`, "field s is struct session, which is not complete here")
+`, "member s is struct session, which is not complete here")
 
 	refused(t, `
 struct node { struct node self; };
 int result(void) { return 0; }
-`, "field self is struct node, which is not complete here")
+`, "member self is struct node, which is not complete here")
 }
 
 // A pointer to a member is not affected: an address is a word whatever

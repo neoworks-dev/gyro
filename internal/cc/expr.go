@@ -289,21 +289,21 @@ func (f *funcLowerer) member(e *memberExpr) value {
 
 	if e.arrow {
 		pointer := f.expr(e.x)
-		if !pointer.typ.isPointer() || !pointer.typ.elem.isStruct() {
-			fail(e.pos, "-> needs a pointer to a struct, not a %s", pointer.typ)
+		if !pointer.typ.isPointer() || !pointer.typ.elem.isMembered() {
+			fail(e.pos, "-> needs a pointer to a struct or a union, not a %s", pointer.typ)
 		}
 		record = pointer.typ.elem
 		base = value{reg: f.deref(pointer), typ: record}
 	} else {
 		base = f.lvalue(e.x)
-		if !base.typ.isStruct() {
-			fail(e.pos, ". needs a struct, not a %s", base.typ)
+		if !base.typ.isMembered() {
+			fail(e.pos, ". needs a struct or a union, not a %s", base.typ)
 		}
 		record = base.typ
 	}
 
 	if record.fields == nil {
-		fail(e.pos, "struct %s is never defined, so it has no field %s", record.tag, e.name)
+		fail(e.pos, "%s %s is never defined, so it has no field %s", record.keyword(), record.tag, e.name)
 	}
 
 	index := -1
@@ -314,7 +314,7 @@ func (f *funcLowerer) member(e *memberExpr) value {
 		}
 	}
 	if index < 0 {
-		fail(e.pos, "struct %s has no field %s", record.tag, e.name)
+		fail(e.pos, "%s %s has no member %s", record.keyword(), record.tag, e.name)
 	}
 
 	reg := f.temp()
