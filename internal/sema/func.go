@@ -9,6 +9,7 @@ import (
 
 func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 	c.checkDecorators(decl.Decorators)
+	c.checkExternFunc(decl)
 	c.checkEntryPoint(decl)
 	c.checkFuncBody(decl, nil)
 }
@@ -107,6 +108,11 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 
 	for _, param := range decl.Params {
 		paramType := c.resolveType(param.Type)
+		if param.Variadic {
+			// The declaration names the element type; the body sees the
+			// pack, which is a slice of it.
+			paramType = &types.Slice{Elem: paramType}
+		}
 		if param.Default != nil {
 			c.assignExpr(param.Default, paramType, "the default value")
 		}

@@ -32,12 +32,14 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		moduleOf:   map[ast.Node]*loader.Module{},
 		tags:       map[string]string{},
 		imports:    map[string]*metals.FnType{},
+		importFrom: map[string]string{},
 		declared:   map[string]*metals.TypeDecl{},
 		reprs:      map[string]string{},
 		hashes:     map[string]bool{},
 		globalOf:   map[*ast.VarDecl][]int{},
 		lowered:    map[string]bool{},
 		errVariant: map[*types.Struct]int{},
+		anyVariant: map[string]int{},
 	}
 	defer func() {
 		switch failure := recover().(type) {
@@ -59,12 +61,30 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 
 	l.module = &metals.Module{Name: l.moduleName()}
 	l.collectGlobals()
-	mainName := l.ensureFunc(main, nil)
+	l.ensureFunc(main, nil)
 	l.drain()
-	l.emitGlobalInit(mainName)
+	l.emitGlobalInit()
 	l.finishErrorType()
+	l.finishAnyType()
 	l.attachImports()
-	return l.module, nil
+
+	// A program that imports another language is several METALS modules,
+	// and every consumer takes one. Linking belongs here rather than in
+	// the driver, so that the corpus, the language server and `gyro
+	// build` all see the same whole program. It runs even for a program
+	// of one module, because that is also where a module's initializer
+	// becomes the call at the top of main.
+	var foreign []*metals.Module
+	for _, loaded := range prog.Modules {
+		if loaded.Foreign != nil {
+			foreign = append(foreign, loaded.Foreign)
+		}
+	}
+	linked, linkErr := metals.Link(append(foreign, l.module))
+	if linkErr != nil {
+		return nil, linkErr
+	}
+	return linked, nil
 }
 
 // lowerFailure aborts lowering with one message; Lower catches it.
@@ -86,8 +106,11 @@ type lowerer struct {
 	moduleOf map[ast.Node]*loader.Module
 	tags     map[string]string
 
-	// imports collects the gyro:rt intrinsics the program actually uses.
-	imports map[string]*metals.FnType
+	// imports collects the intrinsics and foreign functions the program
+	// actually uses; importFrom names the METALS module each comes from,
+	// which is "gyro:rt" for everything the runtime supplies.
+	imports    map[string]*metals.FnType
+	importFrom map[string]string
 
 	// declared maps METALS type names to their emitted declarations.
 	declared map[string]*metals.TypeDecl
@@ -117,6 +140,17 @@ type lowerer struct {
 	errTypes   []*types.Struct
 	errVariant map[*types.Struct]int
 	usesError  bool
+
+	// anyTypes lists the types the program ever wraps in an any, in the
+	// order the wraps were lowered; anyVariant indexes back from a type's
+	// cache key. The set is closed because the whole program is here, which
+	// is what lets an any be an ordinary enum. usesAny records whether the
+	// %any declaration is needed at all.
+	anyTypes   []types.Type
+	anyVariant map[string]int
+	usesAny    bool
+	// anyPrinters names the generated %any printers a call site asked for.
+	anyPrinters map[string]bool
 
 	synthetic int
 }
@@ -302,6 +336,9 @@ func (l *lowerer) metalsBasic(t *types.Basic) metals.Type {
 	case types.ErrorKind:
 		l.usesError = true
 		return &metals.Named{Name: "error"}
+	case types.AnyKind:
+		l.usesAny = true
+		return &metals.Named{Name: "any"}
 	}
 	l.fail("cannot lower the type %s", t)
 	return nil
@@ -480,6 +517,18 @@ func (l *lowerer) ensureImport(name string, sig *metals.FnType) {
 	}
 }
 
+// ensureForeignImport declares a function another language's module
+// exports. Unlike a runtime intrinsic it names a real module, and the
+// linker checks the signature here against the one that module actually
+// declares.
+func (l *lowerer) ensureForeignImport(module, name string, sig *types.Func) {
+	if l.imports[name] != nil {
+		return
+	}
+	l.imports[name] = l.metalsFnType(sig)
+	l.importFrom[name] = module
+}
+
 func (l *lowerer) attachImports() {
 	if len(l.imports) == 0 {
 		return
@@ -489,11 +538,28 @@ func (l *lowerer) attachImports() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	imp := &metals.Import{Module: "gyro:rt"}
+
+	// Grouped by module, and the groups ordered, so the printed IR is the
+	// same on every run.
+	groups := map[string]*metals.Import{}
+	var order []string
 	for _, name := range names {
-		imp.Funcs = append(imp.Funcs, metals.ImportedFunc{Name: name, Sig: l.imports[name]})
+		from := l.importFrom[name]
+		if from == "" {
+			from = "gyro:rt"
+		}
+		group, ok := groups[from]
+		if !ok {
+			group = &metals.Import{Module: from}
+			groups[from] = group
+			order = append(order, from)
+		}
+		group.Funcs = append(group.Funcs, metals.ImportedFunc{Name: name, Sig: l.imports[name]})
 	}
-	l.module.Imports = []*metals.Import{imp}
+	sort.Strings(order)
+	for _, from := range order {
+		l.module.Imports = append(l.module.Imports, groups[from])
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -77,7 +77,9 @@ func (f *frame) declareAreas() {
 		}
 		name := fmt.Sprintf("sl_%d", len(f.areas))
 		f.areas[slot.Dst] = name
-		f.line("%s %s = {0}; /* slot for %%%s */", f.g.cType(slot.Type), name, comment(slot.Dst))
+		// A cell a pointer addresses holds storage, so it is declared with
+		// the type a load through that pointer will read.
+		f.line("%s %s = {0}; /* slot for %%%s */", f.g.memberType(slot.Type), name, comment(slot.Dst))
 	})
 }
 
@@ -166,6 +168,12 @@ func (f *frame) instr(instr metals.Instr) {
 	case *metals.Conv:
 		f.emitConv(i)
 
+	case *metals.Trunc:
+		f.emitTrunc(i)
+
+	case *metals.Bitcast:
+		f.emitBitcast(i)
+
 	case *metals.Slot:
 		area, ok := f.areas[i.Dst]
 		if !ok {
@@ -196,6 +204,21 @@ func (f *frame) instr(instr metals.Instr) {
 		}
 		named := f.typeOf(i.Ptr).(*metals.Ptr).Elem
 		f.assign(i.Dst, fmt.Sprintf("(void *)&((%s *)%s)->f%d", g.cType(named), f.reg(i.Ptr), i.Index))
+
+	case *metals.ElemPtr:
+		// An array's storage starts at its first element, so the decay
+		// is the same address with a different type over it.
+		f.assign(i.Dst, f.reg(i.Ptr))
+
+	case *metals.PtrOffset:
+		size := g.sizeOf(f.typeOf(i.Ptr).(*metals.Ptr).Elem)
+		f.assign(i.Dst, fmt.Sprintf("(void *)((char *)%s + (int64_t)%s * %d)",
+			f.reg(i.Ptr), f.reg(i.N), size))
+
+	case *metals.PtrDiff:
+		size := g.sizeOf(f.typeOf(i.A).(*metals.Ptr).Elem)
+		f.assign(i.Dst, fmt.Sprintf("(((char *)%s - (char *)%s) / %d)",
+			f.reg(i.A), f.reg(i.B), size))
 
 	case *metals.MakeRecord:
 		f.emitMakeRecord(i)
@@ -235,17 +258,35 @@ func (f *frame) instr(instr metals.Instr) {
 
 	case *metals.IndexGet:
 		element := f.element(i.X, i.Index)
-		f.assign(i.Dst, fmt.Sprintf("*(%s *)%s", g.cType(f.typeOf(i.Dst)), element))
+		f.assign(i.Dst, fmt.Sprintf("*(%s *)%s", g.memberType(f.typeOf(i.Dst)), element))
 
 	case *metals.IndexSet:
 		element := f.element(i.X, i.Index)
-		f.line("*(%s *)%s = %s;", g.cType(f.typeOf(i.Val)), element, f.reg(i.Val))
+		f.line("*(%s *)%s = %s;", g.memberType(f.typeOf(i.Val)), element, f.reg(i.Val))
 
 	case *metals.Len:
 		f.emitLen(i)
 
 	case *metals.StrConcat:
 		f.assign(i.Dst, fmt.Sprintf("gy_str_concat(%s, %s)", f.reg(i.A), f.reg(i.B)))
+
+	case *metals.AnyWrap:
+		f.emitAnyWrap(i)
+
+	case *metals.AnyUnwrap:
+		f.emitAnyUnwrap(i)
+
+	case *metals.AnyIs:
+		f.emitAnyIs(i)
+
+	case *metals.AnyGet:
+		f.emitAnyGet(i)
+
+	case *metals.AnySet:
+		f.emitAnySet(i)
+
+	case *metals.AnyCall:
+		f.emitAnyCall(i)
 
 	case *metals.Call:
 		f.emitCall(i)
@@ -313,9 +354,13 @@ func (f *frame) instr(instr metals.Instr) {
 		f.assign(i.Dst, fmt.Sprintf("gy_chan_new(%s, %d)", capacity, g.sizeOf(i.Elem)))
 
 	case *metals.Send:
-		f.line("gy_chan_send(%s, (void *)&%s);", f.reg(i.Ch), f.reg(i.Val))
+		f.stagedOut(i.Val, func(address string) {
+			f.line("gy_chan_send(%s, %s);", f.reg(i.Ch), address)
+		})
 
 	case *metals.Recv:
+		// The element lands in the tuple's own first field, which already
+		// holds storage, so nothing is staged here.
 		tuple := f.tupleOf(i.Dst)
 		f.line("memset(&%s.e0, 0, %d);", f.reg(i.Dst), g.sizeOf(tuple.Elems[0]))
 		f.line("%s.e1 = gy_chan_recv(%s, (void *)&%s.e0);", f.reg(i.Dst), f.reg(i.Ch), f.reg(i.Dst))
@@ -324,27 +369,45 @@ func (f *frame) instr(instr metals.Instr) {
 		f.line("gy_chan_close(%s);", f.reg(i.Ch))
 
 	case *metals.Await:
-		f.line("gy_future_get(%s, (void *)&%s);", f.reg(i.X), f.reg(i.Dst))
+		f.stagedIn(i.Dst, func(address string) {
+			f.line("gy_future_get(%s, %s);", f.reg(i.X), address)
+		})
 
 	case *metals.Select:
 		f.emitSelect(i)
 
 	case *metals.OptWrap:
+		if opt, ok := f.typeOf(i.Dst).(*metals.Opt); ok && metals.NicheOpt(opt) {
+			f.assign(i.Dst, f.reg(i.X))
+			break
+		}
 		f.line("%s.flag = 1;", f.reg(i.Dst))
 		f.line("%s.value = %s;", f.reg(i.Dst), f.reg(i.X))
 
 	case *metals.OptUnwrap:
+		if opt, ok := f.typeOf(i.X).(*metals.Opt); ok && metals.NicheOpt(opt) {
+			f.line("gy_want_value(%s != 0);", f.reg(i.X))
+			f.assign(i.Dst, f.reg(i.X))
+			break
+		}
 		f.line("gy_want_value(%s.flag);", f.reg(i.X))
 		f.assign(i.Dst, f.reg(i.X)+".value")
 
 	default:
-		g.fail("@%s: the C backend does not implement %T yet", f.fn.Name, instr)
+		// The linear-memory instructions carry their own dispatch, so the
+		// byte-level machinery stays in memory.go.
+		if !f.emitMemory(instr) {
+			g.fail("@%s: the C backend does not implement %T yet", f.fn.Name, instr)
+		}
 	}
 }
 
 // deref spells a read or write through a ptr register of the given type.
+// The cell holds storage, so the cast is the member type and C's own
+// conversion is the widening on the way out and the narrowing on the way
+// in.
 func (f *frame) deref(ptr string, t metals.Type) string {
-	return fmt.Sprintf("*(%s *)%s", f.g.cType(t), f.reg(ptr))
+	return fmt.Sprintf("*(%s *)%s", f.g.memberType(t), f.reg(ptr))
 }
 
 // ---------------------------------------------------------------------------
@@ -521,13 +584,29 @@ func (f *frame) emitSelect(i *metals.Select) {
 	for index, arm := range i.Arms {
 		armLabels[index] = g.newLabel()
 		if arm.Send {
-			f.line("if (gy_chan_try_send(%s, (void *)&%s)) goto %s;",
-				f.reg(arm.Ch), f.reg(arm.Val), armLabels[index])
+			f.stagedOut(arm.Val, func(address string) {
+				f.line("if (gy_chan_try_send(%s, %s)) goto %s;",
+					f.reg(arm.Ch), address, armLabels[index])
+			})
 			continue
 		}
-		f.line("memset(&%s, 0, %d);", f.reg(arm.Dst), g.sizeOf(f.typeOf(arm.Dst)))
-		f.line("if (gy_chan_try_recv(%s, (void *)&%s)) goto %s;",
-			f.reg(arm.Ch), f.reg(arm.Dst), armLabels[index])
+		// The value is read back out of staging whether or not the arm is
+		// taken, which costs a copy on a miss and keeps the branch in one
+		// place; a staged cell starts zeroed, so a miss leaves the same
+		// nothing the memset does.
+		taken := g.stageName()
+		f.line("{")
+		f.indent++
+		f.line("int64_t %s;", taken)
+		if !metals.Narrow(f.typeOf(arm.Dst)) {
+			f.line("memset(&%s, 0, %d);", f.reg(arm.Dst), g.sizeOf(f.typeOf(arm.Dst)))
+		}
+		f.stagedIn(arm.Dst, func(address string) {
+			f.line("%s = gy_chan_try_recv(%s, %s);", taken, f.reg(arm.Ch), address)
+		})
+		f.line("if (%s) goto %s;", taken, armLabels[index])
+		f.indent--
+		f.line("}")
 	}
 	if len(i.Default) > 0 {
 		f.line("{")
@@ -608,6 +687,12 @@ func (f *frame) emitConst(i *metals.Const) {
 		parsed, err := strconv.ParseFloat(i.Value, 64)
 		if err != nil {
 			g.fail("@%s: bad float constant %s", f.fn.Name, i.Value)
+		}
+		if prim.Kind == metals.F32 {
+			// A constant is an operation producing an f32 like any other,
+			// so it rounds through single precision before the register
+			// carries it as a double.
+			parsed = float64(float32(parsed))
 		}
 		// The bit pattern travels, not the decimal: no round trip through
 		// the C compiler's own parser can change the value.

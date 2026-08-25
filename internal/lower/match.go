@@ -3,6 +3,7 @@ package lower
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -25,12 +26,11 @@ func (f *funcLowerer) evalMatch(m *ast.MatchExpr, want types.Type) string {
 	subjType := f.typeOf(m.Subject)
 	subj := f.lowerExpr(m.Subject, nil)
 
+	// Every tag-tested subject is an enum underneath: a user enum, the
+	// generated %error, or the generated %any.
 	tag := ""
-	if _, ok := subjType.(*types.Enum); ok {
-		tag = f.newReg("tag")
-		f.emit(&metals.VariantTag{Dst: tag, X: subj})
-	}
-	if isErrorBasic(subjType) {
+	_, isEnum := subjType.(*types.Enum)
+	if isEnum || isErrorBasic(subjType) || isAnyType(subjType) {
 		tag = f.newReg("tag")
 		f.emit(&metals.VariantTag{Dst: tag, X: subj})
 	}
@@ -109,6 +109,12 @@ func (f *funcLowerer) armTest(subj string, subjType types.Type, tag string, patt
 		if isErrorBasic(subjType) {
 			return f.errorArmTest(subj, tag, p)
 		}
+		if isAnyType(subjType) {
+			return f.anyArmTest(subj, tag, p, p.Payload)
+		}
+
+	case *ast.TypeTestPattern:
+		return f.anyArmTest(subj, tag, p, p.Payload)
 	}
 	f.l.fail("@%s: cannot lower this match pattern", f.fn.Name)
 	return "", nothing
@@ -205,6 +211,23 @@ func (f *funcLowerer) errorArmTest(subj, tag string, p *ast.VariantPattern) (str
 	return cond, func() {
 		if len(p.Payload) == 1 {
 			f.bindPayload(p.Payload[0], subj, index, 0)
+		}
+	}
+}
+
+// anyArmTest is the type test on an any: does it hold the type the pattern
+// names? The checker recorded that type at the pattern, since the pattern
+// itself is only a path.
+func (f *funcLowerer) anyArmTest(subj, tag string, p ast.Pattern, payload []ast.Pattern) (string, func()) {
+	held := f.localType(p, sema.AnyTestLocal)
+	if held == nil {
+		f.l.fail("@%s: no recorded type for an any type test", f.fn.Name)
+	}
+	index := f.l.anyVariantOf(held)
+	cond := f.tagEquals(tag, index)
+	return cond, func() {
+		if len(payload) == 1 {
+			f.bindPayload(payload[0], subj, index, 0)
 		}
 	}
 }

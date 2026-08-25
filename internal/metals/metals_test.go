@@ -131,6 +131,27 @@ fn @dot() -> %Shape {
 `)
 }
 
+// A float constant carries its literal text, and a small or large one is
+// written with a signed exponent. The scanner has to keep the sign inside
+// the number, or the line comes apart into two tokens and the printed
+// module does not reparse.
+func TestSignedExponentModule(t *testing.T) {
+	roundTrip(t, `
+module "gyro:test/exponents"
+
+fn @constants() -> f64 {
+  %tiny = const.f64 1e-09
+  %huge = const.f64 1.23e+129
+  %neg = const.f64 -1.23e-126
+  %plain = const.f64 2.5
+  %sum = fadd %tiny, %huge
+  %rest = fadd %neg, %plain
+  %total = fadd %sum, %rest
+  return %total
+}
+`)
+}
+
 func TestLoopsAndMemoryModule(t *testing.T) {
 	roundTrip(t, `
 module "gyro:test/loops"
@@ -237,16 +258,16 @@ func TestInteropModule(t *testing.T) {
 module "gyro:test/interop"
 
 import "js:./widgets" {
-  fn @render(dyn) -> dyn
+  fn @render(any) -> any
   fn @screen() -> handle
 }
 
 export fn @show(%x: i32) -> i32 {
-  %d = dyn.wrap %x
+  %d = any.wrap %x
   %r = call @render(%d)
-  %title = dyn.get %r, "title"
-  dyn.set %r, "count", %d
-  %v = dyn.unwrap %r -> i32
+  %title = any.get %r, "title"
+  any.set %r, "count", %d
+  %v = any.unwrap %r -> i32
   return %v
 }
 
@@ -264,8 +285,9 @@ module "gyro:test/closures"
 
 type %Env = record { factor: i32 }
 
-fn @scale_impl(%env: %Env, %x: i32) -> i32 {
-  %f = field.get %env, 0
+fn @scale_impl(%env: ptr<%Env>, %x: i32) -> i32 {
+  %fp = field.ptr %env, 0
+  %f = load %fp
   %r = imul %f, %x
   return %r
 }
@@ -277,7 +299,9 @@ fn @apply(%g: fn(i32) -> i32, %x: i32) -> i32 {
 
 fn @use() -> i32 {
   %three = const.i32 3
-  %env = record %Env(%three)
+  %env = new %Env
+  %fp = field.ptr %env, 0
+  store %fp, %three
   %scale = closure @scale_impl, %env
   %seven = const.i32 7
   %r = call @apply(%scale, %seven)
@@ -442,15 +466,19 @@ fn @f() -> i32 {
 }
 
 func TestVerifierEnforcesBoundaryRules(t *testing.T) {
-	verifyError(t, header+`export fn @leak(%p: ptr<i32>) {
-  return
-}
-`, "values copy at the boundary")
-
 	verifyError(t, `module "gyro:test/v"
 
 import "py:math" {
   fn @share(chan<i32>)
+}
+`, "values copy at the boundary")
+
+	// A native library is the case the rule exists for: nothing has
+	// verified what it does with an address it is handed.
+	verifyError(t, `module "gyro:test/v"
+
+import "c:SDL2" {
+  fn @SDL_FreeSurface(ptr<i32>)
 }
 `, "values copy at the boundary")
 
@@ -459,6 +487,23 @@ import "py:math" {
 
 import "gyro:test/other" {
   fn @share(chan<i32>)
+}
+`)
+
+	// And between two languages that compile into METALS, because the
+	// program they become is one module on one heap.
+	roundTrip(t, `module "gyro:test/v"
+
+import "lisp:test/other" {
+  fn @cell() -> ptr<i32>
+}
+`)
+
+	// What a module exports is nobody's business until something imports
+	// it, and only the linker knows out of which runtime.
+	roundTrip(t, header+`export fn @cell() -> ptr<i32> {
+  %p = slot i32
+  return %p
 }
 `)
 }
@@ -556,16 +601,127 @@ func TestVerifierChecksOptOps(t *testing.T) {
 `, "optionals do not nest")
 }
 
-func TestVerifierChecksDynOperands(t *testing.T) {
+func TestVerifierChecksAnyOperands(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: i32) {
-  %r = dyn.call %x()
+  %r = any.call %x()
   return
 }
-`, "works on dyn values")
+`, "works on any values")
 
 	verifyError(t, header+`fn @f(%p: ptr<i32>) {
-  %d = dyn.wrap %p
+  %d = any.wrap %p
   return
 }
-`, "cannot become dyn")
+`, "cannot become any")
+}
+
+// ---------------------------------------------------------------------------
+// Linear memory
+// ---------------------------------------------------------------------------
+
+func TestLinearMemoryModule(t *testing.T) {
+	roundTrip(t, `
+module "csrc:test/mem"
+
+memory @heap 1, 16
+data @heap, 8, "hi\x00\xff"
+
+export fn @sum(%n: u32) -> i32 {
+  %total = const.i32 0
+  %i = const.u32 0
+  %four = const.u32 4
+  block $done {
+    loop $top {
+      %atEnd = ge %i, %n
+      br_if %atEnd, $done
+      %off = wmul %i, %four
+      %v = mem.load.i32 @heap, %off
+      %total = iadd %total, %v
+      %one = const.u32 1
+      %i = wadd %i, %one
+      br $top
+    }
+  }
+  return %total
+}
+
+export fn @scribble(%at: u32, %v: i32) {
+  %byte = trunc %v -> u8
+  mem.store.u8 @heap, %at, %byte
+  %len = const.u32 4
+  mem.fill @heap, %at, %byte, %len
+  %from = const.u32 0
+  mem.copy @heap, %at, %from, %len
+  return
+}
+
+export fn @sizes() -> i32 {
+  %pages = mem.size @heap
+  %grown = mem.grow @heap, %pages
+  return %grown
+}
+
+export fn @bits(%x: i32) -> u32 {
+  %u = bitcast %x -> u32
+  %shifted = shr %u, %u
+  return %shifted
+}
+`)
+}
+
+func TestVerifierChecksMemoryOperands(t *testing.T) {
+	const mem = "module \"csrc:test/v\"\n\nmemory @heap 1\n\n"
+
+	verifyError(t, mem+`fn @f(%a: i32) {
+  %v = mem.load.i32 @heap, %a
+  return
+}
+`, "addresses memory with a u32")
+
+	verifyError(t, mem+`fn @f(%a: u32) {
+  %v = mem.load.i32 @nowhere, %a
+  return
+}
+`, "no memory @nowhere")
+
+	// A store of a wider register must say which bits it keeps.
+	verifyError(t, mem+`fn @f(%a: u32, %v: i32) {
+  mem.store.u8 @heap, %a, %v
+  return
+}
+`, "trunc says which bits to keep")
+
+	verifyError(t, mem+`fn @f(%a: u32, %b: u8) {
+  mem.copy @heap, %a, %b, %a
+  return
+}
+`, "counts bytes in u32")
+}
+
+func TestVerifierChecksTruncAndBitcast(t *testing.T) {
+	verifyError(t, header+`fn @f(%x: u8) {
+  %r = trunc %x -> i64
+  return
+}
+`, "widens; conv is the widening one")
+
+	verifyError(t, header+`fn @f(%x: i32) {
+  %r = bitcast %x -> i64
+  return
+}
+`, "changes width")
+
+	verifyError(t, header+`fn @f(%x: f64) {
+  %r = trunc %x -> i32
+  return
+}
+`, "trunc narrows integers")
+}
+
+func TestVerifierChecksDataSegments(t *testing.T) {
+	verifyError(t, "module \"csrc:test/v\"\n\nmemory @heap 1\ndata @other, 0, \"x\"\n",
+		"names no memory @other")
+
+	verifyError(t, "module \"csrc:test/v\"\n\nmemory @heap 1\ndata @heap, 65535, \"ab\"\n",
+		"does not fit memory @heap")
 }

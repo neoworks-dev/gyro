@@ -26,7 +26,7 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 	case *types.Pointer:
 		return &types.Pointer{Elem: c.substType(t.Elem, s)}
 	case *types.Optional:
-		return &types.Optional{Elem: c.substType(t.Elem, s)}
+		return types.NewOptional(c.substType(t.Elem, s))
 	case *types.Slice:
 		return &types.Slice{Elem: c.substType(t.Elem, s)}
 	case *types.Array:
@@ -46,7 +46,7 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 		for i, param := range t.Params {
 			params[i] = c.substType(param, s)
 		}
-		return &types.Func{Params: params, Required: t.Required, Result: c.substType(t.Result, s), Async: t.Async}
+		return &types.Func{Params: params, Required: t.Required, Result: c.substType(t.Result, s), Async: t.Async, Variadic: t.Variadic}
 	case *types.Struct:
 		return c.substStruct(t, s)
 	case *types.Enum:

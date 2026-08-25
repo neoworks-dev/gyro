@@ -15,6 +15,12 @@ import (
 // as println<i32> and Array<i32>::push dispatch on their base name; the
 // type arguments only shaped the signature.
 func (m *machine) native(name string, args []value) value {
+	// A C library's symbol is an import like any other, and this is the
+	// one tier that cannot call it: the evaluator is Go, with no C in it.
+	if library := m.foreignLibrary(name); library != "" {
+		m.throw("@%s is a C function from lib%s; the evaluator has no C in it, so build the program instead", name, library)
+	}
+
 	owner, method := splitNativeName(name)
 	arg := func(i int) value {
 		if i < len(args) {
@@ -59,6 +65,23 @@ func (m *machine) native(name string, args []value) value {
 	}
 	m.throw("unknown runtime function @%s", name)
 	return nil
+}
+
+// foreignLibrary names the C library an import comes from, or "" when
+// the import is the runtime's own.
+func (m *machine) foreignLibrary(name string) string {
+	for _, imp := range m.module.Imports {
+		library := metals.ExternLibrary(imp.Module)
+		if library == "" {
+			continue
+		}
+		for _, fn := range imp.Funcs {
+			if fn.Name == name {
+				return library
+			}
+		}
+	}
+	return ""
 }
 
 // splitNativeName separates Array<i32>::push into (Array, push) and
@@ -208,7 +231,7 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 		_, err := os.Stat(string(path))
 		return boolVal(err == nil)
 	case "get":
-		return tupleVal{strVal(""), m.nativeError("the interpreter has no network")}
+		return tupleVal{strVal(""), m.nativeError("this runtime has no network")}
 	case "now":
 		return intVal{v: time.Now().UnixMilli(), kind: metals.I64}
 	case "monotonic":
@@ -239,6 +262,38 @@ func (m *machine) freeNative(method string, arg func(int) value) value {
 			m.throw("exit takes an i32")
 		}
 		panic(&Exit{Code: int(code.v)})
+
+	// The byte floor a compiled-in language reaches i/o through. It is
+	// one byte at a time because a linear address is a u32 and not a
+	// pointer: handing the runtime one and telling it to read the bytes
+	// behind it would make it a pointer at the boundary, which is the
+	// whole of what keeps the sandbox real. A libc buffers on its own
+	// side and drains through these.
+	case "write_byte":
+		fd, ok := arg(0).(intVal)
+		if !ok {
+			m.throw("write_byte takes an i32 descriptor")
+		}
+		value, ok := arg(1).(intVal)
+		if !ok {
+			m.throw("write_byte takes an i32 byte")
+		}
+		out := m.stdout
+		if fd.v == 2 {
+			out = m.stderr
+		}
+		if _, err := out.Write([]byte{byte(value.v)}); err != nil {
+			m.throw("write_byte: %v", err)
+		}
+		return nil
+	case "read_byte":
+		var buf [1]byte
+		n, err := m.stdin.Read(buf[:])
+		if n == 0 || err != nil {
+			// End of input is -1, which is what getchar answers.
+			return intVal{v: -1, kind: metals.I32}
+		}
+		return intVal{v: int64(buf[0]), kind: metals.I32}
 	}
 	m.throw("unknown runtime function %s", method)
 	return nil

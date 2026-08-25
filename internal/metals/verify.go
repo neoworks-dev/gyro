@@ -7,8 +7,10 @@ import (
 
 // Verify type-checks a module with no trust in its producer: every
 // register is assigned before use on all paths and keeps one type, every
-// instruction's operands check, and boundary rules hold on exported and
-// cross-language signatures. It returns the first violation found.
+// instruction's operands check, and boundary rules hold on every import
+// from another runtime. What a module *exports* is the linker's to check,
+// because only it knows who imports the name and out of which runtime.
+// It returns the first violation found.
 func Verify(m *Module) error {
 	_, err := verifyModule(m, false)
 	return err
@@ -28,6 +30,7 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		types:     map[string]*TypeDecl{},
 		callables: map[string]*FnType{},
 		globals:   map[string]Type{},
+		memories:  map[string]*Memory{},
 	}
 	if collect {
 		v.regTypes = map[string]map[string]Type{}
@@ -45,9 +48,8 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		}
 	}
 
-	scheme := Scheme(m.Name)
 	for _, imp := range m.Imports {
-		foreign := Scheme(imp.Module) != scheme
+		foreign := !SameRuntime(m.Name, imp.Module)
 		for _, fn := range imp.Funcs {
 			if _, dup := v.callables[fn.Name]; dup {
 				return nil, fmt.Errorf("@%s is declared twice", fn.Name)
@@ -57,7 +59,7 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 				return nil, err
 			}
 			if foreign {
-				if err := v.checkBoundary(fn.Name, fn.Sig); err != nil {
+				if err := checkBoundary(fn.Name, fn.Sig, v.types); err != nil {
 					return nil, err
 				}
 			}
@@ -71,6 +73,30 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		v.callables[fn.Name] = fn.Sig()
 	}
 
+	for _, mem := range m.Memories {
+		if _, dup := v.memories[mem.Name]; dup {
+			return nil, fmt.Errorf("memory @%s is declared twice", mem.Name)
+		}
+		if mem.Min < 0 || (mem.Max != 0 && mem.Max < mem.Min) {
+			return nil, fmt.Errorf("memory @%s: %d pages minimum, %d maximum", mem.Name, mem.Min, mem.Max)
+		}
+		v.memories[mem.Name] = mem
+	}
+	for _, seg := range m.Data {
+		mem, ok := v.memories[seg.Memory]
+		if !ok {
+			return nil, fmt.Errorf("data segment names no memory @%s", seg.Memory)
+		}
+		// A segment that does not fit the size its memory starts at would
+		// have to grow it before anything ran, which is a producer bug
+		// rather than a program that traps.
+		end := seg.Offset + int64(len(seg.Bytes))
+		if seg.Offset < 0 || end > mem.Min*PageSize {
+			return nil, fmt.Errorf("data segment at %d..%d does not fit memory @%s's %d page(s)",
+				seg.Offset, end, mem.Name, mem.Min)
+		}
+	}
+
 	for _, global := range m.Globals {
 		if err := v.checkType(global.Type); err != nil {
 			return nil, fmt.Errorf("global @%s: %w", global.Name, err)
@@ -80,15 +106,30 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		}
 		v.globals[global.Name] = global.Type
 	}
+	if err := checkGlobalImages(m); err != nil {
+		return nil, err
+	}
+
+	if m.Init != "" {
+		// An initializer runs before anything has a value to pass it or a
+		// place to put its answer, so it takes nothing and returns
+		// nothing. It is also the module's own, not an import: a module
+		// arranges its own storage.
+		init := findFunc(m, m.Init)
+		switch {
+		case init == nil:
+			return nil, fmt.Errorf("init names @%s, which this module does not declare", m.Init)
+		case init.Async:
+			return nil, fmt.Errorf("init @%s is async, and nothing exists yet to await it", m.Init)
+		case len(init.Params) > 0 || init.Result != nil:
+			return nil, fmt.Errorf("init @%s takes %s, and must take and return nothing",
+				m.Init, init.Sig())
+		}
+	}
 
 	for _, fn := range m.Funcs {
 		if err := v.checkSigTypes(fn.Name, fn.Sig()); err != nil {
 			return nil, err
-		}
-		if fn.Export {
-			if err := v.checkBoundary(fn.Name, fn.Sig()); err != nil {
-				return nil, err
-			}
 		}
 		if err := v.checkFunc(fn); err != nil {
 			return nil, fmt.Errorf("fn @%s: %w", fn.Name, err)
@@ -97,11 +138,130 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 	return v.regTypes, nil
 }
 
+// checkGlobalImages holds a global's static bytes to the storage they
+// claim to be: exactly the size the layout table says, no more and no
+// less, since a short image would leave the rest of the object to guess
+// and a long one would write past it.
+//
+// A pointer has no static image. Its value is not known until the
+// program is laid out, so a producer writes one in the module's Init
+// instead — and a type that contains a pointer anywhere inside it cannot
+// be spelled in bytes for the same reason.
+func checkGlobalImages(m *Module) (err error) {
+	var withImage []*Global
+	for _, global := range m.Globals {
+		if global.Bytes != nil {
+			withImage = append(withImage, global)
+		}
+	}
+	if len(withImage) == 0 {
+		return nil
+	}
+
+	// The layout table reports a type it cannot lay out by calling out
+	// and not returning; here that is this function's error.
+	defer func() {
+		switch caught := recover().(type) {
+		case nil:
+		case layoutFailure:
+			err = caught.err
+		default:
+			panic(caught)
+		}
+	}()
+	layout := NewLayout(m, func(format string, args ...any) {
+		panic(layoutFailure{fmt.Errorf(format, args...)})
+	})
+
+	for _, global := range withImage {
+		if bad := pointerInside(m, global.Type, map[string]bool{}); bad != nil {
+			return fmt.Errorf("global @%s: %s holds a %s, which has no value until the program is laid out",
+				global.Name, global.Type, bad)
+		}
+		if size := layout.Size(global.Type); len(global.Bytes) != size {
+			return fmt.Errorf("global @%s: %d bytes of storage for a %s, which is %d",
+				global.Name, len(global.Bytes), global.Type, size)
+		}
+	}
+	return nil
+}
+
+type layoutFailure struct{ err error }
+
+// pointerInside finds a type anywhere inside t whose value a static
+// image cannot carry, and returns it, or nil when the whole of t is
+// plain bytes.
+func pointerInside(m *Module, t Type, seen map[string]bool) Type {
+	switch t := t.(type) {
+	case *Prim:
+		// A str is a pointer to the runtime's own blob, whatever else it
+		// looks like from here.
+		if t.Kind == Str {
+			return t
+		}
+		return nil
+	case *Ptr, *ChanOf, *FutureOf, *Handle, *FnType, *SliceOf, *Any:
+		return t
+	case *Opt:
+		return pointerInside(m, t.Elem, seen)
+	case *ArrayOf:
+		return pointerInside(m, t.Elem, seen)
+	case *TupleOf:
+		for _, elem := range t.Elems {
+			if bad := pointerInside(m, elem, seen); bad != nil {
+				return bad
+			}
+		}
+		return nil
+	case *Named:
+		// A record that reaches itself does so through a pointer, which
+		// has already been refused above; the guard is for the cyclic
+		// declaration the layout table reports separately.
+		if seen[t.Name] {
+			return nil
+		}
+		seen[t.Name] = true
+		defer delete(seen, t.Name)
+
+		decl := findType(m, t.Name)
+		if decl == nil {
+			return t
+		}
+		if decl.Record != nil {
+			for _, field := range decl.Record.Fields {
+				if bad := pointerInside(m, field.Type, seen); bad != nil {
+					return bad
+				}
+			}
+			return nil
+		}
+		for _, variant := range decl.Enum.Variants {
+			for _, payload := range variant.Payload {
+				if bad := pointerInside(m, payload, seen); bad != nil {
+					return bad
+				}
+			}
+		}
+		return nil
+	}
+	return t
+}
+
+func findType(m *Module, name string) *TypeDecl {
+	for _, decl := range m.Types {
+		if decl.Name == name {
+			return decl
+		}
+	}
+	return nil
+}
+
 type verifier struct {
 	module    *Module
 	types     map[string]*TypeDecl
 	callables map[string]*FnType
 	globals   map[string]Type
+	memories  map[string]*Memory
 	// regTypes collects each function's register types when non-nil;
 	// clones share one types map per function, so after a body checks
 	// out the map holds every register the function ever assigns.
@@ -176,23 +336,33 @@ func (v *verifier) checkSigTypes(name string, sig *FnType) error {
 	return nil
 }
 
-// checkBoundary enforces the copy rule on a boundary-crossing signature:
-// no pointers, channels or futures anywhere in it.
-func (v *verifier) checkBoundary(name string, sig *FnType) error {
+// checkBoundary enforces the copy rule on a signature crossing between
+// two runtimes: no pointers, channels or futures anywhere in it. The
+// types are the declaring module's, since a %Named resolves there and
+// nowhere else.
+//
+// The verifier calls this on an import out of another runtime and the
+// linker on the export it resolves to; both of them are the side that
+// can see two runtimes at once.
+func checkBoundary(name string, sig *FnType, types map[string]*TypeDecl) error {
 	for _, param := range sig.Params {
-		if bad := boundaryOffender(param); bad != "" {
-			return fmt.Errorf("@%s crosses a language boundary; %s cannot: values copy at the boundary", name, bad)
+		if bad := boundaryOffender(param, types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("@%s crosses a runtime boundary; %s cannot: values copy at the boundary", name, bad)
 		}
 	}
 	if sig.Result != nil {
-		if bad := boundaryOffender(sig.Result); bad != "" {
-			return fmt.Errorf("@%s crosses a language boundary; %s cannot: values copy at the boundary", name, bad)
+		if bad := boundaryOffender(sig.Result, types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("@%s crosses a runtime boundary; %s cannot: values copy at the boundary", name, bad)
 		}
 	}
 	return nil
 }
 
-func boundaryOffender(t Type) string {
+// boundaryOffender names the part of a type that cannot cross, or "". A
+// record is walked rather than waved through: a struct crossing by value
+// is its fields crossing by value, and one of them holding a pointer is
+// the same shared mutable state a bare pointer would be.
+func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) string {
 	switch t := t.(type) {
 	case *Ptr:
 		return t.String()
@@ -201,25 +371,46 @@ func boundaryOffender(t Type) string {
 	case *FutureOf:
 		return t.String()
 	case *Opt:
-		return boundaryOffender(t.Elem)
+		return boundaryOffender(t.Elem, types, seen)
 	case *SliceOf:
-		return boundaryOffender(t.Elem)
+		return boundaryOffender(t.Elem, types, seen)
 	case *ArrayOf:
-		return boundaryOffender(t.Elem)
+		return boundaryOffender(t.Elem, types, seen)
 	case *TupleOf:
 		for _, elem := range t.Elems {
-			if bad := boundaryOffender(elem); bad != "" {
+			if bad := boundaryOffender(elem, types, seen); bad != "" {
 				return bad
 			}
 		}
 	case *FnType:
 		for _, param := range t.Params {
-			if bad := boundaryOffender(param); bad != "" {
+			if bad := boundaryOffender(param, types, seen); bad != "" {
 				return bad
 			}
 		}
 		if t.Result != nil {
-			return boundaryOffender(t.Result)
+			return boundaryOffender(t.Result, types, seen)
+		}
+	case *Named:
+		decl := types[t.Name]
+		if decl == nil || seen[t.Name] {
+			return ""
+		}
+		seen[t.Name] = true
+		if decl.Record != nil {
+			for _, field := range decl.Record.Fields {
+				if bad := boundaryOffender(field.Type, types, seen); bad != "" {
+					return bad
+				}
+			}
+			return ""
+		}
+		for _, variant := range decl.Enum.Variants {
+			for _, payload := range variant.Payload {
+				if bad := boundaryOffender(payload, types, seen); bad != "" {
+					return bad
+				}
+			}
 		}
 	}
 	return ""
@@ -397,6 +588,13 @@ func convertibleKind(t Type) bool {
 	return orderedKind(t)
 }
 
+// numericKind is what bitcast reinterprets between: the integers and the
+// floats, but not rune or bool, whose valid values are a subset of their
+// width's and so cannot be produced from arbitrary bits.
+func numericKind(t Type) bool {
+	return intKind(t) || floatKind(t)
+}
+
 func isStr(t Type) bool {
 	prim, ok := t.(*Prim)
 	return ok && prim.Kind == Str
@@ -410,6 +608,58 @@ func isBool(t Type) bool {
 func isUsize(t Type) bool {
 	prim, ok := t.(*Prim)
 	return ok && prim.Kind == Usize
+}
+
+// isU32 is the type of every linear-memory address, length and page
+// count. One width for all of them is what keeps a producer from having
+// to decide, and it is wasm32's.
+func isU32(t Type) bool {
+	prim, ok := t.(*Prim)
+	return ok && prim.Kind == U32
+}
+
+func isU8(t Type) bool {
+	prim, ok := t.(*Prim)
+	return ok && prim.Kind == U8
+}
+
+// memory resolves a linear memory a instruction names.
+func (fv *funcVerifier) memory(name string) error {
+	if fv.memories[name] == nil {
+		return fmt.Errorf("no memory @%s", name)
+	}
+	return nil
+}
+
+// memAddr is the check every access shares: the memory resolves and the
+// address is a u32.
+func (fv *funcVerifier) memAddr(state *regState, memory, addr, what string) error {
+	if err := fv.memory(memory); err != nil {
+		return err
+	}
+	typ, err := fv.use(state, addr)
+	if err != nil {
+		return err
+	}
+	if !isU32(typ) {
+		return fmt.Errorf("%s addresses memory with a u32, not %s", what, typ)
+	}
+	return nil
+}
+
+// memCounts requires every named register to be a u32, which is what the
+// remaining address and length operands of mem.copy and mem.fill are.
+func (fv *funcVerifier) memCounts(state *regState, what string, names ...string) error {
+	for _, name := range names {
+		typ, err := fv.use(state, name)
+		if err != nil {
+			return err
+		}
+		if !isU32(typ) {
+			return fmt.Errorf("%s counts bytes in u32, not %s", what, typ)
+		}
+	}
+	return nil
 }
 
 func (fv *funcVerifier) recordShape(name string) (*RecordShape, error) {

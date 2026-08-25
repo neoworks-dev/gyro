@@ -22,11 +22,12 @@ import (
 // additions to it, and they win over an extension of the same name.
 
 // builtinOwner resolves the type an extension method names, or nil when
-// the name is not an extensible built-in. `void` and `error` are
-// excluded: nothing has type void, and error is a contract satisfied by
-// whatever carries message(), not a type to hang methods on.
+// the name is not an extensible built-in. `void`, `error` and `any` are
+// excluded: nothing has type void, error is a contract satisfied by
+// whatever carries message() rather than a type to hang methods on, and an
+// any's behaviour belongs to the type inside it — which a match names.
 func builtinOwner(name string) types.Type {
-	if name == "void" || name == "error" {
+	if name == "void" || name == "error" || name == "any" {
 		return nil
 	}
 	if basic, ok := types.Builtin[name]; ok {

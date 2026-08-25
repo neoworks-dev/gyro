@@ -65,6 +65,7 @@ const (
 	Colon      // :
 	Dot        // .
 	DotDot     // ..
+	Ellipsis   // ...
 	Comma      // ,
 	Question   // ?
 	At         // @
@@ -160,6 +161,7 @@ var kindNames = map[Kind]string{
 	Colon:      ":",
 	Dot:        ".",
 	DotDot:     "..",
+	Ellipsis:   "...",
 	Comma:      ",",
 	Question:   "?",
 	At:         "@",

@@ -585,6 +585,52 @@ func TestTuples(t *testing.T) {
 	}
 }
 
+func TestVariadicParameterAndSpread(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "variadic parameter carries the element type",
+			src:  "fn f(xs: ...i32) {\n}\n",
+			want: "File test.gyro Func f Param xs ...: Type: NamedType i32 Body: Block",
+		},
+		{
+			name: "a fixed parameter may precede the pack",
+			src:  "fn f(label: string, rest: ...any) {\n}\n",
+			want: "File test.gyro Func f Param label: Type: NamedType string " +
+				"Param rest ...: Type: NamedType any Body: Block",
+		},
+		{
+			name: "a spread argument is marked",
+			src:  "fn f() {\n  g(xs...)\n}\n",
+			want: "File test.gyro Func f Body: Block ExprStmt Call Fun: Ident g Arg ...: Ident xs",
+		},
+		{
+			name: "spread does not swallow the following argument",
+			src:  "fn f() {\n  g(xs..., y)\n}\n",
+			want: "File test.gyro Func f Body: Block ExprStmt Call Fun: Ident g " +
+				"Arg ...: Ident xs Arg: Ident y",
+		},
+		{
+			name: "a range still scans as two dots",
+			src:  "fn f() {\n  for i in 0..3 {\n  }\n}\n",
+			want: "File test.gyro Func f Body: Block ForIn i Iterable: Range Lit int literal 0 " +
+				"Lit int literal 3 Body: Block",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := dumpOf(t, test.src)
+			if got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTupleTypeInChannel(t *testing.T) {
 	got := dumpOf(t, "fn f(ch: chan<(i32, error?)>) {\n}\n")
 	want := "File test.gyro Func f Param ch: Type: ChanType TupleType " +

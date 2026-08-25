@@ -247,7 +247,7 @@ func (c *checker) varTypes(decl *ast.VarDecl, bind func(ast.Binding, types.Type)
 			c.assignExpr(decl.Value, annotation, "the declaration of "+bindingName(decl))
 			t = annotation
 		} else {
-			t = types.Default(c.expr(decl.Value))
+			t = c.defaultExpr(decl.Value, c.expr(decl.Value))
 		}
 		for _, binding := range decl.Names {
 			bind(binding, t)
@@ -779,8 +779,13 @@ func (c *checker) rangeElem(rng *ast.RangeExpr) types.Type {
 	if flexible(lo) || flexible(hi) {
 		return types.Unknown
 	}
-	lo = types.Default(lo)
-	hi = types.Default(hi)
+	lo = c.defaultExpr(rng.Lo, lo)
+	hi = c.defaultExpr(rng.Hi, hi)
+	// Defaulting reports an endpoint that does not fit i32, and the
+	// poisoned type it hands back would only produce a second error here.
+	if flexible(lo) || flexible(hi) {
+		return types.Unknown
+	}
 	if !types.IsInteger(lo) || !types.Identical(lo, hi) {
 		c.errorf(rng.Offset, "a range needs matching integer endpoints, got %s and %s", describeType(lo), describeType(hi))
 		return types.Unknown

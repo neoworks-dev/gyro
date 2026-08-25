@@ -53,7 +53,17 @@ type (
 	arrayVal struct{ elems []value }
 	sliceVal struct{ elems []value } // shares its backing: the borrow
 
-	ptrVal  struct{ cell *value }
+	// ptrVal is a pointer: the object's cells and which one it points
+	// at. It is not one *value because pointer arithmetic exists — the
+	// cell after this one has to be nameable — and it is not a raw
+	// address because the evaluator has no memory to address. The
+	// backing slice is the extent, which is exactly the object C says
+	// arithmetic stays inside; index may reach len, which is the one
+	// past the end C allows a program to form.
+	ptrVal struct {
+		cells []value
+		index int
+	}
 	chanVal chan value
 
 	// fnVal is a function value: a bare reference or a closure with its
@@ -72,6 +82,20 @@ type (
 
 	// handleVal is an opaque runtime object: Array, Mutex, guard, file.
 	handleVal struct{ obj any }
+
+	// anyVal is the dynamic escape hatch: the static type a value was
+	// wrapped at, plus the value. any.is and any.unwrap test against the
+	// recorded type, which is why an any can be received from a producer
+	// this module knows nothing about.
+	//
+	// The payload is a shared cell, mirroring the native representation
+	// — two words, the second pointing at the value — so any.set through
+	// one reference is visible through every other. Gyro cannot observe
+	// the sharing: its `any` has no mutation form.
+	anyVal struct {
+		typ  metals.Type
+		cell *value
+	}
 
 	arrayObj struct {
 		elems []value
@@ -96,6 +120,19 @@ func (f *futureVal) await() value {
 		f.result = <-f.ch
 	})
 	return f.result
+}
+
+// samePointer is pointer equality: the same object, at the same
+// element. Two pointers into one object compare by index, which is what
+// makes a walk's `p == end` terminate.
+func samePointer(a, b ptrVal) bool {
+	if a.index != b.index || len(a.cells) != len(b.cells) {
+		return false
+	}
+	if len(a.cells) == 0 {
+		return true
+	}
+	return &a.cells[0] == &b.cells[0]
 }
 
 func isNull(v value) bool {
@@ -161,10 +198,16 @@ func valuesEqual(a, b value) bool {
 		return ok && a == b
 	case ptrVal:
 		b, ok := b.(ptrVal)
-		return ok && a.cell == b.cell
+		return ok && samePointer(a, b)
 	case handleVal:
 		b, ok := b.(handleVal)
 		return ok && a.obj == b.obj
+	case anyVal:
+		// Two anys are equal when they hold the same type and equal
+		// values: an i64 1 and an f64 1.0 are different values, and
+		// comparing them answers false rather than aborting.
+		b, ok := b.(anyVal)
+		return ok && metals.TypesEqual(a.typ, b.typ) && valuesEqual(*a.cell, *b.cell)
 	case tupleVal:
 		b, ok := b.(tupleVal)
 		if !ok || len(a) != len(b) {
@@ -183,6 +226,19 @@ func valuesEqual(a, b value) bool {
 		}
 		for i := range a.fields {
 			if !valuesEqual(a.fields[i], b.fields[i]) {
+				return false
+			}
+		}
+		return true
+	case arrayVal:
+		// A fixed-size array is a value, so it compares elementwise. A
+		// slice does not reach here: Gyro refuses == on a view.
+		b, ok := b.(arrayVal)
+		if !ok || len(a.elems) != len(b.elems) {
+			return false
+		}
+		for i := range a.elems {
+			if !valuesEqual(a.elems[i], b.elems[i]) {
 				return false
 			}
 		}
@@ -209,6 +265,11 @@ func valuesEqual(a, b value) bool {
 // display renders a value the way println shows it: strings raw at the
 // top level, everything else via repr. This mirrors the interpreter.
 func (m *machine) display(v value) string {
+	// An any is transparent here too, so displaying one that holds a
+	// string prints the text rather than a quoted literal.
+	if box, ok := v.(anyVal); ok {
+		return m.display(*box.cell)
+	}
 	if s, ok := v.(strVal); ok {
 		return string(s)
 	}
@@ -247,7 +308,10 @@ func (m *machine) repr(v value) string {
 	case enumVal:
 		return m.enumRepr(v)
 	case ptrVal:
-		return "&" + m.repr(*v.cell)
+		if v.index < 0 || v.index >= len(v.cells) {
+			return "&<past the end>"
+		}
+		return "&" + m.repr(v.cells[v.index])
 	case sliceVal:
 		return m.elemsRepr(v.elems)
 	case arrayVal:
@@ -260,6 +324,10 @@ func (m *machine) repr(v value) string {
 		return "awaitable"
 	case handleVal:
 		return m.handleRepr(v)
+	case anyVal:
+		// An any shows what it holds. The wrapper is a representation
+		// choice, not part of the value the program printed.
+		return m.repr(*v.cell)
 	}
 	return "?"
 }

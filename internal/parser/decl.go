@@ -312,6 +312,7 @@ func (p *Parser) parseParam() ast.Param {
 	param := ast.Param{Offset: p.offset()}
 	param.Name, _ = p.expectIdent()
 	p.expect(token.Colon)
+	param.Variadic = p.accept(token.Ellipsis)
 	param.Type = p.parseType()
 
 	if p.accept(token.Assign) {

@@ -17,6 +17,57 @@ var floatOps = map[string]string{"fadd": "+", "fsub": "-", "fmul": "*", "fdiv": 
 var bitOps = map[string]string{"band": "&", "bor": "|", "bxor": "^"}
 var orderOps = map[string]string{"lt": "<", "le": "<=", "gt": ">", "ge": ">="}
 
+// The float intrinsics, by the C function each width calls. The
+// f-suffixed forms both compute and round in single precision, so an
+// f32 result needs no separate narrowing.
+var floatCalls = map[string][2]string{
+	"fabs":      {"fabsf", "fabs"},
+	"fsqrt":     {"sqrtf", "sqrt"},
+	"fceil":     {"ceilf", "ceil"},
+	"ffloor":    {"floorf", "floor"},
+	"ftrunc":    {"truncf", "trunc"},
+	"fnearest":  {"gy_f32_nearest", "gy_f64_nearest"},
+	"fmin":      {"gy_f32_min", "gy_f64_min"},
+	"fmax":      {"gy_f32_max", "gy_f64_max"},
+	"fcopysign": {"copysignf", "copysign"},
+}
+
+// callFor picks the width's spelling, and says whether the operand has
+// to be narrowed on the way in — the f32 forms take a float, and a
+// register holding a double that is not float-representable would be
+// converted by the call itself, which is the same rounding, so only the
+// name is needed here.
+func floatCall(op string, prim *metals.Prim) (string, bool) {
+	entry, ok := floatCalls[op]
+	if !ok {
+		return "", false
+	}
+	if prim != nil && prim.Kind == metals.F32 {
+		return entry[0], true
+	}
+	return entry[1], true
+}
+
+func floatKind(prim *metals.Prim) bool {
+	return prim.Kind == metals.F32 || prim.Kind == metals.F64
+}
+
+// isF32 says whether a float result has to be rounded back through
+// single precision. Only the arithmetic operators need it; the
+// intrinsics above already computed in the right width.
+func isF32(t metals.Type) bool {
+	prim, ok := t.(*metals.Prim)
+	return ok && prim.Kind == metals.F32
+}
+
+// roundFloat wraps an arithmetic result in the narrowing an f32 needs.
+func roundFloat(expr string, t metals.Type) string {
+	if isF32(t) {
+		return fmt.Sprintf("gy_narrow_f32(%s)", expr)
+	}
+	return expr
+}
+
 func (f *frame) emitBin(i *metals.Bin) {
 	operand := f.typeOf(i.A)
 
@@ -31,8 +82,15 @@ func (f *frame) emitBin(i *metals.Bin) {
 		return
 	}
 	if operator, ok := floatOps[i.Op]; ok {
-		f.assign(i.Dst, fmt.Sprintf("%s %s %s", f.reg(i.A), operator, f.reg(i.B)))
+		expr := fmt.Sprintf("%s %s %s", f.reg(i.A), operator, f.reg(i.B))
+		f.assign(i.Dst, roundFloat(expr, operand))
 		return
+	}
+	if prim, ok := operand.(*metals.Prim); ok && floatKind(prim) {
+		if call, ok := floatCall(i.Op, prim); ok {
+			f.assign(i.Dst, fmt.Sprintf("%s(%s, %s)", call, f.reg(i.A), f.reg(i.B)))
+			return
+		}
 	}
 	if operator, ok := bitOps[i.Op]; ok {
 		f.assign(i.Dst, fmt.Sprintf("%s %s %s", f.reg(i.A), operator, f.reg(i.B)))
@@ -89,6 +147,7 @@ func (f *frame) emitUn(i *metals.Un) {
 			g.fail("@%s: neg of a %s", f.fn.Name, f.typeOf(i.X))
 		}
 		if prim.Kind == metals.F32 || prim.Kind == metals.F64 {
+			// Negation is exact at both widths, so no narrowing.
 			f.assign(i.Dst, "-"+f.reg(i.X))
 			return
 		}
@@ -107,7 +166,15 @@ func (f *frame) emitUn(i *metals.Un) {
 		f.assign(i.Dst, fmt.Sprintf("gy_wrap_u(~%s, %d)", f.reg(i.X), kind.width))
 
 	default:
-		g.fail("@%s: unknown unary operator %s", f.fn.Name, i.Op)
+		prim, ok := f.typeOf(i.X).(*metals.Prim)
+		if !ok || !floatKind(prim) {
+			g.fail("@%s: unknown unary operator %s", f.fn.Name, i.Op)
+		}
+		call, ok := floatCall(i.Op, prim)
+		if !ok {
+			g.fail("@%s: unknown unary operator %s", f.fn.Name, i.Op)
+		}
+		f.assign(i.Dst, fmt.Sprintf("%s(%s)", call, f.reg(i.X)))
 	}
 }
 
@@ -207,9 +274,20 @@ func (f *frame) emitEquality(dst, op, a, b string, operand metals.Type) {
 		}
 		// Floats included: C's == is already NaN-aware the same way.
 		f.assign(dst, fmt.Sprintf("(%s %s %s)", f.reg(a), comparison(negate), f.reg(b)))
+		return
 
 	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle:
 		f.assign(dst, fmt.Sprintf("(%s %s %s)", f.reg(a), comparison(negate), f.reg(b)))
+		return
+
+	case *metals.Opt:
+		// A niche optional is a pointer, null included, so the comparison
+		// that answers a pointer answers this too — and it has to be done
+		// here, because a scalar has no address to hand a helper.
+		if metals.NicheOpt(t) {
+			f.assign(dst, fmt.Sprintf("(%s %s %s)", f.reg(a), comparison(negate), f.reg(b)))
+			return
+		}
 
 	case *metals.SliceOf, *metals.FnType:
 		// The evaluator holds these to be never equal.
@@ -218,15 +296,15 @@ func (f *frame) emitEquality(dst, op, a, b string, operand metals.Type) {
 		} else {
 			f.assign(dst, "0")
 		}
-
-	default:
-		helper := g.eqHelperFor(operand)
-		call := fmt.Sprintf("%s(&%s, &%s)", helper, f.reg(a), f.reg(b))
-		if negate {
-			call = "!" + call
-		}
-		f.assign(dst, call)
+		return
 	}
+
+	helper := g.eqHelperFor(operand)
+	call := fmt.Sprintf("%s(&%s, &%s)", helper, f.reg(a), f.reg(b))
+	if negate {
+		call = "!" + call
+	}
+	f.assign(dst, call)
 }
 
 func comparison(negate bool) string {

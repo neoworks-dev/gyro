@@ -43,11 +43,24 @@ func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 
 	case *ast.VariantPattern:
 		return c.variantPattern(p, subject)
+
+	case *ast.TypeTestPattern:
+		if !flexible(subject) && !isAnyBasic(subject) {
+			c.errorf(p.Offset, "a type test on %s needs an any subject", subject)
+			return coverage{}
+		}
+		return c.anyTestPattern(p, p.Type, p.Payload)
 	}
 	return coverage{}
 }
 
 func (c *checker) variantPattern(p *ast.VariantPattern, subject types.Type) coverage {
+	// On an any, a pattern names the type it must hold — including the
+	// primitives, which no scope lookup would find.
+	if isAnyBasic(subject) {
+		return c.anyTestPattern(p, &ast.NamedType{Offset: p.Offset, Path: p.Path}, p.Payload)
+	}
+
 	resolved := c.resolvePathee(p.Path)
 	if resolved.bad {
 		c.bindPayloadLeniently(p)
@@ -125,6 +138,35 @@ func sameEnumOrigin(a, b *types.Enum) bool {
 	}
 	return originOf(a) == originOf(b)
 }
+
+// anyTestPattern is `i32(n)`, `Point(p)` or `(i32, string)(pair)` on an
+// any: it matches when the value inside has that type and binds it,
+// narrowed to that type. The set of types an any can hold is not
+// enumerable, so it covers nothing and the match still needs a `_`.
+func (c *checker) anyTestPattern(node ast.Node, typ ast.Type, payload []ast.Pattern) coverage {
+	held := c.resolveType(typ)
+	if !flexible(held) && !anyPayload(held) {
+		c.errorf(node.Pos(), "an any never holds %s, so this pattern can never match", held)
+		held = types.Unknown
+	}
+	if len(payload) != 1 {
+		c.errorf(node.Pos(), "a type test binds the whole value: %s(name)", held)
+		for _, nested := range payload {
+			c.pattern(nested, types.Unknown)
+		}
+		return coverage{}
+	}
+	// Lowering needs the tested type even when the pattern binds nothing,
+	// since that is what selects the variant to compare against.
+	c.recordLocal(node, AnyTestLocal, held)
+	c.pattern(payload[0], held)
+	return coverage{}
+}
+
+// AnyTestLocal is the slot an any type test records its tested type under,
+// for lowering to read back. It is not a name any source can write, so it
+// cannot collide with a binding the pattern declares.
+const AnyTestLocal = "<any test>"
 
 // typeTestPattern is `RangeError(e)` on an error value: it matches when
 // the concrete type is RangeError and binds the whole struct.

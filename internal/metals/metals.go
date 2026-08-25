@@ -75,6 +75,44 @@ var Prims = map[string]*Prim{
 
 func (p *Prim) String() string { return p.name }
 
+// PrimWidth is a primitive's size in bytes, and 0 for the ones that have
+// no fixed byte width. It is what a linear-memory access reads and
+// writes, and what bitcast requires both of its types to agree on.
+func PrimWidth(t Type) int {
+	prim, ok := t.(*Prim)
+	if !ok {
+		return 0
+	}
+	switch prim.Kind {
+	case I8, U8, Bool:
+		return 1
+	case I16, U16:
+		return 2
+	case I32, U32, F32, Rune:
+		return 4
+	case I64, U64, Usize, F64:
+		return 8
+	}
+	return 0
+}
+
+// MemAccess reports whether a primitive may be the width suffix of a
+// linear-memory load or store. Bool, rune, str and usize are excluded:
+// the first three are not byte patterns a producer should be inventing
+// from raw memory, and usize's width is the target's business, not one a
+// byte-addressed access may depend on.
+func MemAccess(t Type) bool {
+	prim, ok := t.(*Prim)
+	if !ok {
+		return false
+	}
+	switch prim.Kind {
+	case I8, I16, I32, I64, U8, U16, U32, U64, F32, F64:
+		return true
+	}
+	return false
+}
+
 type (
 	// Ptr is ptr<T>: never null, never crosses a boundary.
 	Ptr struct{ Elem Type }
@@ -100,8 +138,8 @@ type (
 	}
 	// Named references a module-local record or enum by name.
 	Named struct{ Name string }
-	// Dyn is the dynamically typed escape hatch.
-	Dyn struct{}
+	// Any is the dynamically typed escape hatch.
+	Any struct{}
 	// Handle is an opaque foreign reference: identity, no structure.
 	Handle struct{}
 )
@@ -114,7 +152,7 @@ func (t *FutureOf) String() string {
 	return "future<" + t.Result.String() + ">"
 }
 func (t *Named) String() string  { return "%" + QuoteName(t.Name) }
-func (t *Dyn) String() string    { return "dyn" }
+func (t *Any) String() string    { return "any" }
 func (t *Handle) String() string { return "handle" }
 
 func (t *ArrayOf) String() string {
@@ -194,8 +232,8 @@ func TypesEqual(a, b Type) bool {
 	case *Named:
 		b, ok := b.(*Named)
 		return ok && a.Name == b.Name
-	case *Dyn:
-		_, ok := b.(*Dyn)
+	case *Any:
+		_, ok := b.(*Any)
 		return ok
 	case *Handle:
 		_, ok := b.(*Handle)
@@ -218,11 +256,70 @@ func resultsEqual(a, b Type) bool {
 // Module is one METALS compilation unit. Its name carries the producing
 // language as a scheme prefix: "gyro:examples/structs", "js:./widgets".
 type Module struct {
-	Name    string
-	Imports []*Import
-	Types   []*TypeDecl
-	Globals []*Global
-	Funcs   []*Func
+	Name     string
+	Imports  []*Import
+	Types    []*TypeDecl
+	Memories []*Memory
+	Data     []*DataSeg
+	Globals  []*Global
+	Funcs    []*Func
+
+	// Init names a function this module needs run before the program
+	// starts, or "" for a module that needs nothing. It is where a global
+	// gets the initializer it does not carry: the front end decides
+	// evaluation order by writing the stores in order, and the format
+	// only has to say when the function runs.
+	//
+	// It exists because a producer cannot always arrange the call itself.
+	// Gyro owns `main` and could put the call there by hand; a C
+	// translation unit is imported by someone else's program and has no
+	// entry point to patch. Link is the pass that sees the whole program,
+	// so Link is where an initializer becomes a call — one per module, in
+	// dependency order, so a module's own storage is written after
+	// everything it imports and before anything reads it.
+	Init string
+}
+
+// PageSize is the granularity a linear memory is declared and grown in,
+// the same 64 KiB page WebAssembly uses.
+const PageSize = 65536
+
+// Memory is a linear memory: a flat, byte-addressed, bounds-checked
+// region of storage private to the module that declares it.
+//
+// It exists for producers whose source language has a memory model
+// METALS' typed pointers cannot express — C's, where a pointer is an
+// integer, objects overlap, and `&local` outlives its type. Everything
+// such a language needs (pointer arithmetic, unions, bitfields, varargs,
+// packed structs, unaligned access) is one flat region and offsets into
+// it, which is why this is one declaration rather than eight type rules.
+//
+// An address is a u32, deliberately not a ptr<T>. That is what keeps the
+// format's promise intact: a linear address cannot appear in a
+// boundary-crossing signature, because it is not a pointer and carries no
+// claim about what it points at. A module exports the same copied values
+// it always did. ptr<T> stays exactly what it was — typed, non-null,
+// non-crossing — and the two memory models never mix.
+//
+// Every access is bounds-checked against the memory's current size, so a
+// producer that is internally unsafe still cannot reach anything outside
+// the region it declared. That check is the reason to compile C into
+// METALS instead of linking it: the sandbox is structural.
+type Memory struct {
+	Name string
+	// Min is the size the memory starts at, in pages.
+	Min int64
+	// Max caps mem.grow. Zero means the implementation's own limit.
+	Max int64
+}
+
+// DataSeg initializes a span of a linear memory before any function
+// runs. Segments are applied in declaration order; a later one wins where
+// two overlap.
+type DataSeg struct {
+	Memory string
+	Offset int64
+	Bytes  []byte
 }
 
 // Import declares functions provided by another module.
@@ -262,11 +359,26 @@ type VariantDecl struct {
 }
 
 // Global is module-level storage, zero-initialized before main runs.
-// There is no initializer here: front ends lower one into main, where
-// evaluation order is theirs to decide.
 type Global struct {
 	Name string
 	Type Type
+
+	// Bytes is the storage this global starts with, in place of the zeros
+	// it would otherwise hold. It is exactly Size(Type) bytes, in the
+	// target's own representation — the same image a data segment writes
+	// into a linear memory, for a global instead.
+	//
+	// This is not the initializer a global famously does not have. That
+	// one is an expression, and the reason it is a front end's problem is
+	// evaluation order; static bytes have none, which is the same reason
+	// a data segment is allowed to exist. What they cannot express is a
+	// pointer, because a pointer's value is not known until the program
+	// is laid out — so `static int *p = &x;` still lowers into the
+	// module's Init, and `static char msg[] = "hi";` does not.
+	//
+	// A producer that emits these is buying startup cost of nothing for a
+	// program with many string literals, which is every real C program.
+	Bytes []byte
 }
 
 // Func is one function. Result nil means it returns nothing.
@@ -299,6 +411,55 @@ func Scheme(moduleName string) string {
 		return moduleName[:index]
 	}
 	return ""
+}
+
+// producerSchemes are the schemes of the languages that compile *into*
+// METALS. They are one runtime, because they literally are one: the
+// linker makes them a single module, the verifier has checked all of it,
+// and it runs on one heap with one allocator.
+//
+// A boundary is where that stops being true — a native library nothing
+// verified, or another language's runtime with its own heap living in
+// the process — and an unknown scheme is read as one, which is the
+// conservative way round.
+var producerSchemes = map[string]bool{
+	"gyro":   true,
+	"lisp":   true,
+	"wasm":   true,
+	"cc":     true,
+	"metals": true,
+}
+
+// SameRuntime reports whether two modules share a runtime, and so whether
+// a call between them is a boundary crossing. Two modules of one scheme
+// always do; two producers of METALS do because the program they become
+// is one module.
+func SameRuntime(a, b string) bool {
+	schemeA, schemeB := Scheme(a), Scheme(b)
+	if schemeA == schemeB {
+		return true
+	}
+	return producerSchemes[schemeA] && producerSchemes[schemeB]
+}
+
+// externScheme is the module scheme of a C library. A library is not a
+// METALS producer, so nothing links against it and the import survives to
+// the backends, which is exactly what a native symbol needs. It is
+// deliberately not a producer scheme: a native library is the case the
+// boundary rules exist for, since nothing has verified what it does with
+// an address it is handed.
+const externScheme = "c"
+
+// ExternModule names the module a C library's symbols are imported from.
+func ExternModule(library string) string { return externScheme + ":" + library }
+
+// ExternLibrary is the inverse: the library an import names, or "" when
+// the import is not a C library.
+func ExternLibrary(moduleName string) string {
+	if Scheme(moduleName) != externScheme {
+		return ""
+	}
+	return moduleName[len(externScheme)+1:]
 }
 
 // QuoteName renders a name for printing after its @, % or $ sigil: bare

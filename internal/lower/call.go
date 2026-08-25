@@ -71,7 +71,12 @@ func (f *funcLowerer) prepareVariant(call *ast.CallExpr, resolved *sema.CallInfo
 // omitted trailing arguments from the declaration's defaults.
 func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.FuncDecl) []string {
 	args := make([]string, 0, len(sig.Params))
+	pack := packIndex(sig)
 	for i := range sig.Params {
+		if i == pack {
+			args = append(args, f.packArgs(call, sig.Params[i], i))
+			continue
+		}
 		if i < len(call.Args) {
 			args = append(args, f.lowerExpr(call.Args[i].Value, sig.Params[i]))
 			continue
@@ -82,6 +87,44 @@ func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.Fu
 		args = append(args, f.lowerExpr(decl.Params[i].Default, sig.Params[i]))
 	}
 	return args
+}
+
+// packIndex is the position of a signature's variadic parameter, or -1.
+func packIndex(sig *types.Func) int {
+	if !sig.Variadic || len(sig.Params) == 0 {
+		return -1
+	}
+	return len(sig.Params) - 1
+}
+
+// packArgs builds the slice a variadic parameter receives: an array of the
+// remaining arguments, borrowed as a slice. A spread argument already is
+// that slice and passes straight through, and a pack of any wraps each
+// element on the way in.
+func (f *funcLowerer) packArgs(call *ast.CallExpr, param types.Type, at int) string {
+	rest := call.Args[min(at, len(call.Args)):]
+	if len(rest) == 1 && rest[0].Spread {
+		return f.lowerExpr(rest[0].Value, param)
+	}
+
+	slice, ok := param.(*types.Slice)
+	if !ok {
+		f.l.fail("@%s: a variadic parameter is not a slice", f.fn.Name)
+	}
+	elems := make([]string, len(rest))
+	for i, arg := range rest {
+		if isAnyType(slice.Elem) {
+			elems[i] = f.wrapAny(f.lowerExpr(arg.Value, nil), f.typeOf(arg.Value))
+			continue
+		}
+		elems[i] = f.lowerExpr(arg.Value, slice.Elem)
+	}
+
+	array := f.newReg("pack")
+	f.emit(&metals.MakeArray{Dst: array, Elem: f.l.metalsType(slice.Elem), Args: elems})
+	view := f.newReg("packed")
+	f.emit(&metals.Slice{Dst: view, X: array})
+	return view
 }
 
 func (f *funcLowerer) emitCall(name string, args []string, result types.Type, async bool) func() string {
@@ -150,8 +193,29 @@ func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string
 
 func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	module := f.l.moduleOf[decl]
+
+	// An @extern declaration is a C symbol. It imports from the library's
+	// own module rather than from gyro:rt, which is what makes the
+	// verifier read the signature as boundary-crossing and what tells the
+	// backends which library to link.
+	if extern, ok := f.l.info.Externs[decl]; ok {
+		return f.prepareExtern(call, resolved, extern)
+	}
+
+	// A declaration in a module another language produced is a real
+	// cross-module call: the callee lives in its own METALS module and
+	// the linker resolves the name.
+	if module != nil && module.Foreign != nil {
+		f.l.ensureForeignImport(module.Foreign.Name, decl.Name, resolved.Sig)
+		args := f.callArgs(call, resolved.Sig, decl)
+		return f.emitCall(decl.Name, args, resolved.Sig.Result, resolved.Sig.Async)
+	}
+
 	if module != nil && module.Path == stdlib.Path("mem") {
 		return f.prepareMemIntrinsic(call, resolved, decl)
+	}
+	if module != nil && module.Path == stdlib.Path("math") {
+		return f.prepareMathIntrinsic(call, decl)
 	}
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
 		return f.preparePrint(call, resolved, decl)
@@ -225,6 +289,44 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 		f.emit(&metals.Call{Callee: name, Args: args})
 		return ""
 	}
+}
+
+// mathUnary and mathBinary map the math module's names onto the METALS
+// float operators. These are instructions rather than gyro:rt imports
+// because each is one machine instruction or a handful, and because a
+// producer that has them as opcodes — wasm does, so C does — would
+// otherwise have to call out of the sandbox to round a number. Making
+// them instructions means Gyro and C reach the same implementation.
+var mathUnary = map[string]string{
+	"sqrt": "fsqrt", "abs": "fabs",
+	"ceil": "fceil", "floor": "ffloor",
+	"trunc": "ftrunc", "round": "fnearest",
+}
+
+var mathBinary = map[string]string{
+	"min": "fmin", "max": "fmax", "copysign": "fcopysign",
+}
+
+func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDecl) func() string {
+	if op, ok := mathUnary[decl.Name]; ok {
+		x := f.lowerExpr(call.Args[0].Value, nil)
+		return func() string {
+			out := f.newReg(decl.Name)
+			f.emit(&metals.Un{Dst: out, Op: op, X: x})
+			return out
+		}
+	}
+	if op, ok := mathBinary[decl.Name]; ok {
+		x := f.lowerExpr(call.Args[0].Value, nil)
+		y := f.lowerExpr(call.Args[1].Value, nil)
+		return func() string {
+			out := f.newReg(decl.Name)
+			f.emit(&metals.Bin{Dst: out, Op: op, A: x, B: y})
+			return out
+		}
+	}
+	f.l.fail("@%s: math has no intrinsic %s", f.fn.Name, decl.Name)
+	return nil
 }
 
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
@@ -347,7 +449,28 @@ func (f *funcLowerer) ensureCompareFn(t types.Type) string {
 		Params: []metals.Param{{Name: "a", Type: lowered}, {Name: "b", Type: lowered}},
 		Result: metals.TInt32,
 	}
-	fn.Body = []metals.Instr{
+	if types.IsFloat(t) {
+		// compare is a total order, unlike the IEEE operators: NaN is
+		// above every number and equal to itself, so a comparator built
+		// from compare stays consistent. `x != x` is the NaN test.
+		fn.Body = append(fn.Body,
+			&metals.Bin{Dst: "a_nan", Op: "ne", A: "a", B: "a"},
+			&metals.Bin{Dst: "b_nan", Op: "ne", A: "b", B: "b"},
+			&metals.If{Cond: "a_nan", Then: []metals.Instr{
+				&metals.If{Cond: "b_nan", Then: []metals.Instr{
+					&metals.Const{Dst: "both_nan", Type: metals.TInt32, Value: "0"},
+					&metals.Return{Val: "both_nan"},
+				}},
+				&metals.Const{Dst: "nan_above", Type: metals.TInt32, Value: "1"},
+				&metals.Return{Val: "nan_above"},
+			}},
+			&metals.If{Cond: "b_nan", Then: []metals.Instr{
+				&metals.Const{Dst: "nan_below", Type: metals.TInt32, Value: "-1"},
+				&metals.Return{Val: "nan_below"},
+			}},
+		)
+	}
+	fn.Body = append(fn.Body,
 		&metals.Bin{Dst: "below", Op: "lt", A: "a", B: "b"},
 		&metals.If{Cond: "below", Then: []metals.Instr{
 			&metals.Const{Dst: "minus", Type: metals.TInt32, Value: "-1"},
@@ -360,7 +483,7 @@ func (f *funcLowerer) ensureCompareFn(t types.Type) string {
 		}},
 		&metals.Const{Dst: "zero", Type: metals.TInt32, Value: "0"},
 		&metals.Return{Val: "zero"},
-	}
+	)
 	f.l.module.Funcs = append(f.l.module.Funcs, fn)
 	return name
 }

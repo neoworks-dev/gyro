@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gyro-lang/gyro/internal/crt"
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
 // callArg is one argument of a System V call: a value loaded from
 // memory, a pointer to memory (classMem), or an immediate.
 type callArg struct {
-	loc   memLoc
+	loc   loc
 	class argClass
 	imm   int64
 	isImm bool
@@ -63,7 +64,7 @@ func (g *generator) loadArg(register string, arg callArg) {
 	case arg.isImm:
 		g.ins("mov %s, %d", register, arg.imm)
 	case arg.class == classMem:
-		g.ins("lea %s, %s", register, arg.loc)
+		g.ins("lea %s, %s", register, arg.loc.address())
 	default:
 		g.ins("mov %s, %s", register, arg.loc)
 	}
@@ -156,8 +157,7 @@ func (f *frame) emitCallIndirect(i *metals.CallIndirect) {
 	bare := g.newLabel()
 	done := g.newLabel()
 	g.ins("mov r11, %s", f.slot(i.Fn))
-	g.ins("mov rax, %s", f.slot(i.Fn).plus(8))
-	g.ins("test rax, rax")
+	f.testZero(f.slot(i.Fn).plus(8))
 	g.ins("jz %s", bare)
 	g.emitSysVCall("r11", append(append(append([]callArg{}, sret...), env), plain...))
 	g.ins("jmp %s", done)
@@ -181,7 +181,7 @@ func (f *frame) emitAsyncCall(callee string, sig *metals.FnType, argRegs []strin
 
 	bufferSize := 8
 	for _, param := range sig.Params {
-		bufferSize += g.sizeOf(param)
+		bufferSize += g.slotOf(param)
 	}
 	g.ins("mov rdi, %d", bufferSize)
 	g.ins("call %s", g.extern("gy_alloc"))
@@ -190,8 +190,8 @@ func (f *frame) emitAsyncCall(callee string, sig *metals.FnType, argRegs []strin
 	offset := 0
 	for index, reg := range argRegs {
 		g.ins("mov rdx, %s", scratch)
-		f.copyMem(memLoc{base: "rdx", off: offset}, f.slot(reg), g.sizeOf(sig.Params[index]))
-		offset += g.sizeOf(sig.Params[index])
+		f.copyMem(memAt(memLoc{base: "rdx", off: offset}), f.slot(reg), g.slotOf(sig.Params[index]))
+		offset += g.slotOf(sig.Params[index])
 	}
 
 	resultSize := 0
@@ -217,20 +217,20 @@ func (f *frame) emitAsyncCallIndirect(fnReg string, sig *metals.FnType, argRegs 
 
 	bufferSize := 2 * wordSize
 	for _, param := range sig.Params {
-		bufferSize += g.sizeOf(param)
+		bufferSize += g.slotOf(param)
 	}
 	g.ins("mov rdi, %d", bufferSize)
 	g.ins("call %s", g.extern("gy_alloc"))
 	g.ins("mov %s, rax", scratch)
 
 	g.ins("mov rdx, %s", scratch)
-	f.copyMem(memLoc{base: "rdx"}, f.slot(fnReg), 2*wordSize)
+	f.copyMem(memAt(memLoc{base: "rdx"}), f.slot(fnReg), 2*wordSize)
 
 	offset := 2 * wordSize
 	for index, reg := range argRegs {
 		g.ins("mov rdx, %s", scratch)
-		f.copyMem(memLoc{base: "rdx", off: offset}, f.slot(reg), g.sizeOf(sig.Params[index]))
-		offset += g.sizeOf(sig.Params[index])
+		f.copyMem(memAt(memLoc{base: "rdx", off: offset}), f.slot(reg), g.slotOf(sig.Params[index]))
+		offset += g.slotOf(sig.Params[index])
 	}
 
 	resultSize := 0
@@ -274,18 +274,18 @@ func (g *generator) emitIndirectThunk(symbol string, sig *metals.FnType) {
 	plain := make([]callArg, len(sig.Params))
 	offset := 2 * wordSize
 	for index, param := range sig.Params {
-		plain[index] = callArg{loc: memLoc{base: "r10", off: offset}, class: g.classOf(param)}
-		offset += g.sizeOf(param)
+		plain[index] = callArg{loc: memAt(memLoc{base: "r10", off: offset}), class: g.classOf(param)}
+		offset += g.slotOf(param)
 	}
 
 	var sret []callArg
 	if sig.Result != nil && g.classOf(sig.Result) == classMem {
-		sret = []callArg{{loc: memLoc{"rbp", -16}, class: classInt}}
+		sret = []callArg{{loc: memAt(memLoc{"rbp", -16}), class: classInt}}
 	}
 
 	// The environment pointer is the closure's; a bare function has none
 	// and takes its arguments unshifted.
-	env := callArg{loc: memLoc{base: "r10", off: 8}, class: classInt}
+	env := callArg{loc: memAt(memLoc{base: "r10", off: 8}), class: classInt}
 	bare := g.newLabel()
 	done := g.newLabel()
 	g.ins("mov r11, [r10]")
@@ -300,11 +300,7 @@ func (g *generator) emitIndirectThunk(symbol string, sig *metals.FnType) {
 
 	if sig.Result != nil && g.classOf(sig.Result) != classMem {
 		g.ins("mov rcx, [rbp-16]")
-		if g.classOf(sig.Result) == classSSE {
-			g.ins("movsd [rcx], xmm0")
-		} else {
-			g.ins("mov [rcx], rax")
-		}
+		g.storeReturn(memLoc{base: "rcx"}, sig.Result)
 	}
 	g.ins("leave")
 	g.ins("ret")
@@ -335,18 +331,22 @@ func (g *generator) emitThunk(symbol, callee string) {
 	g.label(symbol)
 	g.ins("push rbp")
 	g.ins("mov rbp, rsp")
-	g.ins("sub rsp, 16")
+	// 32 rather than 16: the third word is the staging cell a narrow
+	// scalar passes through when the runtime reads it by pointer.
+	g.ins("sub rsp, 32")
 	g.ins("mov [rbp-8], rdi")  // argument buffer
 	g.ins("mov [rbp-16], rsi") // result cell
 	g.ins("mov r10, [rbp-8]")
 
+	// The buffer holds register representation, since a thunk's job is to
+	// hand the arguments back the way the caller had them.
 	bufferArgs := make([]callArg, len(sig.Params))
 	offset := 0
 	for index, param := range sig.Params {
-		bufferArgs[index] = callArg{loc: memLoc{base: "r10", off: offset}, class: g.classOf(param)}
-		offset += g.sizeOf(param)
+		bufferArgs[index] = callArg{loc: memAt(memLoc{base: "r10", off: offset}), class: g.classOf(param)}
+		offset += g.slotOf(param)
 	}
-	outPointer := callArg{loc: memLoc{"rbp", -16}, class: classInt}
+	outPointer := callArg{loc: memAt(memLoc{"rbp", -16}), class: classInt}
 
 	if fn := g.funcs[callee]; fn != nil {
 		args := bufferArgs
@@ -356,16 +356,13 @@ func (g *generator) emitThunk(symbol, callee string) {
 		g.emitSysVCall(g.symbolFor(callee), args)
 	} else {
 		plan := g.nativePlanFor(callee, sig)
+		g.stageThunkArgs(plan, sig, bufferArgs)
 		g.emitNativeInvoke(plan, sig, bufferArgs, &outPointer)
 	}
 
 	if sig.Result != nil && g.classOf(sig.Result) != classMem {
 		g.ins("mov rcx, [rbp-16]")
-		if g.classOf(sig.Result) == classSSE {
-			g.ins("movsd [rcx], xmm0")
-		} else {
-			g.ins("mov [rcx], rax")
-		}
+		g.storeReturn(memLoc{base: "rcx"}, sig.Result)
 	}
 	g.ins("leave")
 	g.ins("ret")
@@ -418,6 +415,21 @@ func splitNativeName(name string) (owner, method string) {
 }
 
 func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
+	// A foreign symbol is reached through the generated wrapper, which is
+	// where C's real argument and result widths are applied, and where a
+	// struct becomes the by-value argument C's ABI wants.
+	if g.externSyms[name] {
+		indexes := make([]int, len(sig.Params))
+		for i := range sig.Params {
+			indexes[i] = i
+		}
+		return nativePlan{
+			symbol: crt.ShimSymbol(name),
+			sret:   sig.Result != nil && g.classOf(sig.Result) == classMem,
+			args:   values(indexes...),
+		}
+	}
+
 	owner, method := splitNativeName(name)
 	switch owner {
 	case "":
@@ -464,6 +476,21 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_spawn", args: values(0)}
 	case "from_utf8":
 		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0)}}
+
+	// The foreign boundary. Lowering emits these around every @extern
+	// call, so neither backend converts anything itself.
+	case "ffi.cstr":
+		return nativePlan{symbol: "gy_ffi_cstr", args: values(0)}
+	case "ffi.from_cstr":
+		return nativePlan{symbol: "gy_ffi_from_cstr", args: values(0)}
+	case "ffi.data":
+		return nativePlan{symbol: "gy_ffi_data", args: []planArg{pointerTo(0)}}
+	case "ffi.release":
+		return nativePlan{symbol: "gy_ffi_release", args: values(0)}
+	case "ffi.opt_handle":
+		return nativePlan{symbol: "gy_ffi_opt_handle", args: []planArg{pointerTo(0)}}
+	case "ffi.handle_opt":
+		return nativePlan{symbol: "gy_ffi_handle_opt", sret: true, args: values(0)}
 	case "to_i32":
 		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
 	case "to_f64":
@@ -496,6 +523,10 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_read_stdin"}
 	case "exit":
 		return nativePlan{symbol: "gy_exit", args: values(0)}
+	case "write_byte":
+		return nativePlan{symbol: "gy_write_byte", args: values(0, 1)}
+	case "read_byte":
+		return nativePlan{symbol: "gy_read_byte"}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
@@ -604,26 +635,77 @@ func printSuffix(t metals.Type) (string, bool) {
 
 // emitNativeCall invokes a runtime import from a frame: sources are
 // register slots, the destination is the dst register's slot.
+//
+// What the runtime holds it holds in storage representation — an Array's
+// elements are the bytes a slice of it borrows — so an argument it reads
+// through a pointer, and a result it writes through one, go through the
+// frame's staging cell when the type's storage is not what a register
+// carries.
 func (f *frame) emitNativeCall(name string, sig *metals.FnType, argRegs []string, dst string) {
 	g := f.g
 	plan := g.nativePlanFor(name, sig)
 
+	byPointer := map[int]bool{}
+	for _, pa := range plan.args {
+		byPointer[pa.index] = pa.pointer
+	}
 	sources := make([]callArg, len(argRegs))
+	staged := 0
 	for index, reg := range argRegs {
-		sources[index] = callArg{loc: f.slot(reg), class: g.classOf(sig.Params[index])}
+		source := callArg{loc: f.slot(reg), class: g.classOf(sig.Params[index])}
+		if byPointer[index] && metals.Narrow(sig.Params[index]) {
+			staged++
+			if staged > 1 {
+				// One cell, so two would overwrite each other. No runtime
+				// signature takes two, and a new one that did would land
+				// here rather than in a wrong answer.
+				g.fail("@%s: @%s stages more than one narrow argument", f.fn.Name, name)
+			}
+			source.loc = memAt(f.elementOut(reg))
+		}
+		sources[index] = source
 	}
 
 	var out *callArg
+	staging := false
 	if plan.sret {
 		if dst == "" {
 			g.fail("@%s: @%s needs a destination register", f.fn.Name, name)
 		}
-		f.zeroMem(f.slot(dst), g.sizeOf(sig.Result))
-		out = &callArg{loc: f.slot(dst), class: classMem}
+		staging = metals.Narrow(sig.Result)
+		cell := f.slot(dst)
+		if staging {
+			cell = f.stage()
+		}
+		f.zeroMem(cell, g.sizeOf(sig.Result))
+		out = &callArg{loc: cell, class: classMem}
 	}
 	g.emitNativeInvoke(plan, sig, sources, out)
-	if !plan.sret {
+	switch {
+	case staging:
+		f.elementBack(dst)
+	case !plan.sret:
 		f.storeCallResult(sig.Result, dst)
+	}
+}
+
+// stageThunkArgs narrows the arguments a plan passes by pointer, since
+// the argument buffer a thunk reads holds register representation and
+// the runtime reads storage. The thunk's own third word is the cell,
+// which is why no plan may pass two of them by pointer.
+func (g *generator) stageThunkArgs(plan nativePlan, sig *metals.FnType, args []callArg) {
+	cell := memLoc{"rbp", -24}
+	staged := false
+	for _, pa := range plan.args {
+		if !pa.pointer || !metals.Narrow(sig.Params[pa.index]) {
+			continue
+		}
+		if staged {
+			g.fail("@%s stages more than one narrow argument", plan.symbol)
+		}
+		staged = true
+		g.storeMember(memAt(cell), args[pa.index].loc, sig.Params[pa.index])
+		args[pa.index].loc = memAt(cell)
 	}
 }
 

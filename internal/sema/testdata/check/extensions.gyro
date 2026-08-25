@@ -49,3 +49,8 @@ fn string<T>::generic(self) {    //~ string takes no type parameters
 fn error::describe(self): string {   //~ E0603 cannot attach a method to error: no such type in this module
   return "e"
 }
+
+// An any's behaviour belongs to the type inside it, which a match names.
+fn any::kind(self): string {         //~ E0603 cannot attach a method to any: no such type in this module
+  return "a"
+}

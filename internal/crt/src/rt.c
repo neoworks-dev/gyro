@@ -1,8 +1,8 @@
 /* gyro:rt — the native runtime behind the gy_* imports the code
  * generator emits. Compiled and linked by `gyro build`; the contract
  * (layouts, message texts, formatting rules) is docs/native.md. The
- * formatting must match Go's strconv byte for byte, because the
- * interpreter is the oracle the native binaries are diffed against. */
+ * formatting must match Go's strconv byte for byte, because the METALS
+ * evaluator prints through it and every tier must agree. */
 
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -76,8 +76,95 @@ _Noreturn void gy_abort_bounds(int64_t index, int64_t length) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Memory. A magic header lets free detect double frees; nothing not  */
-/* explicitly freed is ever reclaimed in v1.                          */
+/* Linear memory: the flat, bounds-checked byte region a producer with */
+/* C's memory model compiles into. Both backends share this, and both  */
+/* inline the access itself — what lives here is what must be one      */
+/* implementation: the abort text, the initial allocation and growth.  */
+/*                                                                     */
+/* Representation is little-endian, unconditionally, matching the      */
+/* evaluator. Growth reallocs and zeroes, so a grown page reads as     */
+/* zero the way a fresh one does.                                      */
+/* ------------------------------------------------------------------ */
+
+#define GY_PAGE_SIZE 65536
+/* A u32 address space holds this many pages; growing past it would */
+/* produce storage no address could reach. */
+#define GY_MAX_PAGES 65536
+
+typedef struct {
+    uint8_t *bytes;
+    uint64_t size;  /* bytes */
+    uint64_t max;   /* pages; 0 means only GY_MAX_PAGES applies */
+} gy_memory;
+
+_Noreturn void gy_abort_mem_bounds(uint64_t addr, uint64_t end, uint64_t size) {
+    char buf[128];
+    snprintf(buf, sizeof buf,
+             "linear memory access out of bounds: %" PRIu64 "..%" PRIu64 " of %" PRIu64 " bytes",
+             addr, end, size);
+    gy_abort_c(buf);
+}
+
+void gy_mem_init(gy_memory *m, uint64_t pages, uint64_t max) {
+    m->size = pages * GY_PAGE_SIZE;
+    m->max = max;
+    m->bytes = calloc(1, m->size ? m->size : 1);
+    if (m->bytes == NULL) {
+        gy_abort_c("cannot allocate linear memory");
+    }
+}
+
+/* Both ends are checked before either moves, so an access that would run
+ * off the end changes nothing at all. */
+static void gy_mem_check(const gy_memory *m, uint64_t addr, uint64_t len) {
+    if (addr + len > m->size) {
+        gy_abort_mem_bounds(addr, addr + len, m->size);
+    }
+}
+
+/* The bulk operations are calls in both backends rather than inlined
+ * code: each is one memmove or memset, so there is nothing for a call to
+ * get in the way of, and one implementation is one abort message. */
+void gy_mem_copy(gy_memory *m, uint64_t to, uint64_t from, uint64_t len) {
+    gy_mem_check(m, to, len);
+    gy_mem_check(m, from, len);
+    memmove(m->bytes + to, m->bytes + from, len);
+}
+
+void gy_mem_fill(gy_memory *m, uint64_t to, uint64_t byte, uint64_t len) {
+    gy_mem_check(m, to, len);
+    memset(m->bytes + to, (int)(byte & 0xff), len);
+}
+
+/* gy_mem_data lays a data segment down before the program runs. The
+ * source is the generated module's own storage, not the memory, so this
+ * is the one copy that crosses in. */
+void gy_mem_data(gy_memory *m, uint64_t offset, const void *src, uint64_t len) {
+    gy_mem_check(m, offset, len);
+    memcpy(m->bytes + offset, src, len);
+}
+
+int64_t gy_mem_grow(gy_memory *m, uint64_t pages) {
+    uint64_t before = m->size / GY_PAGE_SIZE;
+    uint64_t after = before + pages;
+    uint64_t limit = (m->max > 0 && m->max < GY_MAX_PAGES) ? m->max : GY_MAX_PAGES;
+    if (after > limit) {
+        return -1;
+    }
+    uint8_t *grown = realloc(m->bytes, after * GY_PAGE_SIZE ? after * GY_PAGE_SIZE : 1);
+    if (grown == NULL) {
+        return -1;
+    }
+    memset(grown + m->size, 0, after * GY_PAGE_SIZE - m->size);
+    m->bytes = grown;
+    m->size = after * GY_PAGE_SIZE;
+    return (int64_t)before;
+}
+
+/* ------------------------------------------------------------------ */
+/* Memory. A magic header lets free reject a pointer that does not    */
+/* name a live block; nothing not explicitly freed is ever reclaimed  */
+/* in v1.                                                             */
 /* ------------------------------------------------------------------ */
 
 #define GY_ALIVE 0xA11FEED5A11FEED5ULL
@@ -89,13 +176,19 @@ void *gy_alloc(int64_t size) {
     return cell + 2;
 }
 
+/* The poison is written before the block goes back to the C allocator,
+ * which promptly reuses those bytes for its own free-list bookkeeping —
+ * so a second free reads whatever libc left behind and cannot tell a
+ * double free from a wild pointer. Both say the same thing here, and
+ * the evaluator says it too, because a message the tiers cannot all
+ * justify is a message the corpus cannot hold them to. The precision
+ * comes back when gy_free poisons the payload and keeps the block
+ * instead of releasing it, which is the queued fix that also gives the
+ * native tiers use-after-free detection. */
 void gy_free(void *p) {
     uint64_t *cell = (uint64_t *)p - 2;
-    if (cell[0] == GY_FREED) {
-        gy_abort_c("double free");
-    }
     if (cell[0] != GY_ALIVE) {
-        gy_abort_c("free of memory that was never allocated");
+        gy_abort_c("free of memory that is not allocated");
     }
     cell[0] = GY_FREED;
     free(cell);
@@ -334,35 +427,75 @@ int64_t gy_str_compare(const gy_str *a, const gy_str *b) {
     return a->len < b->len ? -1 : 1;
 }
 
-/* gy_str_bytes widens a string's UTF-8 into a slice of u8. It copies,
- * because a slice element is a qword under the v1 layout (native.md)
- * while a string's bytes are packed: the two cannot alias. gy_str_runes
- * below has the same shape for the same reason. */
+/* gy_str_bytes hands a string's UTF-8 out as a slice of u8, which is the
+ * same bytes it already holds. It still copies: a string is immutable and
+ * shared, and a slice is neither. gy_str_runes below decodes instead,
+ * because a rune is four bytes and UTF-8 is not. */
 void gy_str_bytes(void **out, const gy_str *s) {
-    int64_t *bytes = malloc((size_t)s->len * 8 + 8);
-    for (int64_t i = 0; i < s->len; i++) {
-        bytes[i] = (unsigned char)s->bytes[i];
-    }
+    char *bytes = malloc((size_t)s->len + 1);
+    memcpy(bytes, s->bytes, (size_t)s->len);
     out[0] = bytes;
     out[1] = (void *)s->len;
 }
 
-/* gy_from_utf8 is the other direction: qword elements narrowed back into
- * packed bytes. Also a copy, so the result owns what it holds. */
+/* gy_from_utf8 is the other direction, and the bytes are the bytes. The
+ * copy is what makes the result own what it holds. */
 const gy_str *gy_from_utf8(const void **slice) {
-    const int64_t *elems = (const int64_t *)slice[0];
+    const char *elems = (const char *)slice[0];
     int64_t len = (int64_t)slice[1];
     gy_str *out = gy_str_alloc(len);
-    for (int64_t i = 0; i < len; i++) {
-        out->bytes[i] = (char)(unsigned char)elems[i];
-    }
+    memcpy(out->bytes, elems, (size_t)len);
     return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* The foreign boundary: marshalling for @extern.                     */
+/* ------------------------------------------------------------------ */
+
+/* One conversion is left here, and C's own representation forces it: a
+ * Gyro string is length-prefixed where C wants a NUL, so it cannot be
+ * lent out as it stands. The copy lives for the duration of the call and
+ * gy_ffi_release ends it. A slice needs no copy at all — its elements are
+ * already laid out the way C reads them — so gy_ffi_data lends the
+ * pointer, and a foreign function that keeps it keeps a dangling one. */
+
+/* The other direction, for a foreign function that returns text. The
+ * bytes belong to the library and may be reused on its next call, so the
+ * string Gyro sees is a copy; a null pointer becomes the empty string,
+ * since a Gyro string is never absent. */
+const gy_str *gy_ffi_from_cstr(const char *text) {
+    return text ? gy_str_c(text) : gy_str_alloc(0);
+}
+
+void *gy_ffi_cstr(const gy_str *s) {
+    char *out = malloc((size_t)s->len + 1);
+    memcpy(out, s->bytes, (size_t)s->len);
+    out[s->len] = '\0';
+    return out;
+}
+
+/* The elements are the bytes C reads, so this is the slice's own data
+ * pointer and nothing is copied or released. */
+void *gy_ffi_data(const void **slice) { return (void *)slice[0]; }
+
+void gy_ffi_release(void *buffer) { free(buffer); }
+
+/* An opt<T> is { flag, payload } with flag 0 for null, and C's one
+ * absent value is the null pointer, so the two convert both ways. */
+void *gy_ffi_opt_handle(const void **opt) {
+    return opt[0] ? (void *)opt[1] : NULL;
+}
+
+void gy_ffi_handle_opt(void *out, void *handle) {
+    void **cell = out;
+    cell[0] = (void *)(intptr_t)(handle != NULL);
+    cell[1] = handle;
 }
 
 /* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
  * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
 void gy_str_runes(void *out, const gy_str *s) {
-    int64_t *runes = malloc((size_t)s->len * 8 + 8);
+    int32_t *runes = malloc((size_t)s->len * 4 + 4);
     int64_t count = 0;
     int64_t i = 0;
     while (i < s->len) {
@@ -388,7 +521,7 @@ void gy_str_runes(void *out, const gy_str *s) {
             size = 4;
             if (r < 0x10000 || r > 0x10FFFF) { r = 0xFFFD; size = 1; }
         }
-        runes[count++] = r;
+        runes[count++] = (int32_t)r;
         i += size;
     }
     void **slice = out;
@@ -467,6 +600,69 @@ uint64_t gy_double_to_uint(double v, uint64_t max) {
     }
     return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* The byte floor a compiled-in language reaches i/o through. One byte */
+/* at a time, because a linear address is a u32 and not a pointer:     */
+/* handing the runtime one and telling it to read the bytes behind it  */
+/* would make it a pointer at the boundary, which is the whole of what */
+/* keeps the sandbox real. A libc buffers on its own side and drains   */
+/* through these, so the call count is per byte of i/o and not per     */
+/* formatted item.                                                     */
+/* ------------------------------------------------------------------ */
+
+void gy_write_byte(int64_t fd, int64_t byte) {
+    fputc((int)(byte & 0xff), fd == 2 ? stderr : stdout);
+}
+
+int64_t gy_read_byte(void) {
+    int c = fgetc(stdin);
+    return c == EOF ? -1 : (int64_t)c;
+}
+
+/* ------------------------------------------------------------------ */
+/* The float intrinsics whose C library spelling has the wrong        */
+/* semantics. sqrt, fabs, ceil, floor, trunc and copysign mean in C   */
+/* exactly what they mean in METALS, so both backends call libm for   */
+/* those directly; these three do not, and live here so that the two  */
+/* backends cannot answer them differently.                           */
+/* ------------------------------------------------------------------ */
+
+/* fmin and fmax in C return the operand that is not NaN, and say
+ * nothing useful about the two zeros. METALS propagates NaN and orders
+ * -0.0 below +0.0, which is what a program comparing bit patterns
+ * needs and what wasm's f64.min and f64.max specify. */
+double gy_f64_min(double a, double b) {
+    if (a != a || b != b) return a + b; /* either NaN -> NaN */
+    if (a == 0.0 && b == 0.0) return signbit(a) ? a : b;
+    return a < b ? a : b;
+}
+
+double gy_f64_max(double a, double b) {
+    if (a != a || b != b) return a + b;
+    if (a == 0.0 && b == 0.0) return signbit(a) ? b : a;
+    return a > b ? a : b;
+}
+
+/* roundToIntegralTiesToEven. C's round() is ties-away-from-zero and is
+ * the wrong function; nearbyint honours the rounding mode, which is
+ * round-to-nearest-even unless someone changed it, and nothing here
+ * ever does. */
+double gy_f64_nearest(double v) { return nearbyint(v); }
+
+float gy_f32_min(float a, float b) {
+    if (a != a || b != b) return a + b;
+    if (a == 0.0f && b == 0.0f) return signbit(a) ? a : b;
+    return a < b ? a : b;
+}
+
+float gy_f32_max(float a, float b) {
+    if (a != a || b != b) return a + b;
+    if (a == 0.0f && b == 0.0f) return signbit(a) ? b : a;
+    return a > b ? a : b;
+}
+
+float gy_f32_nearest(float v) { return nearbyintf(v); }
 
 /* ------------------------------------------------------------------ */
 /* convert, fs, net. Result tuples are written into the caller's      */
@@ -718,7 +914,7 @@ _Noreturn void gy_exit(int64_t code) {
 void gy_get(int64_t *out, const gy_str *url) {
     (void)url;
     out[0] = (int64_t)gy_str_c("");
-    gy_write_error(out + 1, gy_str_c("the interpreter has no network"));
+    gy_write_error(out + 1, gy_str_c("this runtime has no network"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -780,16 +976,18 @@ void gy_array_push(gy_array *a, const void *elem, int64_t elemSize) {
     a->count++;
 }
 
-/* out: tuple<T, bool> = { element, flag } */
+/* out: tuple<T, bool> = { element, flag }. The flag sits at the element's
+ * own width, which is where a C struct of the two would put a one-byte
+ * member, and it is one byte wide: writing a word there would run past
+ * the tuple. */
 void gy_array_pop(char *out, gy_array *a, int64_t elemSize) {
     gy_array_check(a);
     if (a->count == 0) {
-        memset(out, 0, (size_t)elemSize + 8);
+        memset(out, 0, (size_t)elemSize + 1);
         return;
     }
     a->count--;
     memcpy(out, a->data + a->count * elemSize, (size_t)elemSize);
-    memset(out + elemSize, 0, 8);
     out[elemSize] = 1;
 }
 
@@ -1211,6 +1409,144 @@ void gy_future_get(gy_future *fut, void *out) {
     }
     pthread_mutex_unlock(&fut->mutex);
     memcpy(out, fut->result, (size_t)fut->size);
+}
+
+/* ------------------------------------------------------------------ */
+/* any: the open dynamic value.                                       */
+/*                                                                    */
+/* Two words — a descriptor and a payload. A scalar rides in the      */
+/* payload, so wrapping one allocates nothing and testing one is a    */
+/* pointer comparison; that is what keeps `any` from costing what an  */
+/* interpreter's value costs. Anything wider is heap storage the      */
+/* payload points at, and so is every record whatever its width, so   */
+/* that any.set through one reference is visible through the rest.    */
+/*                                                                    */
+/* Descriptors are emitted one per distinct type by the code          */
+/* generator and never duplicated, so identity is structural equality */
+/* and `any.is` is `a->type == b`.                                    */
+/* ------------------------------------------------------------------ */
+
+typedef struct gy_type gy_type;
+typedef struct { void (*code)(void); void *env; } gy_fn;
+typedef struct { const gy_type *type; uint64_t payload; } gy_any;
+
+/* A field of a record an any holds. type is NULL when the field is
+ * itself an any, which needs no boxing on the way out. */
+typedef struct {
+    const char *name;
+    int64_t offset;
+    const gy_type *type;
+} gy_field;
+
+struct gy_type {
+    const char *name;   /* the METALS spelling, for messages */
+    int64_t size;       /* bytes of the wrapped value */
+    int64_t boxed;      /* 1 when payload points at heap storage */
+    const gy_field *fields;
+    int64_t nfields;
+    /* apply unwraps arguments to the wrapped function's declared
+     * parameter types, calls it and boxes the result. The code
+     * generator emits one per function type it wraps. */
+    void (*apply)(gy_any *out, gy_fn fn, const gy_any *args, int64_t n);
+};
+
+static _Noreturn void gy_any_fail(const char *what, const char *detail,
+                                  const char *a, const char *b) {
+    char buffer[512];
+    if (b != NULL) {
+        snprintf(buffer, sizeof buffer, "%s: %s%s, not %s", what, detail, a, b);
+    } else {
+        snprintf(buffer, sizeof buffer, "%s%s%s", what, detail, a);
+    }
+    gy_abort(gy_str_c(buffer));
+}
+
+gy_any gy_any_box(const gy_type *type, const void *value) {
+    gy_any out;
+    out.type = type;
+    out.payload = 0;
+    if (type->boxed) {
+        void *cell = gy_alloc(type->size);
+        memcpy(cell, value, (size_t)type->size);
+        out.payload = (uint64_t)(uintptr_t)cell;
+    } else if (type->size > 0) {
+        memcpy(&out.payload, value, (size_t)type->size);
+    }
+    return out;
+}
+
+static void *gy_any_cell(const gy_any *v) {
+    if (v->type->boxed) {
+        return (void *)(uintptr_t)v->payload;
+    }
+    return (void *)&v->payload;
+}
+
+int64_t gy_any_is(const gy_any *v, const gy_type *want) {
+    return v->type == want ? 1 : 0;
+}
+
+void gy_any_read(void *out, const gy_any *v, const gy_type *want) {
+    if (v->type != want) {
+        gy_any_fail("any.unwrap", "the any holds ", v->type->name, want->name);
+    }
+    if (want->size > 0) {
+        memcpy(out, gy_any_cell(v), (size_t)want->size);
+    }
+}
+
+static const gy_field *gy_any_field(const gy_any *v, const char *name, const char *what) {
+    if (v->type->nfields == 0) {
+        gy_any_fail(what, " on an any holding ", v->type->name, NULL);
+    }
+    for (int64_t i = 0; i < v->type->nfields; i++) {
+        if (strcmp(v->type->fields[i].name, name) == 0) {
+            return &v->type->fields[i];
+        }
+    }
+    gy_any_fail(what, ": no field named ", name, NULL);
+}
+
+gy_any gy_any_get(const gy_any *v, const char *name) {
+    const gy_field *field = gy_any_field(v, name, "any.get");
+    char *base = (char *)gy_any_cell(v) + field->offset;
+    if (field->type == NULL) {
+        gy_any held;
+        memcpy(&held, base, sizeof held);
+        return held;
+    }
+    return gy_any_box(field->type, base);
+}
+
+void gy_any_set(const gy_any *v, const char *name, const gy_any *value) {
+    const gy_field *field = gy_any_field(v, name, "any.set");
+    char *base = (char *)gy_any_cell(v) + field->offset;
+    if (field->type == NULL) {
+        memcpy(base, value, sizeof *value);
+        return;
+    }
+    if (value->type != field->type) {
+        gy_any_fail("any.set", "the any holds ", value->type->name, field->type->name);
+    }
+    if (field->type->size > 0) {
+        memcpy(base, gy_any_cell(value), (size_t)field->type->size);
+    }
+}
+
+void gy_any_call(gy_any *out, const gy_any *v, const gy_any *args, int64_t n) {
+    if (v->type->apply == NULL) {
+        gy_any_fail("any.call", " on an any holding ", v->type->name, NULL);
+    }
+    gy_fn fn;
+    memcpy(&fn, gy_any_cell(v), sizeof fn);
+    v->type->apply(out, fn, args, n);
+}
+
+_Noreturn void gy_any_arity(const gy_type *type, int64_t got) {
+    char buffer[256];
+    snprintf(buffer, sizeof buffer, "any.call passes %" PRId64 " argument(s) to %s",
+             got, type->name);
+    gy_abort(gy_str_c(buffer));
 }
 
 /* ------------------------------------------------------------------ */

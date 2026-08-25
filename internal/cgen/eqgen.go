@@ -59,6 +59,12 @@ func (g *generator) eqChecks(out *strings.Builder, depth int, t metals.Type, a, 
 		write("return 0;")
 
 	case *metals.Opt:
+		if metals.NicheOpt(t) {
+			// The niche makes the whole value the payload, and a pointer's
+			// equality was already identity, so one compare answers both.
+			write("if (!(%s == %s)) return 0;", a, b)
+			break
+		}
 		write("if (%s.flag != %s.flag) return 0;", a, b)
 		write("if (%s.flag) {", a)
 		g.eqChecks(out, depth+1, t.Elem, a+".value", b+".value")

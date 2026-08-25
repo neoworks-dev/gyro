@@ -351,12 +351,17 @@ func isUserRecord(t types.Type) bool {
 	return !isOpaqueHandle(strct)
 }
 
-// isOpaqueHandle reports whether a struct is a runtime-owned value the
-// backend passes around without ever looking inside: bundled and
-// fieldless, so there is nothing to lay out. A bundled struct that
-// declares fields is ordinary Gyro data and lowers to a record.
+// isOpaqueHandle reports whether a struct is a value the backend passes
+// around without ever looking inside: fieldless, so there is nothing to
+// lay out, and owned by something other than this program — the runtime,
+// for a bundled struct, or a C library for an `@extern` one. A struct
+// that declares fields is ordinary Gyro data and lowers to a record
+// either way.
 func isOpaqueHandle(t *types.Struct) bool {
-	return stdlib.IsBundled(t.Module) && len(t.Fields) == 0
+	if len(t.Fields) > 0 {
+		return false
+	}
+	return stdlib.IsBundled(t.Module) || t.Extern != ""
 }
 
 // newLocal declares a local holding an already-coerced value register.
@@ -1248,6 +1253,10 @@ func walkPattern(p ast.Pattern, visit func(ast.Node)) {
 	case *ast.LiteralPattern:
 		walk(p.Value, visit)
 	case *ast.VariantPattern:
+		for _, payload := range p.Payload {
+			walkPattern(payload, visit)
+		}
+	case *ast.TypeTestPattern:
 		for _, payload := range p.Payload {
 			walkPattern(payload, visit)
 		}

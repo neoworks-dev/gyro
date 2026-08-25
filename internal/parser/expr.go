@@ -330,6 +330,7 @@ func (p *Parser) parseArgs() []ast.Arg {
 				p.next()
 			}
 			arg.Value = p.parseExpr()
+			arg.Spread = p.accept(token.Ellipsis)
 			args = append(args, arg)
 
 			p.skipTerminators()
@@ -721,19 +722,25 @@ func (p *Parser) parsePattern() ast.Pattern {
 		token.True, token.False, token.Null, token.Minus:
 		return &ast.LiteralPattern{Value: p.parseBinary(precShift)}
 
+	// A pattern that opens with `(` or `*` names a type no path can spell,
+	// which only an `any` subject can hold. There is no other pattern that
+	// starts either way, so no speculation is needed.
+	case token.LParen, token.Star:
+		return p.parseTypeTestPattern(offset, p.parseType())
+
 	case token.Ident:
 		path := p.parsePath()
 
+		// `i32[](xs)`: the path turned out to be a slice or array type's
+		// element rather than the whole pattern.
+		if p.at(token.LBracket) {
+			named := &ast.NamedType{Offset: offset, Path: path}
+			return p.parseTypeTestPattern(offset, p.parseArraySuffixes(named))
+		}
+
 		if p.at(token.LParen) {
 			pattern := &ast.VariantPattern{Offset: offset, Path: path}
-			p.next()
-			for !p.at(token.RParen) && !p.atEOF() {
-				pattern.Payload = append(pattern.Payload, p.parsePattern())
-				if !p.accept(token.Comma) {
-					break
-				}
-			}
-			p.expect(token.RParen)
+			pattern.Payload = p.parsePatternPayload()
 			return pattern
 		}
 
@@ -746,6 +753,30 @@ func (p *Parser) parsePattern() ast.Pattern {
 	p.errorf(offset, "expected a pattern, found %s", describe(p.tok()))
 	p.next()
 	return &ast.WildcardPattern{Offset: offset}
+}
+
+func (p *Parser) parseTypeTestPattern(offset int, typ ast.Type) ast.Pattern {
+	pattern := &ast.TypeTestPattern{Offset: offset, Type: typ}
+	pattern.Payload = p.parsePatternPayload()
+	return pattern
+}
+
+// parsePatternPayload parses the parenthesized part a variant or type test
+// binds. An absent list is not an error here: sema reports what the shape
+// should have been, with the type in hand to say it with.
+func (p *Parser) parsePatternPayload() []ast.Pattern {
+	if !p.accept(token.LParen) {
+		return nil
+	}
+	var payload []ast.Pattern
+	for !p.at(token.RParen) && !p.atEOF() {
+		payload = append(payload, p.parsePattern())
+		if !p.accept(token.Comma) {
+			break
+		}
+	}
+	p.expect(token.RParen)
+	return payload
 }
 
 // parseStringLit turns a string token into either a plain literal or an

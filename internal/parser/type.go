@@ -22,8 +22,13 @@ func (p *Parser) parseType() ast.Type {
 // parseSuffixType parses a type with its `[N]` and `[]` suffixes but without
 // a trailing `?`, so that the nullable marker stays outermost.
 func (p *Parser) parseSuffixType() ast.Type {
-	base := p.parseBaseType()
+	return p.parseArraySuffixes(p.parseBaseType())
+}
 
+// parseArraySuffixes applies the `[N]` and `[]` suffixes to a base type
+// that has already been parsed. A pattern reaches it that way: the path
+// came first, and only the `[` after it says the pattern names a slice.
+func (p *Parser) parseArraySuffixes(base ast.Type) ast.Type {
 	for p.at(token.LBracket) {
 		array := &ast.ArrayType{Offset: p.offset(), Elem: base}
 		p.next()

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gyro-lang/gyro/internal/crt"
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
@@ -197,6 +198,17 @@ func (g *generator) emitThunk(name, argsType, callee string, sig *metals.FnType)
 		g.storeThunkResult(sig, g.symbolFor(callee)+"("+strings.Join(sources, ", ")+")")
 	} else {
 		plan := g.nativePlanFor(callee, sig)
+		// The buffer holds register representation; what the runtime reads
+		// through a pointer is storage.
+		for _, pa := range plan.args {
+			param := sig.Params[pa.index]
+			if !pa.pointer || !metals.Narrow(param) {
+				continue
+			}
+			staged := g.stageName()
+			g.line("%s %s = %s;", g.memberType(param), staged, sources[pa.index])
+			sources[pa.index] = staged
+		}
 		call := g.nativeCall(plan, sig, sources, "out")
 		if plan.sret {
 			g.line("%s;", call)
@@ -207,12 +219,14 @@ func (g *generator) emitThunk(name, argsType, callee string, sig *metals.FnType)
 	g.raw("}")
 }
 
+// storeThunkResult writes the call's result into the future's cell,
+// which holds storage: an await reads it back as one.
 func (g *generator) storeThunkResult(sig *metals.FnType, call string) {
 	if sig.Result == nil {
 		g.line("%s;", call)
 		return
 	}
-	g.line("*(%s *)out = %s;", g.cType(sig.Result), call)
+	g.line("*(%s *)out = %s;", g.memberType(sig.Result), call)
 }
 
 // indirectThunkFor is keyed on the signature, since that is all the thunk
@@ -308,6 +322,11 @@ func (g *generator) nativeCall(plan nativePlan, sig *metals.FnType, sources []st
 
 // emitNativeCall invokes a runtime import from a frame: the sources are
 // register locals, the destination is the dst register.
+//
+// What the runtime reads or writes through a pointer it reads and writes
+// in storage representation, so a narrow scalar travels through a
+// temporary of the storage type rather than as the address of its own
+// register.
 func (f *frame) emitNativeCall(name string, sig *metals.FnType, argRegs []string, dst string) {
 	g := f.g
 	plan := g.nativePlanFor(name, sig)
@@ -317,20 +336,48 @@ func (f *frame) emitNativeCall(name string, sig *metals.FnType, argRegs []string
 		sources[index] = f.reg(reg)
 	}
 
-	out := ""
-	if plan.sret {
-		if dst == "" {
-			g.fail("@%s: @%s needs a destination register", f.fn.Name, name)
+	opened := 0
+	for _, pa := range plan.args {
+		param := sig.Params[pa.index]
+		if !pa.pointer || !metals.Narrow(param) {
+			continue
 		}
-		f.line("memset(&%s, 0, %d);", f.reg(dst), g.sizeOf(sig.Result))
-		out = "(void *)&" + f.reg(dst)
+		staged := g.stageName()
+		f.line("{")
+		f.indent++
+		f.line("%s %s = %s;", g.memberType(param), staged, sources[pa.index])
+		sources[pa.index] = staged
+		opened++
 	}
-	call := g.nativeCall(plan, sig, sources, out)
-	if plan.sret {
-		f.line("%s;", call)
+	// Each staged argument opened a block to hold its temporary; they
+	// close after whichever branch below emitted the call.
+	defer func() {
+		for ; opened > 0; opened-- {
+			f.indent--
+			f.line("}")
+		}
+	}()
+
+	if !plan.sret {
+		f.finish(sig.Result, dst, g.nativeCall(plan, sig, sources, ""))
 		return
 	}
-	f.finish(sig.Result, dst, call)
+	if dst == "" {
+		g.fail("@%s: @%s needs a destination register", f.fn.Name, name)
+	}
+	if metals.Narrow(sig.Result) {
+		staged := g.stageName()
+		f.line("{")
+		f.indent++
+		f.line("%s %s = 0;", g.memberType(sig.Result), staged)
+		f.line("%s;", g.nativeCall(plan, sig, sources, "(void *)&"+staged))
+		f.line("%s = %s;", f.reg(dst), staged)
+		f.indent--
+		f.line("}")
+		return
+	}
+	f.line("memset(&%s, 0, %d);", f.reg(dst), g.sizeOf(sig.Result))
+	f.line("%s;", g.nativeCall(plan, sig, sources, "(void *)&"+f.reg(dst)))
 }
 
 // splitNativeName separates Array<i32>::push into (Array, push) and
@@ -350,6 +397,20 @@ func splitNativeName(name string) (owner, method string) {
 }
 
 func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
+	// A foreign symbol is reached through the generated wrapper, which is
+	// where C's real argument and result widths are applied.
+	if g.externSyms[name] {
+		indexes := make([]int, len(sig.Params))
+		for i := range sig.Params {
+			indexes[i] = i
+		}
+		return nativePlan{
+			symbol: crt.ShimSymbol(name),
+			sret:   sig.Result != nil && byPointer(sig.Result),
+			args:   values(indexes...),
+		}
+	}
+
 	owner, method := splitNativeName(name)
 	switch owner {
 	case "":
@@ -396,6 +457,21 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_spawn", args: values(0)}
 	case "from_utf8":
 		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0)}}
+
+	// The foreign boundary. Lowering emits these around every @extern
+	// call, so neither backend converts anything itself.
+	case "ffi.cstr":
+		return nativePlan{symbol: "gy_ffi_cstr", args: values(0)}
+	case "ffi.from_cstr":
+		return nativePlan{symbol: "gy_ffi_from_cstr", args: values(0)}
+	case "ffi.data":
+		return nativePlan{symbol: "gy_ffi_data", args: []planArg{pointerTo(0)}}
+	case "ffi.release":
+		return nativePlan{symbol: "gy_ffi_release", args: values(0)}
+	case "ffi.opt_handle":
+		return nativePlan{symbol: "gy_ffi_opt_handle", args: []planArg{pointerTo(0)}}
+	case "ffi.handle_opt":
+		return nativePlan{symbol: "gy_ffi_handle_opt", sret: true, args: values(0)}
 	case "to_i32":
 		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
 	case "to_f64":
@@ -428,6 +504,10 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_read_stdin"}
 	case "exit":
 		return nativePlan{symbol: "gy_exit", args: values(0)}
+	case "write_byte":
+		return nativePlan{symbol: "gy_write_byte", args: values(0, 1)}
+	case "read_byte":
+		return nativePlan{symbol: "gy_read_byte"}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}

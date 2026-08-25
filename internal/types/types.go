@@ -46,6 +46,9 @@ const (
 	// ErrorKind is the structural error type: any type with a
 	// message(): string method satisfies it.
 	ErrorKind
+	// AnyKind holds a value of one other type and remembers which. It is a
+	// closed sum over the types the program wraps, not a runtime registry.
+	AnyKind
 
 	// NullKind is the type of the null literal, assignable only to T?.
 	NullKind
@@ -80,6 +83,7 @@ var (
 	String  = &Basic{StringKind, "string"}
 	Void    = &Basic{VoidKind, "void"}
 	Error   = &Basic{ErrorKind, "error"}
+	Any     = &Basic{AnyKind, "any"}
 	Null    = &Basic{NullKind, "null"}
 
 	UntypedIntType   = &Basic{UntypedInt, "untyped int"}
@@ -92,7 +96,7 @@ var Builtin = map[string]*Basic{
 	"u8": Uint8, "u16": Uint16, "u32": Uint32, "u64": Uint64,
 	"usize": USize, "f32": Float32, "f64": Float64,
 	"rune": Rune, "bool": Bool, "string": String, "void": Void,
-	"error": Error,
+	"error": Error, "any": Any,
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +134,10 @@ type Func struct {
 	// results are one Tuple.
 	Result Type
 	Async  bool
+	// Variadic marks a signature whose last parameter collects the
+	// remaining arguments. That parameter's type is already the T[] slice
+	// the body sees, so Params needs no special reading.
+	Variadic bool
 }
 
 // Future is the value of an un-awaited async call; await unwraps it.
@@ -164,6 +172,14 @@ func (f *Func) String() string {
 	parts := make([]string, len(f.Params))
 	for i, param := range f.Params {
 		parts[i] = param.String()
+	}
+	if f.Variadic && len(parts) > 0 {
+		// The last parameter is stored as the T[] the body sees; the
+		// declaration spelled it ...T.
+		last := len(parts) - 1
+		if slice, ok := f.Params[last].(*Slice); ok {
+			parts[last] = "..." + slice.Elem.String()
+		}
 	}
 	signature := "fn(" + strings.Join(parts, ", ") + ")"
 	if f.Async {
@@ -225,6 +241,19 @@ type Struct struct {
 	// non-instances.
 	Origin *Struct
 	Args   []Type
+	// Extern names the C library a fieldless `@extern` struct stands in
+	// for. Such a struct is an opaque pointer: no literal, no fields, and
+	// only the library that produced one can do anything with it.
+	Extern string
+}
+
+// Extern is what `@extern("SDL2", symbol = "SDL_Delay")` says about a
+// declaration: the library it is linked from, spelled as the linker wants
+// it without the `lib` prefix, and the C symbol it names — the
+// declaration's own name unless `symbol =` gave another.
+type Extern struct {
+	Library string
+	Symbol  string
 }
 
 // Variant is one enum case.
@@ -324,6 +353,18 @@ func IsFloat(t Type) bool {
 }
 
 func IsNumeric(t Type) bool { return IsInteger(t) || IsFloat(t) }
+
+// NewOptional builds T?, collapsing the nested case. Optionals do not
+// nest: a generic result written T?, instantiated with a T that is
+// already optional, is that same optional. It is what lets a Map hold
+// optional values — get() answers null for a miss and for a stored null
+// alike, and contains() separates them.
+func NewOptional(elem Type) Type {
+	if _, nested := elem.(*Optional); nested {
+		return elem
+	}
+	return &Optional{Elem: elem}
+}
 
 func IsString(t Type) bool {
 	basic, ok := t.(*Basic)
@@ -448,7 +489,7 @@ func Identical(a, b Type) bool {
 		return true
 	case *Func:
 		y, ok := b.(*Func)
-		if !ok || x.Async != y.Async || len(x.Params) != len(y.Params) {
+		if !ok || x.Async != y.Async || x.Variadic != y.Variadic || len(x.Params) != len(y.Params) {
 			return false
 		}
 		for i := range x.Params {

@@ -1,0 +1,95 @@
+struct Point {
+  x: i32
+}
+
+fn Point::message(self): string {
+  return "point"
+}
+
+struct Plain {
+  x: i32
+}
+
+fn wrapping(p: Plain, n: i32, s: string) {
+  var a = n as any
+  var b = s as any
+  var c = p as any
+  var d = a as any                     //~ E0509 an any cannot hold any
+}
+
+fn noImplicitWrap(n: i32) {
+  var a: any = n                       //~ E0501 cannot use i32 as any in the declaration of a
+  var b: any = n as any
+}
+
+fn hidingTypes(err: error, maybe: i32?, e: Point) {
+  var a = err as any                   //~ E0509 an any cannot hold error
+  var b = maybe as any                 //~ E0509 an any cannot hold i32?
+  var c = e as any
+}
+
+fn unwrapping(v: any) {
+  var a = v as i32
+  var b = v as Plain
+  var c = v as any                     //~ E0509 an any cannot hold any
+}
+
+fn testing(v: any): string {
+  return match v {
+    i32(n): "int"
+    Plain(p): "plain"
+    string(s): "text"
+    _: "other"
+  }
+}
+
+// An any is an open subject: no exhaustiveness, and a partial match is
+// legal because falling off the end panics.
+fn openSubject(v: any): string {
+  return match v {
+    i32(n): "int"
+    _: "other"
+  }
+}
+
+fn badTests(v: any) {
+  var a = match v {
+    error(e): "err"                    //~ E0512 an any never holds error
+    _: "other"
+  }
+  var b = match v {
+    i32(n, m): "int"                   //~ E0512 a type test binds the whole value
+    _: "other"
+  }
+}
+
+// A type no path can spell is written out, both in an arm and after `as`.
+fn structural(v: any, pair: (i32, string), xs: i32[], p: *Plain) {
+  var a = pair as any
+  var b = xs as any
+  var c = p as any
+
+  var text = match v {
+    (i32, string)(both): "pair"
+    i32[](view): "slice"
+    i32[3](fixed): "array"
+    *Plain(node): "pointer"
+    _: "other"
+  }
+  var back = v as (i32, string)
+}
+
+// A type test needs a subject whose type is not already known.
+fn wrongSubject(n: i32) {
+  var text = match n {
+    (i32, string)(both): "pair"        //~ E0512 a type test on i32 needs an any subject
+    _: "other"
+  }
+}
+
+// The reference-shaped types cannot be wrapped: nothing could recover
+// which type came back out.
+fn references(ch: chan<i32>, f: fn(i32): i32) {
+  var a = ch as any                    //~ E0509 an any cannot hold chan<i32>
+  var b = f as any                     //~ E0509 an any cannot hold fn(i32): i32
+}

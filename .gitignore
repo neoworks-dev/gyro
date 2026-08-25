@@ -177,3 +177,6 @@ dist
 # Go build output
 bin/
 .claude/
+
+# Binaries an example builds into the working directory
+/triangle

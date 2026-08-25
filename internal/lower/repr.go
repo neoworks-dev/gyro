@@ -30,6 +30,12 @@ import (
 // reprFor returns the METALS function that renders t, or "" when t has no
 // synthesized form and the runtime has to answer for it.
 func (l *lowerer) reprFor(t types.Type) string {
+	// An any's printer switches over variants that are still being
+	// collected, so it is generated at the end; the name is stable now.
+	if isAnyType(t) {
+		l.ensureAnyPrinter(anyReprName)
+		return anyReprName
+	}
 	if !synthesizedRepr(t) {
 		return ""
 	}

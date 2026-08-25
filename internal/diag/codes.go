@@ -80,6 +80,8 @@ const (
 	EMatchNotExhaustive  Code = "E0521"
 	EUnassignedRead      Code = "E0522"
 	EEntryPointSignature Code = "E0523"
+	EVariadicParam       Code = "E0524"
+	EBadSpread           Code = "E0525"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -97,6 +99,11 @@ const (
 
 	// Effects
 	EUnnamedEffect Code = "E0611"
+	EUnknownEffect Code = "E0612"
+
+	// Foreign functions
+	EExternDeclaration Code = "E0613"
+	EExternSignature   Code = "E0614"
 
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
@@ -185,14 +192,16 @@ var explanations = map[Code]explanation{
 	EMismatchedTypes: {"mismatched types",
 		"Gyro converts nothing implicitly between typed values: i32 does not\nbecome i64, and u8 does not become u16. Convert with `as`."},
 	ELiteralOutOfRange: {"literal does not fit",
-		"An integer literal is checked against the type its context requires."},
+		"An integer literal is checked against the type its context requires.\n" +
+			"With no context the type is i32, and the check still applies:\n" +
+			"`var x = 3000000000` needs `var x: i64 = 3000000000`."},
 	EBadOperands: {"operator does not apply",
 		"The operator is not defined for these operand types, or the operands\n" +
 			"do not match each other. Mixed numeric types are converted with `as`:\n" +
 			"a widening always succeeds, and a narrowing panics on a value that\n" +
 			"does not fit."},
 	EWrongArgCount: {"wrong number of arguments",
-		"A call passes exactly as many arguments as the signature declares,\nafter defaults are filled in."},
+		"A call passes exactly as many arguments as the signature declares,\nafter defaults are filled in. A variadic parameter is the exception: it\ntakes everything left over, including nothing."},
 	ETypeArgs: {"type arguments do not work out",
 		"They could not be inferred from the arguments, or the count does not\nmatch the declaration. Write them explicitly: name<T>(...)."},
 	ENotIndexable: {"value cannot be indexed or reached into",
@@ -202,7 +211,7 @@ var explanations = map[Code]explanation{
 	EStructLiteral: {"malformed struct literal",
 		"There are no zero values, so a literal sets every field exactly once,\nand private fields are set only inside their module."},
 	EInvalidConversion: {"invalid conversion",
-		"`as` converts between numeric types and rune. Nothing else converts."},
+		"`as` converts between numeric types and rune, and moves a value into\nand out of an `any`. Nothing else converts."},
 	ENullableUnchecked: {"nullable value used without a check",
 		"A T? must be compared against null first; the comparison narrows it to\nT on the path where it is not null."},
 	ENotComparable: {"values cannot be compared",
@@ -221,6 +230,10 @@ var explanations = map[Code]explanation{
 		"Gyro has no zero values, so `var x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
 	EEntryPointSignature: {"main has the wrong signature",
 		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing: a\nfailing program prints and aborts rather than handing back a status."},
+	EVariadicParam: {"variadic parameter is declared wrongly",
+		"A parameter written `name: ...T` collects the remaining arguments and\nis a T[] slice inside the body. Only the last parameter may be one, and\nit takes no default: a call that passes nothing for it gives it an empty\nslice."},
+	EBadSpread: {"spread argument is misplaced",
+		"A trailing `...` on an argument forwards an existing slice as a whole\nvariadic pack. It needs a variadic parameter to spread into, and since\nit supplies the entire pack, nothing may follow it."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",
@@ -251,7 +264,13 @@ var explanations = map[Code]explanation{
 	EUnnamedBorrow: {"returned view is not named in the row",
 		"T[] and string are views over storage they do not own, so a function\nreturning one states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
 	EUnnamedEffect: {"effect is not named in the row",
-		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io, and a row without alloc promises\nno allocation. This body performs a concrete effect its row does not\nname. Name the effect — !{ io }, !{ alloc } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow and lives in the same module, its effects are inferred from its\nbody; a cross-module call to an unstated row contributes nothing.\nString interpolation builds new text, which allocates."},
+		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io, and a row without alloc promises\nno allocation. This body performs a concrete effect its row does not\nname. Name the effect — !{ io }, !{ alloc } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow, its effects are inferred from its body, in whatever module that\nbody lives. An intrinsic has no body to infer from, so a rowless one is\nassumed to do everything. String interpolation builds new text, which\nallocates."},
+	EUnknownEffect: {"row names something that is not an effect",
+		"The effect vocabulary is closed: io and alloc are the concrete\neffects, and a &name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
+	EExternDeclaration: {"@extern is on the wrong kind of declaration",
+		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
+	EExternSignature: {"type cannot cross to C",
+		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
 	EEscapingLocalView: {"view outlives the storage behind it",
 		"The storage belongs to this frame — an array literal, or a buffer this\nfunction owns — and the caller outlives the frame, so the view it gets\nback points at memory that is gone.\n\nReturn an owning Array<T> or String, or take the storage as a parameter\nand name it in the row."},
 	WSpawnRace: {"spawned closure shares a reference with its spawner",

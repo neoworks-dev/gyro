@@ -122,13 +122,34 @@ func recvKind(decl *ast.FuncDecl) types.RecvKind {
 func (c *checker) buildFuncSig(decl *ast.FuncDecl) *types.Func {
 	sig := &types.Func{Async: decl.Async, Required: len(decl.Params)}
 	for i, param := range decl.Params {
-		sig.Params = append(sig.Params, c.resolveType(param.Type))
+		typ := c.resolveType(param.Type)
+		if param.Variadic {
+			// The body sees the pack as the slice it is, so the signature
+			// carries T[] and only the Variadic flag records the form.
+			typ = &types.Slice{Elem: typ}
+			c.checkVariadicParam(decl, i, param)
+			sig.Variadic = true
+			sig.Required = min(sig.Required, i)
+		}
+		sig.Params = append(sig.Params, typ)
 		if param.Default != nil && sig.Required == len(decl.Params) {
 			sig.Required = i
 		}
 	}
 	sig.Result = c.resultType(decl.Results)
 	return sig
+}
+
+// checkVariadicParam enforces the two structural rules a pack has: it is
+// the last parameter, and it carries no default — a call that supplies
+// nothing already gives it an empty slice.
+func (c *checker) checkVariadicParam(decl *ast.FuncDecl, i int, param ast.Param) {
+	if i != len(decl.Params)-1 {
+		c.errorf(param.Offset, "only the last parameter may be variadic")
+	}
+	if param.Default != nil {
+		c.errorf(param.Offset, "a variadic parameter takes no default; it is empty when nothing is passed")
+	}
 }
 
 func (c *checker) resultType(results []ast.Type) types.Type {
@@ -249,7 +270,7 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 	case *ast.PointerType:
 		return &types.Pointer{Elem: c.resolveType(t.Elem)}
 	case *ast.OptionalType:
-		return &types.Optional{Elem: c.resolveType(t.Elem)}
+		return types.NewOptional(c.resolveType(t.Elem))
 	case *ast.ArrayType:
 		return c.resolveArrayType(t)
 	case *ast.TupleType:

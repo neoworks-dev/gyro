@@ -26,6 +26,15 @@ fn constantsFold() {
   var zero = 1 / 0               //~ division by zero
 }
 
+// A shift whose count is a variable does not fold, so the context types
+// the left operand directly and the operand itself is what must fit.
+fn unfoldedOperands(n: u8, mask: u32) {
+  var ok: u8 = 0xff >> n
+  var over: u8 = 0x1ff >> n      //~ does not fit u8
+  var wide = mask & (0xffffffff >> n)
+  var inverted = mask & ~0
+}
+
 fn want32(v: i32) {
 }
 
@@ -42,6 +51,35 @@ fn literalDefaults() {
   want64(x)                      //~ cannot use i32 as i64
   var f = 1.5
   wantFloat(f)
+}
+
+// The default is a type decision like any other, so the value has to fit
+// it. Without a check the name would be an i32 holding what an i32 cannot.
+fn defaultsMustFit() {
+  var big = 3000000000           //~ does not fit i32
+  var shifted = 1 << 40          //~ does not fit i32
+  var pair = (1, 5000000000)     //~ does not fit i32
+  var list = [1, 3000000000]     //~ does not fit i32
+  var wrapped = 3000000000 as any //~ does not fit i32
+  want32(3000000000)             //~ does not fit i32
+  for i in 0..3000000000 {       //~ does not fit i32
+  }
+
+  // Annotating is how a wide literal is written.
+  var wide: i64 = 3000000000
+  want64(wide)
+}
+
+fn genericArg<T>(v: T): T {
+  return v
+}
+
+// A generic parameter is inferred from the defaulted argument, so the
+// literal is checked against i32 there too.
+fn defaultsIntoGenerics() {
+  var ok = genericArg(1)
+  want32(ok)
+  var over = genericArg(3000000000) //~ does not fit i32
 }
 
 fn typedValuesNeverConvert() {

@@ -35,18 +35,26 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		switch i.Op {
-		case "neg":
+		class, ok := UnOps[i.Op]
+		if !ok {
+			return fmt.Errorf("unknown operator %q", i.Op)
+		}
+		switch class {
+		case "number":
 			if !intKind(typ) && !floatKind(typ) {
-				return fmt.Errorf("neg wants a number, not %s", typ)
+				return fmt.Errorf("%s wants a number, not %s", i.Op, typ)
 			}
-		case "bnot":
+		case "int":
 			if !intKind(typ) {
-				return fmt.Errorf("bnot wants an integer, not %s", typ)
+				return fmt.Errorf("%s wants an integer, not %s", i.Op, typ)
 			}
-		case "not":
+		case "float":
+			if !floatKind(typ) {
+				return fmt.Errorf("%s wants a float, not %s", i.Op, typ)
+			}
+		case "bool":
 			if !isBool(typ) {
-				return fmt.Errorf("not wants a bool, not %s", typ)
+				return fmt.Errorf("%s wants a bool, not %s", i.Op, typ)
 			}
 		}
 		return fv.def(state, i.Dst, typ)
@@ -60,6 +68,96 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			return fmt.Errorf("conv converts numbers and rune; %s -> %s does not", typ, i.To)
 		}
 		return fv.def(state, i.Dst, i.To)
+
+	case *Trunc:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if !intKind(typ) || !intKind(i.To) {
+			return fmt.Errorf("trunc narrows integers; %s -> %s is not one", typ, i.To)
+		}
+		if PrimWidth(i.To) > PrimWidth(typ) {
+			return fmt.Errorf("trunc %s -> %s widens; conv is the widening one", typ, i.To)
+		}
+		return fv.def(state, i.Dst, i.To)
+
+	case *Bitcast:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if !numericKind(typ) || !numericKind(i.To) {
+			return fmt.Errorf("bitcast reinterprets numbers; %s -> %s does not", typ, i.To)
+		}
+		if PrimWidth(typ) != PrimWidth(i.To) {
+			return fmt.Errorf("bitcast %s -> %s changes width; only the same one reinterprets", typ, i.To)
+		}
+		return fv.def(state, i.Dst, i.To)
+
+	case *MemLoad:
+		if err := fv.memAddr(state, i.Memory, i.Addr, "mem.load"); err != nil {
+			return err
+		}
+		if !MemAccess(i.Type) {
+			return fmt.Errorf("mem.load cannot read a %s", i.Type)
+		}
+		return fv.def(state, i.Dst, i.Type)
+
+	case *MemStore:
+		if err := fv.memAddr(state, i.Memory, i.Addr, "mem.store"); err != nil {
+			return err
+		}
+		if !MemAccess(i.Type) {
+			return fmt.Errorf("mem.store cannot write a %s", i.Type)
+		}
+		valType, err := fv.use(state, i.Val)
+		if err != nil {
+			return err
+		}
+		if !TypesEqual(valType, i.Type) {
+			return fmt.Errorf("mem.store.%s of a %s; trunc says which bits to keep", i.Type, valType)
+		}
+		return nil
+
+	case *MemSize:
+		if err := fv.memory(i.Memory); err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, TUint32)
+
+	case *MemGrow:
+		if err := fv.memory(i.Memory); err != nil {
+			return err
+		}
+		pages, err := fv.use(state, i.Pages)
+		if err != nil {
+			return err
+		}
+		if !isU32(pages) {
+			return fmt.Errorf("mem.grow counts pages in u32, not %s", pages)
+		}
+		// i32, not u32: the result is the previous size or -1.
+		return fv.def(state, i.Dst, TInt32)
+
+	case *MemCopy:
+		if err := fv.memAddr(state, i.Memory, i.To, "mem.copy"); err != nil {
+			return err
+		}
+		return fv.memCounts(state, "mem.copy", i.From, i.Len)
+
+	case *MemFill:
+		if err := fv.memAddr(state, i.Memory, i.To, "mem.fill"); err != nil {
+			return err
+		}
+		b, err := fv.use(state, i.Byte)
+		if err != nil {
+			return err
+		}
+		if !isU8(b) {
+			return fmt.Errorf("mem.fill writes a u8, not %s", b)
+		}
+		return fv.memCounts(state, "mem.fill", i.Len)
 
 	case *Slot:
 		return fv.def(state, i.Dst, &Ptr{Elem: i.Type})
@@ -128,6 +226,55 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			return fmt.Errorf("field %d out of range", i.Index)
 		}
 		return fv.def(state, i.Dst, &Ptr{Elem: shape.Fields[i.Index].Type})
+
+	case *ElemPtr:
+		typ, err := fv.use(state, i.Ptr)
+		if err != nil {
+			return err
+		}
+		pointer, ok := typ.(*Ptr)
+		if !ok {
+			return fmt.Errorf("elem.ptr wants a pointer, not %s", typ)
+		}
+		array, ok := pointer.Elem.(*ArrayOf)
+		if !ok {
+			return fmt.Errorf("elem.ptr wants a pointer to an array, not %s", typ)
+		}
+		return fv.def(state, i.Dst, &Ptr{Elem: array.Elem})
+
+	case *PtrOffset:
+		typ, err := fv.use(state, i.Ptr)
+		if err != nil {
+			return err
+		}
+		if _, ok := typ.(*Ptr); !ok {
+			return fmt.Errorf("ptr.offset wants a pointer, not %s", typ)
+		}
+		count, err := fv.use(state, i.N)
+		if err != nil {
+			return err
+		}
+		if !intKind(count) {
+			return fmt.Errorf("ptr.offset counts in an integer, not %s", count)
+		}
+		return fv.def(state, i.Dst, typ)
+
+	case *PtrDiff:
+		a, err := fv.use(state, i.A)
+		if err != nil {
+			return err
+		}
+		b, err := fv.use(state, i.B)
+		if err != nil {
+			return err
+		}
+		if _, ok := a.(*Ptr); !ok {
+			return fmt.Errorf("ptr.diff wants two pointers, not %s", a)
+		}
+		if !TypesEqual(a, b) {
+			return fmt.Errorf("ptr.diff subtracts two pointers of one type, not %s and %s", a, b)
+		}
+		return fv.def(state, i.Dst, TInt64)
 
 	case *MakeRecord:
 		shape, err := fv.recordShape(i.TypeName)
@@ -346,6 +493,12 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		envType, err := fv.use(state, i.Env)
 		if err != nil {
 			return err
+		}
+		// The environment is heap storage, never a value: a closure
+		// outlives the frame that built it, and a function value has
+		// one word to carry its environment in.
+		if _, isPtr := envType.(*Ptr); !isPtr {
+			return fmt.Errorf("closure environment is %s; it must be a ptr, since the closure outlives the frame that built it", envType)
 		}
 		if !TypesEqual(envType, sig.Params[0]) {
 			return fmt.Errorf("closure environment is %s, @%s wants %s", envType, i.Callee, sig.Params[0])
@@ -583,47 +736,56 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, optional.Elem)
 
-	case *DynWrap:
+	case *AnyWrap:
 		typ, err := fv.use(state, i.X)
 		if err != nil {
 			return err
 		}
-		if bad := boundaryOffender(typ); bad != "" {
-			return fmt.Errorf("dyn.wrap of %s: %s cannot become dyn; dyn values may cross boundaries", typ, bad)
+		if bad := boundaryOffender(typ, fv.types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("any.wrap of %s: %s cannot become any; any values may cross boundaries", typ, bad)
 		}
-		return fv.def(state, i.Dst, &Dyn{})
+		return fv.def(state, i.Dst, &Any{})
 
-	case *DynUnwrap:
-		if err := fv.useDyn(state, i.X, "dyn.unwrap"); err != nil {
+	case *AnyUnwrap:
+		if err := fv.useAny(state, i.X, "any.unwrap"); err != nil {
 			return err
 		}
-		if bad := boundaryOffender(i.To); bad != "" {
-			return fmt.Errorf("dyn.unwrap to %s: %s cannot come out of a dyn", i.To, bad)
+		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("any.unwrap to %s: %s cannot come out of an any", i.To, bad)
 		}
 		return fv.def(state, i.Dst, i.To)
 
-	case *DynCall:
-		if err := fv.useDyn(state, i.X, "dyn.call"); err != nil {
+	case *AnyIs:
+		if err := fv.useAny(state, i.X, "any.is"); err != nil {
+			return err
+		}
+		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}); bad != "" {
+			return fmt.Errorf("any.is %s: %s never goes into an any, so the test can never hold", i.To, bad)
+		}
+		return fv.def(state, i.Dst, TBool)
+
+	case *AnyCall:
+		if err := fv.useAny(state, i.X, "any.call"); err != nil {
 			return err
 		}
 		for _, arg := range i.Args {
-			if err := fv.useDyn(state, arg, "dyn.call arguments"); err != nil {
+			if err := fv.useAny(state, arg, "any.call arguments"); err != nil {
 				return err
 			}
 		}
-		return fv.def(state, i.Dst, &Dyn{})
+		return fv.def(state, i.Dst, &Any{})
 
-	case *DynGet:
-		if err := fv.useDyn(state, i.X, "dyn.get"); err != nil {
+	case *AnyGet:
+		if err := fv.useAny(state, i.X, "any.get"); err != nil {
 			return err
 		}
-		return fv.def(state, i.Dst, &Dyn{})
+		return fv.def(state, i.Dst, &Any{})
 
-	case *DynSet:
-		if err := fv.useDyn(state, i.X, "dyn.set"); err != nil {
+	case *AnySet:
+		if err := fv.useAny(state, i.X, "any.set"); err != nil {
 			return err
 		}
-		return fv.useDyn(state, i.Val, "dyn.set")
+		return fv.useAny(state, i.Val, "any.set")
 	}
 	return fmt.Errorf("unhandled instruction %T", instr)
 }
@@ -715,13 +877,13 @@ func (fv *funcVerifier) checkSend(state *regState, ch, val string) error {
 	return nil
 }
 
-func (fv *funcVerifier) useDyn(state *regState, name, what string) error {
+func (fv *funcVerifier) useAny(state *regState, name, what string) error {
 	typ, err := fv.use(state, name)
 	if err != nil {
 		return err
 	}
-	if _, ok := typ.(*Dyn); !ok {
-		return fmt.Errorf("%s works on dyn values, not %s", what, typ)
+	if _, ok := typ.(*Any); !ok {
+		return fmt.Errorf("%s works on any values, not %s", what, typ)
 	}
 	return nil
 }

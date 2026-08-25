@@ -40,6 +40,9 @@ type Info struct {
 	// Instances lists every concrete instantiation of each generic
 	// function, keyed by InstanceKey.
 	Instances map[*ast.FuncDecl]map[string]*FuncInstance
+	// Externs holds the library and symbol of every @extern function, so
+	// lowering can emit the import without re-reading the decorator.
+	Externs map[*ast.FuncDecl]types.Extern
 }
 
 // CallInfo is the resolution of one call expression.
@@ -104,6 +107,7 @@ func newInfo() *Info {
 		Structs:   map[*ast.StructDecl]*types.Struct{},
 		Enums:     map[*ast.EnumDecl]*types.Enum{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
+		Externs:   map[*ast.FuncDecl]types.Extern{},
 	}
 }
 
@@ -145,6 +149,15 @@ func (c *checker) record(e ast.Expr, t types.Type) {
 		return
 	}
 	c.rec.types[e] = t
+}
+
+// recordedType answers what the checker last recorded for e, or nil when
+// nothing was.
+func (c *checker) recordedType(e ast.Expr) types.Type {
+	if c.rec == nil || e == nil {
+		return nil
+	}
+	return c.rec.types[e]
 }
 
 func (c *checker) recordCall(call *ast.CallExpr, resolved *CallInfo) {

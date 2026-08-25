@@ -28,22 +28,36 @@ func Generate(module *metals.Module) (asm string, err error) {
 		symbols:        map[string]string{},
 		usedSyms:       map[string]bool{},
 		externs:        map[string]bool{},
+		externSyms:     map[string]bool{},
 		strLits:        map[string]string{},
+		cstrs:          map[string]string{},
+		anyTypes:       map[string]string{},
+		buildingAny:    map[string]bool{},
 		eqHelpers:      map[string]string{},
 		thunks:         map[string]string{},
 		indirectThunks: map[string]string{},
-		globals:        map[string]metals.Type{},
+		globals:        map[string]*metals.Global{},
 		globalSyms:     map[string]string{},
+		memories:       map[string]*metals.Memory{},
+		memorySyms:     map[string]string{},
 	}
 	for _, global := range module.Globals {
-		g.globals[global.Name] = global.Type
+		g.globals[global.Name] = global
+	}
+	for _, mem := range module.Memories {
+		g.memories[mem.Name] = mem
 	}
 	for _, decl := range module.Types {
 		g.types[decl.Name] = decl
 	}
+	g.layout = metals.NewLayout(module, failf)
 	for _, imp := range module.Imports {
+		library := metals.ExternLibrary(imp.Module)
 		for _, fn := range imp.Funcs {
 			g.imports[fn.Name] = fn.Sig
+			if library != "" {
+				g.externSyms[fn.Name] = true
+			}
 		}
 	}
 	for _, fn := range module.Funcs {
@@ -75,22 +89,41 @@ type generator struct {
 	module   *metals.Module
 	regTypes map[string]map[string]metals.Type
 	types    map[string]*metals.TypeDecl
-	imports  map[string]*metals.FnType
-	funcs    map[string]*metals.Func
+	// layout answers every size, alignment and offset question, so that
+	// the two backends cannot pad a struct differently.
+	layout  *metals.Layout
+	imports map[string]*metals.FnType
+	funcs   map[string]*metals.Func
+	// externSyms holds the imports that name a C library's symbol rather
+	// than the runtime's, which are called through a generated wrapper.
+	externSyms map[string]bool
 
 	text strings.Builder
-	data strings.Builder
-	bss  strings.Builder
+	// data is .rodata, which is what a constant the program only reads
+	// wants; rwdata is .data, for a global that starts as bytes and may
+	// be written; bss is the zeroed storage that costs no object bytes.
+	data   strings.Builder
+	rwdata strings.Builder
+	bss    strings.Builder
 
-	globals    map[string]metals.Type
+	globals    map[string]*metals.Global
 	globalSyms map[string]string
+	memories   map[string]*metals.Memory
+	memorySyms map[string]string
 
 	symbols  map[string]string // METALS function name -> asm symbol
 	usedSyms map[string]bool
 	externs  map[string]bool
 	strLits  map[string]string // decoded literal -> data label
-	floatN   int
-	labelN   int
+	cstrs    map[string]string // NUL-terminated C string -> data label
+
+	// anyTypes interns one descriptor per type the program wraps or
+	// tests, so that identity is structural equality.
+	anyTypes    map[string]string
+	buildingAny map[string]bool
+	anyN        int
+	floatN      int
+	labelN      int
 
 	eqHelpers map[string]string // type string -> helper symbol
 	thunks    map[string]string // async callee -> thunk symbol
@@ -103,6 +136,12 @@ type generator struct {
 type genError struct{ err error }
 
 func (g *generator) fail(format string, args ...any) {
+	failf(format, args...)
+}
+
+// failf aborts code generation from anywhere, including the value
+// helpers that have no generator to hand. Generate recovers it.
+func failf(format string, args ...any) {
 	panic(&genError{fmt.Errorf("nasm: "+format, args...)})
 }
 
@@ -135,6 +174,10 @@ func (g *generator) assemble() string {
 	out.WriteString(g.text.String())
 	out.WriteString("\nsection .rodata\n")
 	out.WriteString(g.data.String())
+	if g.rwdata.Len() > 0 {
+		out.WriteString("\nsection .data\n")
+		out.WriteString(g.rwdata.String())
+	}
 	if g.bss.Len() > 0 {
 		out.WriteString("\nsection .bss\n")
 		out.WriteString(g.bss.String())
@@ -143,13 +186,14 @@ func (g *generator) assemble() string {
 }
 
 // globalSymbol names module storage, reserving its bytes on first use.
-// Zeroed storage belongs in .bss, and every global is zeroed: METALS has
-// no initializer, so the front end runs one before main.
+// Zeroed storage belongs in .bss and costs nothing in the object file; a
+// global that carries a static image is real bytes in .data, which is
+// writable because a global is.
 func (g *generator) globalSymbol(name string) string {
 	if symbol, ok := g.globalSyms[name]; ok {
 		return symbol
 	}
-	typ, ok := g.globals[name]
+	global, ok := g.globals[name]
 	if !ok {
 		g.fail("no global @%s", name)
 	}
@@ -157,9 +201,36 @@ func (g *generator) globalSymbol(name string) string {
 	g.usedSyms[symbol] = true
 	g.globalSyms[name] = symbol
 
+	// Aligned to a word, which is the most any type asks for: a global
+	// whose size is not a multiple of one would otherwise leave the next
+	// one wherever it fell.
+	if global.Bytes != nil {
+		g.rwdata.WriteString("\talign 8\n")
+		g.rwdata.WriteString(symbol + ":\n")
+		writeBytes(&g.rwdata, global.Bytes)
+		return symbol
+	}
+	g.bss.WriteString("\talign 8\n")
 	g.bss.WriteString(symbol + ":\n")
-	fmt.Fprintf(&g.bss, "\tresb %d\n", g.sizeOf(typ))
+	fmt.Fprintf(&g.bss, "\tresb %d\n", g.sizeOf(global.Type))
 	return symbol
+}
+
+// writeBytes emits a byte image as db lines, wrapped so a long one stays
+// readable in the generated assembly.
+func writeBytes(out *strings.Builder, bytes []byte) {
+	const perLine = 16
+	for at := 0; at < len(bytes); at += perLine {
+		end := min(at+perLine, len(bytes))
+		out.WriteString("\tdb ")
+		for i, b := range bytes[at:end] {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(out, "%d", b)
+		}
+		out.WriteString("\n")
+	}
 }
 
 // ---------------------------------------------------------------------------

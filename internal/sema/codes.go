@@ -9,8 +9,24 @@ var codes = map[string]diag.Code{
 	// Names. The undeclared-name and already-declared diagnostics are built
 	// by hand in suggest.go and sema.go, and the leak warning in leak.go, so
 	// their codes sit at those sites rather than here.
-	"cannot move %s: no such name in scope":                                                   diag.EMoveUnknownName,
-	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed": diag.EUnknownDecorator,
+	"cannot move %s: no such name in scope":                                                              diag.EMoveUnknownName,
+	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent, @distributed and @extern": diag.EUnknownDecorator,
+
+	// Foreign functions. The declaration errors say what @extern may sit
+	// on; the signature errors say what may cross to C.
+	"@extern %s has a body; a foreign function is declared, not written":                              diag.EExternDeclaration,
+	"@extern %s is a method; C has no receiver to bind":                                               diag.EExternDeclaration,
+	"@extern %s is generic; a library exports one symbol, not a family":                               diag.EExternDeclaration,
+	"@extern %s is async; a foreign call is an ordinary call":                                         diag.EExternDeclaration,
+	"@extern %s returns several values; a C function returns one":                                     diag.EExternDeclaration,
+	"@extern %s states no effect row":                                                                 diag.EExternDeclaration,
+	"@extern %s is variadic; C's varargs do not have one calling convention":                          diag.EExternDeclaration,
+	"@extern struct %s declares fields":                                                               diag.EExternDeclaration,
+	"@extern struct %s is generic; an opaque pointer has no parameters":                               diag.EExternDeclaration,
+	"@extern names the library it links from":                                                         diag.EExternDeclaration,
+	"@extern's library is a plain string, spelled as the linker wants it: \"SDL2\" links -lSDL2":      diag.EExternDeclaration,
+	"@extern's second argument is symbol = \"the_c_name\"":                                            diag.EExternDeclaration,
+	"%s cannot cross to C: %s":                                                                        diag.EExternSignature,
 
 	// A name that resolves to the wrong kind of thing
 	"%s is a type, not a value":                                                             diag.EWrongKind,
@@ -82,12 +98,19 @@ var codes = map[string]diag.Code{
 	// Calls
 	"%s takes %d argument(s), got %d":                               diag.EWrongArgCount,
 	"%s takes %d to %d arguments, got %d":                           diag.EWrongArgCount,
+	"%s takes at least %d argument(s), got %d":                      diag.EWrongArgCount,
 	"arguments are positional; only decorator arguments take names": diag.EWrongArgCount,
 	"%s::%s carries %d value(s), got %d":                            diag.EWrongArgCount,
 	"%s::%s carries a payload; construct it with its values":        diag.EWrongArgCount,
 	"%s::%s carries no payload; write it without parentheses":       diag.EWrongArgCount,
 	"%s is not callable":                                            diag.ENotCallable,
 	"%s is %s, which is not callable":                               diag.ENotCallable,
+
+	// Variadics
+	"only the last parameter may be variadic":                                            diag.EVariadicParam,
+	"a variadic parameter takes no default; it is empty when nothing is passed":          diag.EVariadicParam,
+	"%s has no variadic parameter to spread into":                                        diag.EBadSpread,
+	"a spread argument is the whole pack, so it must be the only one %s receives for it": diag.EBadSpread,
 
 	// Generics
 	"%s takes %d type argument(s), got %d":                                  diag.ETypeArgs,
@@ -111,6 +134,8 @@ var codes = map[string]diag.Code{
 	"the literal misses the field %s; there are no zero values, so a literal sets every field":   diag.EStructLiteral,
 	"the field %s is set twice":                                                                  diag.EStructLiteral,
 	"as converts between numeric types and rune; %s as %s does not":                              diag.EInvalidConversion,
+	"an any cannot hold %s":                                                                      diag.EInvalidConversion,
+	"an any cannot hold %s, so it cannot be unwrapped to one":                                    diag.EInvalidConversion,
 	"indexes are usize, not %s; lengths and indexes never mix with signed arithmetic implicitly": diag.EIndexNotUsize,
 
 	// Nullability
@@ -126,6 +151,8 @@ var codes = map[string]diag.Code{
 	"a pattern names an enum variant or a struct type test; this is neither":                diag.EPatternNeverMatches,
 	"a type test binds the whole value: %s(name)":                                           diag.EPatternNeverMatches,
 	"a type test needs an error subject whose concrete type is unknown; this subject is %s": diag.EPatternNeverMatches,
+	"an any never holds %s, so this pattern can never match":                                diag.EPatternNeverMatches,
+	"a type test on %s needs an any subject":                                                diag.EPatternNeverMatches,
 	"%s::%s carries %d value(s), the pattern binds %d":                                      diag.EPatternNeverMatches,
 	"this match leaves %s uncovered":                                                        diag.EMatchNotExhaustive,
 	"%s is read before it is assigned":                                                      diag.EUnassignedRead,
@@ -140,7 +167,9 @@ var codes = map[string]diag.Code{
 
 	// Effects
 	"%s does %s, which the row does not name":                          diag.EUnnamedEffect,
+	"%s is an intrinsic with no row, so it may do %s":                  diag.EUnnamedEffect,
 	"this string interpolation allocates, which the row does not name": diag.EUnnamedEffect,
+	"%s is not an effect":                                              diag.EUnknownEffect,
 
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,

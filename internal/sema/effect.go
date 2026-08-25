@@ -13,10 +13,14 @@ import (
 // both. A function with no row is unconstrained in v1.
 //
 // A call contributes its callee's declared row when it states one. When it
-// does not, the callee's effects are inferred from its body — but only
-// inside one module: a cross-module call to an unstated row contributes
-// nothing, as does a call through a function value. String interpolation
-// builds new text, which allocates.
+// does not, the callee's effects are inferred from its body, in whatever
+// module that body lives: Gyro compiles whole-program and the loader holds
+// every source, so a row is a way to state an interface, not the only way
+// to know what a function does. The one body that cannot be read is the
+// one that does not exist — an intrinsic — and a rowless intrinsic
+// therefore contributes every concrete effect. A call through a function
+// value still contributes nothing. String interpolation builds new text,
+// which allocates.
 //
 // The check runs after every module, so a row is judged with every body
 // resolved and every generic instantiation recorded.
@@ -36,6 +40,10 @@ func (e effectSet) minus(other effectSet) effectSet {
 }
 
 func (e effectSet) empty() bool { return !e.io && !e.alloc }
+
+// everyEffect is the top of the lattice: what a callee that promises
+// nothing may do.
+var everyEffect = effectSet{io: true, alloc: true}
 
 func (e effectSet) String() string {
 	switch {
@@ -72,12 +80,51 @@ func declaredEffects(row *ast.EffectRow) (effectSet, bool) {
 // Checking a declared row against a body
 // ---------------------------------------------------------------------------
 
-// checkModuleEffects enforces every declared row of the module's functions.
+// checkModuleEffects enforces every declared row of the module's functions,
+// and every row a closure inside them states for itself.
 func (c *checker) checkModuleEffects(tree *ast.File) {
 	for _, decl := range tree.Decls {
-		if d, ok := decl.(*ast.FuncDecl); ok {
-			c.checkDeclaredEffects(d)
+		d, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
 		}
+		c.checkEffectNames(d.Effects)
+		c.checkDeclaredEffects(d)
+		c.checkClosureEffects(d)
+	}
+}
+
+// checkEffectNames rejects a row entry that names no effect. The
+// vocabulary is closed — `io` and `alloc` — so a misspelling is an error
+// rather than a row that silently promises less than it looks like it does.
+func (c *checker) checkEffectNames(row *ast.EffectRow) {
+	if row == nil {
+		return
+	}
+	for _, name := range row.Names {
+		switch name {
+		case "io", "alloc":
+		default:
+			c.errorHintf(row.Offset, []string{
+				"the effects are io and alloc; a &name entry names a borrow source",
+			}, "%s is not an effect", name)
+		}
+	}
+}
+
+// checkClosureEffects holds every closure in the body to the row it states
+// for itself. A closure without a row is unconstrained, and calling one
+// still contributes nothing to its caller: both wait for effect
+// polymorphism, which is what would let a row travel with a function value.
+func (c *checker) checkClosureEffects(decl *ast.FuncDecl) {
+	for _, closure := range closuresIn(decl.Body) {
+		c.checkEffectNames(closure.Effects)
+		allowed, closed := declaredEffects(closure.Effects)
+		if !closed || closure.Body == nil {
+			continue
+		}
+		reported := map[string]bool{}
+		c.checkBody(closure.Body, closure.Effects, c.program.info.Calls, allowed, reported)
 	}
 }
 
@@ -88,7 +135,7 @@ func (c *checker) checkDeclaredEffects(decl *ast.FuncDecl) {
 	}
 
 	if len(decl.TypeParams) == 0 && len(decl.OwnerParams) == 0 {
-		c.checkBodyEffects(decl, c.program.info.Calls, allowed, map[string]bool{})
+		c.checkBody(decl.Body, decl.Effects, c.program.info.Calls, allowed, map[string]bool{})
 		return
 	}
 
@@ -104,45 +151,51 @@ func (c *checker) checkDeclaredEffects(decl *ast.FuncDecl) {
 	}
 	sortStrings(keys)
 	for _, key := range keys {
-		c.checkBodyEffects(decl, instances[key].Calls, allowed, reported)
+		c.checkBody(decl.Body, decl.Effects, instances[key].Calls, allowed, reported)
 	}
 }
 
-// checkBodyEffects reports every effect the body performs that the row does
-// not name, resolving calls through the given map: the shared one normally,
-// an instance's own during a generic's per-instantiation check.
-func (c *checker) checkBodyEffects(decl *ast.FuncDecl, calls map[*ast.CallExpr]*CallInfo, allowed effectSet, reported map[string]bool) {
-	walkEffectStmt(decl.Body, func(source ast.Expr) {
+// checkBody reports every effect the body performs that the row does not
+// name, resolving calls through the given map: the shared one normally, an
+// instance's own during a generic's per-instantiation check.
+func (c *checker) checkBody(body ast.Stmt, row *ast.EffectRow, calls map[*ast.CallExpr]*CallInfo, allowed effectSet, reported map[string]bool) {
+	walkEffectStmt(body, func(source ast.Expr) {
 		switch source := source.(type) {
 		case *ast.StringLit:
 			if allowed.alloc {
 				return
 			}
-			c.reportEffect(source.Offset, reported, decl, effectSet{alloc: true},
+			c.reportEffect(source.Offset, reported, row, effectSet{alloc: true},
 				"this string interpolation allocates, which the row does not name")
 		case *ast.CallExpr:
 			resolved := calls[source]
-			if resolved == nil || resolved.Method == nil || resolved.Method.Decl == nil {
+			if resolved == nil || resolved.Method == nil {
 				return
 			}
-			missing := c.callEffects(resolved, nil).minus(allowed)
+			performed, opaque := c.callEffects(resolved, nil)
+			missing := performed.minus(allowed)
 			if missing.empty() {
 				return
 			}
-			c.reportEffect(source.Offset, reported, decl, missing,
+			if opaque {
+				c.reportEffect(source.Offset, reported, row, missing,
+					"%s is an intrinsic with no row, so it may do %s", resolved.Method.Name, everyEffect)
+				return
+			}
+			c.reportEffect(source.Offset, reported, row, missing,
 				"%s does %s, which the row does not name", resolved.Method.Name, missing)
 		}
 	})
 }
 
-func (c *checker) reportEffect(offset int, reported map[string]bool, decl *ast.FuncDecl, missing effectSet, format string, args ...any) {
+func (c *checker) reportEffect(offset int, reported map[string]bool, row *ast.EffectRow, missing effectSet, format string, args ...any) {
 	key := strconv.Itoa(offset) + "|" + missing.String()
 	if reported[key] {
 		return
 	}
 	reported[key] = true
 	c.errorHintf(offset, []string{
-		"name it in the row: " + suggestedRow(decl.Effects, missing),
+		"name it in the row: " + suggestedRow(row, missing),
 	}, format, args...)
 }
 
@@ -201,56 +254,125 @@ func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effec
 	if done, ok := state.done[decl]; ok {
 		return done
 	}
-	if decl.Body == nil || state.active[decl] {
+	if state.active[decl] {
 		return effectSet{}
 	}
 	state.active[decl] = true
 
 	var inferred effectSet
-	walkEffectStmt(decl.Body, func(source ast.Expr) {
-		switch source := source.(type) {
-		case *ast.StringLit:
-			inferred.alloc = true
-		case *ast.CallExpr:
-			resolved := c.program.info.Calls[source]
-			if resolved == nil || resolved.Method == nil || resolved.Method.Decl == nil {
-				return
+	for _, calls := range c.bodyResolutions(decl) {
+		walkEffectStmt(decl.Body, func(source ast.Expr) {
+			switch source := source.(type) {
+			case *ast.StringLit:
+				inferred.alloc = true
+			case *ast.CallExpr:
+				resolved := calls[source]
+				if resolved == nil || resolved.Method == nil {
+					return
+				}
+				performed, _ := c.callEffects(resolved, state)
+				inferred = inferred.union(performed)
 			}
-			inferred = inferred.union(c.callEffects(resolved, state))
-		}
-	})
+		})
+	}
 
 	delete(state.active, decl)
 	state.done[decl] = inferred
 	return inferred
 }
 
-// callEffects is what one resolved call contributes to its caller: the
-// callee's declared row when it states one, the callee's inferred effects
-// when its body lives in this module, and nothing otherwise — a call across
-// a module boundary to an unstated row is unchecked in v1.
-func (c *checker) callEffects(resolved *CallInfo, state *effectInference) effectSet {
-	decl := resolved.Method.Decl
-	if declared, closed := declaredEffects(decl.Effects); closed {
-		return declared
+// bodyResolutions are the call maps a body is read through. A plain body
+// resolves against the module's shared map; a generic one resolves against
+// each instantiation, because a call on a type parameter has no callee
+// until T is concrete. Effects are unioned over the instantiations: the
+// row a caller is held to has to cover every one of them.
+func (c *checker) bodyResolutions(decl *ast.FuncDecl) []map[*ast.CallExpr]*CallInfo {
+	if len(decl.TypeParams) == 0 && len(decl.OwnerParams) == 0 {
+		return []map[*ast.CallExpr]*CallInfo{c.program.info.Calls}
 	}
-	if c.program.envs[decl] != c {
-		return effectSet{}
+	instances := c.program.info.Instances[decl]
+	if len(instances) == 0 {
+		return []map[*ast.CallExpr]*CallInfo{c.program.info.Calls}
+	}
+	keys := make([]string, 0, len(instances))
+	for key := range instances {
+		keys = append(keys, key)
+	}
+	sortStrings(keys)
+	maps := make([]map[*ast.CallExpr]*CallInfo, 0, len(keys))
+	for _, key := range keys {
+		maps = append(maps, instances[key].Calls)
+	}
+	return maps
+}
+
+// callEffects is what one resolved call contributes to its caller, and
+// whether the callee is opaque — promising nothing rather than promising
+// what it names. A declared row answers for itself. Without one the body
+// is read, wherever it lives; an intrinsic has no body to read, so a
+// rowless one contributes every concrete effect. A built-in method answers
+// from the fixed table.
+func (c *checker) callEffects(resolved *CallInfo, state *effectInference) (effectSet, bool) {
+	decl := resolved.Method.Decl
+	if decl == nil {
+		return builtinEffects(resolved.Method.Name), false
+	}
+	if declared, closed := declaredEffects(decl.Effects); closed {
+		return declared, false
+	}
+	if decl.Body == nil {
+		return everyEffect, true
 	}
 	if state == nil {
-		return c.effectsOf(decl)
+		return c.effectsOf(decl), false
 	}
-	return c.inferEffects(decl, state)
+	return c.inferEffects(decl, state), false
+}
+
+// builtinEffects answers for the built-in method surface, which has no
+// declaration to carry a row. runes() decodes and bytes() copies, so both
+// allocate; len, close, hash, compare and message read what is there.
+func builtinEffects(name string) effectSet {
+	switch name {
+	case "runes", "bytes":
+		return effectSet{alloc: true}
+	}
+	return effectSet{}
 }
 
 // ---------------------------------------------------------------------------
 // Walking a body for effect sources
 // ---------------------------------------------------------------------------
 
+// closuresIn collects every closure written inside a body, including the
+// ones nested in another closure. Each is checked against its own row;
+// none contributes to the row of the function it sits in, because a
+// closure's effects happen where it is called.
+func closuresIn(body ast.Stmt) []*ast.ClosureExpr {
+	var found []*ast.ClosureExpr
+	var collect func(stmt ast.Stmt)
+	collect = func(stmt ast.Stmt) {
+		walkEffectStmt(stmt, func(source ast.Expr) {
+			closure, ok := source.(*ast.ClosureExpr)
+			if !ok {
+				return
+			}
+			found = append(found, closure)
+			if closure.Body != nil {
+				collect(closure.Body)
+				return
+			}
+			collect(&ast.ExprStmt{X: closure.BodyExpr})
+		})
+	}
+	collect(body)
+	return found
+}
+
 // walkEffectStmt hands every effect source in a statement to visit: each
-// call expression and each interpolated string. Closure bodies are not
-// walked — a closure's effects happen when it is called, and calls through
-// function values contribute nothing in v1.
+// call expression, each interpolated string and each closure. Closure
+// bodies are not walked through — a closure's effects happen when it is
+// called, and calls through function values contribute nothing in v1.
 func walkEffectStmt(stmt ast.Stmt, visit func(source ast.Expr)) {
 	switch s := stmt.(type) {
 	case *ast.Block:
@@ -360,5 +482,7 @@ func walkEffectExpr(e ast.Expr, visit func(source ast.Expr)) {
 		walkEffectExpr(e.Cap, visit)
 	case *ast.CastExpr:
 		walkEffectExpr(e.X, visit)
+	case *ast.ClosureExpr:
+		visit(e)
 	}
 }

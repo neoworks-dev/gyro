@@ -10,16 +10,18 @@ import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/cgen"
 	"github.com/gyro-lang/gyro/internal/diag"
-	"github.com/gyro-lang/gyro/internal/interp"
 	"github.com/gyro-lang/gyro/internal/lexer"
+	"github.com/gyro-lang/gyro/internal/lisp"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
 	"github.com/gyro-lang/gyro/internal/lsp"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/meval"
 	"github.com/gyro-lang/gyro/internal/nasm"
 	"github.com/gyro-lang/gyro/internal/parser"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/token"
+	"github.com/gyro-lang/gyro/internal/wasm"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
@@ -31,8 +33,13 @@ usage:
   gyro ast <file.gyro>      parse a file and print its syntax tree
   gyro tokens <file.gyro>   print the token stream, terminators included
   gyro check <file.gyro>    load, parse and name-check a program, reporting diagnostics
-  gyro run <file.gyro>      check a program and run its fn main in the interpreter
+  gyro run <module>...      link the given modules, root last, and run main
+                            (.gyro, .metals, .lisp, .c and .wasm, in
+                            dependency order)
   gyro metals <file.gyro>   check a program and print its lowered METALS module
+  gyro lisp <file.lisp>     compile a Lisp module and print its METALS
+  gyro cc <file.c|.wasm>    compile C through clang's wasm32 target, or read a
+                            wasm module, and print the METALS it becomes
   gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
   gyro cgen <file.gyro>     lower a program and print its generated C
   gyro build <file.gyro> [-o out] [--backend nasm|c]
@@ -62,6 +69,8 @@ func main() {
 		os.Exit(runProgram(args))
 	case "metals":
 		os.Exit(runMetals(args))
+	case "lisp", "cc":
+		os.Exit(runProduce(args))
 	case "nasm":
 		os.Exit(runNasm(args))
 	case "cgen":
@@ -138,54 +147,142 @@ func runCheck(args []string) int {
 	return code
 }
 
-// runProgram checks a program and executes it in the interpreter.
-// Anything after the file is the program's own command line, with the
-// file standing in for argv[0] the way the binary's path would.
+// runMetals checks a program, lowers it to METALS and prints the module.
+func runMetals(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	module, code := linkedModule(args)
+	if module == nil {
+		return code
+	}
+	fmt.Print(metals.Print(module))
+	return 0
+}
+
+// runProgram builds the inputs into one verified module and runs its
+// main. Every language reaches this the same way: a .gyro is lowered, a
+// .lisp, .c, .wasm or .metals comes through its own producer, and what
+// runs is METALS either way. Anything after the files is the program's
+// own command line, with the first file standing in for argv[0] the way
+// the binary's path would.
 func runProgram(args []string) int {
 	if len(args) < 1 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
 
-	var bag diag.Bag
-	program, err := loader.Load(args[0], &bag)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
-		return 2
-	}
-	if !bag.HasErrors() {
-		sema.CheckProgram(program, &bag)
-	}
-	if code := report(&bag); code != 0 {
+	// Several modules link into one before anything runs, dependencies
+	// first and the root last, which is the order the arguments are in.
+	module, code := linkedModule(args)
+	if module == nil {
 		return code
 	}
 
-	if err := interp.Run(program, args, os.Stdin, os.Stdout, os.Stderr); err != nil {
-		// os.exit carries the program's own exit code.
-		if exit, isExit := err.(*interp.Exit); isExit {
+	if err := meval.Run(module, args, os.Stdin, os.Stdout, os.Stderr); err != nil {
+		if exit, isExit := err.(*meval.Exit); isExit {
 			return exit.Code
 		}
-		// A panic already printed itself; anything else needs a voice.
-		if _, isPanic := err.(*interp.Panic); !isPanic {
-			fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		// An abort already reads as the panic it is, and the native
+		// binaries print exactly that text; prefixing it here would make
+		// the tiers look different when they are not.
+		if abort, isAbort := err.(*meval.Abort); isAbort {
+			fmt.Fprintln(os.Stderr, abort.Error())
+			return 1
 		}
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-// runMetals checks a program, lowers it to METALS and prints the module.
-func runMetals(args []string) int {
+// moduleFor turns one input file into a METALS module, choosing the
+// producer by extension. This is the point where the format stops being
+// Gyro's private IR: a .lisp and a .metals arrive here as equals.
+func moduleFor(path string) (*metals.Module, error) {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	switch filepath.Ext(path) {
+	case ".lisp", ".scm":
+		return lisp.Compile(path, string(source))
+	case ".c":
+		return wasm.CompileC(path)
+	case ".wasm":
+		return wasm.Compile(path, source)
+	case ".metals":
+		module, err := metals.Parse(string(source))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", path, err)
+		}
+		return module, nil
+	}
+	return nil, fmt.Errorf("%s: not a module this compiler can read", path)
+}
+
+// runProduce runs one non-Gyro producer over its input and prints the
+// METALS it makes. `gyro lisp` and `gyro cc` are the same command with
+// different front ends behind moduleFor, which is the point.
+func runProduce(args []string) int {
 	if len(args) != 1 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
-	module, code := lowerFile(args[0])
-	if module == nil {
-		return code
+	module, err := moduleFor(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return 1
+	}
+	if err := metals.Verify(module); err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %s does not verify: %v\n", args[0], err)
+		return 1
 	}
 	fmt.Print(metals.Print(module))
 	return 0
+}
+
+// linkedModule turns the command line's inputs into the single verified
+// module the backends take: each input through its own producer, then the
+// linker. Inputs are in dependency order with the root last.
+func linkedModule(inputs []string) (*metals.Module, int) {
+	modules := make([]*metals.Module, len(inputs))
+	for i, path := range inputs {
+		if filepath.Ext(path) == ".gyro" {
+			module, code := lowerFile(path)
+			if module == nil {
+				return nil, code
+			}
+			modules[i] = module
+			continue
+		}
+
+		module, err := moduleFor(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+			return nil, 1
+		}
+		if err := metals.Verify(module); err != nil {
+			fmt.Fprintf(os.Stderr, "gyro: %s: %v\n", path, err)
+			return nil, 1
+		}
+		modules[i] = module
+	}
+
+	// Link runs even for a lone module: it is also where a module's
+	// initializer becomes the call at the top of main.
+	linked, err := metals.Link(modules)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
+		return nil, 1
+	}
+	if err := metals.Verify(linked); err != nil {
+		fmt.Fprintf(os.Stderr, "gyro: the linked program fails verification: %v\n", err)
+		return nil, 1
+	}
+	return linked, 0
 }
 
 // lowerFile loads, checks, lowers and verifies a program, the shared
@@ -219,11 +316,11 @@ func lowerFile(path string) (*metals.Module, int) {
 
 // runNasm lowers a program and prints its generated assembly.
 func runNasm(args []string) int {
-	if len(args) != 1 {
+	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
-	module, code := lowerFile(args[0])
+	module, code := linkedModule(args)
 	if module == nil {
 		return code
 	}
@@ -238,11 +335,11 @@ func runNasm(args []string) int {
 
 // runCgen lowers a program and prints its generated C.
 func runCgen(args []string) int {
-	if len(args) != 1 {
+	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
-	module, code := lowerFile(args[0])
+	module, code := linkedModule(args)
 	if module == nil {
 		return code
 	}
@@ -275,13 +372,14 @@ func runBuild(args []string) int {
 		}
 		inputs = append(inputs, args[i])
 	}
-	if len(inputs) != 1 || (backend != "nasm" && backend != "c") {
+	if len(inputs) == 0 || (backend != "nasm" && backend != "c") {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
 	if output == "" {
-		base := filepath.Base(inputs[0])
-		output = strings.TrimSuffix(base, ".gyro")
+		// The root is the last input, and it names the executable.
+		base := filepath.Base(inputs[len(inputs)-1])
+		output = strings.TrimSuffix(base, filepath.Ext(base))
 	}
 
 	toolchain, build := nasm.Toolchain, nasm.Build
@@ -292,7 +390,7 @@ func runBuild(args []string) int {
 		fmt.Fprintf(os.Stderr, "gyro: %v\n", err)
 		return 1
 	}
-	module, code := lowerFile(inputs[0])
+	module, code := linkedModule(inputs)
 	if module == nil {
 		return code
 	}

@@ -98,7 +98,7 @@ func (p *printer) node(node Node) {
 			p.line("Recv: %sself", pointerMark(n.Recv.Pointer))
 		}
 		for _, param := range n.Params {
-			p.group("Param "+param.Name, func() {
+			p.group("Param "+param.Name+variadicMark(param.Variadic), func() {
 				p.child("Type", param.Type)
 				p.child("Default", param.Default)
 			})
@@ -372,7 +372,7 @@ func (p *printer) node(node Node) {
 		p.line("%s", strings.TrimSpace("Closure "+asyncMark(n.Async)+captureListString(n.Captures)))
 		p.indent++
 		for _, param := range n.Params {
-			p.group("Param "+param.Name, func() {
+			p.group("Param "+param.Name+variadicMark(param.Variadic), func() {
 				p.child("Type", param.Type)
 				p.child("Default", param.Default)
 			})
@@ -407,6 +407,15 @@ func (p *printer) node(node Node) {
 	case *VariantPattern:
 		p.line("VariantPattern %s", pathString(n.Path))
 		p.indent++
+		for _, payload := range n.Payload {
+			p.node(payload)
+		}
+		p.indent--
+
+	case *TypeTestPattern:
+		p.line("TypeTestPattern")
+		p.indent++
+		p.child("Type", n.Type)
 		for _, payload := range n.Payload {
 			p.node(payload)
 		}
@@ -555,6 +564,9 @@ func (p *printer) args(args []Arg) {
 		if arg.Name != "" {
 			label = "Arg " + arg.Name
 		}
+		if arg.Spread {
+			label += " ..."
+		}
 		p.child(label, arg.Value)
 	}
 }
@@ -629,6 +641,15 @@ func exportMark(exported bool) string {
 func pointerMark(pointer bool) string {
 	if pointer {
 		return "*"
+	}
+	return ""
+}
+
+// variadicMark shows that a parameter's Type is the pack's element type
+// rather than the parameter's own.
+func variadicMark(variadic bool) string {
+	if variadic {
+		return " ..."
 	}
 	return ""
 }

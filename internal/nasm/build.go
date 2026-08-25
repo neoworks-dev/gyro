@@ -48,7 +48,22 @@ func Build(module *metals.Module, output string) error {
 	if err := runTool("nasm", "-felf64", asmPath, "-o", objectPath); err != nil {
 		return err
 	}
-	return runTool("cc", "-no-pie", "-O1", objectPath, runtimePath, "-o", output, "-lpthread", "-lm")
+
+	args := []string{"-no-pie", "-O1", objectPath, runtimePath}
+	shim, libraries := crt.Shim(module)
+	if shim != "" {
+		shimPath := filepath.Join(workDir, "ffi.c")
+		if err := os.WriteFile(shimPath, []byte(shim), 0o644); err != nil {
+			return fmt.Errorf("nasm: %w", err)
+		}
+		args = append(args, shimPath)
+	}
+
+	args = append(args, "-o", output, "-lpthread", "-lm")
+	for _, library := range libraries {
+		args = append(args, "-l"+library)
+	}
+	return runTool("cc", args...)
 }
 
 func runTool(name string, args ...string) error {

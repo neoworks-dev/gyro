@@ -516,6 +516,11 @@ func (idx *index) indexPattern(pattern ast.Pattern, regionStart, regionEnd int) 
 		for _, payload := range p.Payload {
 			idx.indexPattern(payload, regionStart, regionEnd)
 		}
+	case *ast.TypeTestPattern:
+		idx.indexType(p.Type)
+		for _, payload := range p.Payload {
+			idx.indexPattern(payload, regionStart, regionEnd)
+		}
 	case *ast.WildcardPattern, *ast.LiteralPattern:
 		// Nothing to anchor.
 	}

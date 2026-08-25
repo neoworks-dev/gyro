@@ -93,10 +93,10 @@ func (f *funcLowerer) globalPlace(decl *ast.VarDecl, name string) *place {
 	return nil
 }
 
-// emitGlobalInit builds the initializer function and puts a call to it at
-// the top of main. It runs after the rest is lowered, so an initializer
-// may call anything the program defines.
-func (l *lowerer) emitGlobalInit(mainName string) {
+// emitGlobalInit builds the initializer function and names it as the
+// module's. It runs after the rest is lowered, so an initializer may
+// call anything the program defines.
+func (l *lowerer) emitGlobalInit() {
 	if len(l.globals) == 0 {
 		return
 	}
@@ -123,18 +123,8 @@ func (l *lowerer) emitGlobalInit(mainName string) {
 	l.module.Funcs = append(l.module.Funcs, f.fn)
 	l.drain()
 
-	main := l.funcNamed(mainName)
-	if main == nil {
-		l.fail("the module has no %s to initialize globals from", mainName)
-	}
-	main.Body = append([]metals.Instr{&metals.Call{Callee: globalInitName}}, main.Body...)
-}
-
-func (l *lowerer) funcNamed(name string) *metals.Func {
-	for _, fn := range l.module.Funcs {
-		if fn.Name == name {
-			return fn
-		}
-	}
-	return nil
+	// The call is the linker's to place: a program is several modules
+	// often enough, and every one of them wants its storage written
+	// before main in the order they depend on each other.
+	l.module.Init = globalInitName
 }

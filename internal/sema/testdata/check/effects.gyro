@@ -60,6 +60,41 @@ fn trigger() {
   callSpeak(Shout{ n: 1 })
 }
 
+// A rowless generic callee is read through its instantiations, so it
+// contributes what the instantiated body reaches.
+fn relay<T>(v: T) {
+  v.speak()
+}
+
+fn callsRelay() !{} {
+  relay(Shout{ n: 2 })   //~ E0611 relay does io, which the row does not name
+}
+
+// The effect vocabulary is closed: io, alloc, and &name for a borrow.
+fn misspelled(n: i32) !{ ioo } {   //~ E0612 ioo is not an effect
+                                   //~^ help: the effects are io and alloc; a &name entry names a borrow source
+  var doubled = n * 2
+}
+
+// runes() and bytes() have no declaration to carry a row, so the built-in
+// surface answers for itself. Both copy into new storage.
+fn count(text: string): i32 !{} {
+  var seen = 0
+  for point in text.runes() {   //~ E0611 runes does alloc, which the row does not name
+    seen += 1
+  }
+  return seen
+}
+
+// A closure is held to the row it writes for itself. Calling one still
+// contributes nothing to the caller: a row cannot travel with a function
+// value until effect polymorphism.
+fn closureRow() {
+  var quiet = fn(n: i32) !{} {
+    println(n)           //~ E0611 println does io, which the row does not name
+  }
+}
+
 // The row that names what the body does checks clean.
 fn loud(message: string) !{ io, alloc } {
   println("message: #{message}")

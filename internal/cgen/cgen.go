@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gyro-lang/gyro/internal/crt"
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
@@ -31,27 +32,40 @@ func Generate(module *metals.Module) (source string, err error) {
 		regTypes:       registerTypes,
 		types:          map[string]*metals.TypeDecl{},
 		imports:        map[string]*metals.FnType{},
+		externSyms:     map[string]bool{},
 		funcs:          map[string]*metals.Func{},
 		typeNames:      map[string]string{},
 		building:       map[string]bool{},
 		symbols:        map[string]string{},
 		usedSyms:       map[string]bool{},
 		strLits:        map[string]string{},
+		anyTypes:       map[string]string{},
+		buildingAny:    map[string]bool{},
 		eqHelpers:      map[string]string{},
 		thunks:         map[string]string{},
 		indirectThunks: map[string]string{},
-		globals:        map[string]metals.Type{},
+		globals:        map[string]*metals.Global{},
 		globalSyms:     map[string]string{},
+		memories:       map[string]*metals.Memory{},
+		memorySyms:     map[string]string{},
 	}
 	for _, global := range module.Globals {
-		g.globals[global.Name] = global.Type
+		g.globals[global.Name] = global
+	}
+	for _, mem := range module.Memories {
+		g.memories[mem.Name] = mem
 	}
 	for _, decl := range module.Types {
 		g.types[decl.Name] = decl
 	}
+	g.layout = metals.NewLayout(module, g.fail)
 	for _, imp := range module.Imports {
+		library := metals.ExternLibrary(imp.Module)
 		for _, fn := range imp.Funcs {
 			g.imports[fn.Name] = fn.Sig
+			if library != "" {
+				g.externSyms[fn.Name] = true
+			}
 		}
 	}
 	for _, fn := range module.Funcs {
@@ -73,7 +87,10 @@ func Generate(module *metals.Module) (source string, err error) {
 	}
 
 	// Every signature is declared before any body, so the order the
-	// functions happen to be in never matters.
+	// functions happen to be in never matters. The foreign wrappers are
+	// compiled as their own translation unit, so they are declared here
+	// rather than defined.
+	g.decls.WriteString(crt.ShimDeclarations(module))
 	for _, fn := range module.Funcs {
 		fmt.Fprintf(&g.decls, "%s;\n", g.signature(fn))
 	}
@@ -89,8 +106,14 @@ type generator struct {
 	module   *metals.Module
 	regTypes map[string]map[string]metals.Type
 	types    map[string]*metals.TypeDecl
-	imports  map[string]*metals.FnType
-	funcs    map[string]*metals.Func
+	// layout answers every size, alignment and offset question, so that
+	// the two backends cannot pad a struct differently.
+	layout  *metals.Layout
+	imports map[string]*metals.FnType
+	funcs   map[string]*metals.Func
+	// externSyms holds the imports that name a C library's symbol rather
+	// than the runtime's, which are called through a generated wrapper.
+	externSyms map[string]bool
 
 	typedefs strings.Builder // generated struct typedefs
 	data     strings.Builder // string literals and module storage
@@ -99,13 +122,27 @@ type generator struct {
 
 	typeNames map[string]string // METALS type string -> C typedef name
 	building  map[string]bool   // cycle guard while a typedef is emitted
+	// stageN names the temporaries a narrow scalar crosses the runtime
+	// boundary through.
+	stageN int
 
-	globals    map[string]metals.Type
+	globals    map[string]*metals.Global
 	globalSyms map[string]string
+	memories   map[string]*metals.Memory
+	memorySyms map[string]string
 
 	symbols  map[string]string // METALS function name -> C identifier
 	usedSyms map[string]bool
 	strLits  map[string]string // decoded literal -> C identifier
+
+	// anyTypes interns one descriptor per type the program wraps or
+	// tests, so that identity is structural equality; anyData holds the
+	// descriptors and field tables, anyText the apply trampolines.
+	anyTypes    map[string]string
+	buildingAny map[string]bool
+	anyData     strings.Builder
+	anyText     strings.Builder
+	anyN        int
 
 	eqHelpers map[string]string // type string -> helper name
 	thunks    map[string]string // async callee -> thunk name
@@ -144,6 +181,11 @@ func (g *generator) assemble() string {
 	if g.data.Len() > 0 {
 		out.WriteString("\n/* ---------------- constants and module storage ---------------- */\n\n")
 		out.WriteString(g.data.String())
+	}
+	if g.anyData.Len() > 0 {
+		out.WriteString("\n/* ---------------- any descriptors ---------------- */\n\n")
+		out.WriteString(g.anyData.String())
+		out.WriteString(g.anyText.String())
 	}
 	out.WriteString("\n/* ---------------- declarations ---------------- */\n\n")
 	out.WriteString(g.decls.String())
@@ -212,22 +254,52 @@ func uniqueSymbol(base string, used map[string]bool) string {
 	}
 }
 
-// globalSymbol names module storage, reserving it on first use. Every
-// global is zero-initialized: METALS carries no initializer, so the front
-// end runs one before main.
+// globalSymbol names module storage, reserving it on first use. A global
+// with no static image is zero-initialized, which C gives a file-scope
+// object for free.
 func (g *generator) globalSymbol(name string) string {
 	if symbol, ok := g.globalSyms[name]; ok {
 		return symbol
 	}
-	typ, ok := g.globals[name]
+	global, ok := g.globals[name]
 	if !ok {
 		g.fail("no global @%s", name)
 	}
 	symbol := uniqueSymbol("G_"+sanitize(name), g.usedSyms)
 	g.usedSyms[symbol] = true
-	g.globalSyms[name] = symbol
-	fmt.Fprintf(&g.data, "static %s %s; /* @%s */\n", g.cType(typ), symbol, comment(name))
-	return symbol
+
+	// Module storage is addressed through global.ptr, so it holds storage
+	// the way a slot does.
+	spelling := g.memberType(global.Type)
+	if global.Bytes == nil {
+		g.globalSyms[name] = symbol
+		fmt.Fprintf(&g.data, "static %s %s; /* @%s */\n", spelling, symbol, comment(name))
+		return symbol
+	}
+
+	// A static image is bytes, and C has no way to spell an object of an
+	// arbitrary type as bytes — except through the first member of a
+	// union, which is initialized statically and aliases the rest. The
+	// object is that union's second member, so every reference to it
+	// stays typed and the image stays a compile-time constant.
+	storage := symbol + "_store"
+	g.usedSyms[storage] = true
+	fmt.Fprintf(&g.data, "static union { unsigned char image[%d]; %s value; } %s = { { ",
+		len(global.Bytes), spelling, storage)
+	for i, b := range global.Bytes {
+		if i > 0 {
+			g.data.WriteString(", ")
+		}
+		fmt.Fprintf(&g.data, "%d", b)
+	}
+	fmt.Fprintf(&g.data, " } }; /* @%s */\n", comment(name))
+	fmt.Fprintf(&g.data, "_Static_assert(sizeof(%s) == %d, %s);\n",
+		spelling, len(global.Bytes), cStringLiteral("storage image for @"+name))
+
+	// The name the rest of the file uses is the typed member, so
+	// global.ptr takes its address the way it takes any other global's.
+	g.globalSyms[name] = storage + ".value"
+	return g.globalSyms[name]
 }
 
 // strLiteral interns a string constant as a { len, bytes } blob shaped
@@ -374,9 +446,17 @@ func (g *generator) genEntry() {
 		g.fail("main takes %d parameters", len(main.Params))
 	}
 
+	// Linear memory comes up here rather than in a constructor: this is
+	// the one point the runtime hands control to generated code, so it is
+	// where "before anything runs" is a thing that can be said.
+	setup := g.genMemoryInit()
+
 	g.raw("\nvoid gy_user_main(void *args);")
 	g.raw("void gy_user_main(void *args) {")
 	g.line("(void)args;")
+	for _, statement := range setup {
+		g.line("%s", statement)
+	}
 	g.line("%s(%s);", g.symbolFor("main"), argument)
 	g.raw("}")
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
+	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/parser"
 	"github.com/gyro-lang/gyro/internal/stdlib"
 )
@@ -27,6 +28,11 @@ type Module struct {
 	// Deps maps each import specifier written in this module to the module
 	// it resolved to. Re-export paths count as imports.
 	Deps map[string]*Module
+	// Foreign is the compiled METALS of a module another language
+	// produced, and nil for an ordinary Gyro module. Tree then holds the
+	// generated body-less declarations the checker sees instead of
+	// source the user wrote.
+	Foreign *metals.Module
 }
 
 // Program is a root module plus everything it transitively imports.
@@ -156,9 +162,50 @@ func (s *loadState) dependency(from *Module, specifier string, offset int) {
 
 	target, ok := s.modules[path]
 	if !ok {
-		target = s.add(path, source)
+		if foreignProducer(path) != "" {
+			target = s.addForeign(path, source, from, offset)
+			if target == nil {
+				return
+			}
+		} else {
+			target = s.add(path, source)
+		}
 	}
 	from.Deps[specifier] = target
+}
+
+// addForeign compiles a module another language produced and files it as
+// an ordinary dependency. Its failures are reported at the import that
+// pulled it in, since that is the line the reader is looking at.
+func (s *loadState) addForeign(path, source string, from *Module, offset int) *Module {
+	compiled, err := compileForeign(path, source)
+	if err == nil {
+		var text string
+		if text, err = header(compiled); err == nil {
+			module := &Module{
+				Path:    path,
+				File:    diag.NewFile(displayPath(path), text),
+				Deps:    map[string]*Module{},
+				Foreign: compiled,
+			}
+			s.bag.Track(module.File)
+			s.modules[path] = module
+			// The generated text is Gyro, so the ordinary parser reads
+			// it; a failure here would be this compiler's bug, and the
+			// diagnostics say so by pointing into generated source.
+			module.Tree = parser.ParseFile(module.File, s.bag)
+			s.order = append(s.order, module)
+			return module
+		}
+	}
+
+	s.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     diag.EModuleUnreadable,
+		Pos:      from.File.Position(offset),
+		Message:  err.Error(),
+	})
+	return nil
 }
 
 // cycleTrace renders the loading chain from the repeated module back to

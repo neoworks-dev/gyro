@@ -34,3 +34,12 @@ fn assignability(ch: chan<(string, error?)>) {
 fn badSend(ch: chan<(string, error?)>) {
   ch <- (1, null)                //~ cannot use
 }
+
+// An element takes the type its position asks for, negation included.
+fn negativeElement(): (i64, i64) {
+  return (-1, 0)
+}
+
+fn negativeElementTooSmall(): (u8, i64) {
+  return (-1, 0)                 //~ E0502 the literal -1 does not fit u8
+}

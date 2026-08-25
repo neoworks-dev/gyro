@@ -68,6 +68,45 @@ func (p *parser) regList() ([]string, error) {
 	return out, nil
 }
 
+// memAccess reads the shared tail of a load and a store: the width
+// suffix's primitive, the memory it names, and the address register.
+func (p *parser) memAccess(width string) (*Prim, string, string, error) {
+	prim, ok := Prims[width]
+	if !ok {
+		return nil, "", "", p.errf("unknown access width %q", width)
+	}
+	memory, err := p.global()
+	if err != nil {
+		return nil, "", "", err
+	}
+	if err := p.punct(","); err != nil {
+		return nil, "", "", err
+	}
+	addr, err := p.reg()
+	if err != nil {
+		return nil, "", "", err
+	}
+	return prim, memory, addr, nil
+}
+
+// memTriple reads `@mem, %a, %b, %c`, the shape mem.copy and mem.fill
+// share.
+func (p *parser) memTriple() (memory string, a, b, c string, err error) {
+	if memory, err = p.global(); err != nil {
+		return
+	}
+	regs := []*string{&a, &b, &c}
+	for _, out := range regs {
+		if err = p.punct(","); err != nil {
+			return
+		}
+		if *out, err = p.reg(); err != nil {
+			return
+		}
+	}
+	return
+}
+
 // line finishes a simple instruction.
 func (p *parser) line(instr Instr, err error) (Instr, error) {
 	if err != nil {
@@ -97,6 +136,13 @@ func (p *parser) dstInstr() (Instr, error) {
 	if elem, ok := cutPrefix(op.text, "const."); ok {
 		return p.constInstr(dst, elem)
 	}
+	if width, ok := cutPrefix(op.text, "mem.load."); ok {
+		prim, memory, addr, err := p.memAccess(width)
+		if err != nil {
+			return nil, err
+		}
+		return p.line(&MemLoad{Dst: dst, Memory: memory, Addr: addr, Type: prim}, nil)
+	}
 	if _, ok := BinOps[op.text]; ok {
 		a, err := p.reg()
 		if err != nil {
@@ -115,7 +161,7 @@ func (p *parser) dstInstr() (Instr, error) {
 
 	switch op.text {
 	case "copy", "load", "len", "slice.of", "variant.tag", "recv", "await",
-		"opt.wrap", "opt.unwrap", "dyn.wrap":
+		"opt.wrap", "opt.unwrap", "any.wrap":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -130,11 +176,11 @@ func (p *parser) dstInstr() (Instr, error) {
 			"await":       &Await{Dst: dst, X: x},
 			"opt.wrap":    &OptWrap{Dst: dst, X: x},
 			"opt.unwrap":  &OptUnwrap{Dst: dst, X: x},
-			"dyn.wrap":    &DynWrap{Dst: dst, X: x},
+			"any.wrap":    &AnyWrap{Dst: dst, X: x},
 		}
 		return p.line(single[op.text], nil)
 
-	case "conv", "dyn.unwrap":
+	case "conv", "trunc", "bitcast", "any.unwrap", "any.is":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -146,10 +192,35 @@ func (p *parser) dstInstr() (Instr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if op.text == "conv" {
+		switch op.text {
+		case "conv":
 			return p.line(&Conv{Dst: dst, X: x, To: to}, nil)
+		case "trunc":
+			return p.line(&Trunc{Dst: dst, X: x, To: to}, nil)
+		case "bitcast":
+			return p.line(&Bitcast{Dst: dst, X: x, To: to}, nil)
+		case "any.is":
+			return p.line(&AnyIs{Dst: dst, X: x, To: to}, nil)
 		}
-		return p.line(&DynUnwrap{Dst: dst, X: x, To: to}, nil)
+		return p.line(&AnyUnwrap{Dst: dst, X: x, To: to}, nil)
+
+	case "mem.size":
+		name, err := p.global()
+		if err != nil {
+			return nil, err
+		}
+		return p.line(&MemSize{Dst: dst, Memory: name}, nil)
+
+	case "mem.grow":
+		name, err := p.global()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		pages, err := p.reg()
+		return p.line(&MemGrow{Dst: dst, Memory: name, Pages: pages}, err)
 
 	case "global.ptr":
 		name, err := p.global()
@@ -167,6 +238,27 @@ func (p *parser) dstInstr() (Instr, error) {
 			return p.line(&Slot{Dst: dst, Type: typ}, nil)
 		}
 		return p.line(&New{Dst: dst, Type: typ}, nil)
+
+	case "elem.ptr":
+		x, err := p.reg()
+		return p.line(&ElemPtr{Dst: dst, Ptr: x}, err)
+
+	case "ptr.offset", "ptr.diff":
+		a, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		b, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if op.text == "ptr.offset" {
+			return p.line(&PtrOffset{Dst: dst, Ptr: a, N: b}, nil)
+		}
+		return p.line(&PtrDiff{Dst: dst, A: a, B: b}, nil)
 
 	case "field.ptr", "field.get", "tuple.get":
 		x, err := p.reg()
@@ -310,15 +402,15 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		return p.line(made, nil)
 
-	case "dyn.call":
+	case "any.call":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
 		}
 		args, err := p.regList()
-		return p.line(&DynCall{Dst: dst, X: x, Args: args}, err)
+		return p.line(&AnyCall{Dst: dst, X: x, Args: args}, err)
 
-	case "dyn.get":
+	case "any.get":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -328,9 +420,9 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		name := p.scan.next()
 		if name.kind != tString {
-			return nil, p.errf("dyn.get wants a quoted name")
+			return nil, p.errf("any.get wants a quoted name")
 		}
-		return p.line(&DynGet{Dst: dst, X: x, Name: name.text}, nil)
+		return p.line(&AnyGet{Dst: dst, X: x, Name: name.text}, nil)
 	}
 	return nil, p.errf("unknown opcode %q", op.text)
 }
@@ -366,7 +458,29 @@ func (p *parser) constInstr(dst, suffix string) (Instr, error) {
 func (p *parser) stmtInstr(op string) (Instr, error) {
 	p.scan.next() // the opcode word
 
+	if width, ok := cutPrefix(op, "mem.store."); ok {
+		prim, memory, addr, err := p.memAccess(width)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		val, err := p.reg()
+		return p.line(&MemStore{Memory: memory, Addr: addr, Val: val, Type: prim}, err)
+	}
+
 	switch op {
+	case "mem.copy", "mem.fill":
+		memory, a, b, c, err := p.memTriple()
+		if err != nil {
+			return nil, err
+		}
+		if op == "mem.copy" {
+			return p.line(&MemCopy{Memory: memory, To: a, From: b, Len: c}, nil)
+		}
+		return p.line(&MemFill{Memory: memory, To: a, Byte: b, Len: c}, nil)
+
 	case "free", "chan.close":
 		x, err := p.reg()
 		if err != nil {
@@ -475,7 +589,7 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		label, err := p.label()
 		return p.line(&BrIf{Cond: cond, Label: label}, err)
 
-	case "dyn.set":
+	case "any.set":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -485,13 +599,13 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		}
 		name := p.scan.next()
 		if name.kind != tString {
-			return nil, p.errf("dyn.set wants a quoted name")
+			return nil, p.errf("any.set wants a quoted name")
 		}
 		if err := p.punct(","); err != nil {
 			return nil, err
 		}
 		val, err := p.reg()
-		return p.line(&DynSet{X: x, Name: name.text, Val: val}, err)
+		return p.line(&AnySet{X: x, Name: name.text, Val: val}, err)
 
 	case "if":
 		return p.ifInstr()

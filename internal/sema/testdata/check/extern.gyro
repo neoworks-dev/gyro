@@ -1,0 +1,93 @@
+// @extern says a declaration comes from a C library. What it may sit on
+// and what its signature may carry are both narrow, because a value that
+// crosses a foreign boundary is copied into C's own representation and
+// there is only so much that can be.
+//
+// A declaration starts at its decorator, so these diagnostics land on the
+// @extern line and the markers claim it from the line below.
+
+// The shapes that are right, so the errors below are about what changed
+// and not about the feature being unusable.
+@extern("m")
+fn sqrt(value: f64): f64 !{}
+
+@extern("c", symbol = "abs")
+fn absolute(value: i32): i32 !{}
+
+@extern("SDL2")
+struct Window {}
+
+@extern("SDL2")
+fn SDL_CreateWindow(title: string, width: i32, height: i32): Window? !{ io, alloc }
+
+@extern("SDL2")
+fn SDL_DestroyWindow(window: Window) !{ io }
+
+@extern("c")
+fn memcmp(a: u8[], b: u8[], size: usize): i32 !{}
+
+// ---------------------------------------------------------------------
+// The declaration itself
+
+@extern("c")
+fn written(): i32 !{} {   //~^ E0613 @extern written has a body; a foreign function is declared, not written
+  return 0
+}
+
+@extern("c")
+fn Window::show(self) !{ io }   //~^ E0613 @extern show is a method; C has no receiver to bind
+
+@extern("c")
+fn pick<T>(value: T): T !{}     //~^ E0613 @extern pick is generic; a library exports one symbol, not a family
+
+@extern("c")
+fn later(): i32                 //~^ E0613 @extern later states no effect row
+                                //~^^ help: there is no body to read, so an unstated row is assumed to do everything
+
+@extern("c")
+fn many(values: ...i32) !{}     //~^ E0613 @extern many is variadic; C's varargs do not have one calling convention
+
+@extern("c")
+fn two(): (i32, i32) !{}        //~^ E0613 @extern two returns several values; a C function returns one
+
+@extern("c")
+struct Pixel {                  //~^ E0613 @extern struct Pixel declares fields
+  x: i32
+}
+
+@extern
+fn nameless(): i32 !{}          //~^ E0613 @extern names the library it links from
+
+@extern("c", "abs")
+fn wrong_second(): i32 !{}      //~^ E0613 @extern's second argument is symbol = "the_c_name"
+
+// ---------------------------------------------------------------------
+// The signature
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+// A struct of scalars is the same bytes C lays out, so it crosses.
+@extern("c")
+fn move_point(p: Point) !{}
+
+// A field C cannot read is what stops one, and the diagnostic names the
+// field's type rather than the struct's.
+struct Labelled {
+  name: string
+  at: Point
+}
+
+@extern("c")
+fn label(l: Labelled) !{}       //~ E0614 parameter l cannot cross to C: a string field is a pointer to Gyro's own header, which C cannot read
+
+@extern("c")
+fn through(p: *i32) !{}         //~ E0614 parameter p cannot cross to C: a pointer would be shared mutable memory, which the boundary does not have
+
+@extern("c")
+fn maybe(value: i32?) !{}       //~ E0614 parameter value cannot cross to C: only an @extern struct may be nullable; null is C's null pointer and nothing else
+
+@extern("c")
+fn tagged(value: any) !{}       //~ E0614 parameter value cannot cross to C: any carries a Gyro type tag C cannot read

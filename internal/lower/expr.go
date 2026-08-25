@@ -146,13 +146,34 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.ClosureExpr:
 		return f.evalClosure(e)
 	case *ast.CastExpr:
-		value := f.lowerExpr(e.X, nil)
-		out := f.newReg("cast")
-		f.emit(&metals.Conv{Dst: out, X: value, To: f.l.metalsType(f.typeOf(e))})
-		return out
+		return f.lowerCast(e)
 	}
 	f.l.fail("@%s: cannot lower a %T expression", f.fn.Name, e)
 	return ""
+}
+
+// lowerCast handles `as`, which is three operations sharing a spelling: a
+// numeric conversion, a wrap into an any, and a checked unwrap out of one.
+func (f *funcLowerer) lowerCast(e *ast.CastExpr) string {
+	from := f.typeOf(e.X)
+	to := f.typeOf(e)
+	value := f.lowerExpr(e.X, nil)
+
+	switch {
+	case isAnyType(to):
+		return f.wrapAny(value, from)
+	case isAnyType(from):
+		return f.unwrapAny(value, to)
+	}
+
+	out := f.newReg("cast")
+	f.emit(&metals.Conv{Dst: out, X: value, To: f.l.metalsType(to)})
+	return out
+}
+
+func isAnyType(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Kind == types.AnyKind
 }
 
 // ---------------------------------------------------------------------------
@@ -826,6 +847,14 @@ func (f *funcLowerer) display(e ast.Expr) string {
 // displayReg converts an already-evaluated value to its display string. A
 // composite has a synthesized repr; the runtime answers for the leaves.
 func (f *funcLowerer) displayReg(value string, t types.Type) string {
+	if isAnyType(t) {
+		// An any shows what is inside it at the same nesting level, so a
+		// packed string prints raw exactly as it would unpacked.
+		f.l.ensureAnyPrinter(anyDisplayName)
+		out := f.newReg("shown")
+		f.emit(&metals.Call{Dst: out, Callee: anyDisplayName, Args: []string{value}})
+		return out
+	}
 	name := f.l.reprFor(t)
 	if name == "" {
 		name = "str<" + t.String() + ">"

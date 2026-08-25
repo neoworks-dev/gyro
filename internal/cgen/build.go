@@ -49,8 +49,21 @@ func Build(module *metals.Module, output string) error {
 		return fmt.Errorf("cgen: %w", err)
 	}
 
-	return runTool("cc", "-O1", "-fno-strict-aliasing", programPath, runtimePath,
-		"-o", output, "-lpthread", "-lm")
+	args := []string{"-O1", "-fno-strict-aliasing", programPath, runtimePath}
+	shim, libraries := crt.Shim(module)
+	if shim != "" {
+		shimPath := filepath.Join(workDir, "ffi.c")
+		if err := os.WriteFile(shimPath, []byte(shim), 0o644); err != nil {
+			return fmt.Errorf("cgen: %w", err)
+		}
+		args = append(args, shimPath)
+	}
+
+	args = append(args, "-o", output, "-lpthread", "-lm")
+	for _, library := range libraries {
+		args = append(args, "-l"+library)
+	}
+	return runTool("cc", args...)
 }
 
 func runTool(name string, args ...string) error {

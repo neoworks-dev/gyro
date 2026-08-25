@@ -1,5 +1,5 @@
 // mem — declarations only; the runtime supplies the bodies.
 
 export fn alloc<T>(): *T !{ alloc }
-export fn free<T>(pointer: *T)
-export fn size<T>(): usize
+export fn free<T>(pointer: *T) !{}
+export fn size<T>(): usize !{}

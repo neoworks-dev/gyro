@@ -431,5 +431,9 @@ func (c *hintCollector) collectPattern(pattern ast.Pattern) {
 		for _, payload := range p.Payload {
 			c.collectPattern(payload)
 		}
+	case *ast.TypeTestPattern:
+		for _, payload := range p.Payload {
+			c.collectPattern(payload)
+		}
 	}
 }

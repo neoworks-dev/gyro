@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
@@ -236,7 +237,50 @@ func (c *checker) adaptUntyped(e ast.Expr, t types.Type, want types.Type) types.
 		}
 	}
 	c.record(e, basic)
+	c.pushUntyped(e, basic)
 	return basic
+}
+
+// pushUntyped drives a context type into the untyped operands of an
+// untyped compound expression. Recording the expression alone is not
+// enough: lowering asks for the type of every operand it emits, and one
+// still carrying UntypedInt is emitted at the i32 default. That is how
+// `a & (0xff >> b)` with a u32 `a` reached METALS as `shr i32, u32`, and
+// how `var x: i64 = 1 << 40` came out an i32 shift in the interpreter.
+//
+// A shift takes the type of its left operand only — the count keeps its
+// own, as `shift` decided.
+func (c *checker) pushUntyped(e ast.Expr, target *types.Basic) {
+	// A folded expression emits its value and never its operands, and
+	// only the folded value has to fit: `var x: i8 = -128` is legal even
+	// though 128 alone is not an i8.
+	if _, folded := c.consts[e]; folded {
+		return
+	}
+	switch e := e.(type) {
+	case *ast.BinaryExpr:
+		c.adaptUntyped(e.X, c.recordedType(e.X), target)
+		if e.Op != token.Shl && e.Op != token.Shr {
+			c.adaptUntyped(e.Y, c.recordedType(e.Y), target)
+		}
+	case *ast.UnaryExpr:
+		switch e.Op {
+		case token.Minus, token.Tilde:
+			c.adaptUntyped(e.X, c.recordedType(e.X), target)
+		}
+	}
+}
+
+// defaultExpr settles an untyped literal that no context type decided:
+// integers become i32 and floats f64. Defaulting is a type decision like
+// any other, so the value still has to fit — without this a declaration
+// binds a name whose type cannot hold its own initializer, and every tier
+// agrees on a number the type says is impossible.
+func (c *checker) defaultExpr(e ast.Expr, t types.Type) types.Type {
+	if e == nil || (!isUntypedInt(t) && !isUntypedFloat(t)) {
+		return types.Default(t)
+	}
+	return c.adaptUntyped(e, t, types.Default(t))
 }
 
 func isUntypedInt(t types.Type) bool {
@@ -754,7 +798,7 @@ func (c *checker) arrayLit(e *ast.ArrayLit, want types.Type) types.Type {
 			c.assignValue(element.Pos(), element, t, elemWant, "the array literal")
 			continue
 		}
-		t = types.Default(t)
+		t = c.defaultExpr(element, t)
 		if elem == nil {
 			elem = t
 			continue
@@ -785,7 +829,17 @@ func (c *checker) tupleLit(e *ast.TupleLit, want types.Type) types.Type {
 		if wantTuple != nil && i < len(wantTuple.Elems) {
 			elemWant = wantTuple.Elems[i]
 		}
-		elems[i] = types.Default(c.exprWith(element, elemWant))
+		t := c.exprWith(element, elemWant)
+		if elemWant != nil {
+			// Adapt rather than default: `-1` is a literal behind a
+			// negation, and only adapting carries the element's type
+			// through it. Defaulting here typed `(-1, 0)` as `(i32,
+			// i64)` where `(i64, i64)` was asked for.
+			c.assignValue(element.Pos(), element, t, elemWant, "the tuple literal")
+			elems[i] = elemWant
+			continue
+		}
+		elems[i] = c.defaultExpr(element, t)
 	}
 	return &types.Tuple{Elems: elems}
 }
@@ -1075,12 +1129,78 @@ func (c *checker) castExpr(e *ast.CastExpr) types.Type {
 	if flexible(value) || flexible(target) {
 		return target
 	}
+
+	// `as` is also how a value enters and leaves an any. Wrapping takes
+	// anything with a value; unwrapping names the type it must hold and
+	// panics at runtime when it holds another.
+	if isAnyBasic(target) {
+		payload := c.defaultExpr(e.X, value)
+		if !anyPayload(payload) {
+			c.errorf(e.Offset, "an any cannot hold %s", describeType(value))
+		}
+		c.record(e.X, payload)
+		return target
+	}
+	if isAnyBasic(value) {
+		if !anyPayload(target) {
+			c.errorf(e.Offset, "an any cannot hold %s, so it cannot be unwrapped to one", target)
+		}
+		return target
+	}
+
 	if !castable(value) || !castable(target) {
 		c.errorf(e.Offset, "as converts between numeric types and rune; %s as %s does not",
 			describeType(value), target)
 		return target
 	}
 	return target
+}
+
+// anyPayload reports whether a type can be wrapped in an any. What it
+// excludes is what cannot be asked for again on the way out. void and null
+// carry no value; an any is one already; `error` and `T?` hide the very
+// concrete type an any is meant to be sure of; a channel, a future, a
+// function value and a runtime handle are references whose type the
+// interpreter cannot recover from the value at hand.
+//
+// Everything else can, including the types no path can spell: a tuple, a
+// slice, an array and a pointer are tested by walking their shape, and
+// written in a match arm as `(i32, string)(pair)`.
+func anyPayload(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Basic:
+		switch t.Kind {
+		case types.VoidKind, types.NullKind, types.AnyKind, types.ErrorKind:
+			return false
+		}
+		return true
+	case *types.Struct:
+		return !isRuntimeHandle(t)
+	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.TypeParam:
+		return false
+	case *types.Pointer:
+		return anyPayload(t.Elem)
+	case *types.Slice:
+		return anyPayload(t.Elem)
+	case *types.Array:
+		return anyPayload(t.Elem)
+	case *types.Tuple:
+		for _, elem := range t.Elems {
+			if !anyPayload(elem) {
+				return false
+			}
+		}
+		return true
+	}
+	return true
+}
+
+// isRuntimeHandle reports a bundled struct the runtime owns — Array,
+// Mutex, File. It has no fields to carry, so it is a reference the runtime
+// hands out, and putting one in an any would copy a handle rather than a
+// value.
+func isRuntimeHandle(t *types.Struct) bool {
+	return stdlib.IsBundled(t.Module) && len(t.Fields) == 0
 }
 
 func castable(t types.Type) bool {
@@ -1152,7 +1272,7 @@ func (c *checker) matchArm(arm ast.MatchArm, subject, want, result types.Type) (
 		return armCoverage, result
 	}
 
-	armType := types.Default(c.exprWith(exprStmt.X, want))
+	armType := c.defaultExpr(exprStmt.X, c.exprWith(exprStmt.X, want))
 	if types.Identical(armType, types.Void) || flexible(armType) {
 		return armCoverage, result
 	}
@@ -1282,7 +1402,7 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 				sig.Result = result
 			}
 			if e.BodyExpr != nil {
-				bodyType := types.Default(c.exprWith(e.BodyExpr, result))
+				bodyType := c.defaultExpr(e.BodyExpr, c.exprWith(e.BodyExpr, result))
 				if result == nil {
 					sig.Result = bodyType
 				} else {

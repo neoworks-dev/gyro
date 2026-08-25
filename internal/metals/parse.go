@@ -127,9 +127,9 @@ func (s *scanner) scan() token {
 			return token{kind: tArrow, text: "->"}
 		}
 		s.pos++
-		return token{kind: tNumber, text: "-" + s.word()}
+		return token{kind: tNumber, text: "-" + s.number()}
 	case ch >= '0' && ch <= '9':
-		return token{kind: tNumber, text: s.word()}
+		return token{kind: tNumber, text: s.number()}
 	case isWordStart(rune(ch)):
 		return token{kind: tWord, text: s.word()}
 	}
@@ -154,6 +154,29 @@ func (s *scanner) word() string {
 		break
 	}
 	return s.src[start:s.pos]
+}
+
+// number scans a numeric body. `word` stops at a sign, so a float with a
+// signed exponent — `const.f64 1e-09`, which is what a small literal
+// prints as — would come apart into two tokens and the line would not
+// reparse. A sign directly after a trailing `e` belongs to the number.
+func (s *scanner) number() string {
+	text := s.word()
+	if text == "" || (text[len(text)-1] != 'e' && text[len(text)-1] != 'E') {
+		return text
+	}
+	if s.pos >= len(s.src) || (s.src[s.pos] != '+' && s.src[s.pos] != '-') {
+		return text
+	}
+
+	sign := s.pos
+	s.pos++
+	digits := s.word()
+	if digits == "" {
+		s.pos = sign
+		return text
+	}
+	return text + s.src[sign:sign+1] + digits
 }
 
 func (s *scanner) scanString() token {
@@ -299,8 +322,14 @@ func (p *parser) module() (*Module, error) {
 			err = p.importDecl(m)
 		case "type":
 			err = p.typeDecl(m)
+		case "memory":
+			err = p.memoryDecl(m)
+		case "data":
+			err = p.dataDecl(m)
 		case "global":
 			err = p.globalDecl(m)
+		case "init":
+			err = p.initDecl(m)
 		case "export", "async", "fn":
 			err = p.funcDecl(m)
 		default:
@@ -484,6 +513,53 @@ func (p *parser) enumShape(decl *TypeDecl) error {
 	return nil
 }
 
+func (p *parser) memoryDecl(m *Module) error {
+	p.scan.next() // memory
+	name, err := p.global()
+	if err != nil {
+		return err
+	}
+	min, err := p.intLit()
+	if err != nil {
+		return err
+	}
+	mem := &Memory{Name: name, Min: int64(min)}
+	if p.atPunct(",") {
+		p.scan.next()
+		max, err := p.intLit()
+		if err != nil {
+			return err
+		}
+		mem.Max = int64(max)
+	}
+	m.Memories = append(m.Memories, mem)
+	return p.endOfLine()
+}
+
+func (p *parser) dataDecl(m *Module) error {
+	p.scan.next() // data
+	name, err := p.global()
+	if err != nil {
+		return err
+	}
+	if err := p.punct(","); err != nil {
+		return err
+	}
+	offset, err := p.intLit()
+	if err != nil {
+		return err
+	}
+	if err := p.punct(","); err != nil {
+		return err
+	}
+	bytes := p.scan.next()
+	if bytes.kind != tString {
+		return p.errf("data wants its quoted contents, found %q", bytes.text)
+	}
+	m.Data = append(m.Data, &DataSeg{Memory: name, Offset: int64(offset), Bytes: []byte(bytes.text)})
+	return p.endOfLine()
+}
+
 func (p *parser) globalDecl(m *Module) error {
 	p.scan.next() // global
 	name, err := p.global()
@@ -497,7 +573,29 @@ func (p *parser) globalDecl(m *Module) error {
 	if err != nil {
 		return err
 	}
-	m.Globals = append(m.Globals, &Global{Name: name, Type: typ})
+	global := &Global{Name: name, Type: typ}
+	if p.atPunct("=") {
+		p.scan.next()
+		image := p.scan.next()
+		if image.kind != tString {
+			return p.errf("a global's initial storage is a quoted byte string")
+		}
+		global.Bytes = []byte(image.text)
+	}
+	m.Globals = append(m.Globals, global)
+	return p.endOfLine()
+}
+
+func (p *parser) initDecl(m *Module) error {
+	p.scan.next() // init
+	if m.Init != "" {
+		return p.errf("a module has at most one init")
+	}
+	name, err := p.global()
+	if err != nil {
+		return err
+	}
+	m.Init = name
 	return p.endOfLine()
 }
 
@@ -593,8 +691,8 @@ func (p *parser) typeExpr() (Type, error) {
 	}
 
 	switch tok.text {
-	case "dyn":
-		return &Dyn{}, nil
+	case "any":
+		return &Any{}, nil
 	case "handle":
 		return &Handle{}, nil
 	case "ptr":

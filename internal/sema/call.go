@@ -196,14 +196,108 @@ func (c *checker) checkPlainCall(call *ast.CallExpr, sig *types.Func, name strin
 
 	for i, arg := range call.Args {
 		c.checkNamedArg(arg)
-		if i < len(sig.Params) {
-			c.assignExpr(arg.Value, sig.Params[i], argContext(i, name))
-		} else {
+		target, ok := c.paramTarget(call, sig, i, name)
+		if !ok {
 			c.expr(arg.Value)
+			continue
 		}
+		c.assignArg(call, sig, i, target, argContext(i, name))
 	}
 	c.recordCall(call, &CallInfo{Sig: sig})
 	return futureWrap(sig)
+}
+
+// packIndex is the position of the variadic parameter, or -1.
+func packIndex(sig *types.Func) int {
+	if !sig.Variadic || len(sig.Params) == 0 {
+		return -1
+	}
+	return len(sig.Params) - 1
+}
+
+// paramTypeAt gives the type argument i is checked against. Arguments at
+// and past a variadic parameter check against its element type, because
+// each one becomes an element — unless the argument spreads, which passes
+// a whole pack and so checks against the slice itself.
+func paramTypeAt(sig *types.Func, i int, spread bool) types.Type {
+	if pack := packIndex(sig); pack >= 0 && i >= pack {
+		slice, ok := sig.Params[pack].(*types.Slice)
+		if !ok {
+			return types.Unknown
+		}
+		if spread {
+			return slice
+		}
+		return slice.Elem
+	}
+	if i < len(sig.Params) {
+		return sig.Params[i]
+	}
+	return types.Unknown
+}
+
+// paramTarget resolves the parameter type for argument i and reports the
+// spread mistakes on the way.
+func (c *checker) paramTarget(call *ast.CallExpr, sig *types.Func, i int, name string) (types.Type, bool) {
+	pack := packIndex(sig)
+	if pack >= 0 && i >= pack {
+		c.checkSpread(call, i, pack, name)
+		return paramTypeAt(sig, i, call.Args[i].Spread), true
+	}
+	if call.Args[i].Spread {
+		c.errorf(call.Args[i].Offset, "%s has no variadic parameter to spread into", name)
+	}
+	if i < len(sig.Params) {
+		return sig.Params[i], true
+	}
+	return nil, false
+}
+
+// checkSpread validates a trailing `...` at a pack position and reports
+// whether this argument spreads.
+func (c *checker) checkSpread(call *ast.CallExpr, i, pack int, name string) bool {
+	if !call.Args[i].Spread {
+		return false
+	}
+	if i != pack || i != len(call.Args)-1 {
+		c.errorf(call.Args[i].Offset, "a spread argument is the whole pack, so it must be the only one %s receives for it", name)
+	}
+	return true
+}
+
+// assignArg checks one argument against its parameter type. Packing into
+// an `any` element is the language's one implicit conversion: the argument
+// keeps its own type and the call wraps it. An ordinary `any` parameter
+// gets no such favour — it takes `as any` like every other assignment.
+func (c *checker) assignArg(call *ast.CallExpr, sig *types.Func, i int, target types.Type, context string) {
+	arg := call.Args[i]
+	if isAnyBasic(target) && isPacked(sig, i, arg.Spread) {
+		c.wrapIntoAny(arg.Value)
+		return
+	}
+	c.assignExpr(arg.Value, target, context)
+}
+
+// isPacked reports whether argument i becomes one element of a pack, which
+// is where the implicit wrap into any applies.
+func isPacked(sig *types.Func, i int, spread bool) bool {
+	pack := packIndex(sig)
+	return pack >= 0 && i >= pack && !spread
+}
+
+// wrapIntoAny types an argument that will be wrapped, defaulting its
+// literals the way an assignment would so that `printf("%d", 1)` packs an
+// i32 rather than an untyped int.
+func (c *checker) wrapIntoAny(e ast.Expr) {
+	t := c.defaultExpr(e, c.expr(e))
+	if !flexible(t) && !anyPayload(t) {
+		c.errorf(e.Pos(), "an any cannot hold %s", describeType(t))
+	}
+}
+
+func isAnyBasic(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Kind == types.AnyKind
 }
 
 func futureWrap(sig *types.Func) types.Type {
@@ -220,6 +314,14 @@ func argContext(index int, name string) string {
 func (c *checker) checkArity(call *ast.CallExpr, sig *types.Func, name string) {
 	got := len(call.Args)
 	if got >= sig.Required && got <= len(sig.Params) {
+		return
+	}
+	// A pack absorbs everything past the fixed parameters, so only the
+	// lower bound can be wrong.
+	if sig.Variadic {
+		if got < sig.Required {
+			c.errorf(call.Offset, "%s takes at least %d argument(s), got %d", name, sig.Required, got)
+		}
 		return
 	}
 	if sig.Required == len(sig.Params) {
@@ -265,11 +367,11 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 	var deferred []int
 	for i, arg := range call.Args {
 		c.checkNamedArg(arg)
-		if i >= len(sig.Params) {
+		if i >= len(sig.Params) && packIndex(sig) < 0 {
 			c.expr(arg.Value)
 			continue
 		}
-		if needsContext(arg.Value) && containsTypeParam(c.substType(sig.Params[i], s)) {
+		if needsContext(arg.Value) && containsTypeParam(c.substType(paramTypeAt(sig, i, arg.Spread), s)) {
 			deferred = append(deferred, i)
 			continue
 		}
@@ -310,13 +412,18 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 // came out clean enough to check the instantiation with.
 func (c *checker) checkCallArg(call *ast.CallExpr, target callee, sig *types.Func, s subst, i int) bool {
 	arg := call.Args[i]
-	pattern := c.substType(sig.Params[i], s)
+	if pack := packIndex(sig); pack >= 0 && i >= pack {
+		c.checkSpread(call, i, pack, target.name)
+	} else if arg.Spread {
+		c.errorf(arg.Offset, "%s has no variadic parameter to spread into", target.name)
+	}
+	pattern := c.substType(paramTypeAt(sig, i, arg.Spread), s)
 	if !containsTypeParam(pattern) {
-		c.assignExpr(arg.Value, pattern, argContext(i, target.name))
+		c.assignArg(call, sig, i, pattern, argContext(i, target.name))
 		return true
 	}
 
-	argType := types.Default(c.expr(arg.Value))
+	argType := c.defaultExpr(arg.Value, c.expr(arg.Value))
 	if flexible(argType) {
 		return false
 	}

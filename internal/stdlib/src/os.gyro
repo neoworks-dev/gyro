@@ -2,7 +2,7 @@
 
 // env returns the variable's value, or null when it is unset. The result
 // owns its bytes, so it carries no borrow row.
-export fn env(name: string): string? !{ io }
+export fn env(name: string): string? !{ io, alloc }
 
 // read_stdin reads standard input to end of file, one shot: a second
 // call finds the stream drained and returns "".

@@ -6,8 +6,10 @@ export fn println<T>(value: T) !{ io }
 export fn eprintln<T>(value: T) !{ io }
 
 // spawn starts a thread. The closure carries the arguments across; join by
-// receiving on a channel the closure captures.
-export fn spawn(task: fn())
+// receiving on a channel the closure captures. Its row covers starting the
+// thread and stands in for the task's own effects, which no row can carry
+// until effect polymorphism reaches function values.
+export fn spawn(task: fn()) !{ io, alloc }
 
 // Array<T> owns its elements, in contrast to the borrowed view T[].
 export struct Array<T> {}
@@ -15,16 +17,16 @@ export struct Array<T> {}
 export fn Array<T>::new(): Array<T> !{ alloc }
 export fn Array<T>::with_capacity(capacity: usize): Array<T> !{ alloc }
 export fn Array<T>::push(*self, value: T) !{ alloc }
-export fn Array<T>::pop(*self): (T, bool)
-export fn Array<T>::get(self, index: usize): T
-export fn Array<T>::set(*self, index: usize, value: T)
-export fn Array<T>::len(self): usize
+export fn Array<T>::pop(*self): (T, bool) !{}
+export fn Array<T>::get(self, index: usize): T !{}
+export fn Array<T>::set(*self, index: usize, value: T) !{}
+export fn Array<T>::len(self): usize !{}
 export fn Array<T>::slice(self): T[] !{ &self }
-export fn Array<T>::free(*self)
+export fn Array<T>::free(*self) !{}
 
 // The runtime supplies the buffer; anything above it is ordinary Gyro,
 // written once here rather than once per tier.
-export fn Array<T>::is_empty(self): bool {
+export fn Array<T>::is_empty(self): bool !{} {
   return self.len() == 0
 }
 
@@ -95,7 +97,7 @@ export fn String::push_rune(*self, value: rune) !{ alloc } {
   self.bytes.push((128 | (point & 63)) as u8)
 }
 
-export fn String::len(self): usize {
+export fn String::len(self): usize !{} {
   return self.bytes.len()
 }
 
@@ -107,7 +109,7 @@ export fn String::to_string(self): string !{ alloc } {
   return self.text()
 }
 
-export fn String::free(*self) {
+export fn String::free(*self) !{} {
   self.bytes.free()
 }
 
@@ -133,11 +135,14 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
   return true
 }
 
-export fn string::starts_with(self, prefix: string): bool {
+// The predicates below allocate because bytes() copies: a string's bytes
+// are packed UTF-8 and a slice element is a full word, so reading a string
+// as u8[] builds new storage.
+export fn string::starts_with(self, prefix: string): bool !{ alloc } {
   return slice_at(self.bytes(), prefix.bytes(), 0)
 }
 
-export fn string::ends_with(self, suffix: string): bool {
+export fn string::ends_with(self, suffix: string): bool !{ alloc } {
   var body = self.bytes()
   var tail = suffix.bytes()
   if tail.len() > body.len() {
@@ -147,7 +152,7 @@ export fn string::ends_with(self, suffix: string): bool {
 }
 
 // index_of returns the byte offset of the first match, or null.
-export fn string::index_of(self, needle: string): usize? {
+export fn string::index_of(self, needle: string): usize? !{ alloc } {
   var body = self.bytes()
   var want = needle.bytes()
   if want.len() > body.len() {
@@ -161,7 +166,7 @@ export fn string::index_of(self, needle: string): usize? {
   return null
 }
 
-export fn string::contains(self, needle: string): bool {
+export fn string::contains(self, needle: string): bool !{ alloc } {
   return self.index_of(needle) != null
 }
 
@@ -263,8 +268,9 @@ export fn string::repeat(self, times: i32): string !{ alloc } {
 
 // Map<K, V> hashes with the same derived hash() that == uses, so any key
 // that compares can be stored, and two keys that compare equal land in
-// one bucket. Values must not be optional: get() answers with V?, and
-// optionals do not nest.
+// one bucket. An optional V is allowed: optionals do not nest, so get()
+// answers null both for a miss and for a stored null, and contains() is
+// what separates the two.
 export struct Map<K, V> {
   buckets: Array<Array<(K, V)>>
   count: usize
@@ -284,7 +290,7 @@ fn empty_buckets<K, V>(count: usize): Array<Array<(K, V)>> {
   return buckets
 }
 
-export fn Map<K, V>::new(): Map<K, V> {
+export fn Map<K, V>::new(): Map<K, V> !{ alloc } {
   return Map<K, V>{ buckets: empty_buckets<K, V>(8), count: 0 }
 }
 
@@ -312,7 +318,7 @@ fn Map<K, V>::grow(*self) {
 
 // insert adds the pair, replacing the value (and the stored key) when an
 // equal key is already present.
-export fn Map<K, V>::insert(*self, key: K, value: V) {
+export fn Map<K, V>::insert(*self, key: K, value: V) !{ alloc } {
   var bucket = self.bucket_of(key)
   for i in 0..bucket.len() {
     if bucket.get(i).0 == key {
@@ -328,7 +334,7 @@ export fn Map<K, V>::insert(*self, key: K, value: V) {
   self.count += 1
 }
 
-export fn Map<K, V>::get(self, key: K): V? {
+export fn Map<K, V>::get(self, key: K): V? !{} {
   var bucket = self.bucket_of(key)
   for i in 0..bucket.len() {
     var entry = bucket.get(i)
@@ -339,7 +345,7 @@ export fn Map<K, V>::get(self, key: K): V? {
   return null
 }
 
-export fn Map<K, V>::contains(self, key: K): bool {
+export fn Map<K, V>::contains(self, key: K): bool !{} {
   var bucket = self.bucket_of(key)
   for i in 0..bucket.len() {
     if bucket.get(i).0 == key {
@@ -351,7 +357,7 @@ export fn Map<K, V>::contains(self, key: K): bool {
 
 // remove takes the entry out by swapping the last one into its place,
 // and reports whether the key was present.
-export fn Map<K, V>::remove(*self, key: K): bool {
+export fn Map<K, V>::remove(*self, key: K): bool !{} {
   var bucket = self.bucket_of(key)
   for i in 0..bucket.len() {
     if bucket.get(i).0 == key {
@@ -364,17 +370,17 @@ export fn Map<K, V>::remove(*self, key: K): bool {
   return false
 }
 
-export fn Map<K, V>::len(self): usize {
+export fn Map<K, V>::len(self): usize !{} {
   return self.count
 }
 
-export fn Map<K, V>::is_empty(self): bool {
+export fn Map<K, V>::is_empty(self): bool !{} {
   return self.count == 0
 }
 
 // keys snapshots the keys into a fresh array the caller frees. The order
 // follows the buckets: deterministic, but not insertion order.
-export fn Map<K, V>::keys(self): Array<K> {
+export fn Map<K, V>::keys(self): Array<K> !{ alloc } {
   var out = Array<K>::with_capacity(self.count)
   for i in 0..self.buckets.len() {
     var bucket = self.buckets.get(i)
@@ -385,7 +391,7 @@ export fn Map<K, V>::keys(self): Array<K> {
   return out
 }
 
-export fn Map<K, V>::free(*self) {
+export fn Map<K, V>::free(*self) !{} {
   for i in 0..self.buckets.len() {
     self.buckets.get(i).free()
   }
@@ -398,13 +404,13 @@ export fn Map<K, V>::free(*self) {
 // ever observes a lock its holder abandoned.
 export struct Mutex<T> {}
 
-export fn Mutex<T>::new(value: T): Mutex<T>
-export fn Mutex<T>::lock(*self): MutexGuard<T>
+export fn Mutex<T>::new(value: T): Mutex<T> !{ alloc }
+export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
 
 export struct MutexGuard<T> {}
 
-export fn MutexGuard<T>::get(self): T
-export fn MutexGuard<T>::set(*self, value: T)
+export fn MutexGuard<T>::get(self): T !{}
+export fn MutexGuard<T>::set(*self, value: T) !{}
 // Release is explicit until a drop-based design is settled; pair lock()
 // with `defer guard.unlock()`.
-export fn MutexGuard<T>::unlock(*self)
+export fn MutexGuard<T>::unlock(*self) !{}

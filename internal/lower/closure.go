@@ -319,5 +319,9 @@ func (w *fvWalker) pattern(p ast.Pattern) {
 		for _, payload := range p.Payload {
 			w.pattern(payload)
 		}
+	case *ast.TypeTestPattern:
+		for _, payload := range p.Payload {
+			w.pattern(payload)
+		}
 	}
 }

@@ -594,6 +594,11 @@ func (l *Lexer) scanOperator() token.Token {
 		return make(token.Colon)
 	case '.':
 		if tok, ok := accept('.', token.DotDot); ok {
+			// '...' is a third dot on top of the range operator; no range
+			// bound may start with '.', so the greedy scan is unambiguous.
+			if tok2, ok := accept('.', token.Ellipsis); ok {
+				return tok2
+			}
 			return tok
 		}
 		return make(token.Dot)

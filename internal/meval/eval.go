@@ -23,33 +23,13 @@ func Run(module *metals.Module, args []string, stdin io.Reader, stdout, stderr i
 		funcs:   map[string]*metals.Func{},
 		imports: map[string]*metals.FnType{},
 		types:   map[string]*metals.TypeDecl{},
-		globals: map[string]*value{},
+		globals: map[string]ptrVal{},
 		stdin:   stdin,
 		stdout:  stdout,
 		stderr:  stderr,
 	}
-	for _, fn := range module.Funcs {
-		m.funcs[fn.Name] = fn
-	}
-	for _, imp := range module.Imports {
-		for _, fn := range imp.Funcs {
-			m.imports[fn.Name] = fn.Sig
-		}
-	}
-	for _, decl := range module.Types {
-		m.types[decl.Name] = decl
-	}
-	// Module storage is live for the whole run and starts uninitialized,
-	// so reading one before its initializer ran aborts the same way an
-	// unwritten local does.
-	for _, global := range module.Globals {
-		m.globals[global.Name] = m.freshCell(global.Type).(ptrVal).cell
-	}
-
-	main := m.funcs["main"]
-	if main == nil || !main.Export {
-		return fmt.Errorf("meval: the module exports no main")
-	}
+	// Set up before the module is read, not just before main runs: a
+	// global's static image is decoded here, and a bad one aborts.
 	defer func() {
 		failure := recover()
 		if failure == nil {
@@ -65,6 +45,46 @@ func Run(module *metals.Module, args []string, stdin io.Reader, stdout, stderr i
 		}
 		panic(failure)
 	}()
+
+	for _, fn := range module.Funcs {
+		m.funcs[fn.Name] = fn
+	}
+	for _, imp := range module.Imports {
+		for _, fn := range imp.Funcs {
+			m.imports[fn.Name] = fn.Sig
+		}
+	}
+	for _, decl := range module.Types {
+		m.types[decl.Name] = decl
+	}
+	wrapTypes, err := anyWrapTypes(module)
+	if err != nil {
+		return fmt.Errorf("meval: %w", err)
+	}
+	m.wrapTypes = wrapTypes
+	// Module storage is live for the whole run and starts zeroed, which
+	// is the format's rule and what a C program's file-scope storage
+	// depends on. A type with no zero the evaluator can name stays
+	// unassigned instead, so reading one before its initializer ran
+	// aborts the same way an unwritten local does.
+	m.layout = metals.NewLayout(module, func(format string, args ...any) {
+		m.throw(format, args...)
+	})
+	for _, global := range module.Globals {
+		if global.Bytes != nil {
+			m.globals[global.Name] = ptrVal{cells: []value{m.decodeImage(global.Type, global.Bytes)}}
+			continue
+		}
+		m.globals[global.Name] = m.zeroCell(global.Type)
+	}
+	if err := m.initMemories(module); err != nil {
+		return fmt.Errorf("meval: %w", err)
+	}
+
+	main := m.funcs["main"]
+	if main == nil || !main.Export {
+		return fmt.Errorf("meval: the module exports no main")
+	}
 	result := m.call(main.Name, m.entryArgs(main))
 	if future, ok := result.(*futureVal); ok {
 		future.await()
@@ -100,11 +120,21 @@ type machine struct {
 	funcs   map[string]*metals.Func
 	imports map[string]*metals.FnType
 	types   map[string]*metals.TypeDecl
-	globals map[string]*value
-	args    []string
-	stdin   io.Reader
-	stdout  io.Writer
-	stderr  io.Writer
+	globals map[string]ptrVal
+	// layout is the format's own arithmetic, which this tier needs only
+	// to read a global's static image back into values the same way the
+	// native backends laid it out.
+	layout *metals.Layout
+	// memories is the module's linear memories, allocated before the run
+	// and live for all of it.
+	memories map[string]*linearMemory
+	// wrapTypes is the static type each any.wrap site boxes at, resolved
+	// before the run because execution does not carry register types.
+	wrapTypes map[*metals.AnyWrap]metals.Type
+	args      []string
+	stdin     io.Reader
+	stdout    io.Writer
+	stderr    io.Writer
 }
 
 func (m *machine) throw(format string, args ...any) {
@@ -217,51 +247,86 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 	case *metals.Conv:
 		regs[i.Dst] = m.convert(m.get(regs, i.X), i.To)
 
+	case *metals.Trunc:
+		regs[i.Dst] = m.truncate(m.get(regs, i.X), i.To)
+
+	case *metals.Bitcast:
+		regs[i.Dst] = m.reinterpret(m.get(regs, i.X), i.To)
+
 	case *metals.Slot:
 		regs[i.Dst] = m.freshCell(i.Type)
 	case *metals.GlobalPtr:
-		cell, ok := m.globals[i.Name]
+		ptr, ok := m.globals[i.Name]
 		if !ok {
 			m.throw("no global @%s", i.Name)
 		}
-		regs[i.Dst] = ptrVal{cell: cell}
+		regs[i.Dst] = ptr
 	case *metals.New:
 		regs[i.Dst] = m.freshCell(i.Type)
 
 	case *metals.Free:
-		ptr := m.get(regs, i.X).(ptrVal)
-		if _, freed := (*ptr.cell).(freedVal); freed {
-			m.throw("double free")
+		cell := m.deref(m.get(regs, i.X).(ptrVal), "free")
+		if _, freed := (*cell).(freedVal); freed {
+			// The evaluator can see that this cell was freed and the C
+			// runtime cannot — it has already handed the bytes back. Both
+			// say the same thing so the corpus can hold all three tiers to
+			// one message.
+			m.throw("free of memory that is not allocated")
 		}
-		*ptr.cell = freedVal{}
+		*cell = freedVal{}
 
 	case *metals.Load:
-		ptr := m.get(regs, i.Ptr).(ptrVal)
-		switch (*ptr.cell).(type) {
+		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "load")
+		switch (*cell).(type) {
 		case freedVal:
 			m.throw("use after free")
 		case uninitVal:
 			m.throw("read of uninitialized memory")
 		}
-		regs[i.Dst] = copyValue(*ptr.cell)
+		regs[i.Dst] = copyValue(*cell)
 
 	case *metals.Store:
-		ptr := m.get(regs, i.Ptr).(ptrVal)
-		if _, freed := (*ptr.cell).(freedVal); freed {
+		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "store")
+		if _, freed := (*cell).(freedVal); freed {
 			m.throw("use after free")
 		}
-		*ptr.cell = copyValue(m.get(regs, i.Val))
+		*cell = copyValue(m.get(regs, i.Val))
 
 	case *metals.FieldPtr:
-		ptr := m.get(regs, i.Ptr).(ptrVal)
-		record, ok := (*ptr.cell).(recordVal)
+		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "field.ptr")
+		record, ok := (*cell).(recordVal)
 		if !ok {
-			if _, freed := (*ptr.cell).(freedVal); freed {
+			if _, freed := (*cell).(freedVal); freed {
 				m.throw("use after free")
 			}
 			m.throw("field.ptr into a non-record cell")
 		}
-		regs[i.Dst] = ptrVal{cell: &record.fields[i.Index]}
+		regs[i.Dst] = ptrVal{cells: record.fields, index: i.Index}
+
+	case *metals.ElemPtr:
+		cell := m.deref(m.get(regs, i.Ptr).(ptrVal), "elem.ptr")
+		array, ok := (*cell).(arrayVal)
+		if !ok {
+			if _, freed := (*cell).(freedVal); freed {
+				m.throw("use after free")
+			}
+			m.throw("elem.ptr into a cell that is not an array")
+		}
+		regs[i.Dst] = ptrVal{cells: array.elems, index: 0}
+
+	case *metals.PtrOffset:
+		ptr := m.get(regs, i.Ptr).(ptrVal)
+		regs[i.Dst] = ptrVal{cells: ptr.cells, index: ptr.index + int(m.intOf(m.get(regs, i.N)))}
+
+	case *metals.PtrDiff:
+		a := m.get(regs, i.A).(ptrVal)
+		b := m.get(regs, i.B).(ptrVal)
+		// Subtracting pointers into two different objects is undefined in
+		// C, and the evaluator is the tier that can see it is happening.
+		if len(a.cells) != len(b.cells) || (len(a.cells) > 0 && &a.cells[0] != &b.cells[0]) {
+			m.throw("ptr.diff between two different objects")
+		}
+		regs[i.Dst] = intVal{v: int64(a.index - b.index), kind: metals.I64}
 
 	case *metals.MakeRecord:
 		fields := make([]value, len(i.Args))
@@ -463,8 +528,39 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 		}
 		regs[i.Dst] = copyValue(v)
 
+	case *metals.AnyWrap:
+		regs[i.Dst] = m.wrapAny(i, m.get(regs, i.X))
+
+	case *metals.AnyUnwrap:
+		box := m.useAny(m.get(regs, i.X), "any.unwrap")
+		regs[i.Dst] = m.unwrapAny(box, i.To, "any.unwrap")
+
+	case *metals.AnyIs:
+		box := m.useAny(m.get(regs, i.X), "any.is")
+		regs[i.Dst] = boolVal(metals.TypesEqual(box.typ, i.To))
+
+	case *metals.AnyCall:
+		box := m.useAny(m.get(regs, i.X), "any.call")
+		args := make([]value, len(i.Args))
+		for n, arg := range i.Args {
+			args[n] = m.get(regs, arg)
+		}
+		regs[i.Dst] = m.anyCall(box, args)
+
+	case *metals.AnyGet:
+		box := m.useAny(m.get(regs, i.X), "any.get")
+		regs[i.Dst] = m.anyGet(box, i.Name)
+
+	case *metals.AnySet:
+		box := m.useAny(m.get(regs, i.X), "any.set")
+		m.anySet(box, i.Name, m.get(regs, i.Val))
+
 	default:
-		m.throw("the evaluator does not implement %T yet", instr)
+		// The linear-memory instructions live in their own file and its
+		// own dispatch, so the byte-level machinery stays out of here.
+		if !m.stepMemory(instr, regs) {
+			m.throw("the evaluator does not implement %T yet", instr)
+		}
 	}
 	return nil
 }
@@ -524,21 +620,107 @@ func (m *machine) selectStep(sel *metals.Select, regs map[string]value) signal {
 	return m.exec(arm.Body, regs)
 }
 
-// freshCell allocates an uninitialized cell; a record type materializes
-// with unassigned fields so field.ptr can reach into it.
+// deref is what a pointer has to survive to be used: arithmetic can put
+// one past the end of its object, which C allows a program to form and
+// not to read, and this is where that difference is enforced.
+func (m *machine) deref(p ptrVal, what string) *value {
+	if p.index < 0 || p.index >= len(p.cells) {
+		m.throw("%s through a pointer outside the object it points into", what)
+	}
+	return &p.cells[p.index]
+}
+
+// freshCell allocates an uninitialized cell. A record and an array
+// materialize with their members in place, because field.ptr and
+// elem.ptr have to reach into storage that has not been written yet —
+// which is exactly what a C local is until its first assignment.
 func (m *machine) freshCell(t metals.Type) value {
-	cell := new(value)
-	*cell = uninitVal{}
-	if named, ok := t.(*metals.Named); ok {
-		if decl := m.types[named.Name]; decl != nil && decl.Record != nil {
+	cells := []value{m.freshValue(t)}
+	return ptrVal{cells: cells, index: 0}
+}
+
+func (m *machine) freshValue(t metals.Type) value {
+	switch t := t.(type) {
+	case *metals.Named:
+		decl := m.types[t.Name]
+		if decl != nil && decl.Record != nil {
 			fields := make([]value, len(decl.Record.Fields))
-			for i := range fields {
-				fields[i] = uninitVal{}
+			for i, field := range decl.Record.Fields {
+				fields[i] = m.freshValue(field.Type)
 			}
-			*cell = recordVal{typeName: named.Name, fields: fields}
+			return recordVal{typeName: t.Name, fields: fields}
+		}
+	case *metals.ArrayOf:
+		elems := make([]value, t.Len)
+		for i := range elems {
+			elems[i] = m.freshValue(t.Elem)
+		}
+		return arrayVal{elems: elems}
+	}
+	// A scalar stays unassigned, so reading one before it is written
+	// still aborts. The aggregates above cannot: their storage is what a
+	// pointer into them names.
+	return uninitVal{}
+}
+
+// zeroCell allocates module storage. A global is zero-initialized before
+// main runs — that is docs/metals.md's rule, not a backend's kindness —
+// and for C it is the language: a file-scope `int *table[4]` is four
+// null pointers, and a program may read them and find out.
+func (m *machine) zeroCell(t metals.Type) ptrVal {
+	return ptrVal{cells: []value{m.zeroValue(t)}, index: 0}
+}
+
+// zeroValue is the value a zeroed page reads back as, for the types that
+// have one. Not every type does: a `ptr<T>`, a handle, a channel, a
+// function and a `str` all zero to an address no object has, which is a
+// thing this evaluator's values cannot be. Those stay unassigned, and
+// reading one aborts here where a native backend would only fault
+// later — the same asymmetry uninitialized storage already has.
+func (m *machine) zeroValue(t metals.Type) value {
+	switch t := t.(type) {
+	case *metals.Prim:
+		switch t.Kind {
+		case metals.Bool:
+			return boolVal(false)
+		case metals.F32, metals.F64:
+			return floatVal{kind: t.Kind}
+		case metals.Str:
+			return uninitVal{}
+		case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
+			return uintVal{kind: t.Kind}
+		default:
+			return intVal{kind: t.Kind}
+		}
+
+	case *metals.Opt:
+		return nullVal{}
+
+	case *metals.ArrayOf:
+		elems := make([]value, t.Len)
+		for i := range elems {
+			elems[i] = m.zeroValue(t.Elem)
+		}
+		return arrayVal{elems: elems}
+
+	case *metals.TupleOf:
+		elems := make(tupleVal, len(t.Elems))
+		for i, elem := range t.Elems {
+			elems[i] = m.zeroValue(elem)
+		}
+		return elems
+
+	case *metals.Named:
+		decl := m.types[t.Name]
+		if decl != nil && decl.Record != nil {
+			fields := make([]value, len(decl.Record.Fields))
+			for i, field := range decl.Record.Fields {
+				fields[i] = m.zeroValue(field.Type)
+			}
+			return recordVal{typeName: t.Name, fields: fields}
 		}
 	}
-	return ptrVal{cell: cell}
+	return uninitVal{}
 }
 
 func (m *machine) indexable(v value) []value {
@@ -601,7 +783,7 @@ func (m *machine) constValue(i *metals.Const) value {
 		if err != nil {
 			m.throw("bad float constant %q", i.Value)
 		}
-		return floatVal{v: parsed, kind: prim.Kind}
+		return mkFloat(parsed, prim.Kind)
 	case metals.Bool:
 		return boolVal(i.Value == "true")
 	case metals.Rune:
@@ -688,12 +870,20 @@ func (m *machine) ordered(op string, a, b value) value {
 		right := b.(uintVal)
 		cmp = compareUint(left.v, right.v)
 	case floatVal:
+		// Floats order by IEEE, where NaN is unordered: all four
+		// comparisons are false when either operand is NaN, so they
+		// cannot go through a three-way result that folds "unordered"
+		// and "equal" together.
 		right := b.(floatVal)
-		switch {
-		case left.v < right.v:
-			cmp = -1
-		case left.v > right.v:
-			cmp = 1
+		switch op {
+		case "lt":
+			return boolVal(left.v < right.v)
+		case "le":
+			return boolVal(left.v <= right.v)
+		case "gt":
+			return boolVal(left.v > right.v)
+		default:
+			return boolVal(left.v >= right.v)
 		}
 	default:
 		m.throw("ordering non-numeric values")
@@ -861,13 +1051,16 @@ func (m *machine) uintBinary(op string, a, b uintVal) value {
 func (m *machine) floatBinary(op string, a, b floatVal) value {
 	switch op {
 	case "fadd":
-		return floatVal{v: a.v + b.v, kind: a.kind}
+		return mkFloat(a.v+b.v, a.kind)
 	case "fsub":
-		return floatVal{v: a.v - b.v, kind: a.kind}
+		return mkFloat(a.v-b.v, a.kind)
 	case "fmul":
-		return floatVal{v: a.v * b.v, kind: a.kind}
+		return mkFloat(a.v*b.v, a.kind)
 	case "fdiv":
-		return floatVal{v: a.v / b.v, kind: a.kind}
+		return mkFloat(a.v/b.v, a.kind)
+	}
+	if v, ok := m.floatBinaryIntrinsic(op, a, b); ok {
+		return v
 	}
 	m.throw("unknown float operator %s", op)
 	return nil
@@ -922,7 +1115,7 @@ func (m *machine) unary(op string, v value) value {
 		case intVal:
 			return m.intBinary("isub", intVal{v: 0, kind: v.kind}, v)
 		case floatVal:
-			return floatVal{v: -v.v, kind: v.kind}
+			return mkFloat(-v.v, v.kind)
 		}
 	case "bnot":
 		switch v := v.(type) {
@@ -930,6 +1123,10 @@ func (m *machine) unary(op string, v value) value {
 			return intVal{v: ^v.v, kind: v.kind}
 		case uintVal:
 			return uintVal{v: (^v.v) & uintMax[v.kind], kind: v.kind}
+		}
+	default:
+		if f, ok := v.(floatVal); ok {
+			return m.floatUnary(op, f)
 		}
 	}
 	m.throw("bad operand for %s", op)
@@ -952,14 +1149,11 @@ func (m *machine) convert(v value, to metals.Type) value {
 	case metals.F32, metals.F64:
 		switch v := v.(type) {
 		case intVal:
-			return floatVal{v: float64(v.v), kind: prim.Kind}
+			return mkFloat(float64(v.v), prim.Kind)
 		case uintVal:
-			return floatVal{v: float64(v.v), kind: prim.Kind}
+			return mkFloat(float64(v.v), prim.Kind)
 		case floatVal:
-			if prim.Kind == metals.F32 {
-				return floatVal{v: float64(float32(v.v)), kind: prim.Kind}
-			}
-			return floatVal{v: v.v, kind: prim.Kind}
+			return mkFloat(v.v, prim.Kind)
 		}
 		m.throw("cannot convert to %s", prim)
 	}

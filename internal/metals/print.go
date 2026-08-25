@@ -35,10 +35,33 @@ func Print(m *Module) string {
 		p.line("")
 	}
 
+	for _, mem := range m.Memories {
+		if mem.Max > 0 {
+			p.printf("memory %s %d, %d", at(mem.Name), mem.Min, mem.Max)
+			continue
+		}
+		p.printf("memory %s %d", at(mem.Name), mem.Min)
+	}
+	for _, seg := range m.Data {
+		p.printf("data %s, %d, %s", at(seg.Memory), seg.Offset, quoteBytes(seg.Bytes))
+	}
+	if len(m.Memories) > 0 {
+		p.line("")
+	}
+
 	for _, global := range m.Globals {
+		if global.Bytes != nil {
+			p.printf("global %s: %s = %s", at(global.Name), global.Type, quoteBytes(global.Bytes))
+			continue
+		}
 		p.printf("global %s: %s", at(global.Name), global.Type)
 	}
 	if len(m.Globals) > 0 {
+		p.line("")
+	}
+
+	if m.Init != "" {
+		p.printf("init %s", at(m.Init))
 		p.line("")
 	}
 
@@ -50,6 +73,11 @@ func Print(m *Module) string {
 	}
 	return p.out.String()
 }
+
+// quoteBytes renders a data segment's contents. Go's quoting escapes a
+// byte that is not printable UTF-8 as \xNN and reads it back as the same
+// byte, so the round trip is exact for arbitrary binary.
+func quoteBytes(b []byte) string { return strconv.Quote(string(b)) }
 
 // reg, at and lbl render a name behind its sigil, quoting rich names.
 func reg(name string) string { return "%" + QuoteName(name) }
@@ -163,6 +191,10 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = %s %s", reg(i.Dst), i.Op, reg(i.X))
 	case *Conv:
 		p.printf("%s = conv %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *Trunc:
+		p.printf("%s = trunc %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *Bitcast:
+		p.printf("%s = bitcast %s -> %s", reg(i.Dst), reg(i.X), i.To)
 	case *Slot:
 		p.printf("%s = slot %s", reg(i.Dst), i.Type)
 	case *GlobalPtr:
@@ -177,6 +209,24 @@ func (p *printer) instr(instr Instr) {
 		p.printf("store %s, %s", reg(i.Ptr), reg(i.Val))
 	case *FieldPtr:
 		p.printf("%s = field.ptr %s, %d", reg(i.Dst), reg(i.Ptr), i.Index)
+	case *ElemPtr:
+		p.printf("%s = elem.ptr %s", reg(i.Dst), reg(i.Ptr))
+	case *PtrOffset:
+		p.printf("%s = ptr.offset %s, %s", reg(i.Dst), reg(i.Ptr), reg(i.N))
+	case *PtrDiff:
+		p.printf("%s = ptr.diff %s, %s", reg(i.Dst), reg(i.A), reg(i.B))
+	case *MemLoad:
+		p.printf("%s = mem.load.%s %s, %s", reg(i.Dst), i.Type, at(i.Memory), reg(i.Addr))
+	case *MemStore:
+		p.printf("mem.store.%s %s, %s, %s", i.Type, at(i.Memory), reg(i.Addr), reg(i.Val))
+	case *MemSize:
+		p.printf("%s = mem.size %s", reg(i.Dst), at(i.Memory))
+	case *MemGrow:
+		p.printf("%s = mem.grow %s, %s", reg(i.Dst), at(i.Memory), reg(i.Pages))
+	case *MemCopy:
+		p.printf("mem.copy %s, %s, %s, %s", at(i.Memory), reg(i.To), reg(i.From), reg(i.Len))
+	case *MemFill:
+		p.printf("mem.fill %s, %s, %s, %s", at(i.Memory), reg(i.To), reg(i.Byte), reg(i.Len))
 	case *MakeRecord:
 		p.printf("%s = record %s(%s)", reg(i.Dst), reg(i.TypeName), regs(i.Args))
 	case *FieldGet:
@@ -305,16 +355,18 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = opt.wrap %s", reg(i.Dst), reg(i.X))
 	case *OptUnwrap:
 		p.printf("%s = opt.unwrap %s", reg(i.Dst), reg(i.X))
-	case *DynWrap:
-		p.printf("%s = dyn.wrap %s", reg(i.Dst), reg(i.X))
-	case *DynUnwrap:
-		p.printf("%s = dyn.unwrap %s -> %s", reg(i.Dst), reg(i.X), i.To)
-	case *DynCall:
-		p.printf("%s = dyn.call %s(%s)", reg(i.Dst), reg(i.X), regs(i.Args))
-	case *DynGet:
-		p.printf("%s = dyn.get %s, %s", reg(i.Dst), reg(i.X), strconv.Quote(i.Name))
-	case *DynSet:
-		p.printf("dyn.set %s, %s, %s", reg(i.X), strconv.Quote(i.Name), reg(i.Val))
+	case *AnyWrap:
+		p.printf("%s = any.wrap %s", reg(i.Dst), reg(i.X))
+	case *AnyUnwrap:
+		p.printf("%s = any.unwrap %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *AnyIs:
+		p.printf("%s = any.is %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *AnyCall:
+		p.printf("%s = any.call %s(%s)", reg(i.Dst), reg(i.X), regs(i.Args))
+	case *AnyGet:
+		p.printf("%s = any.get %s, %s", reg(i.Dst), reg(i.X), strconv.Quote(i.Name))
+	case *AnySet:
+		p.printf("any.set %s, %s, %s", reg(i.X), strconv.Quote(i.Name), reg(i.Val))
 	}
 }
 

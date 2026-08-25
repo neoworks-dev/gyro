@@ -114,11 +114,24 @@ type Decorator struct {
 
 func (d *Decorator) Pos() int { return d.Offset }
 
+// FindDecorator returns the decorator spelled `@name`, or nil.
+func FindDecorator(list []*Decorator, name string) *Decorator {
+	for _, decorator := range list {
+		if decorator.Name.IsPlainName() && decorator.Name.Segments[0].Name == name {
+			return decorator
+		}
+	}
+	return nil
+}
+
 // Arg is a call argument, optionally named as in `@concurrent(threads = 8)`.
 type Arg struct {
 	Offset int
 	Name   string
 	Value  Expr
+	// Spread marks the trailing `...` that forwards an existing slice as a
+	// whole variadic pack rather than as one element of it.
+	Spread bool
 }
 
 // EffectRow is the `!{ io, alloc }` annotation on a signature.
@@ -193,6 +206,9 @@ type Param struct {
 	Type   Type
 	// Default is the expression after `=`, or nil.
 	Default Expr
+	// Variadic marks `name: ...T`, which collects the remaining arguments.
+	// Type is the element type T; the parameter itself is a T[] slice.
+	Variadic bool
 }
 
 // TypeParam is one generic parameter. It carries no bounds: Gyro generics
@@ -785,6 +801,19 @@ type VariantPattern struct {
 
 func (v *VariantPattern) Pos() int     { return v.Offset }
 func (v *VariantPattern) patternNode() {}
+
+// TypeTestPattern is a type test on an `any` whose type no path can spell:
+// `(i32, string)(pair)`, `i32[](xs)`, `*Node(node)`. A type that is a plain
+// name stays a VariantPattern, since `Point(p)` and `Shape::Circle(r)` are
+// the same syntax until the subject says which one it is.
+type TypeTestPattern struct {
+	Offset  int
+	Type    Type
+	Payload []Pattern
+}
+
+func (t *TypeTestPattern) Pos() int     { return t.Offset }
+func (t *TypeTestPattern) patternNode() {}
 
 // ---------------------------------------------------------------------------
 // Types

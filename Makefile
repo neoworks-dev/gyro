@@ -1,4 +1,4 @@
-.PHONY: all build test check fmt vet clean install grammar
+.PHONY: all build test bench check fmt vet clean install grammar
 
 GO      ?= go
 BIN     := bin/gyro
@@ -12,6 +12,15 @@ build:
 
 test:
 	$(GO) test ./...
+
+# Compare the two native backends on the same programs. BENCH filters by
+# case name, REPEAT says how many runs each binary gets (fastest counts).
+BENCH  ?=
+REPEAT ?= 5
+
+bench:
+	$(GO) test ./tests/bench -run TestBench -count 1 -timeout 30m -v \
+		-gyro.bench=true -gyro.bench.repeat=$(REPEAT) -gyro.bench.filter=$(BENCH)
 
 # Parse every reference program. Fails if any of them stops parsing cleanly.
 check: build
