@@ -125,7 +125,7 @@ func (l *lowerer) writeImageExpr(image []byte, typ *ctype, init *initializer) bo
 		return true
 	}
 	if typ.isFloat() {
-		value, ok := foldFloat(init.x, l.enums)
+		value, ok := foldFloat(init.x, l.scope.enums)
 		if !ok {
 			return false
 		}
@@ -135,7 +135,7 @@ func (l *lowerer) writeImageExpr(image []byte, typ *ctype, init *initializer) bo
 	if !typ.isInteger() {
 		return false
 	}
-	value, err := foldConstant(init.x, l.enums)
+	value, err := foldConstant(init.x, l.scope.enums)
 	if err != nil {
 		return false
 	}
@@ -205,7 +205,7 @@ func (l *lowerer) emitInit(pending []*globalDecl) {
 
 	for _, global := range pending {
 		ptr := f.temp()
-		f.emit(&metals.GlobalPtr{Dst: ptr, Name: global.name})
+		f.emit(&metals.GlobalPtr{Dst: ptr, Name: global.symbol})
 		// Module storage is already zero, so only what the initializer
 		// names has to be written.
 		f.initialize(ptr, global.typ, global.init)

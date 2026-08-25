@@ -543,15 +543,17 @@ shortcuts and one routing choice, and closing them is the roadmap:
    preprocessor, `typedef`, `enum`, `sizeof` and arrays with pointer
    arithmetic are in, so a C library with its own header, a quicksort
    over `int *` and a fixed table in module storage compiles and runs on
-   all three tiers. "Any existing C program" is still the bar and is
-   still a way off: the front end owes string literals and file-scope
-   initializers (one missing piece, module storage written before
-   `main`), `switch`, unions and bitfields, function pointers, varargs,
-   `void *`, cross-translation-unit linkage, most of C11, VLAs,
-   `_Generic`, and the relooper for irreducible `goto` — the piece
-   `internal/wasm/clang.go` names as the hardest and currently
-   outsources. See "The C front end emits types, the bridge emits bytes"
-   and "Pointer arithmetic is three instructions, and unchecked".
+   all three tiers. Since then: string literals and file-scope
+   initializers, `switch`, `static` locals, function pointers, and a
+   program made of as many `.c` files as it takes. "Any existing C
+   program" is still the bar and is still a way off — the front end owes
+   unions and bitfields, varargs, `void *` and casts between pointer
+   types, most of C11, VLAs, `_Generic`, and the relooper for irreducible
+   `goto`, the piece `internal/wasm/clang.go` names as the hardest and
+   currently outsources. See "The C front end emits types, the bridge
+   emits bytes", "Pointer arithmetic is three instructions, and
+   unchecked", "A callable is one word or two", and "A C program is
+   several files".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2238,6 +2240,52 @@ call and why `(**fp)(x)` is too.
 
 A call's callee also stopped being a name and became an expression, since
 `ops[i].apply(a, b)` designates a function and no name appears in it.
+
+### A C program is several files, and one METALS module *(new)*
+
+**Status: decided.** `import { f } from "./lib/entry.c"` names an entry
+file. Whatever that file needs and does not define is looked for in the
+`.c` files beside it; each file that supplies one is pulled in and asked
+the same question, until nothing is missing. All of them lower into one
+module.
+
+The problem is that C has no answer of its own. A header declares and a
+`.c` defines, and no C source anywhere names the file that defines a
+symbol — the linker matches undefined names against defined ones across a
+flat namespace, over a file list that a Makefile holds and the language
+cannot express. Something outside the C has to supply that list, so the
+choice was where to put it.
+
+**Rejected: importing a directory** (`from "./lib/"`), which is the file
+list written down. It makes every unrelated `.c` beside the program a
+dependency — a file for another target, a scratch copy, a test — and it
+gives the import no entry point to be about. The demand-driven search
+gets the same set without naming it, and a file nothing needs is never
+lowered, so it costs nothing to have sitting there. A sibling that does
+not even parse is likewise not an error until something needs it.
+
+**Rejected: one module per `.c`,** with an unresolved prototype becoming
+a METALS import of the sibling module that exports it. It is closer to
+C's own model and it does not work: two files that call each other are
+ordinary C and have no dependency order, so they would be an import cycle
+the loader refuses and the linker could not sequence. As one module they
+are two ordinary calls.
+
+Merging also buys the check C does not have. A C linker compares nothing
+— a prototype that disagrees with the definition links and misbehaves at
+run time, which is among the oldest bugs the language has. Here two
+declarations of one name must agree before anything is emitted, and a
+cross-file call is verified against the definition it reaches.
+
+**The search is one directory, not a tree.** A rule that fits in a
+diagnostic beats one that starts matching names it was never pointed at;
+a library laid out in subdirectories is imported through a file in each.
+
+`static` is the overlay the model needs, and it is C's own: internal
+linkage means the name is that file's, so it becomes `file$name` and two
+files may each keep one. A struct from a shared header is one record when
+the declarations agree and an error when they do not — C calls that
+undefined and says nothing, which is not a useful thing to reproduce.
 
 ## Native backend
 

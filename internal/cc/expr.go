@@ -28,7 +28,7 @@ func (f *funcLowerer) expr(e expr) value {
 		// the parse, because a local of the same name shadows one and
 		// only this scope chain knows that.
 		if f.lookup(e.name) == nil {
-			if enumerator, ok := f.l.enums[e.name]; ok {
+			if enumerator, ok := f.l.scope.enums[e.name]; ok {
 				text := strconv.FormatInt(enumerator, 10)
 				return value{reg: f.constant(typeInt, text), typ: typeInt}
 			}
@@ -164,7 +164,7 @@ func (f *funcLowerer) designator(fn *funcDecl, pos position) value {
 		fail(pos, "%s is declared but not defined here, and taking the address of a function another module defines is not wired up yet", fn.name)
 	}
 	reg := f.temp()
-	f.emit(&metals.CodeRef{Dst: reg, Callee: fn.name})
+	f.emit(&metals.CodeRef{Dst: reg, Callee: fn.symbol})
 	return value{reg: reg, typ: funcOf(fn.result, fn.params)}
 }
 
@@ -227,10 +227,10 @@ func (f *funcLowerer) lvalue(e expr) value {
 	case *identExpr:
 		b := f.lookup(e.name)
 		if b == nil {
-			if fn, ok := f.l.funcs[e.name]; ok {
+			if fn, ok := f.l.scope.funcs[e.name]; ok {
 				return f.designator(fn, e.pos)
 			}
-			if _, ok := f.l.enums[e.name]; ok {
+			if _, ok := f.l.scope.enums[e.name]; ok {
 				fail(e.pos, "%s is an enumeration constant, which has no storage to assign to", e.name)
 			}
 			fail(e.pos, "%s is not declared", e.name)
@@ -660,7 +660,7 @@ func (f *funcLowerer) assign(e *assignExpr) value {
 // the same place, which is why the callee is an expression here.
 func (f *funcLowerer) call(e *callExpr) value {
 	if named, ok := e.callee.(*identExpr); ok && f.lookup(named.name) == nil {
-		if callee, known := f.l.funcs[named.name]; known {
+		if callee, known := f.l.scope.funcs[named.name]; known {
 			return f.directCall(e, callee)
 		}
 		fail(named.pos, "%s is not declared", named.name)
@@ -675,11 +675,11 @@ func (f *funcLowerer) directCall(e *callExpr, callee *funcDecl) value {
 	}
 
 	if callee.result.isVoid() {
-		f.emit(&metals.Call{Callee: callee.name, Args: args})
+		f.emit(&metals.Call{Callee: callee.symbol, Args: args})
 		return value{typ: typeVoid}
 	}
 	reg := f.temp()
-	f.emit(&metals.Call{Dst: reg, Callee: callee.name, Args: args})
+	f.emit(&metals.Call{Dst: reg, Callee: callee.symbol, Args: args})
 	return value{reg: reg, typ: callee.result}
 }
 

@@ -174,10 +174,20 @@ int result(void) { return chosen(40, 2); }
 	if module.Init == "" {
 		t.Fatal("the module names no init, so nothing stores the address")
 	}
+	// `case$chosen`, not `chosen`: the name is static, so it belongs to
+	// the file that wrote it and another file may reuse it.
+	found := false
 	for _, global := range module.Globals {
-		if global.Name == "chosen" && global.Bytes != nil {
-			t.Errorf("@chosen carries a byte image, which cannot hold an address")
+		if global.Name != "case$chosen" {
+			continue
 		}
+		found = true
+		if global.Bytes != nil {
+			t.Errorf("@case$chosen carries a byte image, which cannot hold an address")
+		}
+	}
+	if !found {
+		t.Fatalf("no @case$chosen; the module declares %v", globalNames(module.Globals))
 	}
 	answers(t, `
 int add(int a, int b) { return a + b; }
@@ -198,20 +208,28 @@ int result(void) { return chosen(40, 2); }
 `)
 	var found metals.Type
 	for _, global := range module.Globals {
-		if global.Name == "chosen" {
+		if global.Name == "case$chosen" {
 			found = global.Type
 		}
 	}
 	opt, ok := found.(*metals.Opt)
 	if !ok {
-		t.Fatalf("@chosen is %s, and a C pointer is nullable", found)
+		t.Fatalf("@case$chosen is %s, and a C pointer is nullable", found)
 	}
 	if _, ok := opt.Elem.(*metals.CodeType); !ok {
-		t.Fatalf("@chosen holds %s, want a code pointer", opt.Elem)
+		t.Fatalf("@case$chosen holds %s, want a code pointer", opt.Elem)
 	}
 	if size := metals.NewLayout(module, func(string, ...any) {}).Size(found); size != 8 {
-		t.Errorf("sizeof(@chosen) = %d, want 8", size)
+		t.Errorf("sizeof(@case$chosen) = %d, want 8", size)
 	}
+}
+
+func globalNames(globals []*metals.Global) []string {
+	out := make([]string, len(globals))
+	for i, global := range globals {
+		out[i] = global.Name
+	}
+	return out
 }
 
 func TestRefusesWhatAFunctionIsNot(t *testing.T) {

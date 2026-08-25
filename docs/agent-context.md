@@ -591,9 +591,7 @@ Kept honest in `docs/language.md` ("Still to come") and
   express and arbitrary jumps do not.
 - **unions and bitfields**: a union's members share storage and a
   record's do not, so there is no record shape to give one.
-- **varargs, `void *` and casts between pointer types**, and calling a
-  function another translation unit defines — which also means taking
-  the address of one.
+- **varargs, `void *` and casts between pointer types**.
 - **A callback cannot cross into Gyro**: a code pointer is an address in
   this program, and the copy rule settles what crosses a boundary.
 - **A case label inside a nested statement** — Duff's device. A switch

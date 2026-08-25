@@ -730,6 +730,29 @@ The mapping, where it is not obvious:
   in C's identifier space, so nothing a translation unit declares can
   collide with one.
 
+- **A program is several files, and they become one module.** C files
+  never include one another: a header declares, a `.c` defines, and
+  nothing in the source says which `.c` defines what — which is why a C
+  project's build system exists mostly to hold that list. The import
+  names an entry file, and the list is recovered from it: whatever the
+  entry needs and does not define is looked for in the `.c` files beside
+  it, each file that supplies one is pulled in, and the question is asked
+  again until nothing is missing. The search is that one directory and no
+  deeper; a library laid out in subdirectories is imported through a file
+  in each. A file nothing needs is never lowered, and one that does not
+  even parse is not an error until something needs it.
+
+  They become **one** METALS module, because a linkage unit is what a
+  METALS module is. Two files that call each other are ordinary C and
+  have no dependency order, so as separate modules they would be an
+  import cycle; merged, they are two calls. The merge is also what makes
+  the call checked — a C linker matches an undefined symbol against a
+  defined one by name and compares nothing, so a prototype that
+  disagrees with its definition links and then misbehaves, while two
+  declarations of one name have to agree to get this far. `static` is
+  the overlay that model needs: an internal name becomes `file$name`, so
+  two files may each keep one, and a shared header's struct is one
+  record when the two declarations agree and an error when they do not.
 - **A pointer to a function is `opt<code(...)>`**, not `opt<ptr<T>>`:
   there is no object at the other end to load from. A function's name
   used as a value is a `code.ref` that decays to that pointer, `*fp` is
@@ -749,14 +772,12 @@ What it does not do yet, each refused by name rather than
 mistranslated: **`goto`**, which is where the relooper LLVM does for the
 bridge will have to be written, **varargs**, **unions and bitfields** (a
 union's members share storage and a record's do not, so there is no
-record shape to give one), **`void *` and casts between pointer types**,
-and **calling a function another translation unit defines** — which also
-means taking the address of one. A C struct cannot cross into Gyro yet
-either: the generated header has no way to redeclare a `%Named`, which is
-the same gap the linker's structural matching is. A callback does not
-cross into Gyro at all, because a code pointer is an address in this
-program and what may cross a runtime boundary is settled by the copy
-rule.
+record shape to give one), and **`void *` and casts between pointer
+types**. A C struct cannot cross into Gyro yet either: the generated
+header has no way to redeclare a `%Named`, which is the same gap the
+linker's structural matching is. A callback does not cross into Gyro at
+all, because a code pointer is an address in this program and what may
+cross a runtime boundary is settled by the copy rule.
 
 ## Still open
 

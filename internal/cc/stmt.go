@@ -110,13 +110,15 @@ func (f *funcLowerer) declare(s *declStmt) {
 // each declare a `static int count` and they are two objects.
 func (f *funcLowerer) declareStatic(v *varDecl) {
 	g := &globalDecl{
-		name: f.l.staticSymbol(f.fn.name, v.name),
-		typ:  v.typ,
-		init: v.init,
-		pos:  v.pos,
+		name:   v.name,
+		symbol: f.l.staticSymbol(f.fn.symbol, v.name),
+		typ:    v.typ,
+		init:   v.init,
+		static: true,
+		pos:    v.pos,
 	}
 	f.l.declareGlobal(g)
-	f.scopes[len(f.scopes)-1][v.name] = &binding{typ: g.typ, symbol: g.name}
+	f.scopes[len(f.scopes)-1][v.name] = &binding{typ: g.typ, symbol: g.symbol}
 }
 
 func (f *funcLowerer) returnStmt(s *returnStmt) {

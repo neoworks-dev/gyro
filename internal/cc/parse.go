@@ -18,6 +18,10 @@ import (
 type parser struct {
 	toks []token
 	i    int
+	// stem is the file's name without its directory or extension. A
+	// tagless struct is named after it, so that two files each writing
+	// `typedef struct { ... } T;` do not both claim the same record.
+	stem string
 
 	// structs maps a tag to its type, so that `struct Node *next` inside
 	// `struct Node` refers to the one being defined rather than opening a
@@ -52,6 +56,7 @@ func parse(file string, toks []token) (out *unit, err error) {
 
 	p := &parser{
 		toks:     toks,
+		stem:     unitName(file),
 		structs:  map[string]*ctype{},
 		typedefs: map[string]*ctype{},
 		enums:    map[string]int64{},
@@ -156,7 +161,7 @@ func (p *parser) unit() *unit {
 				if typ.isVoid() {
 					p.fail(pos, "%s is declared void", name)
 				}
-				global := &globalDecl{name: name, typ: typ, pos: pos}
+				global := &globalDecl{name: name, typ: typ, static: static, pos: pos}
 				if p.accept("=") {
 					global.init = p.initializer()
 				}
@@ -181,7 +186,7 @@ func (p *parser) unit() *unit {
 // `typedef struct { ... } Point;` idiom produce a `%Point` record and
 // not an anonymous one.
 func (p *parser) defineTypedef(name string, typ *ctype, pos position) {
-	if typ.isStruct() && strings.HasPrefix(typ.tag, "$anon") {
+	if typ.isStruct() && strings.HasPrefix(typ.tag, p.stem+"$anon") {
 		delete(p.structs, typ.tag)
 		typ.tag = name
 		if other, taken := p.structs[name]; taken && other != typ {
@@ -441,7 +446,7 @@ func (p *parser) structType() *ctype {
 			p.fail(pos, "a struct needs a tag or a body")
 		}
 		p.anonymous++
-		tag = fmt.Sprintf("$anon%d", p.anonymous)
+		tag = fmt.Sprintf("%s$anon%d", p.stem, p.anonymous)
 	}
 
 	typ, known := p.structs[tag]

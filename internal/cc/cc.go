@@ -16,11 +16,16 @@
 // a boundary is between runtimes, and there is only one runtime here.
 // See docs/decisions.md, "Values copy at runtime boundaries".
 //
+// A program here is as many files as it takes. C has no way to say which
+// `.c` defines a symbol, so the set is found rather than declared:
+// resolve.go starts at the file Gyro imported and follows what it needs.
+// They lower into one module, because a linkage unit is what a METALS
+// module is.
+//
 // What it does not do yet is listed in docs/metals.md rather than
 // apologized for here. The largest are goto — where the relooper the
 // bridge outsources to LLVM will have to be written — unions and
-// bitfields, varargs, casts between pointer types, and calling a
-// function another translation unit defines.
+// bitfields, varargs, and casts between pointer types.
 package cc
 
 import (
@@ -31,19 +36,17 @@ import (
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
-// Compile turns one C translation unit into a METALS module. opt may be
-// nil, which is a compilation with no header search path and nothing
+// Compile turns a C program into a METALS module. path names the entry
+// file; the rest of the program is whatever that file needs and does not
+// define, found among the `.c` files beside it — see resolve.go. opt may
+// be nil, which is a compilation with no header search path and nothing
 // defined ahead of the first line.
 func Compile(path, source string, opt *Options) (*metals.Module, error) {
-	tokens, err := preprocess(path, source, opt)
+	units, err := gather(path, source, opt)
 	if err != nil {
 		return nil, err
 	}
-	unit, err := parse(path, tokens)
-	if err != nil {
-		return nil, err
-	}
-	return lower(ModuleName(path), unit)
+	return lower(ModuleName(path), units)
 }
 
 // ModuleName is the METALS name of the module a C file becomes. The

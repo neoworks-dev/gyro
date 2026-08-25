@@ -112,7 +112,12 @@ func itoa(v int64) string {
 
 func refused(t *testing.T, source, fragment string) {
 	t.Helper()
-	module, err := Compile("case.c", source, nil)
+	refusedOpt(t, nil, source, fragment)
+}
+
+func refusedOpt(t *testing.T, opt *Options, source, fragment string) {
+	t.Helper()
+	module, err := Compile("case.c", source, opt)
 	if err == nil {
 		err = metals.Verify(module)
 		if err == nil {

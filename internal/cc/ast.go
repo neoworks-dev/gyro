@@ -18,9 +18,17 @@ type unit struct {
 
 type globalDecl struct {
 	name string
-	typ  *ctype
-	init *initializer // nil when the declaration has none
-	pos  position
+	// symbol is the METALS name, which differs from the C name for a
+	// static: file scope makes it `file$name` and a static local makes
+	// it `function$name`.
+	symbol string
+	typ    *ctype
+	init   *initializer // nil when the declaration has none
+	// static is C's internal linkage: the name is this translation
+	// unit's and no other file may reach it. A static local is also
+	// one of these, and is static for the same reason.
+	static bool
+	pos    position
 }
 
 // initializer is what follows `=` in a declaration. C's braced form
@@ -36,7 +44,12 @@ type initializer struct {
 func (i *initializer) braced() bool { return i.x == nil }
 
 type funcDecl struct {
-	name   string
+	name string
+	// symbol is the METALS name. It is the C name for a function with
+	// external linkage, since that is the name another file calls it by,
+	// and `file$name` for a static one, since that name is this file's
+	// alone and another file may reuse it.
+	symbol string
 	result *ctype
 	params []param
 	// body is nil for a prototype, which declares a name this unit may

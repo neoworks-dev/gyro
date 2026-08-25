@@ -38,6 +38,10 @@ type Options struct {
 	// Read reads an included file. Nil means the filesystem; a caller
 	// that has its own idea of where sources come from supplies one.
 	Read func(path string) (string, error)
+	// List returns the `.c` files in a directory, which is how a
+	// translation unit finds the ones it links against. Nil means the
+	// filesystem, as for Read.
+	List func(dir string) ([]string, error)
 }
 
 func (o *Options) read(path string) (string, error) {

@@ -1,0 +1,41 @@
+// A Gyro program importing a C library made of several files.
+//
+// The import names one file. C files never include one another — a
+// header declares, a .c defines, and nothing in the source says which
+// .c defines what, which is why every C project has a build system whose
+// main job is holding the file list. Here the list is recovered: the
+// entry file's unmet names are looked for in the .c files beside it, and
+// each file that supplies one is pulled in and asked the same question.
+//
+// All of them become one METALS module, because a linkage unit is what a
+// module is. So a call across files is an ordinary call, checked against
+// the definition it reaches — which a C linker, matching bare symbol
+// names, cannot do at all.
+
+import { println } from "stdlib"
+import {
+  area, perimeter, describe, scaled_area, bump, counter_value,
+} from "./area.c"
+
+fn main() {
+  // area is in the file named; perimeter is not, and is exported by the
+  // module all the same.
+  println(area(3, 4))
+  println(perimeter(3, 4))
+
+  // describe calls across into geometry.c and adds its own static
+  // helper, which multiplies by ten.
+  println(describe(3, 4))
+
+  // scaled_area is in geometry.c and calls back into area.c. Its helper
+  // adds a hundred: same name as area.c's, different function.
+  println(scaled_area(3, 4, 2))
+
+  // counter.c arrived because geometry.c calls bump. Its state is a
+  // file-scope static that nothing else can reach.
+  println(counter_value())
+  println(scaled_area(1, 1, 5))
+  println(counter_value())
+  println(bump())
+  println(counter_value())
+}
