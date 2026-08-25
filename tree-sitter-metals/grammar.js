@@ -339,7 +339,7 @@ module.exports = grammar({
       'u8', 'u16', 'u32', 'u64', 'usize',
       'f32', 'f64',
       'bool', 'rune', 'str',
-      'any', 'handle',
+      'any', 'anyptr', 'handle',
     ),
 
     generic_type: $ => seq(

@@ -215,6 +215,15 @@ func (f *frame) instr(instr metals.Instr) {
 		f.assign(i.Dst, fmt.Sprintf("(void *)((char *)%s + (int64_t)%s * %d)",
 			f.reg(i.Ptr), f.reg(i.N), size))
 
+	case *metals.PtrErase:
+		// An `anyptr` and a `ptr<T>` are both `void *` here, so erasing
+		// a type is an assignment. What the erasure buys is upstream:
+		// the format stops letting the next instruction load through it.
+		f.assign(i.Dst, f.reg(i.X))
+
+	case *metals.PtrCast:
+		f.assign(i.Dst, f.reg(i.X))
+
 	case *metals.PtrDiff:
 		size := g.sizeOf(f.typeOf(i.A).(*metals.Ptr).Elem)
 		f.assign(i.Dst, fmt.Sprintf("(((char *)%s - (char *)%s) / %d)",

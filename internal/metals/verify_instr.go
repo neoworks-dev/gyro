@@ -276,6 +276,50 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, TInt64)
 
+	case *PtrErase:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		switch typ := typ.(type) {
+		case *Ptr:
+			return fv.def(state, i.Dst, &AnyPtr{})
+		case *Opt:
+			if _, ok := typ.Elem.(*Ptr); ok {
+				return fv.def(state, i.Dst, &Opt{Elem: &AnyPtr{}})
+			}
+		}
+		return fmt.Errorf("ptr.erase wants a ptr<T> or an opt<ptr<T>>, not %s", typ)
+
+	case *PtrCast:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if err := fv.checkType(i.To); err != nil {
+			return err
+		}
+		switch to := i.To.(type) {
+		case *Ptr:
+			if _, ok := typ.(*AnyPtr); !ok {
+				return fmt.Errorf("ptr.cast to %s wants an anyptr, not %s", i.To, typ)
+			}
+			return fv.def(state, i.Dst, to)
+		case *Opt:
+			if _, ok := to.Elem.(*Ptr); !ok {
+				break
+			}
+			opt, ok := typ.(*Opt)
+			if !ok {
+				return fmt.Errorf("ptr.cast to %s wants an opt<anyptr>, not %s", i.To, typ)
+			}
+			if _, ok := opt.Elem.(*AnyPtr); !ok {
+				return fmt.Errorf("ptr.cast to %s wants an opt<anyptr>, not %s", i.To, typ)
+			}
+			return fv.def(state, i.Dst, to)
+		}
+		return fmt.Errorf("ptr.cast puts a target type back on an anyptr, and %s is not one", i.To)
+
 	case *MakeRecord:
 		shape, err := fv.recordShape(i.TypeName)
 		if err != nil {

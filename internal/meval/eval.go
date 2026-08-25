@@ -328,6 +328,21 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 		}
 		regs[i.Dst] = intVal{v: int64(a.index - b.index), kind: metals.I64}
 
+	case *metals.PtrErase:
+		// Erasing takes away a static type, and the evaluator has no
+		// static types: the value is the same address, still knowing
+		// what object it belongs to. That the evaluator keeps knowing is
+		// precisely why ptr.cast can catch a producer putting the wrong
+		// type back.
+		regs[i.Dst] = m.get(regs, i.X)
+
+	case *metals.PtrCast:
+		x := m.get(regs, i.X)
+		if ptr, ok := x.(ptrVal); ok {
+			m.checkCast(ptr, i.To)
+		}
+		regs[i.Dst] = x
+
 	case *metals.MakeRecord:
 		fields := make([]value, len(i.Args))
 		for index, arg := range i.Args {
@@ -630,6 +645,55 @@ func (m *machine) selectStep(sel *metals.Select, regs map[string]value) signal {
 // deref is what a pointer has to survive to be used: arithmetic can put
 // one past the end of its object, which C allows a program to form and
 // not to read, and this is where that difference is enforced.
+// checkCast holds a producer to what ptr.cast asserts. The instruction
+// claims the object at this address is a T; the native backends have no
+// way to ask and just move the register, while the evaluator still knows
+// what is really in the cell and can say so.
+//
+// It is the same asymmetry ptr.offset already has, and it is deliberately
+// one-sided: a definite mismatch aborts, and anything else — a cell not
+// written yet, a pointer one past the end, a shape this does not
+// classify — is left to the producer. A cast that is wrong in a way the
+// evaluator waves through is a wrong program either way; a cast this
+// rejects is one that would have read different bytes on every tier.
+func (m *machine) checkCast(p ptrVal, to metals.Type) {
+	target, ok := to.(*metals.Ptr)
+	if !ok {
+		// opt<ptr<T>>: a null carries no object and casts freely.
+		opt, isOpt := to.(*metals.Opt)
+		if !isOpt {
+			return
+		}
+		if target, ok = opt.Elem.(*metals.Ptr); !ok {
+			return
+		}
+	}
+	if p.index < 0 || p.index >= len(p.cells) {
+		return
+	}
+	if got, want := describe(p.cells[p.index]), target.Elem; got != nil && !metals.TypesEqual(got, want) {
+		m.throw("ptr.cast to ptr<%s> of an address holding a %s", want, got)
+	}
+}
+
+// describe is the type a value plainly is, or nil where the evaluator's
+// representation does not pin one down. Only the shapes whose storage
+// differs are named: a scalar of the wrong width and a record of the
+// wrong shape are what a mistaken cast reads differently on a machine.
+func describe(v value) metals.Type {
+	switch v := v.(type) {
+	case intVal:
+		return &metals.Prim{Kind: v.kind}
+	case uintVal:
+		return &metals.Prim{Kind: v.kind}
+	case floatVal:
+		return &metals.Prim{Kind: v.kind}
+	case recordVal:
+		return &metals.Named{Name: v.typeName}
+	}
+	return nil
+}
+
 func (m *machine) deref(p ptrVal, what string) *value {
 	if p.index < 0 || p.index >= len(p.cells) {
 		m.throw("%s through a pointer outside the object it points into", what)

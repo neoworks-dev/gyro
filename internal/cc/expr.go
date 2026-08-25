@@ -245,6 +245,9 @@ func (f *funcLowerer) lvalue(e expr) value {
 		if !operand.typ.isPointer() {
 			fail(e.pos, "cannot dereference a %s", operand.typ)
 		}
+		if operand.typ.isVoidPointer() {
+			fail(e.pos, "cannot dereference a void *; cast it to a pointer to the type it addresses first")
+		}
 		return value{reg: f.deref(operand), typ: operand.typ.elem}
 
 	case *memberExpr:
@@ -513,6 +516,9 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 		if !b.typ.isPointer() || !a.typ.equals(b.typ) {
 			fail(pos, "subtracting pointers needs two of one type, not a %s and a %s", a.typ, b.typ)
 		}
+		if a.typ.isVoidPointer() {
+			fail(pos, "a void * has no element size, so two of them have no difference in elements")
+		}
 		// The difference is in elements, which is what ptr.diff counts,
 		// and its type is ptrdiff_t — long on this target.
 		reg := f.temp()
@@ -520,7 +526,18 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 		return value{reg: reg, typ: typeLong}
 
 	case "==", "!=":
-		if !a.typ.isPointer() || !b.typ.isPointer() || !a.typ.equals(b.typ) {
+		if !a.typ.isPointer() || !b.typ.isPointer() {
+			fail(pos, "%s compares two pointers of one type, not a %s and a %s", op, a.typ, b.typ)
+		}
+		// A pointer to an object and a `void *` compare, and C says the
+		// object pointer converts to the void one. That is the direction
+		// that needs no claim about what is at the address.
+		if a.typ.isVoidPointer() != b.typ.isVoidPointer() {
+			void := pointerTo(typeVoid)
+			a = f.convert(a, void, pos)
+			b = f.convert(b, void, pos)
+		}
+		if !a.typ.equals(b.typ) {
 			fail(pos, "%s compares two pointers of one type, not a %s and a %s", op, a.typ, b.typ)
 		}
 		flag := f.temp()
@@ -530,6 +547,9 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 	case "<", "<=", ">", ">=":
 		if !a.typ.isPointer() || !b.typ.isPointer() || !a.typ.equals(b.typ) {
 			fail(pos, "%s orders two pointers of one type, not a %s and a %s", op, a.typ, b.typ)
+		}
+		if a.typ.isVoidPointer() {
+			fail(pos, "ordering two void * would count elements neither of them has")
 		}
 		// Ordering pointers is only defined inside one object, and inside
 		// one object the order is the order of the element counts — so
@@ -547,6 +567,13 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 
 // step is `p + n` and `p - n`: the pointer n elements along, or n back.
 func (f *funcLowerer) step(p, n value, back bool, pos position) value {
+	// Stepping a pointer moves it by the size of what it points at, and a
+	// `void *` does not point at anything with a size. GCC gives void a
+	// size of one and steps anyway; that is an extension, and reading it
+	// as C would silently change what an index means.
+	if p.typ.isVoidPointer() {
+		fail(pos, "a void * has no element size to step by; cast it to a pointer to the type it addresses first")
+	}
 	count := f.convert(n, typeLong, pos)
 	if back {
 		negated := f.temp()

@@ -139,7 +139,7 @@ func (g *generator) cType(t metals.Type) string {
 		default:
 			return "int64_t"
 		}
-	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle:
+	case *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle:
 		return "void *"
 	case *metals.FnType:
 		return "gy_fn"

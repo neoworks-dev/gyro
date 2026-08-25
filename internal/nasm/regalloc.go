@@ -391,6 +391,10 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.N}}
 	case *metals.PtrDiff:
 		return roles{defs: []string{i.Dst}, uses: []string{i.A, i.B}}
+	case *metals.PtrErase:
+		return roles{defs: []string{i.Dst}, uses: []string{i.X}}
+	case *metals.PtrCast:
+		return roles{defs: []string{i.Dst}, uses: []string{i.X}}
 	case *metals.MakeRecord:
 		return roles{defs: []string{i.Dst}, uses: i.Args}
 	case *metals.FieldGet:

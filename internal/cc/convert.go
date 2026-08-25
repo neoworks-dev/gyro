@@ -25,11 +25,7 @@ func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
 		if !v.typ.isPointer() {
 			fail(pos, "cannot convert a %s to a %s; this front end has no integer-to-pointer conversion", v.typ, to)
 		}
-		// Two pointer types with different targets have the same
-		// representation in C and different ones here, and there is no
-		// void* to launder one through. Refusing is the honest answer
-		// until METALS grows something for it.
-		fail(pos, "cannot convert a %s to a %s; a pointer keeps its target's type here", v.typ, to)
+		return f.convertPointer(v, to, pos)
 	}
 	if v.typ.isPointer() {
 		if to.kind == kBool {
@@ -63,6 +59,40 @@ func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
 	}
 
 	return f.convertInt(v, to)
+}
+
+// convertPointer is a cast between two pointer types, which in C changes
+// nothing about the address and everything about what may be done with
+// it. Here it is spelled in two halves: `ptr.erase` takes the target's
+// type off and cannot fail, `ptr.cast` puts one back and is a claim.
+//
+// A cast between two object pointers goes through both, which is what
+// makes it a claim rather than a coincidence — `(struct T *)p` says the
+// object at that address is a T, the way C's own aliasing rules say it
+// must be, and the evaluator is the tier that can tell when it is not.
+//
+// A function pointer is not an object pointer and does not join in.
+// `void *` addresses storage; converting one to a code pointer is a
+// POSIX guarantee about a machine, not a C one about a program, and
+// METALS has two types here precisely because they are not the same
+// thing.
+func (f *funcLowerer) convertPointer(v value, to *ctype, pos position) value {
+	if v.typ.isFuncPointer() || to.isFuncPointer() {
+		fail(pos, "cannot convert a %s to a %s; a pointer to a function and a pointer to an object are different types here", v.typ, to)
+	}
+
+	erased := v.reg
+	if !v.typ.isVoidPointer() {
+		reg := f.temp()
+		f.emit(&metals.PtrErase{Dst: reg, X: v.reg})
+		erased = reg
+	}
+	if to.isVoidPointer() {
+		return value{reg: erased, typ: to}
+	}
+	reg := f.temp()
+	f.emit(&metals.PtrCast{Dst: reg, X: erased, To: to.metalsType()})
+	return value{reg: reg, typ: to}
 }
 
 func (f *funcLowerer) convertInt(v value, to *ctype) value {

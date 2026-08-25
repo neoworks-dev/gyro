@@ -163,6 +163,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `f32 f64` | floats |
 | `bool rune str` | other primitives; `str` is an immutable string value |
 | `ptr<T>` | pointer, never null, never crosses a boundary |
+| `anyptr` | a pointer with the target's type erased; compares, casts back, loads nothing |
 | `opt<T>` | nullable |
 | `slice<T>` | borrowed view |
 | `array<T, N>` | fixed-size array value |
@@ -307,6 +308,8 @@ store %p, %v
 %q = elem.ptr %p     ; ptr<array<T, N>> -> ptr<T>, the first element
 %q = ptr.offset %p, %n ; ptr<T> -> the ptr<T> n elements along
 %n = ptr.diff %a, %b   ; ptr<T>, ptr<T> -> i64, how many elements apart
+%a = ptr.erase %p      ; ptr<T> -> anyptr; opt<ptr<T>> -> opt<anyptr>
+%p = ptr.cast %a -> ptr<T> ; the type put back, as the producer's claim
 ```
 
 `elem.ptr` is the array-to-pointer decay: an array's storage begins where
@@ -331,9 +334,35 @@ it is the same one `uninitVal` already has: the tiers agree on every
 defined program, and the evaluator is the tier that can *see* an
 undefined one.
 
+`ptr.erase` and `ptr.cast` are the two halves of an erased pointer.
+Erasing takes the target's type off and cannot fail; casting puts one
+back and is the producer's **claim** that the object at that address is a
+`T`. They are two instructions rather than one for the reason `conv`,
+`trunc` and `bitcast` are three: erasing is total and restoring is an
+assertion, and an instruction that answered both questions would let one
+be mistaken for the other. Optionality is carried through rather than
+dropped and rebuilt, because under the niche `opt<ptr<T>>` and
+`opt<anyptr>` are the same machine word and making a producer branch to
+preserve a null would be a lie about what the instruction does.
+
+An `anyptr` supports exactly two things: comparison, and having a type
+put back. There is no load, no store, no `field.ptr`, no `ptr.offset` and
+no `ptr.diff`, because none of them has an answer without the target's
+type — which is C's rule for `void *` already, so a C front end loses
+nothing it had. `sizeof(void *)` still answers 8.
+
+The claim is checked the way `ptr.offset`'s is. The native backends move
+a register; the evaluator still knows what is really in the cell and
+aborts when a cast names something else. Reading one object's bytes as
+another type is undefined in C too, `char *` aliasing included — the
+evaluator is the tier that can see it happening, and a cast it waves
+through is one whose mistake it could not observe.
+
 This is not a second addressing model. Linear memory is still the flat,
 bounds-checked, `u32`-addressed region it was, and a `memory` and a
-`ptr<T>` still never meet.
+`ptr<T>` still never meet. An `anyptr` is not one either: erasing a
+target's type is not the same as having no address space, so an `anyptr`
+cannot cross a runtime boundary any more than a `ptr<T>` can.
 
 ### Linear memory
 
@@ -427,25 +456,26 @@ type. A front end whose checker proves a value non-null (Gyro's
 narrowing) still emits `opt.unwrap`; the abort is that guarantee made
 explicit, in the same trapping style as `idiv` and `index.get`.
 
-**`opt<ptr<T>>` and `opt<code(...)>` are one word.** Every `ptr<T>` in a
-verified module addresses an object METALS produced, and every
-`code(...)` is the address of a function METALS emitted, so in both cases
-the null address is a pattern no live value has and the format reserves
-it: the optional is laid out inside its payload rather than beside it, is
-one machine word in storage and in a register, and travels in a register
-like any other address. `const.null` is the zeroed store it already was,
-a wrap is a move, an unwrap is a null test, and equality was always a
-word compare.
+**`opt<ptr<T>>`, `opt<code(...)>` and `opt<anyptr>` are one word.** Every
+`ptr<T>` in a verified module addresses an object METALS produced, every
+`code(...)` is the address of a function METALS emitted, and an `anyptr`
+is one of those two with its type taken away rather than a number a
+producer invented — so in each case the null address is a pattern no live
+value has and the format reserves it: the optional is laid out inside its
+payload rather than beside it, is one machine word in storage and in a
+register, and travels in a register like any other address. `const.null`
+is the zeroed store it already was, a wrap is a move, an unwrap is a null
+test, and equality was always a word compare.
 
-That niche is those two types'. A `handle`, a `chan` and a `future` are
+That niche is those three types'. A `handle`, a `chan` and a `future` are
 the runtime's values, and which bit patterns they may hold is the
 runtime's business rather than the format's. Everything else keeps the
 flag-and-payload layout.
 
-The reason to have it is C. A C pointer is `opt<ptr<T>>` and a C function
-pointer is `opt<code(...)>` — see the C front end below — and with a flag
-beside the payload `sizeof(char *)` answers 16, which is self-consistent
-and is not C's ABI.
+The reason to have it is C. A C pointer is `opt<ptr<T>>`, a C function
+pointer is `opt<code(...)>` and a C `void *` is `opt<anyptr>` — see the C
+front end below — and with a flag beside the payload `sizeof(char *)`
+answers 16, which is self-consistent and is not C's ABI.
 
 ### Calls
 
@@ -710,9 +740,21 @@ The mapping, where it is not obvious:
   the same division.
 - **The null pointer constant is the integer 0**, cast or not, which is
   what makes `#define NULL ((void *)0)` mean what every header expects.
-  It lowers to `const.null`, and the cast is seen through rather than
-  performed — `void *` has no METALS type and a null pointer of the type
-  it is about to become does not need one.
+  It lowers to `const.null` of the type the expression is becoming, and
+  the cast is seen through rather than performed: a null of the
+  destination's type needs no trip through another one.
+- **A `void *` is `opt<anyptr>`**, an address with the target's type
+  erased. C forbids `*p`, `p + 1`, `p[i]` and `sizeof *p` on one already,
+  so the erasure costs the source language nothing it had, and
+  `sizeof(void *)` still answers 8 — a struct with a `void *` in it is
+  the bytes C lays out. A cast between two pointer types is `ptr.erase`
+  then `ptr.cast`, which is what makes it a claim rather than a
+  coincidence; the conversion to `void *` needs only the first half and
+  the conversion back needs only the second, which is why C requires a
+  cast in one direction and not the other. A pointer to a function does
+  not join in: `void *` addresses storage, and converting one to a code
+  pointer is a POSIX guarantee about a machine rather than a C one about
+  a program.
 
 - **A `switch` is nested blocks**, one per group of case labels, in
   source order and innermost first, with the dispatch `switch` at the
@@ -770,10 +812,12 @@ The mapping, where it is not obvious:
 
 What it does not do yet, each refused by name rather than
 mistranslated: **`goto`**, which is where the relooper LLVM does for the
-bridge will have to be written, **varargs**, **unions and bitfields** (a
-union's members share storage and a record's do not, so there is no
-record shape to give one), and **`void *` and casts between pointer
-types**. A C struct cannot cross into Gyro yet either: the generated
+bridge will have to be written, **varargs**, and **unions and bitfields**
+(a union's members share storage and a record's do not, so there is no
+record shape to give one). **Type punning** compiles and is a program
+only two tiers can run: reading one object's bytes as another type is
+undefined in C, `char *` aliasing included, and the evaluator holds a
+producer to it. A C struct cannot cross into Gyro yet either: the generated
 header has no way to redeclare a `%Named`, which is the same gap the
 linker's structural matching is. A callback does not cross into Gyro at
 all, because a code pointer is an address in this program and what may

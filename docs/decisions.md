@@ -544,16 +544,16 @@ shortcuts and one routing choice, and closing them is the roadmap:
    arithmetic are in, so a C library with its own header, a quicksort
    over `int *` and a fixed table in module storage compiles and runs on
    all three tiers. Since then: string literals and file-scope
-   initializers, `switch`, `static` locals, function pointers, and a
-   program made of as many `.c` files as it takes. "Any existing C
+   initializers, `switch`, `static` locals, function pointers, a program
+   made of as many `.c` files as it takes, and `void *` with the casts
+   that go with it. "Any existing C
    program" is still the bar and is still a way off — the front end owes
-   unions and bitfields, varargs, `void *` and casts between pointer
-   types, most of C11, VLAs, `_Generic`, and the relooper for irreducible
-   `goto`, the piece `internal/wasm/clang.go` names as the hardest and
-   currently outsources. See "The C front end emits types, the bridge
-   emits bytes", "Pointer arithmetic is three instructions, and
-   unchecked", "A callable is one word or two", and "A C program is
-   several files".
+   unions and bitfields, varargs, most of C11, VLAs, `_Generic`, and the
+   relooper for irreducible `goto`, the piece `internal/wasm/clang.go`
+   names as the hardest and currently outsources. See "The C front end
+   emits types, the bridge emits bytes", "Pointer arithmetic is three
+   instructions, and unchecked", "A callable is one word or two", "A C
+   program is several files", and "A `void *` is a pointer that forgot".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2286,6 +2286,62 @@ linkage means the name is that file's, so it becomes `file$name` and two
 files may each keep one. A struct from a shared header is one record when
 the declarations agree and an error when they do not — C calls that
 undefined and says nothing, which is not a useful thing to reproduce.
+
+### A `void *` is a pointer that forgot, not a pointer that is weaker *(new)*
+
+**Status: decided.** METALS grew `anyptr`, the address of an object with
+the object's type erased, and `ptr.erase` / `ptr.cast` to take a type off
+and put one back. C's `void *` is `opt<anyptr>`, and a cast between two
+pointer types is the two instructions in order.
+
+The thing that makes this safe to add is that **an `anyptr` supports
+almost nothing**. It compares, and it has a type put back. There is no
+load, no store, no `field.ptr`, no `ptr.offset`, no `ptr.diff` — because
+none of them has an answer without knowing what is at the address. That
+is not a restriction invented for the IR: C already makes `*p`, `p + 1`,
+`p[i]` and `sizeof *p` errors on a `void *`, so a C front end loses
+nothing it had by saying so in the type. And it is one word, so
+`sizeof(void *)` answers 8 and a struct with one in it is the bytes C
+lays out.
+
+**Rejected: `ptr<T>` where the producer lies about T**, which is how a C
+front end would do this without a new type — declare `void *` as
+`ptr<u8>` and cast where needed. It makes every pointer in the IR a
+pointer that might be something else, which is the same objection that
+kept pointer arithmetic off `ptr<T>` for linear memory. **Rejected: an
+integer address**, which is what the wasm bridge uses and is right there:
+it would make a pointer and a number the same thing at exactly the
+boundary where the format's whole claim is that they are not.
+
+**Erasing and restoring are two instructions, not one.** `conv`, `trunc`
+and `bitcast` are three for the same reason: erasing is total and cannot
+fail, restoring is a **claim**, and one instruction answering both
+questions would let a producer confuse them. Optionality is carried
+through rather than dropped and rebuilt — an `opt<ptr<T>>` erases to an
+`opt<anyptr>` — because under the niche the two are the same machine
+word, and making the producer branch to preserve a null would be a lie
+about what the instruction does.
+
+**The claim is checked the way `ptr.offset`'s is.** The natives move a
+register; the evaluator still knows what is really in the cell and aborts
+when a cast names something else. That is the same deliberate asymmetry:
+the tiers agree on every defined program, and the evaluator is the tier
+that can see an undefined one. It means **type punning compiles and runs
+on two tiers** — reading an object's bytes as another type is undefined
+in C too, `char *` aliasing included, and a byte-addressable object model
+in the evaluator is what it would take to run it there. Rejected making
+the evaluator wave the cast through: the failure would then be a
+different answer on one tier rather than a message, which is the one
+thing three tiers exist to prevent.
+
+**A function pointer does not join in.** `void *` addresses storage;
+`code(...)` is the address of a function. Converting between them is a
+POSIX guarantee about a machine, not a C one about a program, and METALS
+has two types here precisely so a producer cannot assume otherwise.
+
+An `anyptr` still cannot cross a runtime boundary. Forgetting what is at
+an address does not make the address portable — it makes it less
+crossable, not more.
 
 ## Native backend
 

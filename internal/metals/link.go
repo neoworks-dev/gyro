@@ -374,6 +374,8 @@ func (l *linker) instr(instr Instr) Instr {
 		return &Trunc{Dst: i.Dst, X: i.X, To: l.rewrite(i.To)}
 	case *Bitcast:
 		return &Bitcast{Dst: i.Dst, X: i.X, To: l.rewrite(i.To)}
+	case *PtrCast:
+		return &PtrCast{Dst: i.Dst, X: i.X, To: l.rewrite(i.To)}
 	case *AnyUnwrap:
 		return &AnyUnwrap{Dst: i.Dst, X: i.X, To: l.rewrite(i.To)}
 	case *AnyIs:

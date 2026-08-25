@@ -50,7 +50,7 @@ func (g *generator) eqChecks(out *strings.Builder, depth int, t metals.Type, a, 
 		}
 		write("if (!(%s == %s)) return 0;", a, b)
 
-	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
+	case *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
 		write("if (!(%s == %s)) return 0;", a, b)
 
 	case *metals.SliceOf, *metals.FnType:

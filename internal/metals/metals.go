@@ -146,6 +146,18 @@ type (
 		Params []Type
 		Result Type
 	}
+	// AnyPtr is `anyptr`: the address of an object with the object's
+	// type erased. It is one word, exactly what a `ptr<T>` is, and the
+	// only things it supports are comparison and having the type put
+	// back — there is nothing to load through a pointer that has
+	// forgotten what it points at.
+	//
+	// That is C's `void *` and not a weaker `ptr<T>`. C already forbids
+	// `*p`, `p + 1` and `sizeof *p` on one, so the erasure costs the
+	// source language nothing it had. `ptr.erase` takes the type away
+	// and `ptr.cast` asserts it back; the assertion is the producer's,
+	// the way `ptr.offset` staying inside its object is.
+	AnyPtr struct{}
 	// Named references a module-local record or enum by name.
 	Named struct{ Name string }
 	// Any is the dynamically typed escape hatch.
@@ -163,6 +175,7 @@ func (t *FutureOf) String() string {
 }
 func (t *Named) String() string  { return "%" + QuoteName(t.Name) }
 func (t *Any) String() string    { return "any" }
+func (t *AnyPtr) String() string { return "anyptr" }
 func (t *Handle) String() string { return "handle" }
 
 func (t *ArrayOf) String() string {
@@ -267,6 +280,9 @@ func TypesEqual(a, b Type) bool {
 		return ok && a.Name == b.Name
 	case *Any:
 		_, ok := b.(*Any)
+		return ok
+	case *AnyPtr:
+		_, ok := b.(*AnyPtr)
 		return ok
 	case *Handle:
 		_, ok := b.(*Handle)

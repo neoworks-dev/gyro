@@ -18,6 +18,7 @@ type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
 global @counter: i32
 global @greeting: array<u8, 3> = "hi\x00"
 global @dispatch: opt<code(i32) -> i32>
+global @userdata: opt<anyptr>
 
 init @setup
 
@@ -92,6 +93,11 @@ export fn @add(%a: i32, %b: i32) -> i32 {
         (signature
           (primitive_type)
           (primitive_type)))))
+  (global_declaration
+    (global_name)
+    (generic_type
+      (type_constructor)
+      (primitive_type)))
   (init_declaration
     (global_name))
   (function_declaration

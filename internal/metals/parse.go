@@ -693,6 +693,8 @@ func (p *parser) typeExpr() (Type, error) {
 	switch tok.text {
 	case "any":
 		return &Any{}, nil
+	case "anyptr":
+		return &AnyPtr{}, nil
 	case "handle":
 		return &Handle{}, nil
 	case "ptr":

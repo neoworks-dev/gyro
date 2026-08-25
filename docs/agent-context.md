@@ -591,9 +591,19 @@ Kept honest in `docs/language.md` ("Still to come") and
   express and arbitrary jumps do not.
 - **unions and bitfields**: a union's members share storage and a
   record's do not, so there is no record shape to give one.
-- **varargs, `void *` and casts between pointer types**.
+- **varargs**.
+- **Type punning runs on two tiers.** `void *` is in and a cast between
+  pointer types is `ptr.erase` then `ptr.cast`, which is the producer's
+  claim about what is at the address. The natives move a register; the
+  evaluator knows what is really in the cell and aborts when a cast names
+  something else. Round trips — the overwhelming majority — are fine;
+  reading an object's bytes as another type is undefined in C too, `char
+  *` aliasing included, and running it here would need a byte-addressable
+  object model in the evaluator.
 - **A callback cannot cross into Gyro**: a code pointer is an address in
-  this program, and the copy rule settles what crosses a boundary.
+  this program, and the copy rule settles what crosses a boundary. A
+  `void *` does not cross either, and for the same reason — `gyroType`
+  has no spelling for one, which is the honest answer.
 - **A case label inside a nested statement** — Duff's device. A switch
   body is a flat list of labels and statements here.
 - **A C struct cannot cross into Gyro**, which is the same gap as the
@@ -607,8 +617,9 @@ Kept honest in `docs/language.md` ("Still to come") and
 Closed since this list was written: `Map<K, V>` (ordinary Gyro over
 `Array<T>`), file writing and directory listing (`fs`), stdin, env vars
 and exit codes (`os`), clocks and sleep (`time`); string literals,
-file-scope and braced initializers, `static` locals, `switch`, and
-`sizeof(char *)` answering 8.
+file-scope and braced initializers, `static` locals, `switch`,
+`sizeof(char *)` answering 8, function pointers, a program made of as
+many `.c` files as it takes, and `void *`.
 
 **Safety holes:**
 

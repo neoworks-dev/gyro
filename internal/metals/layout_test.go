@@ -180,6 +180,42 @@ func TestLayoutCallablesAreOneWordOrTwo(t *testing.T) {
 	}
 }
 
+// An erased pointer costs what a pointer costs. That is the whole
+// reason the type is a word and not a box: `sizeof(void *)` is 8 in C,
+// and a struct with one in it has C's layout only if that holds here.
+func TestLayoutAnyPtrIsAPointersWorth(t *testing.T) {
+	l := testLayout(t)
+	erased := &AnyPtr{}
+
+	if got := l.Size(erased); got != 8 {
+		t.Errorf("Size(anyptr) = %d, want 8", got)
+	}
+	if got := l.Align(erased); got != 8 {
+		t.Errorf("Align(anyptr) = %d, want 8", got)
+	}
+	if !Scalar(erased) {
+		t.Errorf("anyptr is not a scalar, and it is one word in a register")
+	}
+
+	// The niche covers it for the reason it covers the two it already
+	// covered: an anyptr is one of those with its type taken away, not
+	// an address someone invented, so the null pattern is still free.
+	nullable := &Opt{Elem: erased}
+	if !NicheOpt(nullable) {
+		t.Fatalf("opt<anyptr> is not a niche optional")
+	}
+	if got := l.Size(nullable); got != 8 {
+		t.Errorf("Size(%s) = %d, want 8", nullable, got)
+	}
+
+	// C's `struct { int kind; void *data; }`: four bytes, four of
+	// padding, and the address on its own alignment.
+	decl := record("Handle", TInt32, nullable)
+	if got := testLayout(t, decl).Size(&Named{Name: "Handle"}); got != 16 {
+		t.Errorf("Size(%%Handle) = %d, want 16", got)
+	}
+}
+
 func TestLayoutNarrowNamesTheConvertingTypes(t *testing.T) {
 	narrow := []Type{TInt8, TUint8, TBool, TInt16, TUint16, TInt32, TUint32, TRune, TF32}
 	for _, t2 := range narrow {

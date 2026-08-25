@@ -15,7 +15,7 @@ import (
 // and pointers, so everything wider than a word travels by address.
 func byPointer(t metals.Type) bool {
 	switch t.(type) {
-	case *metals.Prim, *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
+	case *metals.Prim, *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
 		return false
 	}
 	return true

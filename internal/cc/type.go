@@ -98,7 +98,14 @@ func (t *ctype) isFunc() bool    { return t.kind == kFunc }
 // isFuncPointer is what a call through a variable needs, and what a
 // callback table's fields are made of.
 func (t *ctype) isFuncPointer() bool { return t.kind == kPtr && t.elem.isFunc() }
-func (t *ctype) isFloat() bool       { return t.kind == kFloat || t.kind == kDouble }
+
+// isVoidPointer is `void *`: an address with nothing said about what is
+// at it. Everything that needs the target's type — a dereference, an
+// index, arithmetic, a sizeof — asks this first, because C says all four
+// are errors on one.
+func (t *ctype) isVoidPointer() bool { return t.kind == kPtr && t.elem.isVoid() }
+
+func (t *ctype) isFloat() bool { return t.kind == kFloat || t.kind == kDouble }
 
 // isCharacter is what a string literal may initialize an array of, which
 // is a char of either signedness and nothing else.
@@ -228,10 +235,7 @@ func (a *ctype) equals(b *ctype) bool {
 	return true
 }
 
-// metalsType is the IR type a C type lowers to. A void pointer has no
-// answer — METALS has no untyped pointer and should not grow one to hold
-// C's — so it is refused where it is written rather than mapped to
-// something that would silently lose the target's type.
+// metalsType is the IR type a C type lowers to.
 func (t *ctype) metalsType() metals.Type {
 	switch t.kind {
 	case kBool:
@@ -263,6 +267,14 @@ func (t *ctype) metalsType() metals.Type {
 		// same reason every C pointer is.
 		if t.elem.isFunc() {
 			return &metals.Opt{Elem: t.elem.metalsType()}
+		}
+		// A `void *` is an address with the target's type erased, which
+		// is what `anyptr` is. C already forbids everything erasure
+		// costs — `*p`, `p + 1` and `sizeof *p` are all errors on one —
+		// so nothing is lost by saying so in the IR, and `sizeof(void *)`
+		// still answers 8.
+		if t.elem.isVoid() {
+			return &metals.Opt{Elem: &metals.AnyPtr{}}
 		}
 		// A C pointer is nullable and METALS' is not, so the IR type is
 		// the optional one. Every dereference is an opt.unwrap, which is

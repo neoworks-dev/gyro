@@ -200,7 +200,7 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 			return t
 		}
 		return nil
-	case *Ptr, *ChanOf, *FutureOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
+	case *Ptr, *AnyPtr, *ChanOf, *FutureOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
 		return t
 	case *Opt:
 		return pointerInside(m, t.Elem, seen)
@@ -374,6 +374,11 @@ func checkBoundary(name string, sig *FnType, types map[string]*TypeDecl) error {
 func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) string {
 	switch t := t.(type) {
 	case *Ptr:
+		return t.String()
+	case *AnyPtr:
+		// Erasing the target's type does not make an address portable.
+		// It is still this program's address space, and forgetting what
+		// lives there makes it less crossable rather than more.
 		return t.String()
 	case *ChanOf:
 		return t.String()

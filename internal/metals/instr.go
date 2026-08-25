@@ -132,6 +132,31 @@ type (
 	// different objects, exactly as in C.
 	PtrDiff struct{ Dst, A, B string }
 
+	// PtrErase is `%a = ptr.erase %p`: a pointer with its target's type
+	// taken away. It cannot fail and it moves nothing — an `anyptr` is
+	// the same address the `ptr<T>` was. Optionality is carried through,
+	// so an `opt<ptr<T>>` erases to an `opt<anyptr>` and a null stays a
+	// null, because under the niche both are the same machine word and
+	// making the producer branch to preserve that would be a lie about
+	// what the instruction does.
+	PtrErase struct{ Dst, X string }
+
+	// PtrCast is `%p = ptr.cast %a -> ptr<T>`: the type put back. It is
+	// the producer's assertion that the object at that address is a T,
+	// the way ptr.offset staying inside its object is the producer's
+	// assertion — the native backends take it at face value and the
+	// evaluator, which knows what the object really is, aborts when the
+	// two disagree. `opt<anyptr>` casts to `opt<ptr<T>>` for the reason
+	// ptr.erase carries optionality.
+	//
+	// It is separate from ptr.erase because they answer different
+	// questions: erasing is total and restoring is a claim. That is the
+	// same division conv, trunc and bitcast already draw.
+	PtrCast struct {
+		Dst, X string
+		To     Type
+	}
+
 	// MemLoad is `%v = mem.load.<T> @mem, %addr`. The suffix names both
 	// the result type and the width read, so mem.load.u8 reads one byte
 	// and mem.load.f64 reads eight. Addresses are u32 and the access is
@@ -325,6 +350,8 @@ func (*FieldPtr) isInstr()     {}
 func (*ElemPtr) isInstr()      {}
 func (*PtrOffset) isInstr()    {}
 func (*PtrDiff) isInstr()      {}
+func (*PtrErase) isInstr()     {}
+func (*PtrCast) isInstr()      {}
 func (*MemLoad) isInstr()      {}
 func (*MemStore) isInstr()     {}
 func (*MemSize) isInstr()      {}

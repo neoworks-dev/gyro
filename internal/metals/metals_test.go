@@ -601,6 +601,95 @@ func TestVerifierChecksOptOps(t *testing.T) {
 `, "optionals do not nest")
 }
 
+// ptr.erase and ptr.cast are the two halves of C's `void *`: taking a
+// target's type off, which cannot fail, and putting one back, which is a
+// claim. What the verifier holds is the shape of the pair — that only a
+// pointer erases, that only an erased pointer is cast, and that
+// optionality is carried through rather than gained or lost.
+func TestAnyPtrRoundTrip(t *testing.T) {
+	roundTrip(t, `
+module "metals:test/erase"
+
+type %Point = record { x: i32, y: i32 }
+
+fn @keep(%p: anyptr) -> anyptr {
+  return %p
+}
+
+export fn @main() {
+  %n = slot i64
+  %v = const.i64 7
+  store %n, %v
+
+  %e = ptr.erase %n
+  %held = call @keep(%e)
+  %back = ptr.cast %held -> ptr<i64>
+  %got = load %back
+
+  %pt = slot %Point
+  %ep = ptr.erase %pt
+  %same = eq %e, %ep
+
+  %w = opt.wrap %n
+  %ew = ptr.erase %w
+  %none = const.null opt<anyptr>
+  %present = ne %ew, %none
+  %rw = ptr.cast %ew -> opt<ptr<i64>>
+  return
+}
+`)
+}
+
+func TestVerifierChecksPointerErasure(t *testing.T) {
+	verifyError(t, header+`fn @f(%x: i32) {
+  %e = ptr.erase %x
+  return
+}
+`, "ptr.erase wants a ptr<T> or an opt<ptr<T>>")
+
+	// A code pointer is not an object pointer, and there is nothing at
+	// the other end of one to have a type erased.
+	verifyError(t, header+`fn @f(%c: code(i32) -> i32) {
+  %e = ptr.erase %c
+  return
+}
+`, "ptr.erase wants a ptr<T> or an opt<ptr<T>>")
+
+	verifyError(t, header+`fn @f(%p: ptr<i32>) {
+  %q = ptr.cast %p -> ptr<i64>
+  return
+}
+`, "wants an anyptr")
+
+	verifyError(t, header+`fn @f(%p: ptr<i32>) {
+  %e = ptr.erase %p
+  %q = ptr.cast %e -> i64
+  return
+}
+`, "is not one")
+
+	// Optionality is carried, not conjured: an erased bare pointer does
+	// not become nullable on the way back.
+	verifyError(t, header+`fn @f(%p: ptr<i32>) {
+  %e = ptr.erase %p
+  %q = ptr.cast %e -> opt<ptr<i32>>
+  return
+}
+`, "wants an opt<anyptr>")
+}
+
+// An address is this program's address space whether or not the format
+// still knows what is at it. Forgetting the target's type makes one less
+// crossable rather than more.
+func TestVerifierRefusesAnyPtrAtABoundary(t *testing.T) {
+	verifyError(t, `module "gyro:test/v"
+
+import "c:SDL2" {
+  fn @SDL_free(anyptr)
+}
+`, "values copy at the boundary")
+}
+
 func TestVerifierChecksAnyOperands(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: i32) {
   %r = any.call %x()

@@ -414,7 +414,7 @@ func (f *frame) emitEquality(dst, op, a, b string, operand metals.Type) {
 		}
 		f.emitWordEquality(dst, negate, a, b)
 		return
-	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
+	case *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
 		f.emitWordEquality(dst, negate, a, b)
 		return
 	case *metals.Opt:

@@ -1172,6 +1172,10 @@
     "named": false
   },
   {
+    "type": "anyptr",
+    "named": false
+  },
+  {
     "type": "async",
     "named": false
   },

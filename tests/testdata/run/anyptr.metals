@@ -1,0 +1,146 @@
+; Type-erased pointers on the three METALS tiers.
+;
+; An `anyptr` is a `ptr<T>` with the T taken away. It is one word, it
+; compares, and the type can be put back — and that is everything it
+; does, because there is nothing to load through a pointer that has
+; forgotten what it points at.
+;
+; That is C's `void *` and not a weaker pointer. C already forbids `*p`,
+; `p + 1` and `sizeof *p` on one, so the erasure costs the source
+; language nothing it had, and `sizeof(void *)` still answers 8.
+;
+; `ptr.erase` takes the type off and cannot fail. `ptr.cast` puts one
+; back and is the producer's claim about what lives at that address —
+; the same kind of claim `ptr.offset` staying inside its object is. The
+; native backends move a register; the evaluator still knows what the
+; object really is, and says so when the two disagree.
+
+module "metals:anyptr"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Point = record { x: i64, y: i64 }
+
+; A handle the way C keeps one: a tag to dispatch on and an address whose
+; type only the dispatch knows. The record is two words, because an
+; erased pointer is one word — which is the layout C gives a struct with
+; a `void *` in it.
+type %Cell = record { kind: i64, data: opt<anyptr> }
+
+; sink never learns what it was handed, which is the whole reason a
+; program erases a type: the `userdata` a callback carries belongs to
+; the caller and is opaque to everything in between.
+fn @sink(%p: anyptr) -> anyptr {
+  return %p
+}
+
+export fn @main() {
+  ; The round trip. The type comes off and goes back on, and the object
+  ; is the one it always was.
+  %n = slot i64
+  %v = const.i64 42
+  store %n, %v
+  %e = ptr.erase %n
+  %back = ptr.cast %e -> ptr<i64>
+  %r = load %back
+  call @"println<i64>"(%r)
+
+  ; The same trip through a function whose signature cannot name the
+  ; type.
+  %through = call @sink(%e)
+  %back2 = ptr.cast %through -> ptr<i64>
+  %r2 = load %back2
+  call @"println<i64>"(%r2)
+
+  ; A record's address erases and restores like any other.
+  %pt = slot %Point
+  %px = const.i64 3
+  %py = const.i64 4
+  %rec = record %Point(%px, %py)
+  store %pt, %rec
+  %ep = ptr.erase %pt
+  %bp = ptr.cast %ep -> ptr<%Point>
+  %got = load %bp
+  %gx = field.get %got, 0
+  %gy = field.get %got, 1
+  %sum = iadd %gx, %gy
+  call @"println<i64>"(%sum)
+
+  ; Erasing changes nothing about the address, so two erasures of one
+  ; pointer are one address and two of different pointers are not.
+  %e2 = ptr.erase %n
+  %same = eq %e, %e2
+  call @"println<bool>"(%same)
+  %differs = ne %e, %ep
+  call @"println<bool>"(%differs)
+
+  ; Optionality is carried through rather than dropped and rebuilt: an
+  ; `opt<ptr<T>>` erases to an `opt<anyptr>`, and under the niche both
+  ; are the same machine word, so a null stays a null without the
+  ; producer branching to keep it.
+  %wrapped = opt.wrap %n
+  %ew = ptr.erase %wrapped
+  %none = const.null opt<anyptr>
+  %present = ne %ew, %none
+  call @"println<bool>"(%present)
+  %rw = ptr.cast %ew -> opt<ptr<i64>>
+  %uw = opt.unwrap %rw
+  %r3 = load %uw
+  call @"println<i64>"(%r3)
+
+  %nothing = const.null opt<ptr<i64>>
+  %en = ptr.erase %nothing
+  %absent = eq %en, %none
+  call @"println<bool>"(%absent)
+
+  ; Through a record field, which is where a C handle keeps one. The tag
+  ; reads back from the offset it would have in C, because the erased
+  ; pointer beside it takes one word.
+  %kind = const.i64 9
+  %cell = record %Cell(%kind, %ew)
+  %cs = slot %Cell
+  store %cs, %cell
+  %kf = field.ptr %cs, 0
+  %k = load %kf
+  call @"println<i64>"(%k)
+  %df = field.ptr %cs, 1
+  %d = load %df
+  %du = ptr.cast %d -> opt<ptr<i64>>
+  %dp = opt.unwrap %du
+  %r4 = load %dp
+  call @"println<i64>"(%r4)
+
+  ; One array, three targets of three different types — a null, an
+  ; integer and a record — each restored to what it was. That is what a
+  ; `void *[]` is for, and the stride is one word.
+  %wpt = opt.wrap %pt
+  %ewpt = ptr.erase %wpt
+  %arr = slot array<opt<anyptr>, 3>
+  %base = elem.ptr %arr
+  store %base, %none
+  %one = const.i64 1
+  %at1 = ptr.offset %base, %one
+  store %at1, %ew
+  %two = const.i64 2
+  %at2 = ptr.offset %base, %two
+  store %at2, %ewpt
+
+  %g0 = load %base
+  %isnull = eq %g0, %none
+  call @"println<bool>"(%isnull)
+  %g1 = load %at1
+  %c1 = ptr.cast %g1 -> opt<ptr<i64>>
+  %u1 = opt.unwrap %c1
+  %v1 = load %u1
+  call @"println<i64>"(%v1)
+  %g2 = load %at2
+  %c2 = ptr.cast %g2 -> opt<ptr<%Point>>
+  %u2 = opt.unwrap %c2
+  %pv = load %u2
+  %pvx = field.get %pv, 0
+  call @"println<i64>"(%pvx)
+  return
+}
