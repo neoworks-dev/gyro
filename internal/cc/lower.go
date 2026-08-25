@@ -365,17 +365,7 @@ func (l *lowerer) sizeFromInit(g *globalDecl) *ctype {
 	return nil
 }
 
-func sameSignature(a, b *funcDecl) bool {
-	if !a.result.equals(b.result) || len(a.params) != len(b.params) {
-		return false
-	}
-	for i := range a.params {
-		if !a.params[i].typ.equals(b.params[i].typ) {
-			return false
-		}
-	}
-	return true
-}
+func sameSignature(a, b *funcDecl) bool { return a.typ().equals(b.typ()) }
 
 // ---------------------------------------------------------------------------
 // One function
@@ -438,8 +428,11 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 	}
 
 	// A parameter arrives in a register and C may take its address or
-	// assign to it, so each one is copied into a cell of its own.
-	for _, p := range fn.params {
+	// assign to it, so each one is copied into a cell of its own. A
+	// variadic function has two more than it declared, carrying what came
+	// after the last named one; `va$` is not in C's identifier space, so
+	// nothing but va_start can reach them.
+	for _, p := range fn.typ().signature() {
 		incoming := f.reserve(p.name + ".in")
 		f.out.Params = append(f.out.Params, metals.Param{Name: incoming, Type: p.typ.metalsType()})
 		cell := f.reserve(p.name)

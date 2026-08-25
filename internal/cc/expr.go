@@ -44,6 +44,12 @@ func (f *funcLowerer) expr(e expr) value {
 	case *sizeofExpr:
 		return f.sizeOf(e)
 
+	case *vaStartExpr:
+		return f.vaStart(e)
+
+	case *vaArgExpr:
+		return f.vaArg(e)
+
 	case *unaryExpr:
 		if e.op == "*" {
 			return f.rvalue(f.lvalue(e))
@@ -91,9 +97,8 @@ func (f *funcLowerer) exprAs(e expr, want *ctype) value {
 // expression with value 0, optionally cast — which is what makes
 // `#define NULL ((void *)0)` mean what every header expects it to.
 //
-// The cast has to be seen through rather than lowered: `void *` has no
-// METALS type, and a null pointer of the type it is going to be does not
-// need one.
+// The cast is seen through rather than lowered: a null pointer of the
+// type the expression is becoming needs no trip through another one.
 func isNullConstant(e expr) bool {
 	switch e := e.(type) {
 	case *intLit:
@@ -165,7 +170,7 @@ func (f *funcLowerer) designator(fn *funcDecl, pos position) value {
 	}
 	reg := f.temp()
 	f.emit(&metals.CodeRef{Dst: reg, Callee: fn.symbol})
-	return value{reg: reg, typ: funcOf(fn.result, fn.params)}
+	return value{reg: reg, typ: fn.typ()}
 }
 
 // sizeOf answers `sizeof`. The operand of the expression form is lowered
@@ -696,7 +701,7 @@ func (f *funcLowerer) call(e *callExpr) value {
 }
 
 func (f *funcLowerer) directCall(e *callExpr, callee *funcDecl) value {
-	args := f.callArgs(e, callee.name, callee.params)
+	args := f.callArgs(e, callee.name, callee.typ())
 	if callee.body == nil {
 		fail(e.pos, "%s is declared but not defined here, and calling into another module is not wired up yet", callee.name)
 	}
@@ -716,7 +721,7 @@ func (f *funcLowerer) indirectCall(e *callExpr) value {
 		fail(e.pos, "a %s is not something that can be called", target.typ)
 	}
 	sig := target.typ.elem
-	args := f.callArgs(e, "this call", sig.params)
+	args := f.callArgs(e, "this call", sig)
 
 	// The pointer is opened here, so calling through a null one aborts
 	// with a message rather than jumping to address zero.
@@ -732,18 +737,30 @@ func (f *funcLowerer) indirectCall(e *callExpr) value {
 
 // callArgs converts a call's arguments to the parameter types, which is
 // the same work whether the callee is a name or a pointer.
-func (f *funcLowerer) callArgs(e *callExpr, what string, params []param) []string {
-	if len(e.args) != len(params) {
-		fail(e.pos, "%s takes %d argument(s), and this call passes %d",
-			what, len(params), len(e.args))
+func (f *funcLowerer) callArgs(e *callExpr, what string, sig *ctype) []string {
+	params := sig.params
+	if len(e.args) != len(params) && !(sig.variadic && len(e.args) > len(params)) {
+		atLeast := ""
+		if sig.variadic {
+			atLeast = "at least "
+		}
+		fail(e.pos, "%s takes %s%d argument(s), and this call passes %d",
+			what, atLeast, len(params), len(e.args))
 	}
-	args := make([]string, len(e.args))
-	for i, arg := range e.args {
-		want := params[i].typ
-		args[i] = f.convert(f.exprAs(arg, want), want, e.pos).reg
+
+	args := make([]string, 0, len(params)+2)
+	for i, want := range params {
+		args = append(args, f.convert(f.exprAs(e.args[i], want.typ), want.typ, e.pos).reg)
 	}
-	return args
+	if !sig.variadic {
+		return args
+	}
+
+	slots, count := f.varargPack(e.args[len(params):], e.pos)
+	return append(args, slots, count)
 }
+
+// The vararg pack a variadic call builds is varargs.go's.
 
 // ---------------------------------------------------------------------------
 // Truth

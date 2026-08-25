@@ -545,15 +545,15 @@ shortcuts and one routing choice, and closing them is the roadmap:
    over `int *` and a fixed table in module storage compiles and runs on
    all three tiers. Since then: string literals and file-scope
    initializers, `switch`, `static` locals, function pointers, a program
-   made of as many `.c` files as it takes, and `void *` with the casts
-   that go with it. "Any existing C
-   program" is still the bar and is still a way off — the front end owes
-   unions and bitfields, varargs, most of C11, VLAs, `_Generic`, and the
-   relooper for irreducible `goto`, the piece `internal/wasm/clang.go`
-   names as the hardest and currently outsources. See "The C front end
-   emits types, the bridge emits bytes", "Pointer arithmetic is three
-   instructions, and unchecked", "A callable is one word or two", "A C
-   program is several files", and "A `void *` is a pointer that forgot".
+   made of as many `.c` files as it takes, `void *` with the casts that
+   go with it, and varargs. "Any existing C program" is still the bar and
+   is still a way off — the front end owes unions and bitfields, most of
+   C11, VLAs, `_Generic`, and the relooper for irreducible `goto`, the
+   piece `internal/wasm/clang.go` names as the hardest and currently
+   outsources. See "The C front end emits types, the bridge emits bytes",
+   "Pointer arithmetic is three instructions, and unchecked", "A callable
+   is one word or two", "A C program is several files", "A `void *` is a
+   pointer that forgot", and "Varargs are an array a caller builds".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2342,6 +2342,62 @@ has two types here precisely so a producer cannot assume otherwise.
 An `anyptr` still cannot cross a runtime boundary. Forgetting what is at
 an address does not make the address portable — it makes it less
 crossable, not more.
+
+### Varargs are an array a caller builds, and METALS learned nothing *(new)*
+
+**Status: decided.** A variadic C function takes two parameters beyond
+the ones it declared: a `void **` to the addresses of the arguments after
+the last named one, and a `long` count. `va_arg` walks that. The IR grew
+no variadic call, no `valist` type and no instruction.
+
+That is the whole argument. **What varies at a C call site is how many
+arguments there are and what types they have; what the callee can do
+with them is walk them in order, asking for one type at a time.** The
+second half is small enough to express in what METALS already has, so it
+belongs to the front end — implement semantics at the highest shared
+layer, and a calling convention is not a property of an IR that has no
+machine.
+
+**The indirection is forced, and it is the interesting part.** The
+obvious design is SysV's: a flat area of eight-byte slots. That cannot
+be a METALS type, because a slot would have to hold an `int`, a `double`
+and a `char *` at once — a pointer and a number sharing storage, which is
+exactly what linear memory was kept away from `ptr<T>` to avoid. So the
+array holds *addresses*, which are all one type, and each argument is
+spilled into a cell of its own. One load more per argument.
+
+**Rejected: a `slice<any>` pack.** `any` is METALS' dynamic value and
+would carry the types for free — except `any.wrap` refuses a pointer,
+because an `any` may cross a runtime boundary and a pointer may not. A
+`%s` needs a pointer, so this ends at the first format string.
+**Rejected: teaching the backends SysV varargs** — a register save area,
+`gp_offset`/`fp_offset`, the `al` convention. It is the real ABI and it
+buys nothing: nothing here calls a C variadic function that this compiler
+did not produce, so the two backends would be implementing a convention
+only they speak, and nasm would be implementing it twice over.
+
+**What it buys back.** `va_arg` names a type, and that type reaches a
+`ptr.cast`, so the evaluator catches a format string that lies. And the
+count travels with the arguments, so **reading one argument too many is
+an abort with a message on every tier** rather than whatever the stack
+held — the oldest bug varargs has, and one C structurally cannot report,
+because a `...` passes no count and the callee's only source of truth is
+the format string that was already wrong.
+
+`<stdarg.h>` is bundled, because it describes the compiler rather than a
+library. `va_list` is an ordinary C struct in it — an array of one, for
+glibc's reason: naming one decays to a pointer, so `vprintf(fmt, ap)`
+advances the cursor its caller declared. Only `va_start` and `va_arg` are
+builtins. `va_end` does nothing and `va_copy` is a struct assignment, and
+C can already say both.
+
+**An export the generated Gyro header cannot spell is left out rather
+than made an error.** A variadic function is the case that forced it: a
+`...` says nothing about what a call passes, so nothing on the far side
+of a boundary could check one, and a C library is not written for this
+importer. One unspellable helper should not make the other forty
+unimportable. Naming a skipped export is still an error, reported where
+it is imported, which is where it means something.
 
 ## Native backend
 

@@ -34,7 +34,14 @@ func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
 		fail(pos, "cannot convert a %s to a %s", v.typ, to)
 	}
 
-	if v.typ.isVoid() || to.isVoid() {
+	if to.isVoid() {
+		// `(void)x` is C's way of saying a value is deliberately
+		// discarded. It is a conversion in the grammar and a statement
+		// about intent in practice, and the value is already lowered —
+		// what it does not have any more is a type anything can read.
+		return value{typ: typeVoid}
+	}
+	if v.typ.isVoid() {
 		fail(pos, "cannot convert a %s to a %s", v.typ, to)
 	}
 	if v.typ.isStruct() || to.isStruct() {

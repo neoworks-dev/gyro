@@ -82,6 +82,15 @@ func (p *parser) next() token {
 
 func (p *parser) at(text string) bool { return p.peek().is(text) }
 
+// atBuiltin matches one of the front end's own names. They are ordinary
+// identifiers and not keywords, because `__builtin_` is reserved to the
+// implementation and a program that spells one has asked for it — but
+// nothing about a C program's own use of identifiers changes.
+func (p *parser) atBuiltin(name string) bool {
+	tok := p.peek()
+	return tok.kind == tokIdent && tok.text == name
+}
+
 func (p *parser) accept(text string) bool {
 	if p.at(text) {
 		p.i++
@@ -150,7 +159,10 @@ func (p *parser) unit() *unit {
 				p.defineTypedef(name, typ, pos)
 
 			case typ.isFunc():
-				fn := &funcDecl{name: name, result: typ.result, params: typ.params, static: static, pos: pos}
+				fn := &funcDecl{
+					name: name, result: typ.result, params: typ.params,
+					variadic: typ.variadic, static: static, pos: pos,
+				}
 				out.funcs = append(out.funcs, fn)
 				if !p.at(";") && !p.at(",") {
 					fn.body = p.block()
@@ -554,7 +566,8 @@ func (p *parser) typeSuffix(base *ctype) *ctype {
 		return p.arraySuffix(base)
 	}
 	if p.at("(") {
-		return funcOf(base, p.params())
+		params, variadic := p.params()
+		return funcOf(base, params, variadic)
 	}
 	return base
 }
@@ -613,7 +626,7 @@ func (p *parser) arraySuffix(base *ctype) *ctype {
 	return typ
 }
 
-func (p *parser) params() []param {
+func (p *parser) params() ([]param, bool) {
 	pos := p.expect("(").pos
 	var out []param
 
@@ -623,7 +636,7 @@ func (p *parser) params() []param {
 	if p.at("void") && p.ahead().is(")") {
 		p.next()
 		p.expect(")")
-		return nil
+		return nil, false
 	}
 	if p.accept(")") {
 		p.fail(pos, "an empty parameter list says nothing about the arguments; write (void)")
@@ -631,7 +644,16 @@ func (p *parser) params() []param {
 
 	for {
 		if p.at("...") {
-			p.fail(p.peek().pos, "a variadic parameter list is not lowered yet")
+			// C requires a named parameter before the `...`, and the
+			// reason is `va_start`: the arguments after the last named
+			// one are what a callee walks, and with no named one there
+			// is nothing to start from.
+			ellipsis := p.next().pos
+			if len(out) == 0 {
+				p.fail(ellipsis, "a `...` needs a named parameter before it; va_start has nothing to start from otherwise")
+			}
+			p.expect(")")
+			return out, true
 		}
 		base, static, isTypedef := p.declSpecifiers()
 		if static || isTypedef {
@@ -656,7 +678,7 @@ func (p *parser) params() []param {
 		}
 	}
 	p.expect(")")
-	return out
+	return out, false
 }
 
 // ---------------------------------------------------------------------------
@@ -981,6 +1003,27 @@ func (p *parser) unary() expr {
 			return &sizeofExpr{typ: typ, pos: tok.pos}
 		}
 		return &sizeofExpr{x: p.unary(), pos: tok.pos}
+
+	// The two pieces of <stdarg.h> that ordinary C cannot express. The
+	// header is bundled and spells `va_start`, `va_arg`, `va_end` and
+	// `va_copy` over them, which is what a real C library's does too —
+	// the last two need no builtin, because doing nothing and copying a
+	// struct are both things C can already say.
+	case p.atBuiltin("__builtin_va_start"):
+		p.next()
+		p.expect("(")
+		ap := p.assign()
+		p.expect(")")
+		return &vaStartExpr{ap: ap, pos: tok.pos}
+
+	case p.atBuiltin("__builtin_va_arg"):
+		p.next()
+		p.expect("(")
+		ap := p.assign()
+		p.expect(",")
+		typ := p.typeName(tok.pos)
+		p.expect(")")
+		return &vaArgExpr{ap: ap, typ: typ, pos: tok.pos}
 	}
 	return p.postfix()
 }

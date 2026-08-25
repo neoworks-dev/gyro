@@ -52,11 +52,20 @@ type funcDecl struct {
 	symbol string
 	result *ctype
 	params []param
+	// variadic is the `...`. What follows the named parameters reaches
+	// the body as two more of them; see ctype.signature.
+	variadic bool
 	// body is nil for a prototype, which declares a name this unit may
 	// call and another module has to supply.
 	body   *blockStmt
 	static bool
 	pos    position
+}
+
+// typ is the function type a declaration has, which is what a
+// designator's value is and what a call is checked against.
+func (fn *funcDecl) typ() *ctype {
+	return funcOf(fn.result, fn.params, fn.variadic)
 }
 
 type param struct {
@@ -253,18 +262,39 @@ type (
 		x   expr
 		pos position
 	}
+
+	// vaStartExpr is `__builtin_va_start(ap)`, which <stdarg.h> spells
+	// `va_start(ap, last)`. It is a builtin rather than a macro over
+	// ordinary C because what it reads is the enclosing function's own
+	// hidden parameters, and no C expression can name those.
+	vaStartExpr struct {
+		ap  expr
+		pos position
+	}
+
+	// vaArgExpr is `__builtin_va_arg(ap, T)`. It is a builtin because
+	// its second operand is a type, and because reading one argument too
+	// many should be an abort with a message rather than whatever the
+	// stack held — which is the same trade a null callback already makes.
+	vaArgExpr struct {
+		ap  expr
+		typ *ctype
+		pos position
+	}
 )
 
-func (e *intLit) at() position     { return e.pos }
-func (e *floatLit) at() position   { return e.pos }
-func (e *strLit) at() position     { return e.pos }
-func (e *identExpr) at() position  { return e.pos }
-func (e *callExpr) at() position   { return e.pos }
-func (e *unaryExpr) at() position  { return e.pos }
-func (e *incExpr) at() position    { return e.pos }
-func (e *binaryExpr) at() position { return e.pos }
-func (e *assignExpr) at() position { return e.pos }
-func (e *condExpr) at() position   { return e.pos }
-func (e *memberExpr) at() position { return e.pos }
-func (e *castExpr) at() position   { return e.pos }
-func (e *sizeofExpr) at() position { return e.pos }
+func (e *intLit) at() position      { return e.pos }
+func (e *floatLit) at() position    { return e.pos }
+func (e *strLit) at() position      { return e.pos }
+func (e *identExpr) at() position   { return e.pos }
+func (e *callExpr) at() position    { return e.pos }
+func (e *unaryExpr) at() position   { return e.pos }
+func (e *incExpr) at() position     { return e.pos }
+func (e *binaryExpr) at() position  { return e.pos }
+func (e *assignExpr) at() position  { return e.pos }
+func (e *condExpr) at() position    { return e.pos }
+func (e *memberExpr) at() position  { return e.pos }
+func (e *castExpr) at() position    { return e.pos }
+func (e *sizeofExpr) at() position  { return e.pos }
+func (e *vaStartExpr) at() position { return e.pos }
+func (e *vaArgExpr) at() position   { return e.pos }

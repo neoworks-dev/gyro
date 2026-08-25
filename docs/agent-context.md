@@ -591,7 +591,6 @@ Kept honest in `docs/language.md` ("Still to come") and
   express and arbitrary jumps do not.
 - **unions and bitfields**: a union's members share storage and a
   record's do not, so there is no record shape to give one.
-- **varargs**.
 - **Type punning runs on two tiers.** `void *` is in and a cast between
   pointer types is `ptr.erase` then `ptr.cast`, which is the producer's
   claim about what is at the address. The natives move a register; the
@@ -603,7 +602,12 @@ Kept honest in `docs/language.md` ("Still to come") and
 - **A callback cannot cross into Gyro**: a code pointer is an address in
   this program, and the copy rule settles what crosses a boundary. A
   `void *` does not cross either, and for the same reason — `gyroType`
-  has no spelling for one, which is the honest answer.
+  has no spelling for one, which is the honest answer. Neither does a
+  variadic function: a `...` says nothing about what a call passes.
+  `header` in `internal/loader/foreign.go` **skips** an export it cannot
+  spell rather than failing the module, so one such helper does not make
+  a whole C library unimportable; naming a skipped one is an error at the
+  import.
 - **A case label inside a nested statement** — Duff's device. A switch
   body is a flat list of labels and statements here.
 - **A C struct cannot cross into Gyro**, which is the same gap as the
@@ -619,7 +623,7 @@ Closed since this list was written: `Map<K, V>` (ordinary Gyro over
 and exit codes (`os`), clocks and sleep (`time`); string literals,
 file-scope and braced initializers, `static` locals, `switch`,
 `sizeof(char *)` answering 8, function pointers, a program made of as
-many `.c` files as it takes, and `void *`.
+many `.c` files as it takes, `void *`, and varargs.
 
 **Safety holes:**
 

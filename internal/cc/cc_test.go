@@ -387,7 +387,6 @@ func TestRefusesWhatIsNotLoweredYet(t *testing.T) {
 	refused(t, `int result(void) { int a[4], b[4]; a = b; return 0; }`, "an array is storage")
 	refused(t, `int result(void) { int a[]; return 0; }`, "has no size")
 	refused(t, "#include <stdio.h>\nint result(void) { return 0; }", "cannot find <stdio.h>")
-	refused(t, `int sum(int a, ...); int result(void) { return 0; }`, "variadic")
 	refused(t, `int result() { return 0; }`, "write (void)")
 	refused(t, `long double result(void) { return 0; }`, "not a type")
 }

@@ -55,8 +55,15 @@ type ctype struct {
 	// params and result describe a function. A function type has no
 	// size and no storage — it is not an object — so it reaches METALS
 	// only through a pointer to it, which is a one-word `code(...)`.
-	params []param
-	result *ctype
+	//
+	// variadic is the `...` at the end of the list. It is part of the
+	// type and not a property of one declaration, because a call through
+	// a function pointer has to know it: what the arguments after the
+	// named ones become is decided at the call, and only the type says
+	// whether there may be any.
+	params   []param
+	variadic bool
+	result   *ctype
 }
 
 type field struct {
@@ -85,8 +92,8 @@ func arrayOf(elem *ctype, length int64) *ctype {
 	return &ctype{kind: kArray, elem: elem, length: length}
 }
 
-func funcOf(result *ctype, params []param) *ctype {
-	return &ctype{kind: kFunc, result: result, params: params}
+func funcOf(result *ctype, params []param, variadic bool) *ctype {
+	return &ctype{kind: kFunc, result: result, params: params, variadic: variadic}
 }
 
 func (t *ctype) isVoid() bool    { return t.kind == kVoid }
@@ -104,6 +111,46 @@ func (t *ctype) isFuncPointer() bool { return t.kind == kPtr && t.elem.isFunc() 
 // index, arithmetic, a sizeof — asks this first, because C says all four
 // are errors on one.
 func (t *ctype) isVoidPointer() bool { return t.kind == kPtr && t.elem.isVoid() }
+
+// The two parameters a variadic function is given beyond the ones it
+// declares: the arguments after the last named one, spilled and reached
+// by address, and how many of them there are.
+//
+// METALS has no variadic call and does not need one. What varies at a C
+// call site is the number and types of the arguments; what a callee can
+// actually do with them is walk them in order, asking for one type at a
+// time — so an array of erased addresses says everything a callee may
+// know, and the machinery is a front end's rather than a format's. See
+// docs/decisions.md, "Varargs are an array a caller builds".
+//
+// Both are ordinary C types, which is what makes `va_list` an ordinary C
+// struct in <stdarg.h> rather than something the front end has to
+// synthesize.
+func vaSlotsType() *ctype { return pointerTo(pointerTo(typeVoid)) }
+func vaCountType() *ctype { return typeLong }
+
+// vaSlotsName and vaCountName are the parameters' names. Neither is in
+// C's identifier space, so nothing a translation unit declares can
+// collide with one, and no C expression can name them: `va_start` is how
+// a program reaches them.
+const (
+	vaSlotsName = "va$slots"
+	vaCountName = "va$count"
+)
+
+// signature is the parameter list as METALS sees it, which for a
+// variadic function is the declared parameters plus the two that carry
+// what came after them.
+func (t *ctype) signature() []param {
+	if !t.variadic {
+		return t.params
+	}
+	out := make([]param, 0, len(t.params)+2)
+	out = append(out, t.params...)
+	return append(out,
+		param{name: vaSlotsName, typ: vaSlotsType()},
+		param{name: vaCountName, typ: vaCountType()})
+}
 
 func (t *ctype) isFloat() bool { return t.kind == kFloat || t.kind == kDouble }
 
@@ -200,7 +247,9 @@ func (t *ctype) String() string {
 		for i, p := range t.params {
 			parts[i] = p.typ.String()
 		}
-		if len(parts) == 0 {
+		if t.variadic {
+			parts = append(parts, "...")
+		} else if len(parts) == 0 {
 			parts = append(parts, "void")
 		}
 		return t.result.String() + "(" + strings.Join(parts, ", ") + ")"
@@ -222,7 +271,7 @@ func (a *ctype) equals(b *ctype) bool {
 	case kStruct:
 		return a.tag == b.tag
 	case kFunc:
-		if len(a.params) != len(b.params) || !a.result.equals(b.result) {
+		if len(a.params) != len(b.params) || a.variadic != b.variadic || !a.result.equals(b.result) {
 			return false
 		}
 		for i := range a.params {
@@ -282,9 +331,9 @@ func (t *ctype) metalsType() metals.Type {
 		// abort with a message.
 		return &metals.Opt{Elem: &metals.Ptr{Elem: t.elem.metalsType()}}
 	case kFunc:
-		params := make([]metals.Type, len(t.params))
-		for i, p := range t.params {
-			params[i] = p.typ.metalsType()
+		var params []metals.Type
+		for _, p := range t.signature() {
+			params = append(params, p.typ.metalsType())
 		}
 		var result metals.Type
 		if !t.result.isVoid() {

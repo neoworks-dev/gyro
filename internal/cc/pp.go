@@ -414,9 +414,15 @@ func (pp *preprocessor) include(directive token, rest []token) error {
 		return err
 	}
 
-	resolved, source, err := pp.find(directive.pos.file, path, angled)
-	if err != nil {
-		return err
+	// A bundled header answers before the search does, and only for an
+	// angled include: `"stdarg.h"` beside the program is the program's.
+	resolved, source, ok := bundledHeader(path, angled)
+	if !ok {
+		var err error
+		resolved, source, err = pp.find(directive.pos.file, path, angled)
+		if err != nil {
+			return err
+		}
 	}
 	if pp.once[resolved] {
 		return nil

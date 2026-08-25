@@ -1,0 +1,67 @@
+// A Gyro program driving a C library built on varargs.
+//
+// METALS has no variadic call and does not need one. What varies at a C
+// call site is how many arguments there are and what types they have;
+// what a callee can do with them is walk them in order, asking for one
+// type at a time. So the caller spills each argument after the last
+// named one into a cell of its own and passes an array of erased
+// addresses plus a count, and `va_arg` walks that — which is a front
+// end's business rather than a format's.
+//
+// It buys two things C does not have. `va_arg` names a type, so the cast
+// is checked; and the count travels, so asking for one argument too many
+// aborts with a message instead of reading whatever the stack held.
+
+import { println, String } from "stdlib"
+import {
+  render_mixed, render_signs, render_percent, render_nothing, rendered_at,
+  sum_of_none, sum_of_two, sum_of_five,
+  forwarded, walked_twice, promoted, through_a_pointer,
+} from "./fmt.c"
+
+// The rendered bytes come back one at a time, because the C side has no
+// allocator to hand out a string with.
+fn rendered(length: i32): string {
+  var text = String::new()
+  var i = 0
+  while i < length {
+    text.push_rune(rendered_at(i) as rune)
+    i = i + 1
+  }
+  return text.text()
+}
+
+fn main() {
+  // A string, an integer and a character in one call.
+  println(rendered(render_mixed()))
+
+  // A negative number and a zero, which are the two cases the digit loop
+  // gets wrong if it is written carelessly.
+  println(rendered(render_signs()))
+
+  // A literal percent, and a conversion the renderer does not know.
+  println(rendered(render_percent()))
+
+  // A format with no arguments at all: the pack is empty and the count
+  // says so.
+  println(rendered(render_nothing()))
+
+  // The same variadic function at three argument counts.
+  println(sum_of_none())
+  println(sum_of_two(30, 12))
+  println(sum_of_five())
+
+  // A va_list handed on, advancing the cursor the caller declared.
+  println(forwarded(20, 22))
+
+  // va_copy: two walks over one call's arguments.
+  println(walked_twice(21))
+
+  // A char became an int and a float became a double before either was
+  // passed, so the callee reads them at those types.
+  println(promoted())
+
+  // An erased address travels in the pack like anything else, which it
+  // would: the pack is already an array of erased addresses.
+  println(through_a_pointer())
+}

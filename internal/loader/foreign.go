@@ -79,20 +79,32 @@ func header(module *metals.Module) (string, error) {
 			return "", fmt.Errorf("%s exports @%s, which is not a name Gyro can call", module.Name, fn.Name)
 		}
 
+		// An export Gyro has no way to spell is left out rather than
+		// made an error. A C library is not written for this importer:
+		// one helper taking a `va_list` or returning a shape a header
+		// cannot redeclare should not make the other forty
+		// unimportable. Naming a skipped export is still an error,
+		// reported where it is imported, which is where it means
+		// something.
 		params := make([]string, len(fn.Params))
+		spellable := true
 		for i, param := range fn.Params {
 			spelling, err := gyroType(param.Type)
 			if err != nil {
-				return "", fmt.Errorf("@%s parameter %d: %v", fn.Name, i+1, err)
+				spellable = false
+				break
 			}
 			params[i] = fmt.Sprintf("a%d: %s", i, spelling)
+		}
+		if !spellable {
+			continue
 		}
 
 		result := ""
 		if fn.Result != nil {
 			spelling, err := gyroType(fn.Result)
 			if err != nil {
-				return "", fmt.Errorf("@%s result: %v", fn.Name, err)
+				continue
 			}
 			result = ": " + spelling
 		}

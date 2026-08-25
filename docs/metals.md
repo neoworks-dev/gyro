@@ -743,6 +743,19 @@ The mapping, where it is not obvious:
   It lowers to `const.null` of the type the expression is becoming, and
   the cast is seen through rather than performed: a null of the
   destination's type needs no trip through another one.
+- **Varargs are an array the caller builds**, and METALS has no variadic
+  call. A variadic function takes two parameters beyond the ones it
+  declared: `void **` to the addresses of the arguments after the last
+  named one, and a `long` count. Each of those arguments is spilled into
+  a cell of its own and reached by an erased address, because one array
+  cannot hold an `int`, a `double` and a `char *` directly — a pointer
+  and a number do not share a slot in this IR, and addresses are all one
+  type. `va_arg` casts a slot to the type it was asked for, so the cast
+  is checked, and it tests the count first, so reading one argument too
+  many aborts with a message on every tier rather than reading whatever
+  the stack held. `<stdarg.h>` is bundled, `va_list` is an ordinary C
+  struct in it, and only `va_start` and `va_arg` are builtins: doing
+  nothing and copying a struct are both things C can already say.
 - **A `void *` is `opt<anyptr>`**, an address with the target's type
   erased. C forbids `*p`, `p + 1`, `p[i]` and `sizeof *p` on one already,
   so the erasure costs the source language nothing it had, and
@@ -812,8 +825,8 @@ The mapping, where it is not obvious:
 
 What it does not do yet, each refused by name rather than
 mistranslated: **`goto`**, which is where the relooper LLVM does for the
-bridge will have to be written, **varargs**, and **unions and bitfields**
-(a union's members share storage and a record's do not, so there is no
+bridge will have to be written, and **unions and bitfields** (a union's
+members share storage and a record's do not, so there is no
 record shape to give one). **Type punning** compiles and is a program
 only two tiers can run: reading one object's bytes as another type is
 undefined in C, `char *` aliasing included, and the evaluator holds a
@@ -821,7 +834,12 @@ producer to it. A C struct cannot cross into Gyro yet either: the generated
 header has no way to redeclare a `%Named`, which is the same gap the
 linker's structural matching is. A callback does not cross into Gyro at
 all, because a code pointer is an address in this program and what may
-cross a runtime boundary is settled by the copy rule.
+cross a runtime boundary is settled by the copy rule; nor does a
+variadic function, because a `...` says nothing about what a call passes
+and there is nothing for the far side to check. An export the header
+cannot spell is **left out** rather than made an error, so one such
+helper does not make the rest of a library unimportable, and naming a
+skipped one is reported where it is imported.
 
 ## Still open
 
