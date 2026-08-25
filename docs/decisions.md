@@ -2646,6 +2646,37 @@ one that moves, to `gyro::Point`.
 spelling Gyro already uses for a handle it may hold and not look inside —
 the same shape as `struct File {}` in the standard library.
 
+### `anyptr` is a Gyro type, and `as` is both directions *(new)*
+
+**Status: decided.** `anyptr` is a primitive type spelled like `usize` and
+`rune`. `p as anyptr` forgets a pointer's target type; `p as *T` puts one
+back. Nothing else converts either way, it has no other operations, it
+cannot cross an `@extern` boundary and it cannot go into an `any`.
+
+It exists because C's `void *` had no Gyro spelling, and a C library that
+holds what the caller gave it — every registry, callback table and
+generic container in C — is written over one. METALS has had `anyptr`
+since the C front end needed it; this is only the surface.
+
+**Rejected: a fieldless `@extern` struct.** Gyro already has one of those
+and it already means "an opaque address from a library". It is the wrong
+shape here for two reasons: it is *nominal*, so a `void *` from one
+library and a `void *` from another would be different types when C says
+they are the same one; and it carries a library name, which an address
+handed between two of this program's own functions does not have.
+
+**Rejected: `*u8`.** It is a pointer to something, and METALS would have
+to convert at every crossing. The point of `anyptr` is that no conversion
+happens, because the address never stopped being an address.
+
+**Rejected: an integer conversion.** `n as anyptr` would make a pointer
+out of arithmetic, which is the thing this language does not have. The
+address has to have come from somewhere.
+
+**Printing it prints the word.** There is nothing at the far end this
+program may read, so `println(p)` writes `anyptr` — decided in lowering,
+so all three tiers say it, rather than left to a backend to refuse.
+
 ## Native backend
 
 Design in [`native.md`](native.md).

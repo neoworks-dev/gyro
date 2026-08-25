@@ -62,6 +62,8 @@ func synthesizedRepr(t types.Type) bool {
 		return true
 	case *types.Optional:
 		return true
+	case *types.Basic:
+		return t.Kind == types.AnyPtrKind
 	}
 	return false
 }
@@ -89,6 +91,13 @@ func (l *lowerer) buildRepr(name string, t types.Type) {
 		b.pointerBody(t)
 	case *types.Optional:
 		b.optionalBody(t)
+	case *types.Basic:
+		// An anyptr, the one basic type built here. There is nothing at
+		// the far end of it that this program is allowed to read, so
+		// what it prints is the word — the same answer the evaluator
+		// already gives for a chan, and given on every tier because it
+		// is decided here rather than in a backend.
+		b.emit(&metals.Return{Val: b.text("anyptr")})
 	}
 
 	l.module.Funcs = append(l.module.Funcs, b.fn)

@@ -12,7 +12,7 @@
     "i8" "i16" "i32" "i64"
     "u8" "u16" "u32" "u64" "usize"
     "f32" "f64"
-    "rune" "bool" "string" "void" "error"))
+    "rune" "bool" "string" "void" "error" "any" "anyptr"))
 
 (self) @variable.builtin
 

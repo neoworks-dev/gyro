@@ -608,10 +608,9 @@ Kept honest in `docs/language.md` ("Still to come") and
   byte-addressable object model in the evaluator. See
   `tests/testdata/run/union-punning.metals`.
 - **A callback cannot cross into Gyro**: Gyro has no spelling for a code
-  pointer. A `void *` does not cross either, for the same reason —
-  `anyptr` has no Gyro spelling. Neither does a variadic function: a
-  `...` says nothing about what a call passes, so there is nothing for
-  the far side to check. Nor does a `union`, which Gyro cannot declare.
+  pointer. Neither does a variadic function: a `...` says nothing about
+  what a call passes, so there is nothing for the far side to check. Nor
+  does a `union`, which Gyro cannot declare.
   `headerGen` in `internal/loader/foreign.go` **skips** an export it
   cannot spell rather than failing the module, so one such helper does
   not make a whole C library unimportable; naming a skipped one is an
@@ -640,9 +639,10 @@ handle), unions (`type %Name = union { ... }`, with the common initial
 sequence answered on every tier), bit-fields (a run packed into one
 member of bytes, with `record align N` carrying the alignment their
 declared types ask of the struct), `goto` in the shapes C is actually
-written in, and a C struct crossing into Gyro (an `import` may declare
-types, the linker matches and resolves them, and there is one `%Point` in
-the linked program).
+written in, a C struct crossing into Gyro (an `import` may declare types,
+the linker matches and resolves them, and there is one `%Point` in the
+linked program), and a `void *` crossing into Gyro (`anyptr` is a Gyro
+type, and `as` goes both ways).
 
 **Safety holes:**
 

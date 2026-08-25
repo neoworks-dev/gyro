@@ -49,6 +49,13 @@ const (
 	// AnyKind holds a value of one other type and remembers which. It is a
 	// closed sum over the types the program wraps, not a runtime registry.
 	AnyKind
+	// AnyPtrKind is an address whose type has been forgotten: C's
+	// `void *`, and the only thing in Gyro that is a pointer without
+	// being a pointer *to* something. It has no operations of its own —
+	// no dereference, no arithmetic, no ordering — because there is
+	// nothing at the far end of it to have them. It is held, compared,
+	// passed back, and cast to a `*T` by a program that knows.
+	AnyPtrKind
 
 	// NullKind is the type of the null literal, assignable only to T?.
 	NullKind
@@ -84,6 +91,7 @@ var (
 	Void    = &Basic{VoidKind, "void"}
 	Error   = &Basic{ErrorKind, "error"}
 	Any     = &Basic{AnyKind, "any"}
+	AnyPtr  = &Basic{AnyPtrKind, "anyptr"}
 	Null    = &Basic{NullKind, "null"}
 
 	UntypedIntType   = &Basic{UntypedInt, "untyped int"}
@@ -96,7 +104,7 @@ var Builtin = map[string]*Basic{
 	"u8": Uint8, "u16": Uint16, "u32": Uint32, "u64": Uint64,
 	"usize": USize, "f32": Float32, "f64": Float64,
 	"rune": Rune, "bool": Bool, "string": String, "void": Void,
-	"error": Error, "any": Any,
+	"error": Error, "any": Any, "anyptr": AnyPtr,
 }
 
 // ---------------------------------------------------------------------------

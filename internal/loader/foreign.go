@@ -251,6 +251,8 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 		return t.String(), nil
 	case *metals.Any:
 		return "any", nil
+	case *metals.AnyPtr:
+		return "anyptr", nil
 	case *metals.SliceOf:
 		elem, err := h.spell(t.Elem)
 		if err != nil {

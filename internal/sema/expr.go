@@ -1148,12 +1148,39 @@ func (c *checker) castExpr(e *ast.CastExpr) types.Type {
 		return target
 	}
 
+	// `as` is also how an address forgets its type and gets it back.
+	// Forgetting is free; the other way is the program's claim about
+	// what is at the address, which is the same claim C's cast makes and
+	// the same one the evaluator checks at runtime.
+	if isAnyPtr(target) && isAnyPtrCastable(value) {
+		return target
+	}
+	if isAnyPtr(value) && isAnyPtrCastable(target) {
+		return target
+	}
+
 	if !castable(value) || !castable(target) {
 		c.errorf(e.Offset, "as converts between numeric types and rune; %s as %s does not",
 			describeType(value), target)
 		return target
 	}
 	return target
+}
+
+func isAnyPtr(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Kind == types.AnyPtrKind
+}
+
+// isAnyPtrCastable reports the other side of an anyptr cast: a pointer,
+// or an anyptr again. Nothing else is an address — an integer is not one
+// here, because a pointer that came from arithmetic is the thing this
+// language does not have.
+func isAnyPtrCastable(t types.Type) bool {
+	if _, ok := t.(*types.Pointer); ok {
+		return true
+	}
+	return isAnyPtr(t)
 }
 
 // anyPayload reports whether a type can be wrapped in an any. What it
@@ -1171,6 +1198,10 @@ func anyPayload(t types.Type) bool {
 	case *types.Basic:
 		switch t.Kind {
 		case types.VoidKind, types.NullKind, types.AnyKind, types.ErrorKind:
+			return false
+		case types.AnyPtrKind:
+			// An any promises the concrete type comes back out, and an
+			// anyptr is an address that already gave one up.
 			return false
 		}
 		return true

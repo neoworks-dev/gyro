@@ -187,6 +187,11 @@ func offenderIn(t types.Type, seen map[*types.Struct]bool, inStruct bool) string
 			return "error is a Gyro value, not a C one"
 		case types.AnyKind:
 			return "any carries a Gyro type tag C cannot read"
+		case types.AnyPtrKind:
+			// Forgetting the target's type does not make an address
+			// portable: it is still this program's address space, and
+			// less crossable rather than more.
+			return "an anyptr would be shared mutable memory, which the boundary does not have"
 		case types.StringKind:
 			if inStruct {
 				return "a string field is a pointer to Gyro's own header, which C cannot read"

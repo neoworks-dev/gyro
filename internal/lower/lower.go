@@ -372,6 +372,8 @@ func (l *lowerer) metalsBasic(t *types.Basic) metals.Type {
 	case types.AnyKind:
 		l.usesAny = true
 		return &metals.Named{Name: "any"}
+	case types.AnyPtrKind:
+		return &metals.AnyPtr{}
 	}
 	l.fail("cannot lower the type %s", t)
 	return nil

@@ -101,6 +101,12 @@ func sharedReference(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Pointer:
 		return "memory"
+	case *types.Basic:
+		// An anyptr is an address that forgot what it addresses, which
+		// changes nothing about two threads reaching it.
+		if t.Kind == types.AnyPtrKind {
+			return "memory"
+		}
 	case *types.Slice:
 		return "elements"
 	case *types.Optional:

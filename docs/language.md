@@ -552,6 +552,7 @@ unknown decorator name is a compile error.
 | `rune` | a Unicode code point (32-bit) |
 | `bool string void error` | other primitives |
 | `any` | a value of any single type, carrying which |
+| `anyptr` | an address whose target's type is forgotten; C's `void *` |
 | `*T` | pointer, never null |
 | `T?` | nullable |
 | `T[]` | slice — a borrowed view |
@@ -621,6 +622,46 @@ Gyro compiles whole programs, so the set of types any `as any` in the
 program mentions is known at compile time; `any` is that closed set, not a
 runtime type registry. It is not an escape from the type system: there is
 no way to call a method on an `any` without first naming the type it holds.
+
+### Anyptr
+
+`anyptr` is an address whose target's type has been forgotten. It is C's
+`void *`, and the only pointer in Gyro that is not a pointer *to*
+something — so it has none of a pointer's operations. Nothing to
+dereference, nothing to step, nothing to order, nothing to read. What it
+has is identity, and `as`:
+
+```gyro
+import { Cell, keep, held } from "./store.c"
+
+var c = Cell{ value: 7 }
+keep(0, &c as anyptr)          // forgetting: always true, never fails
+
+var back = held(0)             // C's `void *` arrives as anyptr?
+if back != null {
+  var cell = back as *Cell     // remembering: this program's claim
+  println(cell.value)
+}
+```
+
+Forgetting is free and cannot be wrong. Remembering is a claim about what
+is at the address — the same claim C's own cast makes, with the
+difference that the METALS evaluator checks it and panics on a wrong one,
+while the native tiers do what C does. Only a pointer converts either
+way; an integer does not, because a pointer that came out of arithmetic
+is the thing this language does not have.
+
+An `anyptr` cannot cross to a foreign function under `@extern`, and
+cannot go into an `any`. Both refuse for the same reason: forgetting the
+target's type makes an address less portable rather than more, and an
+`any` promises to give the concrete type back. Printing one prints the
+word `anyptr`, because there is nothing at the far end this program may
+read.
+
+It exists for C. A library that holds what you gave it without being told
+what that is — every registry, callback table and generic container in C
+— is written over `void *`, and until there was a spelling for one, none
+of those functions could be imported at all.
 
 ### Tuples
 
@@ -1049,8 +1090,9 @@ for the call. Scalars, fixed arrays and other such structs are members; a
 `string`, a slice and a nullable are not, and the diagnostic names the
 field's type rather than the struct's.
 
-Rejected, with a diagnostic naming the type: `*T`, `chan<T>`, futures,
-function values, `any`, tuples, enums, and `T?` of anything but a handle.
+Rejected, with a diagnostic naming the type: `*T`, `anyptr`, `chan<T>`,
+futures, function values, `any`, tuples, enums, and `T?` of anything but
+a handle.
 Several results are rejected too — a C function returns one value, and
 `(T, error?)` is Gyro's shape, not C's.
 

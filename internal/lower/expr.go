@@ -164,6 +164,17 @@ func (f *funcLowerer) lowerCast(e *ast.CastExpr) string {
 		return f.wrapAny(value, from)
 	case isAnyType(from):
 		return f.unwrapAny(value, to)
+	case isAnyPtrType(to) && isAnyPtrType(from):
+		// An address that already forgot has nothing left to forget.
+		return value
+	case isAnyPtrType(to):
+		out := f.newReg("erased")
+		f.emit(&metals.PtrErase{Dst: out, X: value})
+		return out
+	case isAnyPtrType(from):
+		out := f.newReg("restored")
+		f.emit(&metals.PtrCast{Dst: out, X: value, To: f.l.metalsType(to)})
+		return out
 	}
 
 	out := f.newReg("cast")
@@ -174,6 +185,11 @@ func (f *funcLowerer) lowerCast(e *ast.CastExpr) string {
 func isAnyType(t types.Type) bool {
 	basic, ok := t.(*types.Basic)
 	return ok && basic.Kind == types.AnyKind
+}
+
+func isAnyPtrType(t types.Type) bool {
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Kind == types.AnyPtrKind
 }
 
 // ---------------------------------------------------------------------------
