@@ -380,6 +380,10 @@ func (p *parser) dstInstr() (Instr, error) {
 		callee, err := p.global()
 		return p.line(&FnRef{Dst: dst, Callee: callee}, err)
 
+	case "code.ref":
+		callee, err := p.global()
+		return p.line(&CodeRef{Dst: dst, Callee: callee}, err)
+
 	case "closure":
 		callee, err := p.global()
 		if err != nil {

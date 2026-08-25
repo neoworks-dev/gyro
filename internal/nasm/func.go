@@ -781,6 +781,13 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("mov %s, rax", f.slot(i.Dst))
 		f.storeWord(f.slot(i.Dst).plus(8), 0)
 
+	case *metals.CodeRef:
+		if g.funcs[i.Callee] == nil {
+			g.fail("@%s: code.ref of the runtime function @%s is not supported", f.fn.Name, i.Callee)
+		}
+		g.ins("lea rax, [%s]", g.symbolFor(i.Callee))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+
 	case *metals.MakeClosure:
 		if g.funcs[i.Callee] == nil {
 			g.fail("@%s: closure over the runtime function @%s is not supported", f.fn.Name, i.Callee)

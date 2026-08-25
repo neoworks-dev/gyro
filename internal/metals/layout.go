@@ -64,7 +64,7 @@ func (l *Layout) Size(t Type) int {
 	switch t := t.(type) {
 	case *Prim:
 		return primSize(t.Kind)
-	case *Ptr, *ChanOf, *FutureOf, *Handle:
+	case *Ptr, *ChanOf, *FutureOf, *Handle, *CodeType:
 		return Word
 	case *FnType:
 		return 2 * Word // { code, env }
@@ -96,7 +96,7 @@ func (l *Layout) Align(t Type) int {
 	switch t := t.(type) {
 	case *Prim:
 		return primSize(t.Kind)
-	case *Ptr, *ChanOf, *FutureOf, *Handle, *FnType, *SliceOf, *Any:
+	case *Ptr, *ChanOf, *FutureOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
 		return Word
 	case *Opt:
 		return max(Word, l.Align(t.Elem))
@@ -126,7 +126,7 @@ func (l *Layout) Slot(t Type) int {
 // and its storage can be the same bytes.
 func Scalar(t Type) bool {
 	switch t := t.(type) {
-	case *Prim, *Ptr, *ChanOf, *FutureOf, *Handle:
+	case *Prim, *Ptr, *ChanOf, *FutureOf, *Handle, *CodeType:
 		return true
 	case *Opt:
 		return NicheOpt(t)
@@ -138,11 +138,13 @@ func Scalar(t Type) bool {
 // payload, with the absent case spelled as a bit pattern the payload
 // cannot otherwise hold, rather than as a flag beside it.
 //
-// The one type that qualifies is `ptr<T>`. Every `ptr<T>` in a verified
-// module addresses an object METALS produced, so the null address is a
-// pattern no live pointer has, and the format may reserve it. That is
-// not true of a `handle` or a `chan`: those are the runtime's values, and
-// what they may hold is the runtime's business, not the format's.
+// Two types qualify, for the same reason: `ptr<T>` and `code(...)`.
+// Every `ptr<T>` in a verified module addresses an object METALS
+// produced, and every `code(...)` is the address of a function METALS
+// emitted, so in both cases the null address is a pattern no live value
+// has and the format may reserve it. That is not true of a `handle` or a
+// `chan`: those are the runtime's values, and what they may hold is the
+// runtime's business, not the format's.
 //
 // The reason to bother is C. A C pointer is `opt<ptr<T>>` here — METALS'
 // pointer is never null and C's is, so every dereference is an unwrap —
@@ -157,8 +159,11 @@ func Scalar(t Type) bool {
 // word compare. See docs/decisions.md, "A C pointer is an optional
 // pointer".
 func NicheOpt(t *Opt) bool {
-	_, ok := t.Elem.(*Ptr)
-	return ok
+	switch t.Elem.(type) {
+	case *Ptr, *CodeType:
+		return true
+	}
+	return false
 }
 
 // Narrow reports whether a scalar's storage differs from what its

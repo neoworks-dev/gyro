@@ -143,6 +143,43 @@ func TestLayoutOptAndEnumKeepTheirTagWord(t *testing.T) {
 	}
 }
 
+// A callable is one word or two depending on whether it carries an
+// environment, and C's is the one-word one. These are the numbers a C
+// program's `sizeof` reads back, so they are checked as numbers.
+func TestLayoutCallablesAreOneWordOrTwo(t *testing.T) {
+	l := testLayout(t)
+	code := &CodeType{Params: []Type{TInt32}, Result: TInt32}
+	fn := &FnType{Params: []Type{TInt32}, Result: TInt32}
+
+	if got := l.Size(code); got != 8 {
+		t.Errorf("Size(%s) = %d, want 8", code, got)
+	}
+	if got := l.Size(fn); got != 16 {
+		t.Errorf("Size(%s) = %d, want 16", fn, got)
+	}
+
+	// The niche covers a code pointer for the same reason it covers a
+	// data pointer: every one of them is an address METALS handed out,
+	// so no live value is null.
+	nullable := &Opt{Elem: code}
+	if !NicheOpt(nullable) {
+		t.Fatalf("opt<code> is not a niche optional")
+	}
+	if got := l.Size(nullable); got != 8 {
+		t.Errorf("Size(%s) = %d, want 8", nullable, got)
+	}
+	if NicheOpt(&Opt{Elem: fn}) {
+		t.Errorf("opt<fn> has no niche to put a flag in")
+	}
+
+	// A struct of callbacks is C's struct: three addresses, no padding,
+	// and a fourth member right behind them.
+	decl := record("Table", code, code, code, TInt32)
+	if got := testLayout(t, decl).Size(&Named{Name: "Table"}); got != 32 {
+		t.Errorf("Size(%%Table) = %d, want 32", got)
+	}
+}
+
 func TestLayoutNarrowNamesTheConvertingTypes(t *testing.T) {
 	narrow := []Type{TInt8, TUint8, TBool, TInt16, TUint16, TInt32, TUint32, TRune, TF32}
 	for _, t2 := range narrow {

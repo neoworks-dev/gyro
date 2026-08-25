@@ -423,6 +423,8 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return g.callRoles(i)
 	case *metals.FnRef:
 		return roles{defs: []string{i.Dst}}
+	case *metals.CodeRef:
+		return roles{defs: []string{i.Dst}}
 	case *metals.MakeClosure:
 		return roles{defs: []string{i.Dst}, uses: []string{i.Env}}
 	case *metals.CallIndirect:

@@ -750,6 +750,12 @@ func (p *parser) typeExpr() (Type, error) {
 		return tuple, nil
 	case "fn":
 		return p.signature(false)
+	case "code":
+		sig, err := p.signature(false)
+		if err != nil {
+			return nil, err
+		}
+		return &CodeType{Params: sig.Params, Result: sig.Result}, nil
 	case "async":
 		if err := p.word("fn"); err != nil {
 			return nil, err

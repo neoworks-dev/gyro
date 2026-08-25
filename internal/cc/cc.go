@@ -19,8 +19,8 @@
 // What it does not do yet is listed in docs/metals.md rather than
 // apologized for here. The largest are goto — where the relooper the
 // bridge outsources to LLVM will have to be written — unions and
-// bitfields, function pointers, varargs, casts between pointer types,
-// and calling a function another translation unit defines.
+// bitfields, varargs, casts between pointer types, and calling a
+// function another translation unit defines.
 package cc
 
 import (

@@ -74,6 +74,13 @@ type (
 		hasEnv bool
 	}
 
+	// codeVal is the address of a function and nothing else, which is
+	// what `code.ref` produces. It is a separate value from fnVal
+	// because it is a separate type: one word rather than two, no
+	// environment to bind, and comparable — C compares two function
+	// pointers, and what it compares is which function they name.
+	codeVal struct{ name string }
+
 	futureVal struct {
 		ch     chan value
 		once   sync.Once
@@ -202,6 +209,9 @@ func valuesEqual(a, b value) bool {
 	case handleVal:
 		b, ok := b.(handleVal)
 		return ok && a.obj == b.obj
+	case codeVal:
+		b, ok := b.(codeVal)
+		return ok && a.name == b.name
 	case anyVal:
 		// Two anys are equal when they hold the same type and equal
 		// values: an i64 1 and an f64 1.0 are different values, and
@@ -320,6 +330,8 @@ func (m *machine) repr(v value) string {
 		return "chan"
 	case fnVal:
 		return "fn"
+	case codeVal:
+		return "code"
 	case *futureVal:
 		return "awaitable"
 	case handleVal:

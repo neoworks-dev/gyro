@@ -57,9 +57,10 @@ a `u32`, and the corpus would then be measuring which one guessed.
 | `str` | 8 | 8 | pointer to an immutable heap/static header `{ i64 len; char bytes[len] }` |
 | `ptr<T>`, `chan<T>`, `future<T>`, `handle` | 8 | 8 | pointer to a runtime object |
 | `fn(..)` | 16 | 8 | `{ code, env }`; `env` is 0 for a bare `fn.ref` |
+| `code(..)` | 8 | 8 | the address of a function, no environment beside it; what C's function pointer is |
 | `slice<T>` | 16 | 8 | `{ data, len }`, borrowing its backing store |
 | `any` | 16 | 8 | `{ descriptor, payload }` |
-| `opt<ptr<T>>` | 8 | 8 | the pointer itself; 0 is null. A `ptr<T>` is never null, so the address no object has is the spare pattern |
+| `opt<ptr<T>>`, `opt<code(..)>` | 8 | 8 | the address itself; 0 is null. Neither a `ptr<T>` nor a `code(..)` is ever null, so the address no live value has is the spare pattern |
 | `opt<T>`, otherwise | 8 + sizeof(T), rounded | max(8, align T) | `{ i64 flag, payload }`; flag 0 is null |
 | `tuple<A, B, ..>` | C's | widest member's | elements in order, padded like a C struct |
 | record | C's | widest field's | fields in declared order, padded like a C struct |

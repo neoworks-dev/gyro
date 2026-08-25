@@ -216,6 +216,11 @@ type (
 		Args        []string
 	}
 	FnRef struct{ Dst, Callee string }
+	// CodeRef is `%p = code.ref @f`: the address of @f as a one-word
+	// `code(...)`, with no environment beside it. `fn.ref` answers the
+	// same question with a `fn`, which is two words and can also hold a
+	// closure; this one is what a C function pointer is.
+	CodeRef struct{ Dst, Callee string }
 	// MakeClosure is `%c = closure @f, %env`: partially applies @f's
 	// first parameter.
 	MakeClosure  struct{ Dst, Callee, Env string }
@@ -342,6 +347,7 @@ func (*Len) isInstr()          {}
 func (*StrConcat) isInstr()    {}
 func (*Call) isInstr()         {}
 func (*FnRef) isInstr()        {}
+func (*CodeRef) isInstr()      {}
 func (*MakeClosure) isInstr()  {}
 func (*CallIndirect) isInstr() {}
 func (*Return) isInstr()       {}

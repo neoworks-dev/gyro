@@ -169,7 +169,8 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `tuple<A, B, ...>` | tuple value |
 | `chan<T>` | channel |
 | `future<T>` | un-awaited async result |
-| `fn(A, B) -> R`, `async fn(A) -> R` | function values |
+| `fn(A, B) -> R`, `async fn(A) -> R` | function values: `{ code, env }`, two words |
+| `code(A, B) -> R` | the address of a function, one word, no environment |
 | `%Name` | module-local record or enum |
 | `any` | dynamically typed value, converted with checked ops |
 | `handle` | opaque foreign reference; compares by identity only |
@@ -426,22 +427,25 @@ type. A front end whose checker proves a value non-null (Gyro's
 narrowing) still emits `opt.unwrap`; the abort is that guarantee made
 explicit, in the same trapping style as `idiv` and `index.get`.
 
-**`opt<ptr<T>>` is one word.** Every `ptr<T>` in a verified module
-addresses an object METALS produced, so the null address is a pattern no
-live pointer has, and the format reserves it: an `opt<ptr<T>>` is laid
-out inside the pointer rather than beside it, is one machine word in
-storage and in a register, and travels in a register like any other
-pointer. `const.null` is the zeroed store it already was, a wrap is a
-move, an unwrap is a null test, and equality was always a word compare.
+**`opt<ptr<T>>` and `opt<code(...)>` are one word.** Every `ptr<T>` in a
+verified module addresses an object METALS produced, and every
+`code(...)` is the address of a function METALS emitted, so in both cases
+the null address is a pattern no live value has and the format reserves
+it: the optional is laid out inside its payload rather than beside it, is
+one machine word in storage and in a register, and travels in a register
+like any other address. `const.null` is the zeroed store it already was,
+a wrap is a move, an unwrap is a null test, and equality was always a
+word compare.
 
-That niche is `ptr<T>`'s alone. A `handle`, a `chan` and a `future` are
+That niche is those two types'. A `handle`, a `chan` and a `future` are
 the runtime's values, and which bit patterns they may hold is the
 runtime's business rather than the format's. Everything else keeps the
 flag-and-payload layout.
 
-The reason to have it is C. A C pointer is `opt<ptr<T>>` — see the C
-front end below — and with a flag beside the payload `sizeof(char *)`
-answers 16, which is self-consistent and is not C's ABI.
+The reason to have it is C. A C pointer is `opt<ptr<T>>` and a C function
+pointer is `opt<code(...)>` — see the C front end below — and with a flag
+beside the payload `sizeof(char *)` answers 16, which is self-consistent
+and is not C's ABI.
 
 ### Calls
 
@@ -454,7 +458,8 @@ answers 16, which is self-consistent and is not C's ABI.
                               ; closure outlives the frame that built it,
                               ; and a function value has one word to carry
                               ; its environment in.
-%r = call.indirect %f(%a)
+%p = code.ref @f              ; the address alone, as a one-word code(...)
+%r = call.indirect %f(%a)     ; through either a fn value or a code pointer
 return %v                     ; plain `return` for a void function
 abort "index out of range"
 ```
@@ -462,6 +467,18 @@ abort "index out of range"
 Closures are a lowering pattern, not magic: the front end lifts the body
 to a top-level function taking an environment record, and `closure`
 partially applies it.
+
+**A `fn` and a `code` are two types because they are two sizes.** A `fn`
+is `{ code, env }` and needs the second word, because a closure has to
+keep what it captured somewhere; `call.indirect` through one tests the
+environment word and passes it when it is there. A `code` has nothing to
+capture, so it is the address alone: one word, one call, no test. That is
+what C's function pointer is — `sizeof(int (*)(int))` answers 8, a struct
+of callbacks is the bytes C lays out, and a table of them has C's stride
+— and it is also what a producer wants whenever a callee is chosen at run
+time without anything travelling beside it. `code.ref` refuses an `async`
+function: an async function is started rather than called, so its address
+is not something `call.indirect` could reach.
 
 ### Control flow
 
@@ -713,15 +730,33 @@ The mapping, where it is not obvious:
   in C's identifier space, so nothing a translation unit declares can
   collide with one.
 
+- **A pointer to a function is `opt<code(...)>`**, not `opt<ptr<T>>`:
+  there is no object at the other end to load from. A function's name
+  used as a value is a `code.ref` that decays to that pointer, `*fp` is
+  the designator decaying straight back, and a call through one unwraps
+  the optional first — so calling a null callback aborts with a message
+  where C would jump to address zero.
+- **The declarator is read as C reads it**, which is as the expression
+  that would use what it declares: `int (*fp)(int)` says `(*fp)(int)` is
+  an int. That is why a parenthesised declarator is read twice — the
+  suffix after the closing paren binds tighter than the `*` inside it,
+  and has not been seen when the inside is first reached — and it is what
+  makes `int (*table[3])(int, int)`, `int (*chooser(int))(int, int)` and
+  the abstract `int (*)(int)` in a cast all parse. An abstract declarator
+  is the same declarator with the identifier left out.
+
 What it does not do yet, each refused by name rather than
 mistranslated: **`goto`**, which is where the relooper LLVM does for the
-bridge will have to be written, **varargs**, **function pointers**,
-**unions and bitfields** (a union's members share storage and a record's
-do not, so there is no record shape to give one), **`void *` and casts
-between pointer types**, and **calling a function another translation
-unit defines**. A C struct also cannot cross into Gyro yet: the generated
-header has no way to redeclare a `%Named`, which is the same gap the
-linker's structural matching is.
+bridge will have to be written, **varargs**, **unions and bitfields** (a
+union's members share storage and a record's do not, so there is no
+record shape to give one), **`void *` and casts between pointer types**,
+and **calling a function another translation unit defines** — which also
+means taking the address of one. A C struct cannot cross into Gyro yet
+either: the generated header has no way to redeclare a `%Named`, which is
+the same gap the linker's structural matching is. A callback does not
+cross into Gyro at all, because a code pointer is an address in this
+program and what may cross a runtime boundary is settled by the copy
+rule.
 
 ## Still open
 

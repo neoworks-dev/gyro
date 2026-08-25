@@ -2,6 +2,7 @@ package cc
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gyro-lang/gyro/internal/metals"
 )
@@ -37,6 +38,7 @@ const (
 	kPtr
 	kArray
 	kStruct
+	kFunc
 )
 
 type ctype struct {
@@ -50,6 +52,11 @@ type ctype struct {
 	// name, so a C program's `struct Point` is a `%Point`.
 	tag    string
 	fields []field
+	// params and result describe a function. A function type has no
+	// size and no storage — it is not an object — so it reaches METALS
+	// only through a pointer to it, which is a one-word `code(...)`.
+	params []param
+	result *ctype
 }
 
 type field struct {
@@ -78,11 +85,20 @@ func arrayOf(elem *ctype, length int64) *ctype {
 	return &ctype{kind: kArray, elem: elem, length: length}
 }
 
+func funcOf(result *ctype, params []param) *ctype {
+	return &ctype{kind: kFunc, result: result, params: params}
+}
+
 func (t *ctype) isVoid() bool    { return t.kind == kVoid }
 func (t *ctype) isPointer() bool { return t.kind == kPtr }
 func (t *ctype) isArray() bool   { return t.kind == kArray }
 func (t *ctype) isStruct() bool  { return t.kind == kStruct }
-func (t *ctype) isFloat() bool   { return t.kind == kFloat || t.kind == kDouble }
+func (t *ctype) isFunc() bool    { return t.kind == kFunc }
+
+// isFuncPointer is what a call through a variable needs, and what a
+// callback table's fields are made of.
+func (t *ctype) isFuncPointer() bool { return t.kind == kPtr && t.elem.isFunc() }
+func (t *ctype) isFloat() bool       { return t.kind == kFloat || t.kind == kDouble }
 
 // isCharacter is what a string literal may initialize an array of, which
 // is a char of either signedness and nothing else.
@@ -93,7 +109,7 @@ func (t *ctype) isCharacter() bool { return t.kind == kChar || t.kind == kUChar 
 // reserve.
 func (t *ctype) isComplete() bool {
 	switch t.kind {
-	case kVoid:
+	case kVoid, kFunc:
 		return false
 	case kStruct:
 		return t.fields != nil
@@ -172,6 +188,15 @@ func (t *ctype) String() string {
 		return t.elem.String() + "[" + strconv.FormatInt(t.length, 10) + "]"
 	case kStruct:
 		return "struct " + t.tag
+	case kFunc:
+		parts := make([]string, len(t.params))
+		for i, p := range t.params {
+			parts[i] = p.typ.String()
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "void")
+		}
+		return t.result.String() + "(" + strings.Join(parts, ", ") + ")"
 	}
 	return "?"
 }
@@ -189,6 +214,16 @@ func (a *ctype) equals(b *ctype) bool {
 		return a.length == b.length && a.elem.equals(b.elem)
 	case kStruct:
 		return a.tag == b.tag
+	case kFunc:
+		if len(a.params) != len(b.params) || !a.result.equals(b.result) {
+			return false
+		}
+		for i := range a.params {
+			if !a.params[i].typ.equals(b.params[i].typ) {
+				return false
+			}
+		}
+		return true
 	}
 	return true
 }
@@ -222,11 +257,28 @@ func (t *ctype) metalsType() metals.Type {
 	case kDouble:
 		return metals.TF64
 	case kPtr:
+		// A pointer to a function is a code pointer, not a pointer to
+		// storage: there is no object at the other end to load from, and
+		// METALS' `ptr<T>` addresses an object. It is nullable for the
+		// same reason every C pointer is.
+		if t.elem.isFunc() {
+			return &metals.Opt{Elem: t.elem.metalsType()}
+		}
 		// A C pointer is nullable and METALS' is not, so the IR type is
 		// the optional one. Every dereference is an opt.unwrap, which is
 		// where a null pointer stops being undefined and starts being an
 		// abort with a message.
 		return &metals.Opt{Elem: &metals.Ptr{Elem: t.elem.metalsType()}}
+	case kFunc:
+		params := make([]metals.Type, len(t.params))
+		for i, p := range t.params {
+			params[i] = p.typ.metalsType()
+		}
+		var result metals.Type
+		if !t.result.isVoid() {
+			result = t.result.metalsType()
+		}
+		return &metals.CodeType{Params: params, Result: result}
 	case kArray:
 		// An array is storage and not a value: it never reaches a
 		// register, because C decays it to a pointer everywhere but a

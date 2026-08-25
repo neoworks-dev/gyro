@@ -143,14 +143,21 @@ func (g *generator) cType(t metals.Type) string {
 		return "void *"
 	case *metals.FnType:
 		return "gy_fn"
+	case *metals.CodeType:
+		return "gy_code"
 	case *metals.SliceOf:
 		return "gy_slice"
 	case *metals.Any:
 		return "gy_any"
 	case *metals.Opt:
 		// A niche optional is its own payload, so it is spelled as one and
-		// never becomes a struct with a flag in front of it.
+		// never becomes a struct with a flag in front of it. A code
+		// pointer keeps its own spelling: C does not convert one to
+		// `void *`, and the two are only the same size by convention.
 		if metals.NicheOpt(t) {
+			if _, code := t.Elem.(*metals.CodeType); code {
+				return "gy_code"
+			}
 			return "void *"
 		}
 	}

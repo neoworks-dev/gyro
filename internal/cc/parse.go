@@ -138,17 +138,14 @@ func (p *parser) unit() *unit {
 		// comma or the semicolon would have gone.
 		defined := false
 		for {
-			name, typ, params, isFunc := p.declarator(base)
+			name, typ := p.declarator(base)
 
 			switch {
 			case isTypedef:
-				if isFunc {
-					p.fail(pos, "a function typedef is a function pointer, which is not lowered yet")
-				}
 				p.defineTypedef(name, typ, pos)
 
-			case isFunc:
-				fn := &funcDecl{name: name, result: typ, params: params, static: static, pos: pos}
+			case typ.isFunc():
+				fn := &funcDecl{name: name, result: typ.result, params: typ.params, static: static, pos: pos}
 				out.funcs = append(out.funcs, fn)
 				if !p.at(";") && !p.at(",") {
 					fn.body = p.block()
@@ -471,9 +468,9 @@ func (p *parser) structType() *ctype {
 			p.fail(pos, "a struct field has no storage class")
 		}
 		for {
-			name, fieldType, _, isFunc := p.declarator(base)
-			if isFunc {
-				p.fail(pos, "a function cannot be a struct field")
+			name, fieldType := p.declarator(base)
+			if fieldType.isFunc() {
+				p.fail(pos, "field %s is a function; a struct holds a pointer to one, not the function itself", name)
 			}
 			if fieldType.isVoid() {
 				p.fail(pos, "field %s is declared void", name)
@@ -493,12 +490,47 @@ func (p *parser) structType() *ctype {
 	return typ
 }
 
-// declarator reads the pointers, the name and the parameter list that
-// follow a declaration's type words. There is no recursion here because
-// the subset has no arrays and no function pointers — the two things
-// that make C's declarator syntax the shape it is.
-func (p *parser) declarator(base *ctype) (name string, typ *ctype, params []param, isFunc bool) {
-	typ = base
+// declarator applies C's declarator syntax to a declaration's type words
+// and answers what is declared and under what name. The name is empty
+// for an abstract declarator, which is what a cast, a sizeof and an
+// unnamed parameter are written with.
+//
+// C's rule is that a declarator reads like the expression that would use
+// the thing it declares: `int (*fp)(int)` says that `(*fp)(int)` is an
+// int, so `fp` is a pointer to a function returning int. That is why
+// this is recursive, and why a parenthesised declarator has to be read
+// twice — the suffix after the closing paren binds tighter than the `*`
+// inside it, and when the inside is first reached that suffix has not
+// been seen yet. So the inside is skipped, the suffix is applied, and
+// then the inside is read again against the type that produced.
+func (p *parser) declarator(base *ctype) (string, *ctype) {
+	base = p.pointers(base)
+
+	// A `(` here opens a parenthesised declarator unless what follows is
+	// a type — `int (*)(int)` against `int (int)` — or nothing at all,
+	// which is the unprototyped `()` the suffix refuses by name.
+	if p.at("(") && !p.startsTypeAfterParen() && !p.ahead().is(")") {
+		open := p.i
+		p.skipBalanced()
+		base = p.typeSuffix(base)
+		after := p.i
+
+		p.i = open + 1
+		name, typ := p.declarator(base)
+		p.expect(")")
+		p.i = after
+		return name, typ
+	}
+
+	name := ""
+	if p.peek().kind == tokIdent {
+		name = p.next().text
+	}
+	return name, p.typeSuffix(base)
+}
+
+// pointers reads the `*` run in front of a declarator's name.
+func (p *parser) pointers(typ *ctype) *ctype {
 	for p.accept("*") {
 		typ = pointerTo(typ)
 		// A qualifier binds to the pointer rather than the target here,
@@ -507,17 +539,39 @@ func (p *parser) declarator(base *ctype) (name string, typ *ctype, params []para
 			p.next()
 		}
 	}
+	return typ
+}
 
-	tok := p.expectIdent()
-	name = tok.text
-
+// typeSuffix reads the `[N]` and `(params)` that follow a declarator's
+// name, which are what make an array and a function.
+func (p *parser) typeSuffix(base *ctype) *ctype {
 	if p.at("[") {
-		return name, p.arraySuffix(typ), nil, false
+		return p.arraySuffix(base)
 	}
-	if !p.at("(") {
-		return name, typ, nil, false
+	if p.at("(") {
+		return funcOf(base, p.params())
 	}
-	return name, typ, p.params(), true
+	return base
+}
+
+// skipBalanced advances past a parenthesised run, the parens included.
+// It is what lets a parenthesised declarator be read twice.
+func (p *parser) skipBalanced() {
+	depth := 0
+	for {
+		tok := p.next()
+		switch {
+		case tok.kind == tokEOF:
+			p.fail(tok.pos, "this declarator is never closed")
+		case tok.is("("):
+			depth++
+		case tok.is(")"):
+			depth--
+			if depth == 0 {
+				return
+			}
+		}
+	}
 }
 
 // arraySuffix reads the `[N]` that follows a declarator's name. C reads
@@ -578,17 +632,18 @@ func (p *parser) params() []param {
 		if static || isTypedef {
 			p.fail(pos, "a parameter has no storage class")
 		}
-		name, typ, _, isFunc := p.declarator(base)
-		if isFunc {
-			p.fail(pos, "a function parameter is a function pointer, which is not lowered yet")
-		}
+		name, typ := p.declarator(base)
 		if typ.isVoid() {
 			p.fail(pos, "parameter %s is declared void", name)
 		}
-		// An array parameter is a pointer. C says so, and it is why
+		// An array parameter is a pointer, and so is a function
+		// parameter. C says so of both, and the first is why
 		// `void f(int a[10])` cannot check the ten.
-		if typ.isArray() {
+		switch {
+		case typ.isArray():
 			typ = pointerTo(typ.elem)
+		case typ.isFunc():
+			typ = pointerTo(typ)
 		}
 		out = append(out, param{name: name, typ: typ})
 		if !p.accept(",") {
@@ -733,8 +788,8 @@ func (p *parser) decl() stmt {
 
 	out := &declStmt{}
 	for {
-		name, typ, _, isFunc := p.declarator(base)
-		if isFunc {
+		name, typ := p.declarator(base)
+		if typ.isFunc() {
 			p.fail(pos, "a function cannot be declared inside a function")
 		}
 		if isTypedef {
@@ -925,23 +980,18 @@ func (p *parser) unary() expr {
 	return p.postfix()
 }
 
-// typeName reads a type with no declarator after it: what a cast and a
-// sizeof name. It is a declaration specifier followed by pointers, which
-// is all of C's abstract declarator this subset can spell.
+// typeName reads a type with no name after it: what a cast and a sizeof
+// name. It is a declaration specifier followed by an abstract
+// declarator, which is the same declarator as any other with the
+// identifier left out — `int (*)(int)` is `int (*f)(int)` without the f.
 func (p *parser) typeName(pos position) *ctype {
 	base, static, isTypedef := p.declSpecifiers()
 	if static || isTypedef {
 		p.fail(pos, "a type name has no storage class")
 	}
-	typ := base
-	for p.accept("*") {
-		typ = pointerTo(typ)
-		for p.at("const") || p.at("volatile") {
-			p.next()
-		}
-	}
-	if p.at("[") {
-		typ = p.arraySuffix(typ)
+	name, typ := p.declarator(base)
+	if name != "" {
+		p.fail(pos, "a type name declares nothing, and this one names %s", name)
 	}
 	return typ
 }
@@ -965,6 +1015,23 @@ func (p *parser) postfix() expr {
 			p.next()
 			name := p.expectIdent()
 			x = &memberExpr{x: x, name: name.text, arrow: tok.text == "->", pos: tok.pos}
+		case p.at("("):
+			// A call is a postfix operator on whatever came before it,
+			// which is what lets `fp(x)` and `(*fp)(x)` and
+			// `ops[i].apply(x)` all be calls.
+			p.next()
+			call := &callExpr{callee: x, pos: tok.pos}
+			if !p.at(")") {
+				for {
+					call.args = append(call.args, p.assign())
+					if !p.accept(",") {
+						break
+					}
+				}
+			}
+			p.expect(")")
+			x = call
+
 		case p.at("++"), p.at("--"):
 			p.next()
 			x = &incExpr{op: tok.text, x: x, postfix: true, pos: tok.pos}
@@ -1011,21 +1078,7 @@ func (p *parser) primary() expr {
 
 	case tokIdent:
 		p.next()
-		if !p.at("(") {
-			return &identExpr{name: tok.text, pos: tok.pos}
-		}
-		p.next()
-		out := &callExpr{callee: tok.text, pos: tok.pos}
-		if !p.at(")") {
-			for {
-				out.args = append(out.args, p.assign())
-				if !p.accept(",") {
-					break
-				}
-			}
-		}
-		p.expect(")")
-		return out
+		return &identExpr{name: tok.text, pos: tok.pos}
 	}
 
 	if p.accept("(") {

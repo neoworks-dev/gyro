@@ -1,0 +1,156 @@
+; Code pointers on the three METALS tiers.
+;
+; A `fn` is two words, { code, env }, because a closure has to put what
+; it captured somewhere. A `code` is one word, because it has nothing to
+; capture: it is the address of a function and nothing else. That is the
+; difference C cares about — `sizeof(int (*)(int))` is 8, a struct of
+; callbacks is the bytes C lays out, and a table of them is an array with
+; C's stride.
+;
+; Both are called by `call.indirect`, which is the point: the caller asks
+; the same question and the type says whether an environment comes with
+; the answer.
+
+module "metals:code-pointer"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+; A dispatch table entry: the callback, and something beside it, so the
+; record has a second member whose offset depends on the first one being
+; one word rather than two.
+type %Op = record { apply: code(i64) -> i64, arg: i64 }
+
+; A code pointer is not a byte image — its value is not known until the
+; program is laid out — so these are written by @setup, exactly as a
+; pointer is.
+global @chosen: opt<code(i64) -> i64>
+global @missing: opt<code(i64) -> i64>
+global @table: array<code(i64) -> i64, 3>
+
+init @setup
+
+fn @double(%x: i64) -> i64 {
+  %two = const.i64 2
+  %r = imul %x, %two
+  return %r
+}
+
+fn @negate(%x: i64) -> i64 {
+  %zero = const.i64 0
+  %r = isub %zero, %x
+  return %r
+}
+
+fn @square(%x: i64) -> i64 {
+  %r = imul %x, %x
+  return %r
+}
+
+fn @setup() {
+  %d = code.ref @double
+  %wrapped = opt.wrap %d
+  %c = global.ptr @chosen
+  store %c, %wrapped
+
+  %none = const.null opt<code(i64) -> i64>
+  %m = global.ptr @missing
+  store %m, %none
+
+  ; The table, filled in the order the calls below read it back. The
+  ; stride between two entries is one word, which is what makes this
+  ; array the array C would have laid out.
+  %t = global.ptr @table
+  %first = elem.ptr %t
+  store %first, %d
+  %one = const.i64 1
+  %second = ptr.offset %first, %one
+  %n = code.ref @negate
+  store %second, %n
+  %two = const.i64 2
+  %third = ptr.offset %first, %two
+  %s = code.ref @square
+  store %third, %s
+  return
+}
+
+; apply calls whatever it was handed. It never learns which function that
+; is, which is the whole reason a program stores one.
+fn @apply(%f: code(i64) -> i64, %x: i64) -> i64 {
+  %r = call.indirect %f(%x)
+  return %r
+}
+
+export fn @main() {
+  ; Straight through a reference: 21 doubled.
+  %f = code.ref @double
+  %n21 = const.i64 21
+  %a = call @apply(%f, %n21)
+  call @"println<i64>"(%a)
+
+  ; Through a record field, which is where a callback table keeps one.
+  %neg = code.ref @negate
+  %seven = const.i64 7
+  %op = record %Op(%neg, %seven)
+  %slot = slot %Op
+  store %slot, %op
+  %fp = field.ptr %slot, 0
+  %stored = load %fp
+  %ap = field.ptr %slot, 1
+  %arg = load %ap
+  %b = call.indirect %stored(%arg)
+  call @"println<i64>"(%b)
+
+  ; Through the table @setup filled: double, negate and square, each of
+  ; the same value, dispatched by index rather than by name.
+  %t = global.ptr @table
+  %base = elem.ptr %t
+  %i = const.i64 0
+  %three = const.i64 3
+  %six = const.i64 6
+  block $done {
+    loop $next {
+      %more = lt %i, %three
+      %stop = not %more
+      br_if %stop, $done
+      %at = ptr.offset %base, %i
+      %entry = load %at
+      %r = call.indirect %entry(%six)
+      call @"println<i64>"(%r)
+      %one = const.i64 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+
+  ; Two references to one function are the same address; two references
+  ; to different functions are not. C compares function pointers, and
+  ; this is what it compares.
+  %d1 = code.ref @double
+  %d2 = code.ref @double
+  %same = eq %d1, %d2
+  call @"println<bool>"(%same)
+  %other = code.ref @square
+  %differs = ne %d1, %other
+  call @"println<bool>"(%differs)
+
+  ; An optional code pointer, both ways round. The absent case is the
+  ; null address, which is a pattern no function has.
+  %c = global.ptr @chosen
+  %held = load %c
+  %none = const.null opt<code(i64) -> i64>
+  %present = ne %held, %none
+  call @"println<bool>"(%present)
+  %unwrapped = opt.unwrap %held
+  %five = const.i64 5
+  %c1 = call.indirect %unwrapped(%five)
+  call @"println<i64>"(%c1)
+
+  %m = global.ptr @missing
+  %empty = load %m
+  %absent = eq %empty, %none
+  call @"println<bool>"(%absent)
+  return
+}

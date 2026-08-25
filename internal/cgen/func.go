@@ -297,6 +297,12 @@ func (f *frame) instr(instr metals.Instr) {
 		}
 		f.assign(i.Dst, fmt.Sprintf("(gy_fn){ (void (*)(void))%s, 0 }", g.symbolFor(i.Callee)))
 
+	case *metals.CodeRef:
+		if g.funcs[i.Callee] == nil {
+			g.fail("@%s: code.ref of the runtime function @%s is not supported", f.fn.Name, i.Callee)
+		}
+		f.assign(i.Dst, fmt.Sprintf("(gy_code)%s", g.symbolFor(i.Callee)))
+
 	case *metals.MakeClosure:
 		if g.funcs[i.Callee] == nil {
 			g.fail("@%s: closure over the runtime function @%s is not supported", f.fn.Name, i.Callee)

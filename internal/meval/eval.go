@@ -425,16 +425,23 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 	case *metals.MakeClosure:
 		regs[i.Dst] = fnVal{name: i.Callee, env: m.get(regs, i.Env), hasEnv: true}
 
+	case *metals.CodeRef:
+		regs[i.Dst] = codeVal{name: i.Callee}
+
 	case *metals.CallIndirect:
-		fn, ok := m.get(regs, i.Fn).(fnVal)
-		if !ok {
-			m.throw("call.indirect of a non-function")
-		}
 		args := make([]value, len(i.Args))
 		for index, arg := range i.Args {
 			args[index] = m.get(regs, arg)
 		}
-		result := m.callFn(fn, args)
+		var result value
+		switch callee := m.get(regs, i.Fn).(type) {
+		case fnVal:
+			result = m.callFn(callee, args)
+		case codeVal:
+			result = m.call(callee.name, args)
+		default:
+			m.throw("call.indirect of a non-function")
+		}
 		if i.Dst != "" {
 			regs[i.Dst] = result
 		}

@@ -344,6 +344,12 @@ func (l *linker) rewrite(t Type) Type {
 			params[i] = l.rewrite(param)
 		}
 		return &FnType{Params: params, Result: l.rewrite(t.Result), Async: t.Async}
+	case *CodeType:
+		params := make([]Type, len(t.Params))
+		for i, param := range t.Params {
+			params[i] = l.rewrite(param)
+		}
+		return &CodeType{Params: params, Result: l.rewrite(t.Result)}
 	}
 	return t
 }
@@ -402,6 +408,8 @@ func (l *linker) instr(instr Instr) Instr {
 		return &Call{Dst: i.Dst, Callee: l.callee(i.Callee), Args: i.Args}
 	case *FnRef:
 		return &FnRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
+	case *CodeRef:
+		return &CodeRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
 	case *MakeClosure:
 		return &MakeClosure{Dst: i.Dst, Callee: l.callee(i.Callee), Env: i.Env}
 

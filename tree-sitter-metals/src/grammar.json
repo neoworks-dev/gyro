@@ -1493,6 +1493,10 @@
         {
           "type": "SYMBOL",
           "name": "function_type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "code_type"
         }
       ]
     },
@@ -1681,6 +1685,19 @@
         {
           "type": "STRING",
           "value": "fn"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "signature"
+        }
+      ]
+    },
+    "code_type": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "code"
         },
         {
           "type": "SYMBOL",

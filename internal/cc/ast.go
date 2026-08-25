@@ -174,8 +174,11 @@ type (
 		pos  position
 	}
 
+	// callExpr's callee is an expression, not a name: C calls whatever
+	// designates a function, and `(*table[i].handler)(x)` designates one
+	// just as `f` does.
 	callExpr struct {
-		callee string
+		callee expr
 		args   []expr
 		pos    position
 	}

@@ -276,7 +276,7 @@ func (f *frame) emitEquality(dst, op, a, b string, operand metals.Type) {
 		f.assign(dst, fmt.Sprintf("(%s %s %s)", f.reg(a), comparison(negate), f.reg(b)))
 		return
 
-	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle:
+	case *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
 		f.assign(dst, fmt.Sprintf("(%s %s %s)", f.reg(a), comparison(negate), f.reg(b)))
 		return
 

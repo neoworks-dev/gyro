@@ -137,6 +137,11 @@ void gy_future_get(void *fut, void *out);
 typedef struct { void *data; int64_t len; } gy_slice;
 typedef struct { void (*code)(void); void *env; } gy_fn;
 
+/* A code pointer is the address alone, one word wide: what C's own
+ * function pointer is, and what a struct full of callbacks is made of.
+ * Every use casts it to the signature it was taken at. */
+typedef void (*gy_code)(void);
+
 /* any: an open dynamic value, two words wide. The descriptors are static
  * data below, one per type, so a shape test is a pointer comparison and
  * wrapping a scalar allocates nothing. rt.c owns the operations. */
@@ -162,6 +167,7 @@ _Noreturn void gy_any_arity(const gy_type *type, int64_t got);
 
 _Static_assert(sizeof(gy_slice) == 16, "layout of slice");
 _Static_assert(sizeof(gy_fn) == 16, "layout of fn");
+_Static_assert(sizeof(gy_code) == 8, "layout of code");
 
 /* ------------------------------------------------------------------ */
 /* Abort messages, word for word what the evaluator prints.            */

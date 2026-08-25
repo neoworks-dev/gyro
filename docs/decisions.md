@@ -2175,6 +2175,70 @@ initializer, not about the literal, which is why it lives with the other
 initializer rules rather than as a special case in the expression
 lowering.
 
+### A callable is one word or two, and those are two types *(new)*
+
+**Status: decided.** METALS grew `code(A, B) -> R` beside `fn(A, B) -> R`,
+with `code.ref` to take one and `call.indirect` accepting either. A `fn`
+is `{ code, env }` and is two words; a `code` is the address alone and is
+one.
+
+The difference is not a representation detail, it is what the type
+guarantees. A closure has to keep what it captured somewhere, so a `fn`
+needs the second word and `call.indirect` through one tests it and passes
+it when it is there. A `code` has nothing to capture, so there is nothing
+to test and one call to emit — which is also the call every other
+compiler emits for `fp(x)`.
+
+The reason to bother is C's ABI, again. `sizeof(int (*)(int))` is 8, a
+struct of callbacks is three addresses and not six words, and a table of
+them has C's stride. Rejected **giving C's function pointers the `fn`
+type and calling `sizeof` a detail**, which is the same thing that was
+rejected for `opt<ptr<T>>` and wrong for the same reason: a program can
+be self-consistent about a layout that is not C's, and C's layout is the
+entire reason to read C in rather than link it.
+
+Rejected **making `fn` one word and putting the environment behind the
+code pointer**, which would unify them at the cost of a trampoline on
+every closure call — paying, in Gyro's common case, for C's.
+
+The niche extends to it: `opt<code(...)>` is one word with the null
+address as the absent case, sound for exactly the reason `opt<ptr<T>>`
+is — every `code(...)` is the address of a function METALS emitted, so no
+live one is null. A C function pointer is therefore `opt<code(...)>` and
+never `opt<ptr<T>>`: there is no object at the other end to load from,
+and `ptr<T>` addresses an object. Calling through a null callback aborts
+with a message where C jumps to address zero.
+
+A `code` cannot cross a runtime boundary, for the same reason a `ptr<T>`
+cannot: it means an address in this program, and the other side of a
+boundary does not share one.
+
+### C's declarator is read as C reads it *(new)*
+
+**Status: decided.** `internal/cc`'s declarator became recursive, which
+is what function pointers require and what the flat version was
+explicitly deferring.
+
+C's rule is that a declarator reads like the expression that would use
+the thing it declares: `int (*fp)(int)` says that `(*fp)(int)` is an int.
+The consequence for a parser is that a parenthesised declarator has to be
+read twice — the suffix after the closing paren binds tighter than the
+`*` inside it, and when the inside is first reached that suffix has not
+been seen. So the inside is skipped, the suffix is applied to the base
+type, and the inside is read again against what that produced. An
+abstract declarator is the same function with the identifier left out,
+which is why one implementation now covers casts, `sizeof`, unnamed
+parameters and `int (*table[3])(int, int)` alike.
+
+Two smaller rules fall out and are C's, not choices: a parameter of
+function type is a pointer to one, exactly as an array parameter is a
+pointer to an element; and `*fp` is a function designator that decays
+straight back to `fp`, which is why `(*fp)(x)` and `fp(x)` are the same
+call and why `(**fp)(x)` is too.
+
+A call's callee also stopped being a name and became an expression, since
+`ops[i].apply(a, b)` designates a function and no name appears in it.
+
 ## Native backend
 
 Design in [`native.md`](native.md).

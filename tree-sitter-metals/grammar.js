@@ -331,6 +331,7 @@ module.exports = grammar({
       alias($.register, $.type_name),
       $.generic_type,
       $.function_type,
+      $.code_type,
     ),
 
     primitive_type: $ => choice(
@@ -354,6 +355,14 @@ module.exports = grammar({
     function_type: $ => seq(
       optional('async'),
       'fn',
+      $.signature,
+    ),
+
+    // A code pointer: the address of a function, with no environment
+    // beside it and no async form, since an async function is started
+    // rather than called.
+    code_type: $ => seq(
+      'code',
       $.signature,
     ),
 

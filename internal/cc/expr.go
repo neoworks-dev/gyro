@@ -119,6 +119,12 @@ func (f *funcLowerer) rvalue(lv value) value {
 	if lv.typ.isArray() {
 		return f.decay(lv)
 	}
+	if lv.typ.isFunc() {
+		// A function designator decays to a pointer to itself, and the
+		// register that reached it already is that pointer: a function
+		// is not storage, so there is nothing at the other end to load.
+		return f.wrapCode(lv.reg, lv.typ)
+	}
 	return f.load(lv)
 }
 
@@ -140,6 +146,26 @@ func (f *funcLowerer) wrapPointer(raw string, elem *ctype) value {
 	wrapped := f.temp()
 	f.emit(&metals.OptWrap{Dst: wrapped, X: raw})
 	return value{reg: wrapped, typ: pointerTo(elem)}
+}
+
+// wrapCode is the same for a code pointer, which is nullable for the
+// same reason and unwrapped at the same place: a call through it.
+func (f *funcLowerer) wrapCode(raw string, fn *ctype) value {
+	wrapped := f.temp()
+	f.emit(&metals.OptWrap{Dst: wrapped, X: raw})
+	return value{reg: wrapped, typ: pointerTo(fn)}
+}
+
+// designator is a function's name used as a value. The address is the
+// whole value — there is no object to load — so this is the "lvalue" of
+// a function, and rvalue decays it to a pointer the way C does.
+func (f *funcLowerer) designator(fn *funcDecl, pos position) value {
+	if fn.body == nil {
+		fail(pos, "%s is declared but not defined here, and taking the address of a function another module defines is not wired up yet", fn.name)
+	}
+	reg := f.temp()
+	f.emit(&metals.CodeRef{Dst: reg, Callee: fn.name})
+	return value{reg: reg, typ: funcOf(fn.result, fn.params)}
 }
 
 // sizeOf answers `sizeof`. The operand of the expression form is lowered
@@ -201,6 +227,9 @@ func (f *funcLowerer) lvalue(e expr) value {
 	case *identExpr:
 		b := f.lookup(e.name)
 		if b == nil {
+			if fn, ok := f.l.funcs[e.name]; ok {
+				return f.designator(fn, e.pos)
+			}
 			if _, ok := f.l.enums[e.name]; ok {
 				fail(e.pos, "%s is an enumeration constant, which has no storage to assign to", e.name)
 			}
@@ -608,6 +637,9 @@ func (f *funcLowerer) assign(e *assignExpr) value {
 	if target.typ.isArray() {
 		fail(e.pos, "an array is storage, not a value, so it cannot be assigned to")
 	}
+	if target.typ.isFunc() {
+		fail(e.pos, "a function is not storage, so it cannot be assigned to")
+	}
 
 	var result value
 	if e.op == "=" {
@@ -622,35 +654,68 @@ func (f *funcLowerer) assign(e *assignExpr) value {
 	return result
 }
 
+// call lowers a call. A name that is a function is called directly; a
+// name that is a variable, or any other expression, is called through
+// whatever function pointer it turns out to hold. C draws the line in
+// the same place, which is why the callee is an expression here.
 func (f *funcLowerer) call(e *callExpr) value {
-	callee, ok := f.l.funcs[e.callee]
-	if !ok {
-		if f.lookup(e.callee) != nil {
-			fail(e.pos, "%s is a variable, and calling through a function pointer is not lowered yet", e.callee)
+	if named, ok := e.callee.(*identExpr); ok && f.lookup(named.name) == nil {
+		if callee, known := f.l.funcs[named.name]; known {
+			return f.directCall(e, callee)
 		}
-		fail(e.pos, "%s is not declared", e.callee)
+		fail(named.pos, "%s is not declared", named.name)
 	}
-	if len(e.args) != len(callee.params) {
-		fail(e.pos, "%s takes %d argument(s), and this call passes %d",
-			e.callee, len(callee.params), len(e.args))
-	}
-	if callee.body == nil {
-		fail(e.pos, "%s is declared but not defined here, and calling into another module is not wired up yet", e.callee)
-	}
+	return f.indirectCall(e)
+}
 
-	args := make([]string, len(e.args))
-	for i, arg := range e.args {
-		want := callee.params[i].typ
-		args[i] = f.convert(f.exprAs(arg, want), want, e.pos).reg
+func (f *funcLowerer) directCall(e *callExpr, callee *funcDecl) value {
+	args := f.callArgs(e, callee.name, callee.params)
+	if callee.body == nil {
+		fail(e.pos, "%s is declared but not defined here, and calling into another module is not wired up yet", callee.name)
 	}
 
 	if callee.result.isVoid() {
-		f.emit(&metals.Call{Callee: e.callee, Args: args})
+		f.emit(&metals.Call{Callee: callee.name, Args: args})
 		return value{typ: typeVoid}
 	}
 	reg := f.temp()
-	f.emit(&metals.Call{Dst: reg, Callee: e.callee, Args: args})
+	f.emit(&metals.Call{Dst: reg, Callee: callee.name, Args: args})
 	return value{reg: reg, typ: callee.result}
+}
+
+func (f *funcLowerer) indirectCall(e *callExpr) value {
+	target := f.expr(e.callee)
+	if !target.typ.isFuncPointer() {
+		fail(e.pos, "a %s is not something that can be called", target.typ)
+	}
+	sig := target.typ.elem
+	args := f.callArgs(e, "this call", sig.params)
+
+	// The pointer is opened here, so calling through a null one aborts
+	// with a message rather than jumping to address zero.
+	code := f.deref(target)
+	if sig.result.isVoid() {
+		f.emit(&metals.CallIndirect{Fn: code, Args: args})
+		return value{typ: typeVoid}
+	}
+	reg := f.temp()
+	f.emit(&metals.CallIndirect{Dst: reg, Fn: code, Args: args})
+	return value{reg: reg, typ: sig.result}
+}
+
+// callArgs converts a call's arguments to the parameter types, which is
+// the same work whether the callee is a name or a pointer.
+func (f *funcLowerer) callArgs(e *callExpr, what string, params []param) []string {
+	if len(e.args) != len(params) {
+		fail(e.pos, "%s takes %d argument(s), and this call passes %d",
+			what, len(params), len(e.args))
+	}
+	args := make([]string, len(e.args))
+	for i, arg := range e.args {
+		want := params[i].typ
+		args[i] = f.convert(f.exprAs(arg, want), want, e.pos).reg
+	}
+	return args
 }
 
 // ---------------------------------------------------------------------------

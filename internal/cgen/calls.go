@@ -15,7 +15,7 @@ import (
 // and pointers, so everything wider than a word travels by address.
 func byPointer(t metals.Type) bool {
 	switch t.(type) {
-	case *metals.Prim, *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle:
+	case *metals.Prim, *metals.Ptr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
 		return false
 	}
 	return true
@@ -70,6 +70,14 @@ func (f *frame) finish(result metals.Type, dst, call string) {
 
 func (f *frame) emitCallIndirect(i *metals.CallIndirect) {
 	g := f.g
+	if code, ok := f.typeOf(i.Fn).(*metals.CodeType); ok {
+		// A code pointer has no environment word, so there is nothing to
+		// test: one cast to the signature it was taken at, and a call.
+		sig := &metals.FnType{Params: code.Params, Result: code.Result}
+		call := fmt.Sprintf("((%s)%s)(%s)", g.fnPointerType(sig, false), f.reg(i.Fn), f.argList(i.Args))
+		f.finish(sig.Result, i.Dst, call)
+		return
+	}
 	sig, ok := f.typeOf(i.Fn).(*metals.FnType)
 	if !ok {
 		g.fail("@%s: call.indirect through a %s", f.fn.Name, f.typeOf(i.Fn))

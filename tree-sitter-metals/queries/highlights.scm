@@ -56,6 +56,7 @@
   "export"
   "async"
   "fn"
+  "code"
   "record"
   "enum"
 ] @keyword

@@ -482,6 +482,16 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, sig)
 
+	case *CodeRef:
+		sig, ok := fv.callables[i.Callee]
+		if !ok {
+			return fmt.Errorf("unknown function @%s", i.Callee)
+		}
+		if sig.Async {
+			return fmt.Errorf("code.ref @%s: an async function is started, not called, so its address is not a code pointer", i.Callee)
+		}
+		return fv.def(state, i.Dst, &CodeType{Params: sig.Params, Result: sig.Result})
+
 	case *MakeClosure:
 		sig, ok := fv.callables[i.Callee]
 		if !ok {
@@ -510,11 +520,14 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		sig, ok := typ.(*FnType)
-		if !ok {
-			return fmt.Errorf("call.indirect wants a fn value, not %s", typ)
+		switch sig := typ.(type) {
+		case *FnType:
+			return fv.checkCallShape(state, sig, i.Args, i.Dst, "the fn value")
+		case *CodeType:
+			shape := &FnType{Params: sig.Params, Result: sig.Result}
+			return fv.checkCallShape(state, shape, i.Args, i.Dst, "the code pointer")
 		}
-		return fv.checkCallShape(state, sig, i.Args, i.Dst, "the fn value")
+		return fmt.Errorf("call.indirect wants a fn value or a code pointer, not %s", typ)
 
 	case *Return:
 		if fv.fn.Result == nil {

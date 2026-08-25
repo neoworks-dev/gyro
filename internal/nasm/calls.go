@@ -132,39 +132,58 @@ func (f *frame) storeCallResult(result metals.Type, dst string) {
 
 func (f *frame) emitCallIndirect(i *metals.CallIndirect) {
 	g := f.g
-	sig, ok := f.typeOf(i.Fn).(*metals.FnType)
-	if !ok {
+	switch typ := f.typeOf(i.Fn).(type) {
+	case *metals.CodeType:
+		// A code pointer is the address alone: no environment word to
+		// test, so there is one call rather than two. This is what C's
+		// `fp(x)` compiles to anywhere else.
+		sig := &metals.FnType{Params: typ.Params, Result: typ.Result}
+		sret, plain := f.indirectArgs(sig, i)
+		g.ins("mov r11, %s", f.slot(i.Fn))
+		g.emitSysVCall("r11", append(append([]callArg{}, sret...), plain...))
+		f.storeCallResult(sig.Result, i.Dst)
+
+	case *metals.FnType:
+		if typ.Async {
+			f.emitAsyncCallIndirect(i.Fn, typ, i.Args, i.Dst)
+			return
+		}
+		sret, plain := f.indirectArgs(typ, i)
+		env := callArg{loc: f.slot(i.Fn).plus(8), class: classInt}
+
+		bare := g.newLabel()
+		done := g.newLabel()
+		g.ins("mov r11, %s", f.slot(i.Fn))
+		f.testZero(f.slot(i.Fn).plus(8))
+		g.ins("jz %s", bare)
+		g.emitSysVCall("r11", append(append(append([]callArg{}, sret...), env), plain...))
+		g.ins("jmp %s", done)
+		g.label(bare)
+		g.emitSysVCall("r11", append(append([]callArg{}, sret...), plain...))
+		g.label(done)
+		f.storeCallResult(typ.Result, i.Dst)
+
+	default:
 		g.fail("@%s: call.indirect through a %s", f.fn.Name, f.typeOf(i.Fn))
 	}
-	if sig.Async {
-		f.emitAsyncCallIndirect(i.Fn, sig, i.Args, i.Dst)
-		return
-	}
+}
 
-	var sret []callArg
-	if sig.Result != nil && g.classOf(sig.Result) == classMem {
+// indirectArgs classifies what an indirect call passes: the hidden
+// return-area pointer when the result is memory, and the arguments the
+// signature names. The environment is not here, because only one of the
+// two callable types has one.
+func (f *frame) indirectArgs(sig *metals.FnType, i *metals.CallIndirect) (sret, plain []callArg) {
+	if sig.Result != nil && f.g.classOf(sig.Result) == classMem {
 		if i.Dst == "" {
-			g.fail("@%s: an aggregate result needs a destination", f.fn.Name)
+			f.g.fail("@%s: an aggregate result needs a destination", f.fn.Name)
 		}
 		sret = []callArg{{loc: f.slot(i.Dst), class: classMem}}
 	}
-	plain := make([]callArg, len(i.Args))
+	plain = make([]callArg, len(i.Args))
 	for index, reg := range i.Args {
-		plain[index] = callArg{loc: f.slot(reg), class: g.classOf(sig.Params[index])}
+		plain[index] = callArg{loc: f.slot(reg), class: f.g.classOf(sig.Params[index])}
 	}
-	env := callArg{loc: f.slot(i.Fn).plus(8), class: classInt}
-
-	bare := g.newLabel()
-	done := g.newLabel()
-	g.ins("mov r11, %s", f.slot(i.Fn))
-	f.testZero(f.slot(i.Fn).plus(8))
-	g.ins("jz %s", bare)
-	g.emitSysVCall("r11", append(append(append([]callArg{}, sret...), env), plain...))
-	g.ins("jmp %s", done)
-	g.label(bare)
-	g.emitSysVCall("r11", append(append([]callArg{}, sret...), plain...))
-	g.label(done)
-	f.storeCallResult(sig.Result, i.Dst)
+	return sret, plain
 }
 
 // ---------------------------------------------------------------------------

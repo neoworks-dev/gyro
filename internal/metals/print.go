@@ -267,6 +267,8 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = call %s(%s)", reg(i.Dst), at(i.Callee), regs(i.Args))
 	case *FnRef:
 		p.printf("%s = fn.ref %s", reg(i.Dst), at(i.Callee))
+	case *CodeRef:
+		p.printf("%s = code.ref %s", reg(i.Dst), at(i.Callee))
 	case *MakeClosure:
 		p.printf("%s = closure %s, %s", reg(i.Dst), at(i.Callee), reg(i.Env))
 	case *CallIndirect:

@@ -136,6 +136,16 @@ type (
 		Result Type
 		Async  bool
 	}
+	// CodeType is code(A, B) -> R: the address of a function and nothing
+	// else. It is one word where FnType is two, because it carries no
+	// environment, and that is the whole reason it exists — C's function
+	// pointer is one word and a struct full of them has C's layout. A
+	// closure needs somewhere to put what it captured; a code pointer has
+	// nothing to capture, so it is the address alone.
+	CodeType struct {
+		Params []Type
+		Result Type
+	}
 	// Named references a module-local record or enum by name.
 	Named struct{ Name string }
 	// Any is the dynamically typed escape hatch.
@@ -182,6 +192,18 @@ func (t *FnType) String() string {
 	return out
 }
 
+func (t *CodeType) String() string {
+	parts := make([]string, len(t.Params))
+	for i, param := range t.Params {
+		parts[i] = param.String()
+	}
+	out := "code(" + strings.Join(parts, ", ") + ")"
+	if t.Result != nil {
+		out += " -> " + t.Result.String()
+	}
+	return out
+}
+
 // TypesEqual is structural equality; Named compares by name, which is
 // sound inside one module.
 func TypesEqual(a, b Type) bool {
@@ -221,6 +243,17 @@ func TypesEqual(a, b Type) bool {
 	case *FnType:
 		b, ok := b.(*FnType)
 		if !ok || a.Async != b.Async || len(a.Params) != len(b.Params) {
+			return false
+		}
+		for i := range a.Params {
+			if !TypesEqual(a.Params[i], b.Params[i]) {
+				return false
+			}
+		}
+		return resultsEqual(a.Result, b.Result)
+	case *CodeType:
+		b, ok := b.(*CodeType)
+		if !ok || len(a.Params) != len(b.Params) {
 			return false
 		}
 		for i := range a.Params {
