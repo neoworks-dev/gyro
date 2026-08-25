@@ -88,6 +88,7 @@ module.exports = grammar({
     // the union does.
     union_shape: $ => seq(
       'union',
+      optional($.alignment),
       '{',
       commaSep($.field_declaration),
       '}',
@@ -99,10 +100,16 @@ module.exports = grammar({
 
     record_shape: $ => seq(
       'record',
+      optional($.alignment),
       '{',
       commaSep($.field_declaration),
       '}',
     ),
+
+    // An alignment beyond what the members require, which is what a run
+    // of C bit-fields needs: its storage is bytes and its alignment came
+    // from declared types no longer in the member list.
+    alignment: $ => seq('align', $.number),
 
     field_declaration: $ => seq(
       field('name', $.identifier),

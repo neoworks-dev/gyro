@@ -24,8 +24,8 @@
 // module is.
 //
 // What it does not do yet is listed in docs/metals.md rather than
-// apologized for here. The largest are goto — where the relooper the
-// bridge outsources to LLVM will have to be written — and bitfields.
+// apologized for here. The largest is goto, where the relooper the
+// bridge outsources to LLVM will have to be written.
 package cc
 
 import (

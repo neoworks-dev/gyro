@@ -547,16 +547,16 @@ shortcuts and one routing choice, and closing them is the roadmap:
    initializers, `switch`, `static` locals, function pointers, a program
    made of as many `.c` files as it takes, `void *` with the casts that
    go with it, varargs, pointers to incomplete types — the way every
-   library header hands out a handle — and unions. "Any existing C
-   program" is still the bar and is still a way off — the front end owes
-   bitfields, most of C11, VLAs, `_Generic`, and the relooper for
+   library header hands out a handle — unions, and bit-fields. "Any
+   existing C program" is still the bar and is still a way off — the
+   front end owes most of C11, VLAs, `_Generic`, and the relooper for
    irreducible `goto`, the piece `internal/wasm/clang.go` names as the
    hardest and currently outsources. See "The C front end emits types,
    the bridge emits bytes", "Pointer arithmetic is three instructions,
    and unchecked", "A callable is one word or two", "A C program is
    several files", "A `void *` is a pointer that forgot", "Varargs are an
    array a caller builds", "An incomplete type is a name with no shape",
-   and "A union is a shape".
+   "A union is a shape", and "A bit-field is bytes plus an offset".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2496,6 +2496,60 @@ On the C side a tag names a struct or a union in one namespace, so
 C's rule and also what keeps one METALS name from meaning two things. A
 braced initializer writes the first member and only the first, which is
 all one storage has room for.
+
+### A bit-field is bytes plus an offset, and the offset is the front end's *(new)*
+
+**Status: decided.** A run of adjacent C bit-fields becomes one record
+member of bytes, and each of C's members remembers which bits of it are
+its own. METALS gained `record align N` / `union align N` and nothing
+else.
+
+**Rejected: a member measured in bits.** It is the obvious shape and it
+would make every consumer bit-addressed — every backend shifting, every
+`field.ptr` answering a question that has no address. The whole reason
+storage is C's is that a member has a byte offset.
+
+**Rejected: computing the layout in the front end.** The bit cursor has
+to be, because METALS has nothing to compute it with. Everything else —
+where the ordinary members sit, how wide each one is — is asked of
+`metals.Layout`, which is where that arithmetic belongs. The dividing
+line is exactly "what the format cannot be asked".
+
+**The packing rule is x86-64's, not one this compiler made up.** A
+bit-field starts at the next free bit and may not cross a boundary of
+its own declared type's size; an unnamed `:0` moves the cursor to the
+next such boundary and reserves nothing; the struct's alignment takes in
+every bit-field's declared type. Every size in the corpus and the tests
+was taken from a C compiler on this target before it was written down —
+three tiers agreeing with each other says nothing about whether they
+agree with C.
+
+**`align N` is what made it expressible.** `struct { unsigned char a:1;
+unsigned b:1; }` is one byte of storage inside four bytes of struct, and
+the four come from a declared type that is not in the member list any
+more. It is a layout *input*, not a consumer's override: `metals.Layout`
+still computes every offset and this is one more number it reads. It is
+also the knob a `@repr(align(N))` would need.
+
+**A local holding a bit-field is zeroed before its first write.** Writing
+one means reading the bytes it shares with its neighbours and putting its
+own back, and there is no partial store to do it with — so the storage
+has to be readable first. C says the other bits are indeterminate; the
+native backends zero a slot anyway, so this is what makes the evaluator
+agree rather than refuse a program C allows. The alternative was a
+partial-store instruction, which is a bit-addressed store wearing a hat.
+
+`&` and `sizeof` on a bit-field are refused, which is C's rule and the
+reason it can be packed at all: an address is a byte's, and a bit-field
+is not one. In a union every member begins where the union does, so its
+bit-fields all start at bit zero and share one run — overlapping rather
+than packing, which is what a union means.
+
+Where the bits actually land is checked by
+`tests/testdata/run/c-bitfield-bytes`, which reads the storage as bytes
+and is therefore skipped on the evaluator: reading a struct's bytes is
+type punning, and the evaluator has values rather than bytes. The values
+themselves are checked on all three tiers in `c-bitfield`.
 
 ## Native backend
 

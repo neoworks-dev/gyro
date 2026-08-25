@@ -172,32 +172,81 @@ func (l *lowerer) declareRecords(module string, units []*translation) {
 		}
 	}
 
-	for _, tag := range order {
+	// The declarations are built in dependency order and the module's
+	// list is written in source order, because packing a bit-field needs
+	// the size of every member in front of it — and those may be records
+	// this loop has not reached yet. C guarantees the order exists: a
+	// member's type has to be complete where it is written.
+	built := map[string]*metals.TypeDecl{}
+	var build func(tag string)
+	build = func(tag string) {
 		s := shapes[tag]
-		if s.fields == nil {
-			// A tag no file completes is C's incomplete type, and METALS
-			// has a declaration for exactly that. The program may hold a
-			// pointer to one and pass it around; everything that would
-			// need the size — a dereference, a member, arithmetic, a
-			// sizeof, a variable of it — is refused here and refused
-			// again by the verifier if this front end ever lets one slip.
-			l.records[tag] = s
-			l.out.Types = append(l.out.Types, &metals.TypeDecl{Name: tag, Opaque: true})
-			continue
+		if s == nil || built[tag] != nil {
+			return
 		}
-		members := make([]metals.FieldDecl, len(s.fields))
-		for i, f := range s.fields {
-			members[i] = metals.FieldDecl{Name: f.name, Type: f.typ.metalsType()}
+		built[tag] = &metals.TypeDecl{Name: tag}
+		for _, f := range s.fields {
+			for held := f.typ; held != nil; held = held.elem {
+				if held.isMembered() {
+					build(held.tag)
+				}
+			}
 		}
-		decl := &metals.TypeDecl{Name: tag}
-		if s.isUnion() {
-			decl.Union = &metals.UnionShape{Members: members}
-		} else {
-			decl.Record = &metals.RecordShape{Fields: members}
-		}
-		l.records[tag] = s
-		l.out.Types = append(l.out.Types, decl)
+		l.declareAggregate(built[tag], s, layoutOver(built))
 	}
+	for _, tag := range order {
+		build(tag)
+	}
+
+	for _, tag := range order {
+		l.records[tag] = shapes[tag]
+		l.out.Types = append(l.out.Types, built[tag])
+	}
+}
+
+// declareAggregate fills in one type declaration. What the record or the
+// union declares is not always what C wrote: a run of bit-fields is one
+// member of bytes, which is pack's answer, and the alignment their
+// declared types ask of the whole travels beside it.
+func (l *lowerer) declareAggregate(decl *metals.TypeDecl, s *ctype, layout *metals.Layout) {
+	if s.fields == nil {
+		// A tag no file completes is C's incomplete type, and METALS has
+		// a declaration for exactly that. The program may hold a pointer
+		// to one and pass it around; everything that would need the size
+		// — a dereference, a member, arithmetic, a sizeof, a variable of
+		// it — is refused in the front end and refused again by the
+		// verifier if this one ever lets one slip.
+		decl.Opaque = true
+		return
+	}
+
+	l.pack(s, layout, position{file: decl.Name})
+
+	members := make([]metals.FieldDecl, len(s.storage))
+	for i, f := range s.storage {
+		members[i] = metals.FieldDecl{Name: f.name, Type: f.typ.metalsType()}
+	}
+	decl.Align = s.align
+	if s.isUnion() {
+		decl.Union = &metals.UnionShape{Members: members}
+	} else {
+		decl.Record = &metals.RecordShape{Fields: members}
+	}
+}
+
+// layoutOver answers sizes over the declarations built so far, which by
+// the time it is asked includes every type the one being packed holds by
+// value. The one being packed is in the map and still empty, which is
+// harmless: nothing may hold itself except through a pointer, and a
+// pointer's size is not its target's.
+func layoutOver(built map[string]*metals.TypeDecl) *metals.Layout {
+	module := &metals.Module{}
+	for _, decl := range built {
+		module.Types = append(module.Types, decl)
+	}
+	return metals.NewLayout(module, func(format string, args ...any) {
+		fail(position{}, format, args...)
+	})
 }
 
 // sameShape is whether two declarations of one tag describe one struct.
@@ -211,8 +260,29 @@ func sameShape(a, b *ctype) bool {
 		if a.fields[i].name != b.fields[i].name || !a.fields[i].typ.equals(b.fields[i].typ) {
 			return false
 		}
+		if !sameBits(a.fields[i].bits, b.fields[i].bits) {
+			return false
+		}
 	}
 	return true
+}
+
+func sameBits(a, b *bitfield) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.width == b.width && a.signed == b.signed
+}
+
+// shapeOf is the merged declaration of an aggregate, which is the one
+// that was packed. Two files that included one header each parsed the
+// struct separately into a type of their own, and only the merged one
+// knows which member of the record each of C's members ended up in.
+func (l *lowerer) shapeOf(typ *ctype) *ctype {
+	if merged, ok := l.records[typ.tag]; ok && merged.fields != nil {
+		return merged
+	}
+	return typ
 }
 
 // link builds the scope each unit sees. It is C's linkage model and
@@ -390,6 +460,12 @@ func sameSignature(a, b *funcDecl) bool { return a.typ().equals(b.typ()) }
 type value struct {
 	reg string
 	typ *ctype
+	// bits is set on an lvalue that names a bit-field: reg is then the
+	// address of the run of bytes it was packed into, and this says
+	// which of them are its own. It is not a pointer to the value —
+	// C gives a bit-field no address, which is the whole reason a
+	// separate form is needed.
+	bits *bitfield
 }
 
 type binding struct {

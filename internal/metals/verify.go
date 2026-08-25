@@ -323,6 +323,12 @@ func (v *verifier) checkDeclShapes(decl *TypeDecl) error {
 		}
 		return nil
 	}
+	// Nothing is aligned more than a word, which is what keeps an enum's
+	// payload at a fixed offset and a frame's cells word-aligned.
+	if n := decl.Align; n < 0 || n > Word || (n&(n-1)) != 0 {
+		return fmt.Errorf("type %%%s is aligned to %d, and an alignment is a power of two up to %d",
+			decl.Name, n, Word)
+	}
 	if decl.Union != nil {
 		if len(decl.Union.Members) == 0 {
 			return fmt.Errorf("type %%%s is a union of nothing, which has no storage to share", decl.Name)

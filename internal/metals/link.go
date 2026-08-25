@@ -95,6 +95,7 @@ func Link(modules []*Module) (*Module, error) {
 				Union:  l.union(decl.Union),
 				Enum:   l.enum(decl.Enum),
 				Opaque: decl.Opaque,
+				Align:  decl.Align,
 			})
 		}
 		// Each module keeps its own linear memory: two C modules linked

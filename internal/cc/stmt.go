@@ -83,18 +83,22 @@ func (f *funcLowerer) declare(s *declStmt) {
 		cell := f.reserve(v.name)
 		f.emit(&metals.Slot{Dst: cell, Type: v.typ.metalsType()})
 
+		// A local's storage is a fresh slot, which the native backends
+		// zero and the evaluator deliberately leaves unwritten. What an
+		// initializer leaves out is zero in C, so an aggregate says so
+		// rather than depending on the tier — `char buf[6] = "ab"` has
+		// four of them at the end. A bit-field needs the same before its
+		// first write, because writing one reads the bytes it shares
+		// with its neighbours and there is no partial store.
+		partial := v.init != nil && (v.typ.isArray() || v.typ.isMembered())
+		if partial || f.l.holdsBitFields(v.typ) {
+			f.zeroObject(cell, v.typ, v.pos)
+		}
+
 		// The name enters scope after its own initializer, which is C's
 		// rule: `int x = x;` reads the outer x, not this one. It is also
 		// why the declarators of one statement enter one at a time.
 		if v.init != nil {
-			// A local's storage is a fresh slot, which the native
-			// backends zero and the evaluator deliberately leaves
-			// unwritten. What an initializer leaves out is zero in C, so
-			// an aggregate says so rather than depending on the tier —
-			// `char buf[6] = "ab"` has four of them at the end.
-			if v.typ.isArray() || v.typ.isMembered() {
-				f.zeroObject(cell, v.typ, v.pos)
-			}
 			f.initialize(cell, v.typ, v.init)
 		}
 		f.scopes[len(f.scopes)-1][v.name] = &binding{ptr: cell, typ: v.typ}

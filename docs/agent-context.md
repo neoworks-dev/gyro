@@ -589,10 +589,10 @@ Kept honest in `docs/language.md` ("Still to come") and
 - **`goto`** — needs the relooper LLVM does for the bridge. `switch` is
   done; it is a multiway branch into a linear body, which nested blocks
   express and arbitrary jumps do not.
-- **bitfields**: a run of them packs into storage units at bit
-  granularity, which no METALS shape says.
 - **Type punning runs on two tiers**, and so does reading across two
-  union members that share no initial sequence. `void *` is in and a cast
+  union members that share no initial sequence, and reading a struct's
+  storage as bytes — which is how a bit-field's placement is checked, in
+  `tests/testdata/run/c-bitfield-bytes`. `void *` is in and a cast
   between pointer types is `ptr.erase` then `ptr.cast`, which is the
   producer's claim about what is at the address; a union is one storage
   with several readings of it. The natives reinterpret the bytes; the
@@ -628,8 +628,10 @@ file-scope and braced initializers, `static` locals, `switch`,
 `sizeof(char *)` answering 8, function pointers, a program made of as
 many `.c` files as it takes, `void *`, varargs, pointers to incomplete
 types (`type %Name = opaque`, the way a library header hands out a
-handle), and unions (`type %Name = union { ... }`, with the common
-initial sequence answered on every tier).
+handle), unions (`type %Name = union { ... }`, with the common initial
+sequence answered on every tier), and bit-fields (a run packed into one
+member of bytes, with `record align N` carrying the alignment their
+declared types ask of the struct).
 
 **Safety holes:**
 

@@ -405,6 +405,23 @@ type TypeDecl struct {
 	// forgot and a pointer to something unknown are two different
 	// admissions, and only the second one is still checkable.
 	Opaque bool
+
+	// Align raises a record's or a union's alignment above what its
+	// members require on their own, and is 0 for one that needs
+	// nothing. The size rounds up to it, the way C rounds a struct up to
+	// its strictest member.
+	//
+	// It exists for C's bit-fields. A run of them is stored as the bytes
+	// it occupies, which align like bytes — but the alignment C gives
+	// the struct comes from the *declared types* of the bit-fields, and
+	// those types are not in the member list any more.
+	// `struct { unsigned char a:1; unsigned b:1; }` is one byte of
+	// storage inside four bytes of struct, and nothing in the members
+	// says the four. This does.
+	//
+	// It is a layout input and not a consumer's override: metals.Layout
+	// still computes every offset, and this is one more number it reads.
+	Align int
 }
 
 type RecordShape struct {

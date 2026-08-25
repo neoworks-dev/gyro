@@ -56,6 +56,14 @@ type ctype struct {
 	// keeps one METALS name from meaning two things.
 	tag    string
 	fields []field
+	// storage is what the METALS record or union actually declares. It
+	// is the same list as fields until a bit-field appears: a run of
+	// those is packed into one member of bytes, so several of C's
+	// members become one of the record's and each remembers which bits
+	// of it are theirs. align is what those bit-fields' declared types
+	// ask of the whole, which their bytes no longer say.
+	storage []field
+	align   int
 	// params and result describe a function. A function type has no
 	// size and no storage — it is not an object — so it reaches METALS
 	// only through a pointer to it, which is a one-word `code(...)`.
@@ -73,6 +81,29 @@ type ctype struct {
 type field struct {
 	name string
 	typ  *ctype
+	// unit is the index in ctype.storage of the member this one's
+	// storage is: itself for an ordinary member, and for a bit-field
+	// the run of bytes it was packed into.
+	unit int
+	// bits is set on a bit-field and says which bits of that run are
+	// this member's. C gives a bit-field no address, which is why it is
+	// not a member of the record in its own right.
+	bits *bitfield
+}
+
+// bitfield is one C bit-field's place inside the run of bytes it shares
+// with its neighbours: the first bit, counted from that run's first
+// byte, and how many. Bit zero of a run is the least significant bit of
+// its first byte, which is what x86-64 means by a bit-field.
+//
+// The declared type is not here because storage does not keep it — it
+// decided where the bits went (a bit-field may not cross a boundary of
+// its own type's size, which is what makes the packing predictable) and
+// what the struct's alignment is, and those are already recorded.
+type bitfield struct {
+	offset int
+	width  int
+	signed bool
 }
 
 var (

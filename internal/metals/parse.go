@@ -431,10 +431,16 @@ func (p *parser) typeDecl(m *Module) error {
 	decl := &TypeDecl{Name: name}
 	switch kind.text {
 	case "record":
+		if err := p.alignment(decl); err != nil {
+			return err
+		}
 		if err := p.recordShape(decl); err != nil {
 			return err
 		}
 	case "union":
+		if err := p.alignment(decl); err != nil {
+			return err
+		}
 		if err := p.unionShape(decl); err != nil {
 			return err
 		}
@@ -449,6 +455,24 @@ func (p *parser) typeDecl(m *Module) error {
 	}
 	m.Types = append(m.Types, decl)
 	return p.endOfLine()
+}
+
+// alignment reads the optional `align N` after `record` or `union`,
+// which raises the alignment above what the members ask for on their
+// own — what a run of C bit-fields needs, since its storage is bytes and
+// its alignment came from declared types no longer in the list.
+func (p *parser) alignment(decl *TypeDecl) error {
+	if p.scan.peek().text != "align" {
+		return nil
+	}
+	p.scan.next()
+	tok := p.scan.next()
+	n, err := strconv.Atoi(tok.text)
+	if err != nil {
+		return p.errf("expected an alignment, found %q", tok.text)
+	}
+	decl.Align = n
+	return nil
 }
 
 func (p *parser) recordShape(decl *TypeDecl) error {

@@ -72,6 +72,9 @@ func (l *lowerer) writeImage(image []byte, typ *ctype, init *initializer) bool {
 	if !init.braced() {
 		return l.writeImageExpr(image, typ, init)
 	}
+	if typ.isMembered() {
+		typ = l.shapeOf(typ)
+	}
 
 	switch {
 	case typ.isArray():
@@ -96,7 +99,17 @@ func (l *lowerer) writeImage(image []byte, typ *ctype, init *initializer) bool {
 		}
 		record := l.recordOf(typ, init.pos)
 		for i, member := range init.list {
-			if !l.writeImage(image[l.layout.FieldOffset(record, i):], typ.fields[i].typ, member) {
+			at := l.layout.FieldOffset(record, typ.fields[i].unit)
+			if bits := typ.fields[i].bits; bits != nil {
+				if bits.width == 0 {
+					fail(init.pos, "a zero-width bit-field holds nothing to initialize")
+				}
+				if !l.writeImageBits(image[at:], typ.fields[i], member) {
+					return false
+				}
+				continue
+			}
+			if !l.writeImage(image[at:], typ.fields[i].typ, member) {
 				return false
 			}
 		}
@@ -125,6 +138,28 @@ func (l *lowerer) writeImage(image []byte, typ *ctype, init *initializer) bool {
 		fail(init.pos, "%d initializers for a %s", len(init.list), typ)
 	}
 	return l.writeImage(image, typ, init.list[0])
+}
+
+// writeImageBits ORs a bit-field's initializer into the run of bytes it
+// shares. The image is already zero where nothing has been written, and
+// the members of one run are written in order, so nothing has to be
+// cleared first.
+func (l *lowerer) writeImageBits(image []byte, member field, init *initializer) bool {
+	if init.braced() {
+		fail(init.pos, "a bit-field takes a value, not a brace list")
+	}
+	folded, err := foldConstant(init.x, l.scope.enums)
+	if err != nil {
+		// Not a constant expression, so the whole image is out and the
+		// declaration becomes stores in the init function instead.
+		return false
+	}
+	placed := (uint64(folded) & widthMask(member.bits.width)) << uint(member.bits.offset%8)
+	for at := member.bits.offset / 8; placed != 0; at++ {
+		image[at] |= byte(placed)
+		placed >>= 8
+	}
+	return true
 }
 
 func (l *lowerer) writeImageExpr(image []byte, typ *ctype, init *initializer) bool {
@@ -240,6 +275,9 @@ func (f *funcLowerer) initialize(ptr string, typ *ctype, init *initializer) {
 		f.initializeExpr(ptr, typ, init)
 		return
 	}
+	if typ.isMembered() {
+		typ = f.l.shapeOf(typ)
+	}
 
 	switch {
 	case typ.isArray():
@@ -261,9 +299,20 @@ func (f *funcLowerer) initialize(ptr string, typ *ctype, init *initializer) {
 				len(init.list), typ, len(typ.fields))
 		}
 		for i, member := range init.list {
-			field := f.temp()
-			f.emit(&metals.FieldPtr{Dst: field, Ptr: ptr, Index: i})
-			f.initialize(field, typ.fields[i].typ, member)
+			at := f.temp()
+			f.emit(&metals.FieldPtr{Dst: at, Ptr: ptr, Index: typ.fields[i].unit})
+			if bits := typ.fields[i].bits; bits != nil {
+				// A bit-field's initializer writes bits of a run rather
+				// than a member of its own, and a zero-width one takes
+				// no initializer at all.
+				if bits.width == 0 {
+					fail(init.pos, "a zero-width bit-field holds nothing to initialize")
+				}
+				lv := value{reg: at, typ: typ.fields[i].typ, bits: bits}
+				f.storeBits(lv, f.convert(f.expr(member.x), lv.typ, init.pos))
+				continue
+			}
+			f.initialize(at, typ.fields[i].typ, member)
 		}
 
 	case typ.isUnion():
@@ -329,6 +378,9 @@ func (f *funcLowerer) elementAt(first string, index int) string {
 // leaves unwritten on purpose — so a partial initializer at block scope
 // says what the rest is rather than depending on the tier.
 func (f *funcLowerer) zeroObject(ptr string, typ *ctype, pos position) {
+	if typ.isMembered() {
+		typ = f.l.shapeOf(typ)
+	}
 	switch {
 	case typ.isArray():
 		if typ.length < 0 {
@@ -341,10 +393,13 @@ func (f *funcLowerer) zeroObject(ptr string, typ *ctype, pos position) {
 		}
 
 	case typ.isStruct():
-		for i, field := range typ.fields {
+		// The record's own members, not C's: a run of bit-fields is one
+		// member of bytes, and zeroing the bytes zeroes every field in
+		// it at once.
+		for i, member := range typ.storage {
 			at := f.temp()
 			f.emit(&metals.FieldPtr{Dst: at, Ptr: ptr, Index: i})
-			f.zeroObject(at, field.typ, pos)
+			f.zeroObject(at, member.typ, pos)
 		}
 
 	case typ.isUnion():
@@ -353,7 +408,7 @@ func (f *funcLowerer) zeroObject(ptr string, typ *ctype, pos position) {
 		// of a zeroed union gets.
 		at := f.temp()
 		f.emit(&metals.FieldPtr{Dst: at, Ptr: ptr, Index: 0})
-		f.zeroObject(at, typ.fields[0].typ, pos)
+		f.zeroObject(at, typ.storage[0].typ, pos)
 
 	default:
 		f.emit(&metals.Store{Ptr: ptr, Val: f.zero(typ)})

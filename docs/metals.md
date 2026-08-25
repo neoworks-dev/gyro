@@ -194,6 +194,15 @@ name, so two producers may declare the same one without colliding. A
 record shape that must cross a boundary is redeclared by the importer;
 matching the two declarations structurally is not implemented yet.
 
+**`record align N` and `union align N` raise the alignment above what
+the members require**, and round the size up to it the way C rounds a
+struct up to its strictest member. Every offset is still the members'
+own; this moves nothing. It exists for C's bit-fields: a run of them is
+stored as the bytes it occupies, which align like bytes, while the
+alignment C gives the struct comes from the bit-fields' *declared types*
+— and those are not in the member list any more. `N` is a power of two
+up to a word, because nothing here is aligned more than a word.
+
 **`type %Name = union { ... }` is one storage with several readings of
 it.** Every member begins at offset zero, the size is the widest
 member's rounded up to the strictest member's alignment, and `field.ptr`
@@ -844,6 +853,29 @@ The mapping, where it is not obvious:
   is what was written — is the common initial sequence, and it is the
   one cross-member read a program is entitled to.
 
+- **A run of bit-fields is one member of bytes**, and each of C's
+  members remembers which bits of it are its own. METALS has no member
+  measured in bits on purpose — a format whose records were bit-addressed
+  would be one every consumer had to shift — so the bit cursor is the
+  front end's, and every size and alignment it walks past comes from
+  `metals.Layout`. Reading a bit-field is a load, a shift and a mask;
+  writing one is a read-modify-write of the bytes it shares. `&`, and
+  `sizeof` of one, are refused, which is C's rule and the reason it can
+  be packed at all.
+
+  The packing is x86-64's, so the sizes are the ones a C compiler
+  answers: a bit-field starts at the next free bit and may not cross a
+  boundary of its own declared type's size, an unnamed `:0` moves the
+  cursor to the next such boundary and reserves nothing, and the
+  struct's alignment takes in every bit-field's declared type — which is
+  what `record align N` carries. In a union every member begins where
+  the union does, so its bit-fields all start at bit zero and share one
+  run rather than packing. A local holding one anywhere is zeroed before
+  its first write, because writing a bit-field reads the bytes it shares
+  and there is no partial store; the native backends zero a slot anyway,
+  so this is what makes the evaluator agree rather than refuse a program
+  C allows.
+
 - **A `switch` is nested blocks**, one per group of case labels, in
   source order and innermost first, with the dispatch `switch` at the
   bottom. `br` to a group's label lands where that group begins, and
@@ -898,10 +930,9 @@ The mapping, where it is not obvious:
   the abstract `int (*)(int)` in a cast all parse. An abstract declarator
   is the same declarator with the identifier left out.
 
-What it does not do yet, each refused by name rather than
-mistranslated: **`goto`**, which is where the relooper LLVM does for the
-bridge will have to be written, and **bitfields**. **Type punning**
-compiles and is a program
+What it does not do yet, refused by name rather than mistranslated:
+**`goto`**, which is where the relooper LLVM does for the bridge will
+have to be written. **Type punning** compiles and is a program
 only two tiers can run: reading one object's bytes as another type is
 undefined in C, `char *` aliasing included, and the evaluator holds a
 producer to it. A C struct cannot cross into Gyro yet either: the generated

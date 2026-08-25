@@ -725,6 +725,60 @@ type %Small = union { n: i32, wide: %Wide, pad: array<u8, 3> }
 	}
 }
 
+// An alignment beyond what the members require. It exists for C's
+// bit-fields, whose storage is bytes and whose alignment came from
+// declared types no longer in the member list.
+func TestDeclaredAlignment(t *testing.T) {
+	roundTrip(t, `
+module "cc:test/align"
+
+type %Flags = record align 4 { bits.0: array<u8, 1>, tail: i8 }
+type %Small = union align 8 { bits.0: array<u8, 2> }
+`)
+
+	module, err := metals.Parse(`module "cc:test/a"
+
+type %Flags = record align 4 { bits.0: array<u8, 1>, tail: i8 }
+type %Plain = record { bits.0: array<u8, 1>, tail: i8 }
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	layout := metals.NewLayout(module, func(format string, args ...any) {
+		t.Fatalf("layout: "+format, args...)
+	})
+	// The members are two bytes either way; the alignment is what rounds
+	// the whole up and moves nothing.
+	if got := layout.Size(&metals.Named{Name: "Plain"}); got != 2 {
+		t.Errorf("without an alignment the record is %d bytes, and its members are 2", got)
+	}
+	if got := layout.Size(&metals.Named{Name: "Flags"}); got != 4 {
+		t.Errorf("aligned to 4 the record is %d bytes, and 2 rounds up to 4", got)
+	}
+	if got := layout.Align(&metals.Named{Name: "Flags"}); got != 4 {
+		t.Errorf("the record's alignment is %d, and it was declared as 4", got)
+	}
+	if got := layout.FieldOffset(module.Types[0].Record, 1); got != 1 {
+		t.Errorf("the second field is at %d; an alignment rounds the whole and moves no member", got)
+	}
+}
+
+func TestVerifierRefusesABadAlignment(t *testing.T) {
+	verifyError(t, header+`type %R = record align 3 { a: i8 }
+
+fn @f() {
+  return
+}
+`, "an alignment is a power of two up to 8")
+
+	verifyError(t, header+`type %R = record align 16 { a: i8 }
+
+fn @f() {
+  return
+}
+`, "an alignment is a power of two up to 8")
+}
+
 func TestVerifierChecksUnions(t *testing.T) {
 	const shapes = header + "type %U = union { n: i32, f: f64 }\ntype %R = record { u: %U }\n\n"
 

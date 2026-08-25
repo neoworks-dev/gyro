@@ -308,6 +308,10 @@ func (l *Layout) namedSize(name string) int {
 	default:
 		size = roundUp(Word+l.PayloadSize(decl.Enum), Word) // { tag, payload }
 	}
+	// A declared alignment beyond what the members ask for rounds the
+	// whole up to it, the way C rounds a struct up to its strictest
+	// member. Nothing else changes: every offset is still the members'.
+	size = roundUp(size, l.namedAlign(name))
 
 	delete(l.building, name)
 	l.size[name] = size
@@ -329,6 +333,9 @@ func (l *Layout) namedAlign(name string) int {
 		_, align = l.members(fieldTypes(decl.Record))
 	case decl.Union != nil:
 		_, align = l.overlap(decl.Union)
+	}
+	if decl.Align > align {
+		align = decl.Align
 	}
 	l.align[name] = align
 	return align

@@ -272,7 +272,15 @@ func (g *generator) namedBody(typeName, name string) string {
 		}
 		fmt.Fprintf(&out, "typedef %s {", keyword)
 		for index, member := range decl.Members() {
-			fmt.Fprintf(&out, " %s f%d; /* %s */", g.memberType(member.Type), index, comment(member.Name))
+			// A record may be aligned beyond what its members ask for,
+			// which C says with _Alignas on one of them. The first will
+			// do: it raises the struct's alignment without moving
+			// anything, since it is at offset zero either way.
+			alignas := ""
+			if index == 0 && decl.Align > 0 {
+				alignas = fmt.Sprintf("_Alignas(%d) ", g.layout.Align(&metals.Named{Name: typeName}))
+			}
+			fmt.Fprintf(&out, " %s%s f%d; /* %s */", alignas, g.memberType(member.Type), index, comment(member.Name))
 		}
 		fmt.Fprintf(&out, " } %s;", name)
 		return out.String()

@@ -1,0 +1,57 @@
+// A Gyro program driving C code built on bit-fields.
+//
+// A bit-field's place is measured in bits, and METALS has no member
+// measured in bits — a format whose records were bit-addressed would be
+// one every consumer had to shift. So a run of adjacent bit-fields
+// becomes one member of bytes, and each of C's members remembers which
+// bits of that run are its own. Reading one is a load, a shift and a
+// mask; writing one is a read-modify-write of the bytes it shares.
+//
+// The sizes below are the ones a C compiler answers for the same
+// declarations, because the packing rule is x86-64's rather than one
+// this compiler invented.
+
+import { println } from "stdlib"
+import {
+  size_of_head, size_of_wide, size_of_signs, size_of_mixed,
+  head_version, head_ihl, head_tos, head_length,
+  neighbours_survive, wide_round_trip,
+  signed_reads_back, unsigned_reads_back,
+  truncates_on_write, wraps_at_its_width,
+  initialized_in_order, file_scope_initializer, union_members_overlap,
+} from "./flags.c"
+
+fn main() {
+  // Two four-bit fields share one byte, so the header is four bytes and
+  // not six. The straddle rule pushes `second` to bit 32 and makes the
+  // second struct eight. The last is a run of one byte, six bytes of
+  // name behind it, and an int aligned to twelve.
+  println(size_of_head())
+  println(size_of_wide())
+  println(size_of_signs())
+  println(size_of_mixed())
+
+  // A file-scope initializer writes the members in order, bits and
+  // bytes alike.
+  println(head_version())
+  println(head_ihl())
+  println(head_tos())
+  println(head_length())
+
+  println(neighbours_survive())
+  println(wide_round_trip())
+
+  // Four bits of ones is -1 signed and 15 unsigned, which is the whole
+  // difference between the two declarations.
+  println(signed_reads_back())
+  println(unsigned_reads_back())
+
+  // What does not fit is dropped, and the increments wrap at the
+  // field's width rather than at int's.
+  println(truncates_on_write())
+  println(wraps_at_its_width())
+
+  println(initialized_in_order())
+  println(file_scope_initializer())
+  println(union_members_overlap())
+}

@@ -124,6 +124,9 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		if decl.Union != nil {
 			shape = "union"
 		}
+		if decl.Align > 0 {
+			shape += " align " + strconv.Itoa(decl.Align)
+		}
 		members := decl.Members()
 		text := make([]string, len(members))
 		for i, member := range members {

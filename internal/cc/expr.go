@@ -112,9 +112,22 @@ func isNullConstant(e expr) bool {
 }
 
 func (f *funcLowerer) load(lv value) value {
+	if lv.bits != nil {
+		return f.loadBits(lv)
+	}
 	reg := f.temp()
 	f.emit(&metals.Load{Dst: reg, Ptr: lv.reg})
 	return value{reg: reg, typ: lv.typ}
+}
+
+// store writes through an lvalue, which for a bit-field is a
+// read-modify-write of the bytes it shares rather than one store.
+func (f *funcLowerer) store(lv value, v value) {
+	if lv.bits != nil {
+		f.storeBits(lv, v)
+		return
+	}
+	f.emit(&metals.Store{Ptr: lv.reg, Val: v.reg})
 }
 
 // rvalue turns an lvalue into the value C reads out of it. Everything
@@ -186,7 +199,13 @@ func (f *funcLowerer) sizeOf(e *sizeofExpr) value {
 		// would produce anywhere else. So the type comes from the lvalue
 		// where there is one, and only otherwise from the value.
 		if f.isLvalue(e.x) {
-			typ = f.lvalue(e.x).typ
+			lv := f.lvalue(e.x)
+			if lv.bits != nil {
+				// A bit-field is measured in bits and sizeof answers
+				// bytes, which is why C refuses the question outright.
+				fail(e.pos, "sizeof does not apply to a bit-field, which is measured in bits")
+			}
+			typ = lv.typ
 		} else {
 			typ = f.expr(e.x).typ
 		}
@@ -305,10 +324,11 @@ func (f *funcLowerer) member(e *memberExpr) value {
 	if record.fields == nil {
 		fail(e.pos, "%s %s is never defined, so it has no field %s", record.keyword(), record.tag, e.name)
 	}
+	record = f.l.shapeOf(record)
 
 	index := -1
 	for i, fld := range record.fields {
-		if fld.name == e.name {
+		if fld.name == e.name && fld.name != "" {
 			index = i
 			break
 		}
@@ -316,10 +336,13 @@ func (f *funcLowerer) member(e *memberExpr) value {
 	if index < 0 {
 		fail(e.pos, "%s %s has no member %s", record.keyword(), record.tag, e.name)
 	}
+	member := record.fields[index]
 
+	// A bit-field's storage is the run it was packed into, and what
+	// names it is which bits of that run are its own.
 	reg := f.temp()
-	f.emit(&metals.FieldPtr{Dst: reg, Ptr: base.reg, Index: index})
-	return value{reg: reg, typ: record.fields[index].typ}
+	f.emit(&metals.FieldPtr{Dst: reg, Ptr: base.reg, Index: member.unit})
+	return value{reg: reg, typ: member.typ, bits: member.bits}
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +352,12 @@ func (f *funcLowerer) member(e *memberExpr) value {
 func (f *funcLowerer) unary(e *unaryExpr) value {
 	if e.op == "&" {
 		object := f.lvalue(e.x)
+		if object.bits != nil {
+			// C has no address for a bit-field, because an address is a
+			// byte's and a bit-field is not one. The rule is the reason
+			// it can be packed at all.
+			fail(e.pos, "a bit-field has no address; it shares its bytes with its neighbours")
+		}
 		wrapped := f.temp()
 		f.emit(&metals.OptWrap{Dst: wrapped, X: object.reg})
 		return value{reg: wrapped, typ: pointerTo(object.typ)}
@@ -382,7 +411,7 @@ func (f *funcLowerer) increment(e *incExpr) value {
 		old := f.load(target)
 		one := value{reg: f.constant(typeLong, "1"), typ: typeLong}
 		updated := f.step(old, one, e.op == "--", e.pos)
-		f.emit(&metals.Store{Ptr: target.reg, Val: updated.reg})
+		f.store(target, updated)
 		if e.postfix {
 			return old
 		}
@@ -406,10 +435,15 @@ func (f *funcLowerer) increment(e *incExpr) value {
 
 	updated := f.temp()
 	f.emit(&metals.Bin{Dst: updated, Op: op, A: old.reg, B: f.constant(target.typ, "1")})
-	f.emit(&metals.Store{Ptr: target.reg, Val: updated})
+	f.store(target, value{reg: updated, typ: target.typ})
 
 	if e.postfix {
 		return old
+	}
+	if target.bits != nil {
+		// A bit-field holds fewer bits than it was given, so what the
+		// expression is worth is what landed.
+		return f.load(target)
 	}
 	return value{reg: updated, typ: target.typ}
 }
@@ -702,7 +736,12 @@ func (f *funcLowerer) assign(e *assignExpr) value {
 		result = f.convert(combined, target.typ, e.pos)
 	}
 
-	f.emit(&metals.Store{Ptr: target.reg, Val: result.reg})
+	f.store(target, result)
+	if target.bits != nil {
+		// What the expression produces is what landed, and a bit-field
+		// holds fewer bits than the value assigned to it.
+		return f.load(target)
+	}
 	return result
 }
 

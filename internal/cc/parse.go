@@ -497,7 +497,23 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 			p.fail(pos, "a %s member has no storage class", keyword)
 		}
 		for {
+			// An unnamed `:0` has no declarator at all: it says only
+			// where the next bit-field starts.
+			if p.at(":") {
+				fields = append(fields, p.bitField(pos, "", base))
+				if !p.accept(",") {
+					break
+				}
+				continue
+			}
 			name, fieldType := p.declarator(base)
+			if p.at(":") {
+				fields = append(fields, p.bitField(pos, name, fieldType))
+				if !p.accept(",") {
+					break
+				}
+				continue
+			}
 			if fieldType.isFunc() {
 				p.fail(pos, "member %s is a function; a %s holds a pointer to one, not the function itself", name, keyword)
 			}
@@ -523,8 +539,48 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 	if len(fields) == 0 {
 		p.fail(pos, "%s %s has no members, and METALS has no shape with none", keyword, tag)
 	}
+	// A zero-width bit-field says where the next one starts and reserves
+	// nothing, so a body of only those declares no storage at all.
+	// Where the rest of them end up is the lowering's question, since it
+	// takes the size of every member before them.
+	reserves := false
+	for _, f := range fields {
+		if f.bits == nil || f.bits.width > 0 {
+			reserves = true
+		}
+	}
+	if !reserves {
+		p.fail(pos, "%s %s is nothing but zero-width bit-fields, which reserve no storage", keyword, tag)
+	}
 	typ.fields = fields
 	return typ
+}
+
+// bitField reads the `: width` half of a bit-field declaration. The
+// width lands in the field's bits, and where those bits go is pack's
+// question, since it depends on everything declared before them.
+func (p *parser) bitField(pos position, name string, declared *ctype) field {
+	p.expect(":")
+	bits, err := p.constantExpr()
+	if err != nil {
+		p.fail(pos, "%s", err)
+	}
+	if !declared.isInteger() {
+		p.fail(pos, "a bit-field counts bits of an integer, and %s is not one", declared)
+	}
+	if bits < 0 || bits > int64(width(declared))*8 {
+		p.fail(pos, "a bit-field of %d bits does not fit a %s", bits, declared)
+	}
+	if bits == 0 && name != "" {
+		// A zero-width bit-field is the instruction "start the next one
+		// at a fresh unit", and an instruction has no name.
+		p.fail(pos, "bit-field %s has no bits; only an unnamed one may be zero-width", name)
+	}
+	return field{
+		name: name,
+		typ:  declared,
+		bits: &bitfield{width: int(bits), signed: !declared.isUnsigned()},
+	}
 }
 
 // declarator applies C's declarator syntax to a declaration's type words
