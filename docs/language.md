@@ -73,8 +73,19 @@ A numeric literal is **context-typed**: it takes the type the context
 requires, so `var h: u32 = 2166136261` needs no cast and `var bytes: u8[] =
 [104, 105]` element literals become `u8`. With no context, an integer literal
 is `i32` and a float literal is `f64`. A literal that does not fit the
-required type is a compile error. Context never converts *typed* values —
-only literals adapt.
+required type is a compile error, and the default is a requirement like
+any other: `var x = 3000000000` is rejected, because the type it would
+give `x` cannot hold the value. Write `var x: i64 = 3000000000` instead.
+Context never converts *typed* values — only literals adapt.
+
+The context reaches through an expression built only from literals, so
+the operands adapt too, and only the value that is finally *used* has to
+fit: `var x: i8 = -128` is legal even though `128` alone is not an `i8`,
+and `var x: i64 = 1 << 40` is an i64 shift rather than an i32 one that
+overflowed. A shift is the case where nothing else can decide: the count
+keeps its own type, so an untyped left operand takes the width from
+outside. In `mask & (0xffffffff >> n)` with a `u32` mask, `0xffffffff` is
+a `u32`; `~0` is likewise all ones at the width of whatever it meets.
 
 A character literal such as `'c'` has type `rune`.
 
@@ -90,7 +101,7 @@ Escape it as `\#{` to write the sequence literally. Escapes are `\n`, `\t`,
 | wrapping | `+% -% *%` — deliberate two's-complement wraparound |
 | comparison | `== != < <= > >=` |
 | logical | `&& \|\| !` |
-| bitwise | `& \| ^ ~ << >>` |
+| bitwise | `& \| ^ ~ << >>` — these never panic |
 | assignment | `= += -= *= /= %= &= \|= ^= <<= >>=` |
 | access | `.` field, `::` namespace, `[]` index |
 | conversion | `as` |
@@ -100,8 +111,39 @@ Escape it as `\#{` to write the sequence literally. Escapes are `\n`, `\t`,
 There is no `++` or `--`; increment is `i += 1`, one way only.
 
 Integer division truncates toward zero and `%` takes the sign of the
-dividend: `-7 / 2 == -3`, `-7 % 2 == -1`. Divide by zero panics, and
+dividend: `-7 / 2 == -3`, `-7 % 2 == -1`. Integer divide by zero panics, and
 `i32::MIN / -1` panics as overflow.
+
+Floats are IEEE 754 and float division by zero does not panic: `1.0 / 0.0`
+is `+Inf`, `-1.0 / 0.0` is `-Inf`, and `0.0 / 0.0` is `NaN`. IEEE defines
+those answers, so they are values rather than bugs — unlike integer
+division by zero, which has no answer to give.
+
+NaN is unordered. `==`, `!=` aside, every comparison against NaN is false,
+including `NaN == NaN`; `NaN != NaN` is true. The three-way `compare()`
+method is different on purpose: it is a **total** order, so that a
+comparator stays consistent. NaN compares above every number and equal to
+another NaN, and `0.0` and `-0.0` compare equal.
+
+```gyro
+var nan = 0.0 / 0.0
+nan <= 1.0            // false — unordered
+nan.compare(1.0)      // 1     — total order, NaN is above
+nan.compare(nan)      // 0
+```
+
+A shift moves a bit pattern rather than computing a value, so bits that
+leave the operand's width are simply gone — `<<` drops the high ones as
+quietly as `>>` drops the low ones, and neither is an overflow. A count
+at or beyond the width clears the word, or fills a signed `>>` with the
+sign; it is defined, not undefined. That is what makes a rotate ordinary
+Gyro:
+
+```gyro
+fn rotl(a: u32, b: u32): u32 {
+  return (a << b) | (a >> (32 - b))
+}
+```
 
 `>>` is deliberately scanned as two `>` tokens so that nested generic
 arguments such as `Result<Vec<i32>, error>` close cleanly; the parser rejoins
@@ -117,8 +159,14 @@ never ambiguous in the first place.
 `as` converts between numeric types (and `rune`): `x as i64`. Widening always
 succeeds. A narrowing conversion whose value does not fit the target
 **panics**, consistent with arithmetic overflow. Deliberate truncation is
-spelled with a mask first: `(x & 0xff) as u8`. There are no implicit
-conversions between typed values, ever.
+spelled with a mask first: `(x & 0xff) as u8`.
+
+`as` is also how a value enters and leaves an `any`: `x as any` never fails,
+and `v as i32` on an `any` panics when it holds something else — the same
+shape as a narrowing conversion that does not fit.
+
+There are no implicit conversions between typed values, with one exception:
+an argument to a `...any` parameter is packed without writing `as any`.
 
 ---
 
@@ -253,10 +301,46 @@ fn load(p: string): (string, error?) // returns a tuple
 fn max<T>(a: T, b: T): T             // generic
 async fn fetch(u: string): (string, error?)
 fn apply(f: fn(i32): bool) {}        // function-valued parameter
+fn sum(xs: ...i32): i32              // variadic
+fn printf(fmt: string, args: ...any) // variadic over mixed types
 ```
 
 The return type follows a colon. Parameters may carry defaults:
 `fn f(n: i32 = 4)`.
+
+### Variadic parameters
+
+A final parameter written `name: ...T` collects the remaining arguments.
+Inside the body it is an ordinary `T[]` slice — `len()`, indexing and
+`for..in` all work, and it borrows storage the caller owns, so it must not
+outlive the call.
+
+```gyro
+fn sum(xs: ...i32): i32 {
+  var total = 0
+  for x in xs {
+    total += x
+  }
+  return total
+}
+
+sum()           // 0
+sum(1, 2, 3)    // 6
+```
+
+Only the last parameter may be variadic, it takes no default, and a call
+site may supply zero arguments for it. An existing slice is forwarded with
+a trailing `...`, which is the only way to pass one as the whole pack:
+
+```gyro
+fn log_all(rest: ...i32) {
+  sum(rest...)    // forwards the pack
+  sum(rest)       // error: i32[] is not an i32
+}
+```
+
+The heterogeneous form is `...any`, which is what `printf`-shaped code
+wants — see `any` under Types.
 
 ### Methods
 
@@ -441,15 +525,19 @@ export enum Shape {
 
 `@name` or `@name(args)`, attachable to any declaration. Arguments may be
 named. The decorator names are a **fixed set known to the compiler** —
-`@comptime`, `@gpu`, `@concurrent`, `@distributed` — because they configure
-compilation itself; there is nothing meaningful to import. An unknown
-decorator name is a compile error.
+`@comptime`, `@gpu`, `@concurrent`, `@distributed`, `@extern` — because they
+configure compilation itself; there is nothing meaningful to import. An
+unknown decorator name is a compile error.
 
 ```gyro
 @comptime const FIB_10: i32 = fib(10)
 @gpu fn kernel(a: *f32) {}
 @concurrent(threads = 8) fn work() {}
+@extern("m") fn sqrt(x: f64): f64 !{}
 ```
+
+`@extern` is the only one with an implementation behind it today; see
+[foreign functions](#foreign-functions).
 
 ---
 
@@ -463,6 +551,7 @@ decorator name is a compile error.
 | `f32 f64` | floats |
 | `rune` | a Unicode code point (32-bit) |
 | `bool string void error` | other primitives |
+| `any` | a value of any single type, carrying which |
 | `*T` | pointer, never null |
 | `T?` | nullable |
 | `T[]` | slice — a borrowed view |
@@ -473,6 +562,65 @@ decorator name is a compile error.
 | `async fn(A): B` | async function |
 | `ast::Literal` | namespaced name |
 | `Pair<i32>` | generic instantiation |
+
+### Any
+
+`any` holds a value of exactly one other type and remembers which. It is a
+first-class type: a variable, a field, a slice element, a channel element.
+It exists so that a `...any` pack can carry mixed types.
+
+A value enters an `any` with `as`, which never fails, and leaves it with
+`as` back to a concrete type, which **panics** when the type disagrees —
+the same rule narrowing conversions follow.
+
+```gyro
+var v: any = 42 as any
+var n = v as i32         // 42
+var s = v as string      // panics: any holds i32, not string
+```
+
+`match` tests the type instead of asserting it, spelled like the type test
+on an `error`. `any` is an open subject like `error` and `i32`, so a match
+on one is never reported as partial and falling off the end panics.
+
+```gyro
+var text = match v {
+  i32(n):    "int #{n}"
+  string(s): "text #{s}"
+  _:         "something else"
+}
+```
+
+A type an ordinary path cannot spell is written out in the arm:
+
+```gyro
+var text = match v {
+  (i32, string)(pair): "pair #{pair.0}"
+  i32[](xs):           "#{xs.len()} numbers"
+  i32[3](fixed):       "three numbers"
+  *Node(node):         "node #{node.value}"
+  _:                   "something else"
+}
+```
+
+An `any` holds any type except the ones that could not answer for
+themselves afterwards: `void`, `null`, another `any`, an `error` or a `T?`
+(both of which hide the concrete type the any is meant to be sure of), a
+channel, a future, a function value, and the runtime-owned handles such as
+`Array` and `Mutex`.
+
+`println(v)` prints whatever is inside, using that type's derived
+representation, so nothing has to be unwrapped just to show it.
+
+The only implicit conversion in the language is packing: an argument to a
+`...any` parameter is wrapped without writing `as any`, because the call is
+what constructs the pack. Assignment never wraps — `var x: any = 42` is an
+error and `42 as any` is the fix.
+
+Gyro compiles whole programs, so the set of types any `as any` in the
+program mentions is known at compile time; `any` is that closed set, not a
+runtime type registry. It is not an escape from the type system: there is
+no way to call a method on an `any` without first naming the type it holds.
 
 ### Tuples
 
@@ -541,8 +689,9 @@ wrapping around.
 `string` is the same arrangement over UTF-8 bytes: a borrowed view, with
 `String` as the owning builder. `len()` counts bytes, `runes()` iterates
 code points as `rune`, and `bytes()` yields the bytes as `u8[]`. Both
-`runes()` and `bytes()` copy — a slice element is a full word while a
-string's bytes are packed — so neither borrows its receiver.
+`runes()` and `bytes()` copy — a string is immutable and shared and a
+slice is neither, and a rune is four bytes where UTF-8 is not — so
+neither borrows its receiver.
 
 ```gyro
 var out = String::new()
@@ -566,10 +715,13 @@ allocates, and nothing frees those allocations yet.
 spirit: buckets of `(K, V)` pairs chained on the derived `hash()`. Any
 key that supports `==` works, because `hash()` is derived wherever `==`
 is and over the same parts. `insert` replaces on an equal key, `get`
-answers `V?` (so a value type must not itself be optional — optionals do
-not nest), `remove` reports whether the key was present, and `keys()`
+answers `V?`, `remove` reports whether the key was present, and `keys()`
 snapshots into a fresh `Array<K>` in deterministic bucket order. Like
 `Array<T>`, a map is freed explicitly with `free()`.
+
+A `V` that is itself optional is allowed. Optionals do not nest, so
+`get()` on a `Map<K, V?>` answers `null` both for a miss and for a stored
+`null`; `contains(key)` is the signal that separates them.
 
 ```gyro
 var ages = Map<string, i32>::new()
@@ -687,7 +839,10 @@ struct type-tests:
   patterns are **always qualified** with the enum name.
 - `RangeError(e)` on a value whose concrete type is not statically known (an
   `error`) is a **type test**: it matches when the value is a `RangeError`
-  and binds the whole struct to `e`.
+  and binds the whole struct to `e`. An `any` subject takes the same form
+  and any type may name itself there, primitives included: `i32(n)`,
+  `string(s)`, `Point(p)`. A type no path can spell is written as itself:
+  `(i32, string)(pair)`, `i32[](xs)`, `*Node(node)`.
 
 A match over an enum is checked for **exhaustiveness**: every variant must be
 covered or a `_` arm present; adding a variant later breaks every non-`_`
@@ -698,8 +853,8 @@ An arm covers a variant only when its payload patterns *bind* rather than
 *test*. `Shape::Circle(r)` covers `Circle`; `Shape::Circle(0.0)` matches one
 radius, so `Circle` stays uncovered and the match needs a further arm.
 
-Only enums are enumerable. A match on an integer, a string, or an `error`
-whose concrete type is unknown is never reported as partial — there is no
+Only enums are enumerable. A match on an integer, a string, an `any`, or an
+`error` whose concrete type is unknown is never reported as partial — there is no
 finite variant set to compare against. Falling off the end of such a match
 panics at runtime.
 
@@ -751,8 +906,8 @@ in the source.
 
 ### Programmer errors
 
-Out-of-bounds indexing, divide by zero and dereferencing a null `T?` are
-bugs, not conditions. They print a message with source position and
+Out-of-bounds indexing, integer divide by zero and dereferencing a null
+`T?` are bugs, not conditions. They print a message with source position and
 **abort**. They are neither returnable nor catchable, which keeps the
 `(T, error?)` channel meaningful and needs no unwinding machinery.
 
@@ -763,7 +918,9 @@ panic: index 7 out of range for length 3
 
 Integer overflow is in the same category: `a + b` panics. Wrapping is
 available where it is actually wanted, spelled `+%`, `-%` and `*%`. A
-narrowing `as` conversion that loses value panics the same way.
+narrowing `as` conversion that loses value panics the same way. The
+bitwise operators are not in this category at all — losing bits is what
+they are for, so `<<` never panics and needs no wrapping twin.
 
 ---
 
@@ -772,6 +929,10 @@ narrowing `as` conversion that loses value panics the same way.
 Every type is printable: `println(x)` and `#{x}` use a compiler-derived
 representation (`Point{ x: 1, y: 2 }`) unless the type has its own
 `to_string(): string` method, which then wins. Primitives print natively.
+
+An `any` prints as the value inside it, so a `...any` pack prints element by
+element with no unwrapping. `printf` in the standard library is an ordinary
+Gyro function over such a pack.
 
 ---
 
@@ -817,6 +978,107 @@ fn g(cond: bool) {
 
 A pointer that may be absent is `*T?`, so a linked list's tail is
 `next: *Node?` and the null case has to be checked before use.
+
+---
+
+## Foreign functions
+
+A declaration with no body is a foreign function — that is already how the
+standard library's intrinsics are written. `@extern` says which foreign
+world one belongs to, and the library it is linked from:
+
+```gyro
+@extern("m")
+export fn sqrt(x: f64): f64 !{}
+
+@extern("SDL2")
+export fn SDL_Init(flags: u32): i32 !{ io }
+
+@extern("SDL2", symbol = "SDL_Delay")
+export fn delay(millis: u32) !{ io }
+```
+
+The string is the library, spelled as the linker wants it without the `lib`
+prefix — `"m"` is `-lm`, `"SDL2"` is `-lSDL2`. `"c"` names libc, which is
+always linked anyway. The symbol is the declaration's own name unless
+`symbol =` gives another, which is how a C name that is not a legal Gyro
+identifier, or one you would rather not repeat at every call, gets in.
+
+A declaration under `@extern` **must have no body** and **must state its
+effect row**: there is no source to read, so an unstated row would be
+assumed to do everything.
+
+### What can cross
+
+The rule is the one METALS already enforces on every language boundary:
+**values copy at the boundary**, so nothing shared and mutable crosses.
+
+| Gyro | C | how |
+| --- | --- | --- |
+| `i8`..`u64`, `usize`, `f32`, `f64`, `bool`, `rune` | the same width | by value |
+| `string` | `const char *` | copied and NUL-terminated for the call |
+| `T[]` | `const T *` | the slice's own elements, borrowed for the call |
+| a struct whose fields all cross | the same struct | by value; the same bytes on both sides |
+| a fieldless `@extern` struct | `void *` | an opaque handle, by identity |
+| `T?` of a handle | a pointer that may be `NULL` | null is `NULL` |
+| `void` | `void` | |
+
+A returned `string` is a copy of what the pointer addressed, because the
+bytes belong to the library and it may reuse them on the next call. A
+returned null pointer becomes `""`: a Gyro string is never absent, and
+`string?` is not a type that crosses.
+
+A struct crosses by value, in both directions, because Gyro lays one out
+the way C does — same widths, same alignment, same padding. So a Gyro
+struct and a C struct of the same fields are the same bytes and nothing
+is converted:
+
+```gyro
+struct Div {
+  quot: i32
+  rem: i32
+}
+
+@extern("c")
+fn div(numerator: i32, denominator: i32): Div !{}
+```
+
+What a struct may hold is narrower than what an argument may be, because
+a field is bytes C reads out of the struct rather than a value converted
+for the call. Scalars, fixed arrays and other such structs are members; a
+`string`, a slice and a nullable are not, and the diagnostic names the
+field's type rather than the struct's.
+
+Rejected, with a diagnostic naming the type: `*T`, `chan<T>`, futures,
+function values, `any`, tuples, enums, and `T?` of anything but a handle.
+Several results are rejected too — a C function returns one value, and
+`(T, error?)` is Gyro's shape, not C's.
+
+The one copy left is what C's own representation forces, not a
+convenience: a Gyro string is a length-prefixed header and C wants
+NUL-terminated bytes, so the call passes a copy that lives only as long
+as it does. A slice is passed as it stands. A foreign function that keeps
+either pointer keeps a dangling one.
+
+An opaque handle is a fieldless struct marked `@extern`. It has no
+literal, no fields and no operations of its own — it is a `void *` you can
+only pass back to the library that gave it to you:
+
+```gyro
+@extern("SDL2")
+export struct Window {}
+
+@extern("SDL2")
+export fn SDL_CreateWindow(
+  title: string, x: i32, y: i32, w: i32, h: i32, flags: u32,
+): Window? !{ io, alloc }
+```
+
+### What it costs
+
+A program that calls a foreign function **runs only on the native tiers**.
+The METALS evaluator is Go with no C in it, so it cannot make the call,
+and it refuses the program rather than inventing an answer.
 
 ---
 
@@ -906,6 +1168,11 @@ select {
 }
 ```
 
+When more than one arm is ready at the same moment, **which one runs is
+unspecified**. A program that depends on the choice is wrong: the tiers
+differ deliberately, one picking at random and another polling in source
+order, and neither is the definition.
+
 ### Async — IO concurrency
 
 `async fn` declares an asynchronous function and `await` resolves the value
@@ -949,8 +1216,12 @@ become one mechanism.
 — even one holding only borrows — promises that its body performs no
 concrete effect the row does not name: a row without `io` promises no io,
 and a row without `alloc` promises no allocation. A function with no row is
-unconstrained in v1; the intended end state, still open, is that anything
-`export`ed must state its row.
+unconstrained, exported or not: a row is how a signature *states* an
+interface, never the only way to know what a function does.
+
+The vocabulary is closed. `io` and `alloc` are the concrete effects and
+`&name` is a borrow entry; anything else in a row is an error rather than
+an entry that quietly promises nothing.
 
 ```gyro
 fn quiet(n: i32) !{} {
@@ -964,24 +1235,43 @@ fn loud(n: i32) !{ io, alloc } {
 
 What a body performs is judged from its sources:
 
-- A call contributes the callee's declared row when it states one — that is
-  what carries an effect across a module, exactly as borrows travel. When
-  the callee states no row and its body lives in the **same module**, its
-  effects are inferred from that body, transitively. A cross-module call to
-  an unstated row contributes nothing in v1.
+- A call contributes the callee's declared row when it states one. When the
+  callee states no row, its effects are inferred from its body — in
+  whatever module that body lives, transitively. Gyro compiles
+  whole-program, so a rowless import is read, not assumed.
+- An **intrinsic** — a declaration with no body anywhere — is the one thing
+  that cannot be read. Without a row it is assumed to do `io` and `alloc`,
+  which is why every intrinsic in the standard library writes one, down to
+  `Array<T>::get(self, index: usize): T !{}`.
 - String interpolation `#{...}` builds new text, which allocates.
+- The built-in method surface answers for itself: `runes()` and `bytes()`
+  copy into new storage and so do `alloc`; `len`, `close`, `hash`,
+  `compare` and `message` do nothing.
 - The standard library states rows on its surface: `println` does
   `!{ io }`, `Array<T>::push` does `!{ alloc }` (it may grow the buffer),
   `read_all` does `!{ io, alloc }`, and so on.
 
 A generic body's effects are judged per instantiation, like its borrows:
 what a call on a type parameter reaches is only known once the parameter is
-concrete.
+concrete. A rowless generic callee is read through its instantiations and
+contributes the union of what they reach.
+
+A closure may write its own row, and its body is checked against it:
+
+```gyro
+var quiet = fn(n: i32) !{} {
+  println(n)           // error: println does io, which the row does not name
+}
+```
 
 Outside v1, deliberately: a row variable (`!e`, `!{ io, ..e }`) leaves the
-row open and unchecked; calling a function *value* — a closure or an `fn`
-parameter — contributes nothing; and `spawn`, channel operations and
-`Mutex` carry no effect yet.
+row open and unchecked; *calling* a function value — a closure or an `fn`
+parameter — contributes nothing to the caller, and creating a capturing
+closure is not counted as `alloc` even though the environment is real
+storage; module-level `var` initializers run before `main` outside any row;
+and channel operations and `Mutex` carry no effect. `spawn` declares
+`!{ io, alloc }`, which covers starting the thread and stands in for the
+task's own effects until a row can travel with a function value.
 
 ### Borrows
 
@@ -1181,9 +1471,10 @@ with a trace, and an import of a name the target module does not export is
 an error. A bare name that is not bundled errors until the Stack package
 manager exists.
 
-**Programs run**: `gyro run file.gyro` checks a program and executes its
-`fn main` in a tree-walking interpreter — the executable specification the
-native backend will be measured against. The runtime semantics it pins:
+**Programs run**: `gyro run file.gyro` checks a program, lowers it to
+METALS and evaluates it; the same command takes a `.metals`, `.lisp`,
+`.c` or `.wasm` module, because what runs is METALS either way. The
+runtime semantics this document pins, and every tier must produce:
 overflow/underflow panics per width, wrapping via `+% -% *%`, truncating
 division with `-7 / 2 == -3`, narrowing `as` panics, bounds and null and
 uninitialized-read panics with source positions, defer at block exit in
@@ -1215,8 +1506,9 @@ a small C runtime ([`native.md`](native.md)); channels, `spawn` and
 
 **The three tiers are one corpus.** `tests/testdata/run` holds programs
 paired with the output they must produce, and every case runs through the
-interpreter, the evaluator and a native binary, all held to the same
-golden file. A gap is a case carrying a `//gyro:skip <tier>` with its
+evaluator and both native backends, all held to the same golden file —
+which is written by hand, because this document is the specification and
+no tier is. A gap is a case carrying a `//gyro:skip <tier>` with its
 reason attached. The checker has the same arrangement in
 `internal/sema/testdata/check`, where a fixture claims each diagnostic
 with a `//~` marker on its line.
@@ -1227,12 +1519,13 @@ Still to come:
 | --- | --- |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
+| foreign functions | `@extern`: primitives, `string`, slices, structs by value and opaque handles cross; callbacks and out-parameters do not, and a program that calls one runs on the native tiers only |
 | concrete effects (`io`, `alloc`) | checked against declared rows; unstated rows, row variables, function values and spawn/channel effects remain unchecked |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` `=>` tokens | reserved, unused |
 | `syntaxfn` parser extensions | designed in the book, not parsed |
-| use-after-free and uninitialized reads | caught by the interpreter and the evaluator; the C runtime frees for real and does not poison, so a native binary misses both |
-| METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator, the lowering's oracle) |
+| use-after-free and uninitialized reads | caught by the evaluator; the C runtime frees for real and does not poison, so a native binary misses both |
+| METALS | specified and produced: [`metals.md`](metals.md); `internal/metals` (format, verifier), `internal/lower` (Gyro→METALS), `internal/meval` (evaluator) |
 | native backend | v1 done: [`native.md`](native.md); `internal/nasm` emits NASM and links a C runtime; still open: register allocation, memory reclamation, green threads |
 | editor tooling | v1 done: [`tooling.md`](tooling.md); tree-sitter grammars for Gyro and METALS, `gyro lsp` with diagnostics, hover, definition, symbols, completion |
 

@@ -97,6 +97,34 @@ Rejected strict `i32`-always literals: large unsigned constants would not
 even fit the default type, forcing casts on every line of bit-twiddling
 code.
 
+### The default type is range-checked like any other *(new)*
+
+**Status: done.** `var x = 3000000000` is an error, and so is
+`println(1 << 40)`: defaulting decides a type, and a value that does not
+fit the type it is given is rejected wherever the decision is made.
+Before this, `intFits` ran only in `adaptUntyped` — the path a *context*
+type takes — and defaulting went around it, so an i32 could hold
+3000000000 in every tier. The tiers agreed, which is why it was not a
+divergence but a type claiming a value it cannot hold.
+
+The check lives in one place, `defaultExpr`, which every site that
+defaults an expression's type goes through: a `var` without an
+annotation, a range endpoint, an array or tuple element with no context,
+a `match` arm, a closure's expression body, an argument wrapped into
+`any`, and an argument that infers a generic parameter. Sites that
+default a *type* with no expression at hand (the receiver of a built-in
+method, a destructured tuple element) keep plain `types.Default`; the
+expression they came from was already checked where it was written.
+
+Rejected silently widening the default to i64 when the value needs it:
+the width of `var x = ...` would then depend on the magnitude of a
+constant, and passing `x` to `fn f(v: i32)` would break for reasons
+invisible at the call. Rejected wrapping to the i32 the type promises,
+Go's answer for `int` conversions but not for constants — Gyro panics on
+overflow at runtime, so silently overflowing at compile time would be
+the one place arithmetic lies. Go rejects the same program
+("constant 3000000000 overflows int"), and annotating is the fix in both.
+
 ### Conversions use `as`, and narrowing panics *(new)*
 
 **Status: done (syntax), planned (the panic check).** `x as i64`. Widening always succeeds; a narrowing
@@ -144,10 +172,113 @@ gain).
 
 **Status: planned.** `-7 / 2 == -3`, `-7 % 2 == -1` — the sign of `%`
 follows the dividend, matching C, Go, Rust and the x86 `idiv` instruction.
-Divide by zero panics; `i32::MIN / -1` panics as overflow.
+Integer divide by zero panics; `i32::MIN / -1` panics as overflow. Float
+division by zero is IEEE and does not panic — see Runtime behaviour.
 
 Rejected floor division: nicer for modular math but costs correction
 instructions on every division.
+
+### A variadic parameter is `...T`, and `any` is what makes it heterogeneous
+
+**Status: decided.** A final parameter written `name: ...T` collects the
+remaining arguments and is a `T[]` slice inside the body. Mixed-type packs
+are not a second mechanism: they are `...any`, one element type like every
+other pack.
+
+The reason is what asks for the feature. Nothing inside Gyro needs
+variadics: `println<T>` takes one value and interpolation covers
+formatting, which is why the language got this far without them. What asks
+is C code being ported, and every one of those calls is `printf` — mixed
+types in one call. So the heterogeneous case had to work; splitting it into
+its own parameter form would have been two features where the type system
+already offers one.
+
+Rejected: a pack that is a compile-time tuple, monomorphizing the callee
+per call-site shape (Zig's `anytype` plus `inline for`). It needs no runtime
+type information at all, which is a genuine attraction in a language that
+has none. It was rejected because it cannot index a pack with a computed
+index, so the printf loop — walk the format string, consume the next
+argument — has to become compile-time unrolling, and the pack stops being a
+value you can pass around. `...any` keeps a pack an ordinary slice.
+
+Rejected: making the pack the whole feature and leaving `...T` out. A
+homogeneous pack is what falls out of the slice machinery for free, and
+`sum(1, 2, 3)` is worth having; once `any` exists, supporting both is one
+code path, not two.
+
+Forwarding is a trailing `...` at the call site: `sum(rest...)` passes the
+pack, `sum(rest)` tries to pass a slice as one element and fails. The
+explicit spelling is required rather than inferred, because with a `...any`
+parameter an `any[]` argument is ambiguous between the two readings and
+nothing in the types can break the tie.
+
+### `any` is a closed sum, not a runtime type registry
+
+**Status: decided.** `any` holds one value and remembers its type. It is
+first-class — variable, field, slice element, channel element. `x as any`
+wraps and never fails; `v as i32` unwraps and panics on disagreement, the
+same rule a narrowing conversion follows. `match` tests instead of
+asserting, spelled exactly like the type test that already exists on an
+`error`, and an `any` is an open subject there, so exhaustiveness does not
+apply and falling off the end panics. Printing an `any` prints what is
+inside it.
+
+Packing into a `...any` parameter is the one implicit conversion in the
+language. Assignment still refuses: `var x: any = 42` is an error and
+`42 as any` is the fix. The exception is narrow on purpose — the call
+constructs the pack, so the wrap is part of the call form rather than a
+silent coercion between two typed values, and requiring `as any` on every
+argument would put the noise exactly on the ported C code the feature is
+for.
+
+**Implementation, which is why this is cheap.** The earlier note here said a
+heterogeneous pack "needs a dynamic value carrying a runtime type tag, in
+all four tiers", with METALS `dyn` as the substrate. That was wrong, and
+the reason is that Gyro compiles whole programs: the set of types any
+`as any` in the program mentions is known at compile time, so `any` lowers
+to a synthesized closed enum with one variant per wrapped type. This is not
+a new mechanism — `error` is already lowered exactly this way, as a closed
+sum over every concrete error struct in the program. Wrapping is `variant`,
+the match test is `variant.tag`, unwrapping is a tag check plus
+`variant.field`, and printing is a `switch` calling each type's existing
+derived repr. No new IR instruction, no runtime type tags, no boxing, no
+allocation, and nothing to implement in the evaluator or either native
+backend — enums already work in all four tiers.
+
+`dyn` keeps its own job, which is foreign dynamic languages crossing a
+METALS boundary. Gyro's `any` is not that and does not use it.
+
+What this costs, recorded because it is real: an `any` value is as wide as
+the widest type the program ever wraps, since the payload is inline rather
+than boxed — the same trade `error` already makes. Boxing aggregates was
+considered and rejected: it would make every `...any` call allocate, and
+allocation on `printf` is a worse deal than a wide value.
+
+**A type test may name a type no path can spell.** `(i32, string)(pair)`,
+`i32[](xs)`, `i32[3](fixed)` and `*Node(node)` are match arms, and the same
+types work with `as`. A pattern that is a plain name stays what it was,
+because `Point(p)` and `Shape::Circle(r)` are the same syntax until the
+subject says which one is meant; only the forms that start with `(` or `*`,
+or that carry a `[` after the path, are unambiguous enough to read as a
+type. The alternative was to restrict an `any` to types that have a name,
+which is simpler and was rejected because "wrap a struct around your tuple"
+is a workaround for a limit the type system does not otherwise have.
+
+This used to cost a tier divergence, and the tier that caused it is gone:
+the tree-walking interpreter had no static types, so it answered a type
+test by walking the value's own shape, and an empty container left no
+trace of its element type — it accepted `v as string[]` and `v as i32[]`
+alike for one. Every remaining tier runs monomorphized METALS and knows
+the type statically.
+
+**Equality on an `any` is enum equality**: the same type inside, holding
+equal values. Two `any`s holding different types are unequal rather than an
+error, because that is the question `==` was asked. Finding this turned up a
+defect that predated the feature — a fixed-size array compared `false`
+against an identical one in the METALS evaluator, while both native
+backends derived the elementwise comparison. The evaluator was fixed to
+agree with the backends; `tests/testdata/run/array-equality.gyro` pins
+it.
 
 ---
 
@@ -335,8 +466,8 @@ work. The analysis cannot follow what happens through a pointer, so the
 address-of is where it stops tracking.
 
 The cost is a hole: `var p = &x; println(*p)` reads storage nothing wrote,
-and only the interpreter's runtime check catches it. Accepted on the same
-terms as dangling slices.
+and only the evaluator's runtime check catches it — the native tiers do
+not poison. Accepted on the same terms as dangling slices.
 
 Rejected Rust's rule, which forbids `&x` until x is initialized and offers
 `MaybeUninit<T>` as the escape. It buys soundness with a second type and a
@@ -382,6 +513,110 @@ followed by `return 0`, where the allocation is lost on the way out.
 
 Rejected ownership-and-borrows, which is a large sema investment, and
 garbage collection, which needs a runtime and conflicts with `@gpu`.
+
+### Gyro's memory model is C's, and stays C's *(new)*
+
+**Status: decided.** Gyro is and remains unmanaged: manual `alloc`/`free`,
+addresses that never move, no collector. This is now a commitment, not an
+accident of v1 — the goal it buys is full C compatibility: **any existing
+C program, unmodified, can be imported directly into a Gyro program**
+(`import { parse } from "./cJSON.c"`), a C struct and a Gyro struct can
+be the same bytes in the same memory, and calls cross with no
+marshalling.
+
+Gyro already shares C's ownership and lifetime model literally: `gy_alloc`
+wraps `calloc`, `free` is C's plus a header check, and a compiled binary
+links a C runtime. What separated the two was not philosophy but two v1
+shortcuts and one routing choice, and closing them is the roadmap:
+
+1. ~~**A packed `@repr(C)` layout** beside the one-qword-per-scalar
+   rule~~ — done, and not beside it: C's layout replaced it. See
+   "Storage is C's layout, and there is only one" below.
+2. **A wider FFI** — structs by value (done, same entry), callbacks and
+   out-parameters (open).
+3. **A direct C → METALS front end** emitting `ptr<T>`, so C shares Gyro's
+   actual memory rather than a wasm sandbox, and the loader learns `.c`
+   the way it knows `.lisp` — started, and running: `internal/cc` reads
+   C, `import { add } from "./lib.c"` works on all three tiers, and a C
+   function writes an out-parameter through a pointer Gyro allocated,
+   which is the one thing `@extern` could not do at all. The
+   preprocessor, `typedef`, `enum`, `sizeof` and arrays with pointer
+   arithmetic are in, so a C library with its own header, a quicksort
+   over `int *` and a fixed table in module storage compiles and runs on
+   all three tiers. "Any existing C program" is still the bar and is
+   still a way off: the front end owes string literals and file-scope
+   initializers (one missing piece, module storage written before
+   `main`), `switch`, unions and bitfields, function pointers, varargs,
+   `void *`, cross-translation-unit linkage, most of C11, VLAs,
+   `_Generic`, and the relooper for irreducible `goto` — the piece
+   `internal/wasm/clang.go` names as the hardest and currently
+   outsources. See "The C front end emits types, the bridge emits bytes"
+   and "Pointer arithmetic is three instructions, and unchecked".
+
+   The IR rule that stood in the way is settled: a boundary is between
+   runtimes and not between languages, so a `cc:` module and a `gyro:`
+   one pass pointers outright. See "Values copy at runtime boundaries".
+
+**Rejected: moving Gyro onto a traced heap** (the direction
+`METALS_NEXT.md` §5 priced out). A collector solves the reclamation gap,
+but the cost is permanent: a traced, potentially moving heap and raw C
+addresses cannot be true of the same objects, so managed Gyro would leave
+the C family and talk to C through handle tables forever after. It would
+also delete the borrow and leak analyses' reason to exist — a meaningful
+part of what Gyro is. If METALS ever grows a traced heap for managed
+guests (Lua, Go), Gyro does not move onto it.
+
+Consequence: the `memory reclamation` gap must be solved unmanaged —
+arenas, a quarantining allocator, or stronger static analysis. Which one
+is still open.
+
+### Storage is C's layout, and there is only one *(new)*
+
+**Status: decided.** A value in memory occupies what `sizeof` would say
+in C, at C's alignment, padded where C pads. A `u8` is a byte, an `i32`
+is four, a struct of `{ u8; u32 }` is eight with the `u32` at four, and
+`array<u8, 3>` is three bytes. A METALS *register* still carries a scalar
+widened to a qword, and an `f32` as the double it widens to; the move
+between the two representations widens on a load and narrows on a store.
+`docs/native.md` has the table and the rule.
+
+This replaces v1's "every scalar occupies one qword, nothing is packed",
+which was a shortcut, and it is what makes the commitment above real: a
+Gyro struct and a C struct of the same fields are now the same bytes, so
+a struct crosses `@extern` by value with nothing converted, and a `u32[]`
+*is* a `const uint32_t *` — the repacking copy `ffi.pack` used to make is
+gone, and so is `ffi.pack`.
+
+**Rejected: `@repr(C)` as an opt-in layout beside the default**, which is
+what this roadmap originally said. Two layouts means `ptr<i32>` has two
+meanings — a four-byte cell inside a packed struct, an eight-byte cell
+everywhere else — and the address of a field is not a corner case: `p.x`
+on any addressable struct lowers to `field.ptr` and a `load`. The way out
+would have been a second pointer type or a ban on taking a field's
+address, and both are worse than having one layout. The decorator then
+has nothing left to say, so there is no `@repr(C)`: every struct is one.
+
+**Rejected: making a register narrow too**, which would have removed the
+two representations entirely. C's integer promotions would then decide
+the width of every arithmetic operation in the generated C, where signed
+overflow is undefined rather than checked, and the assembler backend
+would need a typed load at every operand read instead of at every
+member access. The register model is not the data model, and this is the
+line between them.
+
+**Forced by the split, and worth stating:** what the runtime stores it
+stores in storage representation — a channel's elements, an `Array`'s, a
+future's result, an `any`'s payload. `Array<T>::slice` borrows the
+Array's own elements, so the two have to agree on stride, and after that
+one rule is the only coherent one. A narrow scalar therefore reaches the
+runtime through a staging cell rather than as the address of its
+register.
+
+The layout arithmetic lives in `metals.Layout`, one implementation for
+both backends, and the C backend asserts every answer against `cc`'s own
+with a `_Static_assert` on each type's size and each member's offset. A
+size assert alone would pass on two structs that pad differently and
+total the same.
 
 ### `defer` runs at block exit *(new)*
 
@@ -603,6 +838,40 @@ catchable.
 Keeps the `(T, error?)` channel meaningful — it carries conditions, not
 bugs — and needs no unwinding machinery.
 
+### Float division by zero is IEEE; NaN is unordered *(new)*
+
+**Status: decided, done.** `1.0 / 0.0` is `+Inf`, `0.0 / 0.0` is `NaN`, and
+neither panics. Integer division by zero still aborts. The split is the
+point: IEEE 754 defines an answer for the float case, so it is a value, not
+a bug, while integer division by zero has no answer to give.
+
+This closed a three-against-one divergence rather than creating one. The
+interpreter was the only tier that panicked; `fdiv` does not trap, so the
+evaluator and both native backends already produced Inf and NaN. Making
+them all panic would have meant emitting a zero test before every float
+division in two backends, paid on every program, to reject a defined
+operation.
+
+NaN then had to be settled twice, because two orderings are wanted and they
+disagree:
+
+- The **operators** are IEEE. `<`, `<=`, `>`, `>=` are all false when
+  either side is NaN, and `NaN == NaN` is false while `NaN != NaN` is true.
+  The interpreter used to route `<=` and `>=` through its three-way
+  compare, which answers 0 for a pair it cannot separate and so read
+  "unordered" as "equal"; the METALS evaluator had the same bug. Both now
+  compare directly.
+- **`compare()` is a total order.** NaN sorts above every number and equals
+  another NaN; `0.0` and `-0.0` compare equal. A three-way comparator that
+  answered 0 for every NaN pair would be intransitive, and a sort built on
+  it could order nothing correctly once a NaN was in the data. The
+  synthesized compare in lowering carries the two `x != x` tests for float
+  types only, so nothing else pays for them.
+
+Rejected making `compare` IEEE-partial and returning some fourth
+"unordered" answer: it would spread through every caller of a comparator to
+handle a case that a total order simply defines away.
+
 ### Overflow panics; wrapping is explicit
 
 **Status: done (operators), planned (the check).** `a + b` panics on
@@ -634,10 +903,10 @@ an EOF signal) and can arrive later without disturbing this surface.
 does not introduce one: code after `exit` type-checks like code after any
 other call, it just never runs. It terminates like a panic does — output
 flushed, deferred calls not run — but silently and with the caller's
-code. The interpreter and the evaluator run in-process, so they model
-exit as a control-flow signal handed back to the driver (`interp.Exit`,
-`meval.Exit`) rather than calling `os.Exit` under a test runner; a native
-binary and `gyro run` genuinely exit with the code.
+code. The evaluator runs in-process, so it models exit as a control-flow
+signal handed back to the driver (`meval.Exit`) rather than calling
+`os.Exit` under a test runner; a native binary and `gyro run` genuinely
+exit with the code.
 
 Rejected: `main` returning an exit code — `fn main()` /
 `fn main(args: string[])` is settled, and threading a return through
@@ -678,6 +947,25 @@ Channels have no direction. `chan.send<T>` was considered; parameter naming
 carries the intent instead. Channel creation stays call-shaped grammar
 (`chan<i32>(64)`) because `chan` is already a type keyword, not a library
 name.
+
+### Which ready `select` arm runs is unspecified *(new)*
+
+**Status: decided.** When several arms are ready at the same moment, the
+one that runs is not defined by the language. A program whose output
+depends on the choice is wrong.
+
+This settles what was previously recorded as a tier divergence: the METALS
+evaluator picks at random (it is Go's `reflect.Select`) and the native
+runtime polls arms in source order. Both are now conforming. Specifying
+random would put a PRNG in the definition and force the native backends
+into a runtime-chosen dispatch before there is a reason; specifying source
+order would promise something the language would have to keep forever, and
+would bless starving a slow arm behind a busy one.
+
+Leaving it unspecified is not the same as being happy with in-order
+polling. Starvation is a runtime quality problem, and the fix — arms
+emitted as a descriptor table the runtime chooses from, rather than
+straight-line polls — is queued work, not a language change.
 
 ### Data races: the direct case warns *(new)*
 
@@ -737,6 +1025,30 @@ moves.)* `move` stays contextual — an ordinary identifier elsewhere.
 
 Rejected `(a: i32) -> i32 { }`, which would introduce a second return-type
 marker and require backtracking on a leading `(`.
+
+### A struct of function values is the callback shape *(new)*
+
+**Status: decided — confirmed by porting, no compiler work needed.** A C
+library that drives its caller through a table of function pointers ports
+to a struct whose fields have function types, and the closures stored in
+it capture what C threads through a `void* userdata` parameter. md4c's
+`MD_PARSER` — five callbacks plus a `userdata` argument on every one —
+became five function-valued fields on `md::Parser`, built by
+`html::parser_for(render: *Render)`, whose closures all capture the same
+`*Render`. The `userdata` parameter is simply gone from every signature.
+
+Two existing decisions are what make it work, and both are worth stating
+together because the combination is not obvious: a closure captures **by
+copy**, and copying a `*T` copies the pointer, so five separate closures
+mutate one renderer; and `Array<T>` is a runtime handle, so a captured
+output buffer is shared without a pointer at all. It parsed, checked,
+lowered, verified and ran identically on all four tiers at the first
+attempt, over 652 CommonMark examples.
+
+The limit is the recorded effects gap, not the mechanism: calling a
+function value contributes nothing to the caller's row, so a
+callback-driven parser is rowless and unconstrained until effect
+polymorphism exists.
 
 ---
 
@@ -823,14 +1135,42 @@ states nothing a caller can rely on, and it would make `!{}` meaningless —
 which is exactly the row `@gpu` and `@comptime` need. A function with no
 row is unconstrained in v1.
 
-**Inference is module-internal.** A call contributes its callee's declared
-row; when the callee states none and its body lives in the same module, the
-effects are inferred from that body, bottom-up and transitively — the
-lattice is two bits, and a cycle guard makes recursion converge. A
-cross-module call to an unstated row contributes nothing. Rejected inferring
-across modules, which would turn every dependency's private body into part
-of its interface; the row is the interface, which is the same reasoning that
-made borrows explicit.
+**Inference reaches through imports** *(revised)*. A call contributes its
+callee's declared row; when the callee states none, the effects are
+inferred from its body, bottom-up and transitively — the lattice is two
+bits, and a cycle guard makes recursion converge. The body is read no
+matter which module it lives in.
+
+This reverses the original ruling, which stopped inference at the module
+boundary so that a dependency's private body never became part of its
+interface. What that bought was interface stability; what it cost was
+soundness — a cross-module call to a rowless function contributed
+*nothing*, so a row could promise `!{}` while the body it called printed.
+An answer that is silently wrong is worse than an interface that is
+narrower than advertised, and the two candidate fixes were: assume the
+worst for anything unstated, or read the body. Gyro compiles whole-program
+and the loader holds every source, so reading it is exact and free, and
+assuming the worst would have forced a row onto every export — the very
+sweep this decision cancels.
+
+The cost, accepted and stated: a library's private body is part of what its
+callers can promise, so adding a `println` to an unrowed function can break
+a caller's `!{}`. A library that wants an effect interface it controls
+writes the row, and a written row is always taken at its word — the body is
+only consulted where nothing was said.
+
+**A rowless intrinsic contributes every effect.** The one body that cannot
+be read is the one that does not exist. A declaration with no body is a
+foreign function, and with no row there is nothing to know it by, so it is
+assumed to do `io` and `alloc`. That is what forced every intrinsic in the
+standard library to state a row — `Array<T>::get(self, index: usize): T !{}`
+down to `MutexGuard<T>::unlock(*self) !{}` — which is the right place for
+the annotation burden to fall: the runtime boundary is where a row is the
+only possible source of truth.
+
+**The vocabulary is closed.** A row entry that is neither `io`, `alloc` nor
+a `&name` borrow is an error (`E0612`). `!{ foo }` used to parse and be
+ignored, so a misspelled row promised less than it appeared to.
 
 The effect sources are calls, string interpolation (building text
 allocates), and the stdlib's declared rows: `print`/`println`/`eprintln`
@@ -851,24 +1191,40 @@ view allocates nothing.
 A generic body's effects are judged per instantiation, mirroring borrows:
 what a call on a type parameter reaches is only known once the parameter is
 concrete. A finding at one site is reported once, not once per
-instantiation.
+instantiation. A *rowless* generic callee is read the same way — through
+its recorded instantiations, unioned — because its body resolves no calls
+until a type argument is known; before this it contributed nothing, which
+was the same silent hole as the cross-module one.
+
+**The built-in method surface answers from a fixed table.** `runes()` and
+`bytes()` copy into new storage, so both are `alloc`; `len`, `close`,
+`hash`, `compare` and `message` are effect-free. They have no declaration
+to hang a row on, and inventing one for them was rejected — the table is
+three lines and the surface is deliberately closed.
+
+**A closure is held to its own row.** `fn(n: i32) !{} { println(n) }` is an
+error. Calling a closure still contributes nothing to its caller, so a
+closure's row is a local promise rather than something that travels; that
+waits for effect polymorphism.
 
 Still open, deliberately out of v1:
 
-- **Exported functions stating their row.** The intended end state — private
-  rows inferred, exported ones written — is a breaking sweep over every
-  signature and awaits its own decision.
 - **Row variables.** `!e` and `!{ io, ..e }` parse and leave the row open;
   an open row is not checked for completeness.
 - **Function values.** Calling a closure or an `fn`-typed parameter
   contributes nothing, so higher-order functions under-report until effect
   polymorphism (the row variables above) gives them something to say.
-- **Spawn, channels, Mutex.** No effect in v1. What concurrency should be
-  in the effect vocabulary is undecided — `async` was already rejected as
-  an effect in favour of colouring.
-- **`runes()`, `bytes()` and the built-in surface.** Both copy into new
-  storage at runtime but carry no `alloc` yet; they have no stdlib
-  declaration to hang a row on.
+  `spawn` carries `!{ io, alloc }` as a stand-in for its task's effects for
+  exactly this reason.
+- **Closure creation.** A capturing closure allocates its environment in
+  the native tiers, and that is not counted as `alloc`.
+- **Module-level `var` initializers.** They run before `main`, outside any
+  signature, so no row covers them and they are unconstrained. Whatever
+  `@comptime` settles for module-level evaluation is where this is
+  revisited.
+- **Channels and Mutex.** No effect in v1. What concurrency should be in
+  the effect vocabulary is undecided — `async` was already rejected as an
+  effect in favour of colouring.
 
 The motivation is the decorators. `@comptime` needs purity, `@gpu` forbids
 allocation and syscalls, `@distributed` restricts what crosses a node
@@ -945,6 +1301,13 @@ not track fields (`self.next != null` proves nothing); bind the field to a
 local first. That is the same simplification Go's nil checks live with,
 and it keeps the analysis obviously sound.
 
+One asymmetry the cJSON port hit five times is *not* deliberate: the
+checker follows `&&`'s short circuit but not `||`'s, so `if p != null &&
+p.child != null` is accepted while the equally sound early-exit form `if
+p == null || p.child == null` is E0510 at `.child`. The two are the same
+fact under negation and the second is how C code guards, so a port
+written the natural way is rejected. Listed under "Still open".
+
 ### Constant expressions fold during checking *(new)*
 
 **Status: done.** Untyped literal arithmetic folds over big integers, so
@@ -952,6 +1315,66 @@ and it keeps the analysis obviously sound.
 runtime panics. Operands are typed without the outer context — the folded
 result is what must fit. This is also the seed of `@comptime`, which needs
 an evaluator anyway.
+
+### Context reaches the operands, not just the expression *(new)*
+
+**Status: done.** When an untyped expression takes a type from its
+context, every untyped operand inside it takes that type too. Recording
+the type of the outer node alone was not enough: lowering asks for the
+type of each operand it emits, and one still carrying `UntypedInt` came
+out at the i32 default, so `mask & (0xffffffff >> n)` with a `u32` mask
+reached METALS as `shr i32, u32` and failed verification, while `~0`
+against a `u32` reached it as `band u32, i32`.
+
+A shift is where this matters most, because nothing local can decide it:
+the count keeps its own type, so an untyped left operand has no
+neighbour to adapt against and the surrounding context is the only
+source. A folded expression is exempt — it emits its value and never its
+operands, and only the folded value has to fit, which is what keeps
+`var x: i8 = -128` legal.
+
+This closed the recorded checker/interpreter divergence on untyped
+operands: the interpreter now keeps `~` and an untyped shift untyped
+instead of defaulting them to i32 mid-expression, so `var x: i64 = 1 <<
+40` is an i64 shift in every tier. Rejected: making the interpreter read
+the checker's recorded types for literals, which would have coupled the
+spec tier to `Info` for one narrow case. Corpus:
+`tests/testdata/run/untyped-operands.gyro`.
+
+### A shift never panics *(new)*
+
+**Status: done.** `<<` drops the bits that leave the operand's width,
+the way `>>` drops the ones that leave the bottom, and a count at or
+beyond the width clears the word (or fills a signed `>>` with the sign).
+No shift is an overflow.
+
+This resolves a divergence in which the interpreter panicked and the
+other three tiers wrapped. The interpreter was the outlier, and it was
+the outlier against the written spec too: `language.md`'s operator table
+puts `<< >>` under *bitwise* and only says the *arithmetic* row panics.
+
+The reasoning, beyond just picking the majority:
+
+- A shift moves a bit pattern; it does not compute a value that could be
+  wrong. `a + b` overflowing is nearly always a bug, which is what earns
+  that check its keep. Bits leaving a `<<` is the ordinary case.
+- The old rule was asymmetric with no stated reason: `>>` discarded low
+  bits silently in every tier while `<<` aborted on high ones.
+- It made a rotate unwritable. Both the MD5 and SHA-256 ports carried
+  `shl(a, b) = (a & (0xffffffff >> b)) << b` purely to compute what the
+  plain shift already would have — an extra mask and shift per rotate,
+  six rotates a round, sixty-four rounds a block.
+
+Rejected: keeping the check and adding a wrapping `<<%` beside `+% -%
+*%`. It is the consistent reading of "an operation that loses a value
+panics", but it costs a token, a METALS op, a verifier rule, four tier
+implementations and both tree-sitter grammars — and it makes plain `<<`
+start trapping in the three tiers that do not today, putting an overflow
+test in the hot path of every shift in generated code. Also rejected:
+wrapping at runtime but rejecting a *foldable* shift that provably drops
+bits, which buys a partial guarantee that is awkward to state.
+
+Corpus: `tests/testdata/run/shift-edges.gyro`.
 
 ### Built-in methods are a small fixed surface *(new)*
 
@@ -1019,9 +1442,20 @@ Chaining over open addressing, forced rather than chosen: Gyro has no
 zero values, so an empty probe slot would need a fabricated `K` to
 occupy it, while an empty bucket needs nothing. For the same reason
 `get` answers `V?` instead of Go's `(V, bool)` — the miss case has no
-`V` to return. The cost is that a value type must not itself be
-optional, since optionals do not nest; accepted until a real program
-needs `Map<K, V?>`.
+`V` to return.
+
+**An optional `V` is allowed** *(revised)*. Optionals do not nest, so
+`Map<K, V?>::get` answers `null` for a miss and for a stored `null`
+alike, and `contains(key)` is what separates them. Rejected rejecting the
+instantiation: the disambiguator already exists, so forbidding the type
+would remove a use that works. Rejected a dedicated miss signal — a new
+option-or-entry type is the general nesting question, not a map question,
+and it can arrive later without changing this surface.
+
+Making it legal did need one fix under the hood: a signature written `T?`
+instantiated with an already-optional `T` collapses to that same optional
+(`types.NewOptional`) instead of building a nested one that METALS
+rightly refuses to verify.
 
 `insert` replaces the stored key as well as the value on an equal key
 (either is defensible; replacing is simpler than Go's keep-the-first).
@@ -1043,11 +1477,13 @@ foreign parameter substitution could never rewrite.
 required: tuple assignability is elementwise, since a tuple is shape, not
 identity. Everything else converts only by `as`.
 
-### The interpreter is the executable spec *(new)*
+### Runtime semantics the tree-walking interpreter forced
 
-**Status: done.** A tree-walking interpreter (`gyro run`) executes checked
-programs; every runtime rule the docs assert is now a test. Decisions it
-forced:
+**Status: done.** Gyro's first execution tier was a tree-walking
+interpreter over the checked syntax tree, and pinning every runtime rule
+the docs asserted forced these decisions. The interpreter is gone (see
+"The interpreter is removed" under Testing); the decisions are the
+language's and still hold on every tier.
 
 - **A closure owns one copy of its captures**, taken at creation. Its
   calls mutate that copy cumulatively (Rust's FnMut, C++'s mutable
@@ -1094,14 +1530,120 @@ only. Generic exports across a boundary become concrete instantiations
 or `dyn`. Rejected CLR-style IR generics as one of the most complex
 parts of that design, bought before a second front end exists.
 
-### `dyn` is the escape hatch for dynamic languages *(new)*
+### `any` is the escape hatch for dynamic languages *(new)*
 
-**Status: decided.** One dynamic value type with checked ops (dyn.wrap,
-dyn.unwrap, dyn.call, dyn.get/set). Rejected strict-only (unannotated
-Python could never be imported) and an untyped core (throws away Gyro's
-checker exactly at the boundary).
+**Status: decided.** One dynamic value type with checked ops (`any.wrap`,
+`any.unwrap`, `any.is`, `any.call`, `any.get`/`set`). Rejected
+strict-only (unannotated Python could never be imported) and an untyped
+core (throws away Gyro's checker exactly at the boundary).
 
-### Values copy at language boundaries *(new)*
+It was called `dyn` until a second front end needed it. Renamed to `any`
+so the IR and Gyro's surface use one word for one idea; the spelling is
+the only thing that changed.
+
+`any.is` was added at the same time. Without it an `any` could be
+produced but not received: `any.unwrap` traps on a mismatch, and so does
+every other way of looking inside one, so a module handed an `any` by a
+producer it knows nothing about had no way to ask before committing.
+
+**Representation: two words, a descriptor and a payload.** Descriptors
+are static data, interned one per distinct type a program wraps or tests,
+so identity is structural equality and `any.is` is a pointer comparison.
+A one-word value rides in the payload, so wrapping a scalar allocates
+nothing; anything wider is heap storage, and so is every record whatever
+its width, so that `any.set` through one reference is visible through the
+rest. Rejected an always-boxed value — that is an interpreter's
+representation, and the cost would be paid by every program that touches
+the boundary at all.
+
+**A producer that can declare its types should.** `any` exists for the
+languages that genuinely cannot: untyped Scheme, Python, JavaScript. A
+front end that knows a function takes an integer and returns one declares
+that, and the call from another language is an ordinary call — no
+descriptor, no box, no test. The Lisp front end is the worked example:
+its exports are declared, so `fib` costs a Gyro caller exactly what a
+Gyro `fib` would. Rejected making the boundary uniformly dynamic, which
+would have been simpler and would have made every cross-language call
+pay for a freedom most callers do not use.
+
+### METALS links; the linker is where signatures are compared *(new)*
+
+**Status: decided.** Every consumer takes one module, so a program of
+several is linked into one first: dependency order, root last.
+
+The linker qualifies everything a non-root module owns with its module
+name — functions, named types, globals — so two producers may both export
+`fib` and both declare `Point`. The root keeps its names, which leaves
+`@main` as `@main` and makes linking a one-module program the identity,
+so a Gyro program with no foreign imports lowers to exactly what it did
+before the linker existed.
+
+Signature matching lives here because this is the only pass that sees
+both sides: an importer declares what it expects, an exporter has actual
+ones, and until now nothing compared them. Boundary rules stay in
+`Verify`, which already runs on each module and needs only one side.
+
+Rejected qualifying every module including the root, which would have
+been more uniform and would have renamed `main`; and rejected checking
+signatures in the verifier, which cannot see the exporter.
+
+### A closure's environment is a pointer, never a record value *(new)*
+
+**Status: decided.** `closure @f, %env` requires `%env` to be a
+`ptr<record>`.
+
+The verifier used to accept a record value, because Gyro's lowering only
+ever emits `new` and nothing exercised the other case. The Lisp front end
+built an environment as a value and both native backends miscompiled it:
+a function value has one word to carry its environment in, and a closure
+outlives the frame that built it, so the environment has to be heap
+storage. The rule was always real and only the verifier did not know it.
+
+This is the first thing a second producer found, and it is the argument
+for having one.
+
+### The second producer is a statically typed Scheme *(new)*
+
+**Status: decided.** `internal/lisp` compiles a Scheme into METALS, and a
+Gyro program imports one by path: `import { fib } from "./fib.lisp"`.
+
+It exists to keep the format honest. METALS is a cross-language IR with
+one producer, which means every assumption Gyro's lowering happens to
+satisfy is an assumption nobody has tested. The closure-environment rule
+above was found within an hour of the Lisp emitting its first closure.
+
+**Typed, not dynamic.** A declaration is a separate form, `(: fib (-> i64
+i64))`, and everything else is inferred from it. This is the opposite of
+what a Lisp usually is, and it is deliberate: an untyped Lisp would
+exercise `any` and nothing else, where a typed one exercises the part of
+METALS every backend actually implements, and its exports cost a Gyro
+caller nothing. Rejected an untyped Scheme over `any`, which would have
+been more authentically Lisp and would have tested less.
+
+**The surface stays ordinary Scheme.** `(: name type)` is a list like any
+other — it is Typed Racket's spelling — and internal `define`, `let`,
+`let*`, `set!`, `cond`, `begin` and `lambda` mean what they mean
+everywhere. A lambda takes its parameter types from context where there
+is one, and where there is not, the answer is an internal `define` with a
+declaration beside it, which is how a Scheme names a local function
+anyway. There is a typed-lambda spelling, `(lambda ((v i64)) ...)`, for
+the case that has neither; it is the one form here an ordinary Scheme
+would not evaluate.
+
+**A foreign module reaches the checker as declarations without bodies.**
+The loader compiles the Lisp, then renders its exports as Gyro
+declarations with no bodies — the shape a runtime intrinsic already has —
+so name resolution and type checking needed no changes at all. Only
+lowering knows the difference, where a body-less declaration in a foreign
+module becomes a real cross-module import instead of a `gyro:rt` one.
+
+Two consequences worth stating. A name that crosses has to be spellable
+on both sides, so `scale-by` cannot be exported while `even-p` can stay
+private with its hyphen. And a program with an imported Lisp module runs
+on every tier without ceremony, because every tier reads METALS and the
+Lisp module already is METALS by the time anything runs.
+
+### Values copy at runtime boundaries *(new)*
 
 **Status: decided.** No shared mutable memory between runtimes; `ptr`,
 `chan` and `future` are banned from boundary signatures; long-lived
@@ -1109,6 +1651,107 @@ foreign state is an opaque `handle`. This is the WASM-component call,
 and it is what lets manual memory and garbage collectors coexist.
 Rejected one shared object model (forces every runtime onto one memory
 model) and handles-only (even an i32 would feel like FFI).
+
+**A boundary is between runtimes, not between languages.** The rule was
+first written as "different scheme", because for a JS engine and a Python
+interpreter the two are the same thing: a different language means a
+different heap with a different collector, and that is what a pointer
+must not cross. C is the first case where they come apart. A direct C
+front end compiles *into* METALS, so its module is linked into the same
+one, verified by the same verifier, and running on the same allocator —
+the same relationship `internal/lisp` and `internal/wasm` already have.
+Refusing a `ptr` there would refuse it between two halves of one heap,
+and would make `import { parse } from "./cJSON.c"` mean marshalling,
+which is the thing the C front end exists to stop needing (see "Gyro's
+memory model is C's, and stays C's").
+
+So the schemes that produce METALS — `gyro:`, `lisp:`, `wasm:`,
+`metals:`, and `cc:` when it arrives — are one runtime, and a call among
+them is an ordinary call. `c:` is deliberately not one: a native library
+is exactly the case the rule exists for, since nothing has verified what
+it does with an address it is handed, and that is the same line
+"Linear memory is a capability" draws between compiling a language in and
+linking it. An unrecognized scheme is read as foreign.
+
+**The export side moved to the linker.** `Verify` checked every exported
+signature unconditionally, which is what actually blocked this: a C
+module exporting `fn @parse(...) -> ptr<%Doc>` was refused before any
+importer existed. A module knows its own name and its own imports and
+cannot know who imports it, so the question belongs where both sides are
+visible — the linker, which was already the pass that exists because
+"only the linker sees both". It also catches strictly more: a record
+redeclared across a boundary whose real shape holds a `ptr` passes the
+importer's own verification and is refused at the link.
+
+Rejected **two kinds of export in the IR** — a plain `export` for the
+program and a second spelling that crosses anything — which is the
+version that keeps a host embedding Gyro from outside the program
+covered. It costs new syntax in the format, both grammars, and a decision
+every producer has to make on every export, to protect a case that does
+not exist yet; when it does, `handle` and the `c:` scheme are the shape
+it will take. Rejected **naming C modules `gyro:`** so no boundary ever
+appears — cheapest of all, and it throws away the scheme's one job of
+saying what produced a module. Rejected **dropping `ptr` from the
+forbidden list** outright, which fixes C by removing the protection in
+the JS and Python case where it is the whole point.
+
+### C is reached through `@extern`, not a new declaration form *(new)*
+
+**Status: decided (v1).** A foreign function is a declaration with no body
+carrying `@extern("SDL2")`. The library is the argument, the symbol is the
+declaration's name unless `symbol =` overrides it, and the row is
+mandatory.
+
+Every piece of this already existed. Sema has treated a bodyless
+declaration as a foreign function since effect rows landed — that is what
+"a rowless intrinsic contributes every effect" is about — so the checker
+needed no new concept. `lower.ensureForeignImport` already routes an import
+to a named module of any scheme, which is how a Lisp module's exports are
+called; a C library is one more scheme, `c:SDL2`. The verifier already
+treats an import out of another runtime as boundary-crossing and enforces
+the copy rule on it, so the ban on `ptr`, `chan` and `future` in an FFI
+signature falls out of a rule written for a different reason. And a fieldless struct
+is already lowered to `handle`, the METALS type whose whole job is an
+opaque foreign reference.
+
+Rejected an `extern "SDL2" { ... }` block, which reads better and groups
+the library name once, because it buys a keyword, a declaration form, an
+AST node and two tree-sitter grammars' worth of change to say what an
+existing decorator says — and the language's own rule is to prefer a
+mechanism it already has. Rejected `import { SDL_Init } from "c:SDL2"` with
+a sidecar binding file: C has no signatures to read, so the sidecar is
+Gyro declarations under another extension, which is a new file kind and a
+new resolution rule for no gain over writing them in Gyro directly.
+
+Rejected also the obvious first thought, an `sdl` module in the standard
+library with runtime-supplied bodies. It would have been faster to the same
+demo and wrong afterwards: every function costs an entry in `rt.c`, two
+backend plan tables and two Go tiers, and none of it generalizes to the
+next library. `@extern` is the same work done once.
+
+**What crosses.** Primitives by value; `string` as a NUL-terminated copy;
+`T[]` as a pointer to its own elements; a struct whose fields all cross,
+by value; a fieldless `@extern` struct as `void *`. Callbacks,
+out-parameters and `any` are still out.
+
+v1 also repacked `T[]` and refused structs by value, both because the
+layout rule then gave every scalar its own qword. Storage is C's now (see
+"Storage is C's layout, and there is only one"), so neither restriction
+survives: a `u32[]` and a `const uint32_t *` are the same bytes, and so
+are a Gyro struct and a C struct. The one copy left is `string`, and that
+one is forced by the representation rather than by the layout — C wants a
+NUL where Gyro has a length.
+
+**The cost, stated plainly.** A program that calls a foreign function runs
+on the two native tiers only. The evaluator is Go with zero dependencies
+and no cgo, so it cannot make the call and refuses rather than answering.
+This does not fix the tier problem that an `sdl`
+intrinsic module would have had — it relocates it and makes it general. The
+precedent is one tier away already: a Gyro program importing a Lisp module
+skips `interp`, because the tree-walker has no syntax to walk. Rejected a
+headless fallback where the Go tiers emulate the library, which keeps all
+four tiers running while making them do different things, which is the one
+thing the four-tier oracle exists to prevent.
 
 ### Concurrency is hybrid, matching the language *(new)*
 
@@ -1150,7 +1793,7 @@ designed; it is recorded as still open.
 ### `opt.wrap` / `opt.unwrap` *(new)*
 
 **Status: decided.** The IR gained the two optional conversions,
-symmetric with `dyn.wrap`/`dyn.unwrap`: `opt.wrap` makes `opt<T>` from
+symmetric with `any.wrap`/`any.unwrap`: `opt.wrap` makes `opt<T>` from
 `T`, `opt.unwrap` extracts and aborts on null, null tests are `eq`/`ne`
 against `const.null`. Optionals do not nest, matching the language.
 Rejected encoding `T?` as `tuple<T, bool>` (needs a fabricated T and
@@ -1160,12 +1803,377 @@ type declaration behind every optional).
 ### The METALS evaluator is the lowering oracle *(new)*
 
 **Status: decided.** A tree-walking evaluator for verified METALS lands
-with the lowering pass; tests run every example as `gyro run` and as
-lower→verify→evaluate and diff the output. The same executable-spec
-discipline the interpreter gives the checker, and the reference the
-native backend will be diffed against. Rejected verifier+golden-text
-only: a lowering bug found later must be debugged through generated
-assembly.
+with the lowering pass, so a lowering bug surfaces at the level the
+lowering wrote rather than through generated assembly. Rejected
+verifier+golden-text only, for exactly that reason.
+
+### C gets a libc, bundled, over a three-import floor *(new)*
+
+**Status: done.** `internal/clibc` is a C standard library compiled in
+beside every program the wasm bridge builds: string.h, the malloc family
+over `memory.grow`, stdio with a full printf, the numeric parsers,
+qsort/bsearch, ctype, and the math.h names that are METALS instructions
+underneath. Before it, the bridge linked freestanding, so a C program
+that called `malloc` or `printf` had nothing to call.
+
+**Rejected: adopting wasi-libc.** It is more library for less work —
+musl above the syscall line, already built for wasm32, with about a dozen
+`wasi_snapshot_preview1` imports underneath — and unmodified upstream C
+would compile through it. It was rejected on one practical ground: it
+needs a wasi sysroot installed, which is an uncommon package, so the
+corpus case proving it worked would skip on nearly every machine
+including the one it was written on. A bundled libc is testable wherever
+clang is, which is the same bar the bridge already sets. Nothing here
+forecloses it: the bridge refuses an unknown import module by name rather
+than assuming there is one floor.
+
+**The floor is scalars, and that is forced.** `write_byte(fd, byte)`,
+`read_byte()` and the existing `exit(code)`. It cannot be `fd_write`,
+because `fd_write` takes a pointer into the guest's memory and a linear
+address is a `u32` — handing one to the runtime and asking it to read the
+bytes behind it makes it a pointer at the boundary, which is the whole of
+what the linear-memory decision above rests on. So stdio buffers inside
+the guest and drains a byte at a time.
+
+The cost, stated plainly: one runtime call per byte of i/o. It is paid on
+output volume, not on formatting work, and buffering is what keeps a
+formatted line from paying per conversion. **Rejected a bulk import**
+taking an address and a length, which is the obvious fix and reintroduces
+exactly the leak. If the cost ever shows, the answer is a bulk
+*instruction* copying between a linear memory and an `Array<u8>` handle,
+bounds-checked on both sides, with no address crossing anything.
+
+**Returning from main is `exit(status)`,** which a buffered libc has to
+see. The synthesized METALS entry calls `__gy_finish(status)` after main
+when the module exports it; a freestanding program that does not is
+unaffected. That is also what carries a C exit status out, which the
+entry previously dropped.
+
+**Known limit, recorded rather than hidden:** printf's `%f`, `%e` and
+`%g` are exact — half-to-even, matching glibc byte for byte — while
+`|v| * 10^precision` stays below 2^53, which covers everything printed
+for a person to read. Above it the last digit can differ from glibc by
+one. The tie cases work because the scaling uses an error-free product
+(Dekker's algorithm, since wasm has no `fma` opcode and calling one would
+need the libm this library is supposed to be), so `%.1f` of 0.25 is 0.2
+and of 0.35 is 0.3. The exact algorithm for the whole range is already in
+this repository as `tests/testdata/run/cjson/dtoa.gyro`; porting it is
+the next step, and it is the same gap Gyro's own `fmt` has.
+
+### The float intrinsics are instructions, not runtime imports *(new)*
+
+**Status: done.** `fsqrt`, `fabs`, `fceil`, `ffloor`, `ftrunc`,
+`fnearest`, `fmin`, `fmax` and `fcopysign` join `fadd`'s family as METALS
+operators. `internal/stdlib/src/math.gyro` declares them for Gyro and the
+lowering emits the instruction rather than a call; the wasm bridge maps
+wasm's nine opcodes onto the same nine.
+
+The alternative was a `gyro:rt` import, which is how every other runtime
+service is reached. Rejected for two reasons. Each of these is one
+machine instruction or a handful, so a call is most of the cost. And wasm
+has them as *opcodes*, which means C has them: a C program that calls
+`sqrt` compiles to `f64.sqrt` with nothing to link, so an import-based
+answer would have the sandbox call out to round a number. Making them
+instructions is what lets Gyro's `math::sqrt` and C's `sqrt` reach one
+implementation.
+
+Three definitions had to be chosen, and in all three the obvious C
+function is the wrong one:
+
+- **`fnearest` is roundTiesToEven**, not C's `round`, which is
+  ties-away-from-zero. Ties-away biases a sum of rounded values upward;
+  ties-to-even is what IEEE-754 specifies and what wasm emits.
+- **`fmin` and `fmax` propagate NaN**, where C's `fmin`/`fmax` return
+  the operand that is not NaN. Dropping a NaN hides the fact that the
+  computation produced one. They also order the two zeros. This is why
+  clang will not lower `__builtin_fmin` to `f64.min` and emits a call
+  instead — correctly — so the corpus pins these two in
+  `float-ops.metals` rather than in a C case.
+- **The roundings return a float.** Rounding and converting are separate
+  questions and `conv` is the one that can abort.
+
+`rt.c` owns `min`, `max` and `nearest` for both backends, since those are
+the three where a C library would answer differently; the rest are libm
+calls in both, which is one implementation and not two.
+
+**Found on the way, and fixed:** every tier computed `f32` arithmetic at
+double precision. `f32` registers hold a double — every scalar is one
+qword — and only `conv` and `mem.store.f32` rounded, so `a * b` could
+overflow the single-precision range and stay finite, and `(1e20f *
+1e20f) / 1e20f` answered `1e20` where C answers `+Inf`. Every operation
+producing an `f32` now rounds through single precision. Rejected giving
+`f32` its own narrower storage, which would break the one-qword layout
+rule for one type.
+
+Also fixed: a non-finite float constant had no spelling. `inf`, `-inf`
+and `nan` are it — `inf` and `nan` scan as words the way `true` does and
+`-inf` as a signed number, so the format did not have to change.
+
+### Linear memory is a capability, not a second pointer *(new)*
+
+**Status: decided.** METALS gains a `memory` declaration: a flat,
+byte-addressed, bounds-checked region sized in 64 KiB pages, with six
+instructions over it and `data` segments to initialize it. `ptr<T>` is
+unchanged.
+
+The reason is that METALS' typed pointer cannot hold C's memory model,
+and C is meant to become a producer. Pointer arithmetic, unions,
+bitfields, `&local` escaping its type, varargs, packed structs and
+unaligned access are seven features in a list and one feature in
+practice: a flat region and offsets into it. WebAssembly is the existing
+proof — it is a typed, verified, structured-control-flow module IR with
+copy semantics at its boundary, which is METALS' shape almost exactly,
+and clang compiles all of C to it with linear memory as the only addition
+METALS lacked.
+
+**An address is a `u32`, and that is the whole design.** Not a `ptr<T>`,
+not a new type. It is what lets this be added without touching the
+boundary rules: a linear address cannot appear in a crossing signature
+because it is not a pointer and makes no claim about what it points at, so
+"values copy at the boundary" is as true after as before. The two memory
+models coexist and no instruction accepts both.
+
+**Every access is bounds-checked, and that is the whole point.** An
+unsafe language compiled *into* METALS cannot reach storage outside the
+region it declared; the same language linked as a native library can
+reach anything. That difference is the argument for a C front end over
+`@extern`, and it would be lost by any design that made a linear address
+a real pointer.
+
+Rejected **`ptr<T>` with arithmetic**, which is the obvious smaller
+change: it would make every pointer in the IR unsafe to serve the one
+producer that needs it, and Gyro's `ptr` would stop meaning what borrow
+analysis assumes it means. Rejected **a `bytes` value type** — a slice of
+`u8` with indexing — because Gyro's layout gives every scalar its own
+qword, so a `slice<u8>` is eight bytes per element and reading a `u32`
+out of four of them is not an operation it has. Rejected **making the
+memory implicit**, one per module, always present: a module that declares
+none should cost none, and a consumer should be able to tell by looking.
+Rejected **letting a store narrow its value silently** — `mem.store.u8`
+of an `i32` — because that is the one place a width mismatch would be
+invisible; `trunc` says it instead.
+
+`trunc` and `bitcast` land with it. `conv` is value-preserving and traps,
+which is Gyro's `as` and is right for Gyro; a C cast wraps and a
+signedness-per-operation language reinterprets, and neither should be
+spelled by weakening `conv`. Rejected adding unsigned variants of `idiv`,
+`irem`, `shr` and the comparisons, which is the other way to get the same
+result: it doubles a table of instructions to avoid one that is free.
+
+### The wasm bridge is a producer, and a temporary one *(new)*
+
+**Status: decided.** `internal/wasm` reads a linked wasm32 module and
+translates it to METALS. `gyro cc file.c` runs clang's wasm32 target and
+then the bridge, so C compiles and runs on all three METALS tiers.
+
+It exists to answer a question about the IR before a C front end is
+written to depend on the answer. wasm32 and METALS have the same
+structured control flow — `block`, `loop`, `br` to an enclosing label,
+and nothing else — so LLVM's relooper has already solved the hardest
+piece of a C front end, and what arrives is real compiled C exercising
+linear memory, the indirect-call table and the runtime import surface.
+What it leaves behind is an oracle: the same C through two producers, one
+evaluator, one answer.
+
+It is not the destination. A C front end (`internal/cc`, chibicc-shaped)
+is, and it will have its own scheme; this one is `wasm:`, which says what
+wrote the module rather than what the source was.
+
+Two things were decided rather than translated. **The entry point is
+synthesized** — a wasm module has exports and a convention, not a `main`
+— so the bridge emits one that runs the global initializers, then
+`__wasm_call_ctors`, then the C `main`. **A table is translated away**:
+the element section says statically which functions it holds, so
+`call_indirect` becomes a switch over those indices and no table exists at
+run time, which also means an index the table never held aborts instead of
+jumping.
+
+Rejected **mapping imports through a table in the bridge**: the wasm
+import module string is used verbatim as the METALS module name, so C
+declares the boundary itself with
+`__attribute__((import_module("gyro:rt")))` and a symbol with no scheme
+is refused by name. The claim belongs in the source that makes it.
+Rejected **skipping straight to the front end**, which was the other
+plan: it would have put the linear-memory design into three consumers on
+the strength of an argument, with the first real test of it arriving
+months later.
+
+### The C front end emits types, the bridge emits bytes *(new)*
+
+**Status: decided.** `internal/cc` compiles C into METALS directly. Both
+routes stay, and which one a `.c` takes is decided by where it appears:
+**a `.c` that is the program goes through the bridge, a `.c` a Gyro
+program imports goes through the front end.** That is not a coin toss.
+The bridge is the only one with a libc and a preprocessor, so it owns the
+whole program; the front end is the only one that still has the source's
+types by the time METALS sees it, so it owns the import. Through clang,
+`struct Point *` is a `u32` and `add(int, int)` is `(i32, i32) -> i32`
+with no evidence that the i32s were ints — correct to run and impossible
+to import as anything. The same file through both must compute the same
+thing, and the corpus is where that is held.
+
+Three mappings were decided rather than derived.
+
+**A C pointer is `opt<ptr<T>>`, not `ptr<T>`.** METALS' pointer is never
+null and C's is null half the time, so the nullable type is the only
+honest one; `NULL` has no other spelling, and `ptr<T>` would have to
+either grow a null or be lied to. It costs an `opt.unwrap` per
+dereference and buys the thing compiling C *in* is for: `*p` on a null
+pointer aborts and says so instead of being undefined. Rejected
+**`ptr<T>` plus a convention** that null is some address, which is how C
+does it and is exactly the property METALS refuses to have.
+
+It costs nothing in storage, because `opt<ptr<T>>` gets a **niche**: it
+is laid out inside the pointer, with the null address as the absent case,
+which is sound precisely because a `ptr<T>` in a verified module always
+addresses an object METALS produced. So `sizeof(char *)` is 8, a struct
+of pointers is the bytes C lays out, and a zeroed page reads back as a
+page of nulls — which is what a C program compiled anywhere else already
+assumes. Rejected **giving every optional a niche it happens to have**:
+`opt<handle>` and `opt<chan<T>>` look identical from here and are not,
+because what a runtime value may hold is the runtime's business and not
+the format's. A `ptr<T>`'s non-nullness is a verifier rule, which is the
+only kind of guarantee a layout may be built on.
+
+Rejected too **leaving it at two words and calling `sizeof` a detail**.
+Every program the front end compiles agreed with itself under that
+layout, and none of them agreed with C — and C's own layout is the entire
+reason to read C in rather than link it.
+
+**Every local gets a `slot`.** A C local's address may be taken, and
+deciding which ones escape is an analysis worth having later and in the
+backends, which already do SSA construction. Correct first.
+
+**Arithmetic is `wadd`, not `iadd`.** Signed overflow is undefined in C,
+so trapping and wrapping are both defensible readings of it — and the
+bridge already answers wrapping, because that is what wasm does, and two
+producers of the same file disagreeing is the one outcome the two-route
+rule exists to prevent. Rejected **trapping**, which is the reading that
+fits the sandbox argument better and would have made `internal/cc` and
+`internal/wasm` differ on the first program that overflowed.
+
+Rejected **retiring the bridge** once the front end existed. It is the
+reference producer: it is real compiled C with LLVM's relooper already
+run on it, which is the answer key for the hardest thing the front end
+has left to do.
+
+### The front end has its own preprocessor *(new)*
+
+**Status: decided.** `internal/cc` implements `#include`, `#define`,
+`#if` and the rest itself, using Prosser's algorithm: each token carries
+the set of macros it came out of, and a macro does not expand inside its
+own output.
+
+It could not have been skipped or borrowed. A header is how C says what a
+library's types are, and `#include` is the only way to reach one — so
+without a preprocessor an imported `.c` can only ever be a file written
+for this compiler, which defeats the point of the route. And it cannot be
+clang's: clang's is upstream of the bridge, which is the route that
+throws the types away.
+
+Rejected **shelling out to `cpp`**, which would make an imported `.c`
+depend on a C toolchain being installed to compile a program that then
+needs no C toolchain at all — the bridge already carries that dependency,
+and having exactly one route that does is worth more than the code saved.
+
+`#include` splices the header's tokens back into the stream the directive
+came out of, rather than running it through a nested pass. That is what
+makes a `#if` in the includer govern what is inside the header, and a
+`#define` in the header visible to the next one.
+
+### Pointer arithmetic is three instructions, and unchecked *(new)*
+
+**Status: decided.** METALS grew `elem.ptr`, `ptr.offset` and `ptr.diff`.
+`ptr<T>` was a pointer to one object; C's is a cursor into a run of them,
+and no arrangement of the existing instructions expresses that.
+
+The three split cleanly by what they answer. `elem.ptr` changes *what* a
+pointer points at — `ptr<array<T, N>>` to the `ptr<T>` of its first
+element, which is C's decay and costs nothing because an array's storage
+begins where its first element does. `ptr.offset` changes *where*.
+`ptr.diff` asks how far apart two of them are.
+
+**The arithmetic is unchecked.** A bounds test needs the object's extent
+at run time, which means a pointer stops being a machine word — and a
+pointer being a machine word is most of what compiling C in rather than
+sandboxing it buys. So the rule is C's: the result is a pointer while it
+stays inside the object or one element past its end, and outside that the
+program is undefined. Rejected **fat pointers** for that reason, and
+rejected **routing C's arrays through `array<T>` and `slice<T>`**, which
+are bounds-checked and know their length: a C pointer into the middle of
+a struct's field is not a slice of anything, and a language whose arrays
+are pointer arithmetic cannot borrow a language whose arrays are not.
+
+The evaluator is stricter than the backends here, and deliberately: it
+knows which object a pointer belongs to and aborts on a load through one
+that has left it, while `nasm` and `cgen` compute the address. The tiers
+agree on every defined program, and on an undefined one the evaluator is
+the tier that can see it. That is the same asymmetry `uninitVal` already
+has, and it is why the evaluator earns its keep.
+
+Consequence: `internal/meval`'s pointer stopped being one Go cell and
+became a cell run plus an index — the object is the extent, which is
+exactly what C says arithmetic stays inside.
+
+### Module storage is bytes, or it is a function *(new)*
+
+**Status: decided.** A METALS global may carry a byte image — the storage
+it starts with, exactly `sizeof` bytes — and a module may name one `init`
+function the linker runs before `@main`. C's file-scope initializers
+split across the two, and the split is C's own: an arithmetic constant
+expression is bytes, an address constant is code.
+
+The reason a global carried no initializer at all was **evaluation
+order** — an initializer is an expression, expressions call things, and
+the format has no opinion about when. A byte image has no evaluation
+order, which is the same argument that already lets a `data` segment
+write a linear memory before anything runs. So the rule is not "globals
+now have initializers"; it is that static bytes were always allowed and
+only memories had them.
+
+What an image cannot hold is a relocation, and the verifier says so by
+refusing an image for any type with a pointer anywhere inside it. That is
+what leaves `static int *p = &table[1]` and `static const char *msg =
+"hi"` as stores in `init`, which is exactly where a C compiler leaves
+them.
+
+Rejected **emitting every string literal as per-byte stores in an
+initializer function**, which needs no format change and is what the
+front end would otherwise have to do. It is O(bytes) in instructions for
+something that is O(bytes) in the object file, and a real C program is
+mostly string literals — the code would have been deleted the first time
+one arrived.
+
+Rejected **a typed constant-expression tree** in the IR (`= [104, 105,
+0]`) rather than a byte string. It reads better and commits the format to
+a second, parallel description of layout; bytes commit it to one, the
+same one `metals.Layout` already computes, and the evaluator decodes them
+through that table so no tier can disagree about where a member sits.
+
+**The linker places the call, not the producer.** Gyro owns `@main` and
+could prepend the call itself — it used to. A C translation unit is
+imported by someone else's program and has no entry point to patch, so
+there has to be one pass that can see the whole program, and there
+already is. The consequence is that a program of one module is linked
+too, which used to be the identity.
+
+### A string literal is module storage *(new)*
+
+**Status: decided.** A C string literal becomes an `array<i8, N>` global
+carrying its own bytes, interned by content. Everything else about it
+falls out of rules that already existed: naming it is a `global.ptr`, so
+it decays like any other array, `sizeof "abc"` is 4 because the array
+knows its length, and `"abc"[1]` is an index into storage.
+
+Interning means two identical literals are one array and comparing their
+addresses answers true. C permits either answer and every C compiler
+interns; the alternative buys nothing and costs a copy per occurrence.
+
+`char buf[] = "abc"` is the one place a literal is not an address — the
+bytes are copied into the array — and that is a rule about the
+initializer, not about the literal, which is why it lives with the other
+initializer rules rather than as a special case in the expression
+lowering.
 
 ## Native backend
 
@@ -1194,15 +2202,81 @@ ABI-correct where it matters. Rejected a custom internal convention:
 simpler codegen, but every runtime call would need a shim and every
 debugger would be blind.
 
-### v1 codegen spills everything *(new)*
+### v1 codegen spilled everything, then got an allocator *(new)*
 
-**Status: decided.** Every METALS register gets a stack slot;
-instructions load operands, compute, store back. The output is an order
-of magnitude slower than necessary and trivially auditable, which is
-the correct trade while the bar is byte-identical output against the
-evaluator. Register allocation becomes its own milestone on a working
-foundation. Rejected linear-scan allocation from day one: a much larger
-bug surface before the first example passes.
+**Status: superseded by the entry below.** Every METALS register got a
+stack slot; instructions loaded operands, computed, stored back. The
+output was an order of magnitude slower than necessary and trivially
+auditable, which was the correct trade while the bar was byte-identical
+output against the evaluator. Register allocation became its own
+milestone on a working foundation. Rejected linear-scan allocation from
+day one: a much larger bug surface before the first example passes.
+
+### The assembler allocates callee-saved registers only *(new)*
+
+**Status: decided.** `internal/nasm/regalloc.go` colours an interference
+graph over the callee-saved registers — `rbx`, `r12`..`r15` — and hands
+the five of them to the hottest METALS registers in a function. Every
+register keeps its frame slot; a home is an alternative to that slot,
+not a replacement for the frame layout.
+
+Callee-saved *only* is the decision, and it is what keeps the allocator
+one decision per METALS register instead of one per program point: a
+value in `rbx` survives every call the frame makes, so no instruction
+spills around a call and none reloads afterwards. The cost is two
+memory accesses per used register per call, paid in the prologue and
+epilogue, which the weight heuristic (a mention inside a loop counts
+ten times an outside one, and a register needs three mentions to earn a
+home) is there to cover. Rejected using the caller-saved registers too:
+it doubles the register file but requires a live-across-call analysis
+and spill code at every call site, and the measured shortfall does not
+justify it — of the twelve functions in the `regex` port, exactly one
+wants more registers than the five supply.
+
+A METALS register is a candidate when its type is one integer-class
+word and no emitter needs its address. Aggregates are excluded by the
+layout rules, floats because SysV has no callee-saved xmm register, and
+the address-taken cases by an explicit roles table; `frame.addr` fails
+the build rather than emitting wrong code if that table ever misses one.
+Liveness is a real backward dataflow over the structured body, with a
+fixpoint at each `loop` — a linear first-mention-to-last-mention
+interval is *not* safe, because a value defined before a loop and read
+inside it is live across the back edge where no linear interval says so.
+
+Three things ride along with the allocation, because the allocator is
+what exposed them:
+
+- **Small integer constants become immediates.** A register one
+  `const` defines and nothing else writes, whose value fits the
+  sign-extended 32 bits an x86 immediate is, rides in the instructions
+  that read it. Constants propagate through `copy` and through a `conv`
+  the value provably survives, which is what makes the fold reach
+  anything: the lowering writes both around every literal. A conversion
+  the value would *not* survive keeps its runtime check.
+- **A short aggregate move is written out.** `rep movsq` costs tens of
+  cycles before it moves a byte, so up to eight words move as `mov`
+  pairs. This was worth more than the allocator on the ported cases.
+- **The destination is the working register.** An operation whose
+  destination has a home computes in it, instead of through `rax` and
+  back, and comparisons, tests and switches read their operand where it
+  lies.
+
+Measured on `tests/bench`, best of five, as a ratio to the C backend on
+the same lowered module: `arith-checked` 5.70x to 1.66x, `regex` 13.64x
+to 4.84x, `jsmn` 4.57x to 1.82x, `struct-array` 2.19x to 1.13x,
+`call-fib` 1.61x to 1.10x, `sha256` 2.74x to 2.08x, `loop-index` 1.06x
+to 0.98x.
+
+**What remains is call overhead, and three ports now say so.** The
+allocator's own note was that pressure is not the problem — of the twelve
+functions in `regex`, one wants more than five registers — and that
+`regex`'s residual 4.86x was `cc -O1` inlining `byte_at`, which the
+assembler cannot. `md4c` at 3.42x and `perft` at 3.56x are the second and
+third data points for the same cause, and they are not small programs
+picked to flatter it: md4c is ~90 functions calling `Ctx::ch()` once per
+byte examined. Everything in the suite that is *not* call-dominated sits
+between 1.00x and 2.10x. Inlining, not a larger register file, is the
+next codegen decision.
 
 ### Concurrency v1 is OS threads *(new)*
 
@@ -1380,8 +2454,8 @@ which means it is auditable from Gyro, tested by the same corpus as user
 code, and implemented once rather than once per tier.
 
 The alternative — a native `String` beside `Array<T>` — would have meant
-three implementations (interpreter, evaluator, C runtime) of a builder
-with no interesting runtime requirement.
+an implementation per tier (evaluator, C runtime) of a builder with no
+interesting runtime requirement.
 
 That applies to the runtime-backed types themselves: `Array<T>` is
 declared like any other struct, so a method written in Gyro beside the
@@ -1440,6 +2514,15 @@ checker treated `s.runes()` as a view of its receiver. `runes()` decodes
 into storage of its own and always did, so the rule only ever reported
 borrows that were not there.
 
+The copy has a price a renderer pays continuously, which the md4c port
+measured: writing a constant tag into a byte buffer means `bytes()` on a
+string literal, so `self.literal("<em>")` allocates every time it runs.
+Over the ~35 constant tags md4c's HTML renderer emits that is 5.4% of the
+hot region (129ms to 122ms with the copy removed) plus an allocation per
+emission that nothing reclaims. Interning the literals would recover it
+and was not worth the readability; a way to view a literal's bytes
+without copying would. Listed under "Still open".
+
 ### Time is two i64 clocks and a sleep *(new)*
 
 **Status: decided.** A bundled `time` module with three intrinsics —
@@ -1485,7 +2568,7 @@ question settles, a streaming write API can be designed against it;
 until then the path forms cover what a CLI needs.
 
 `read_dir` returns `(Array<string>, error?)`: entry names only, sorted
-bytewise, without `.` and `..` — the interpreter leans on Go's
+bytewise, without `.` and `..` — the evaluator leans on Go's
 `os.ReadDir` and the C runtime sorts the same way, so a listing is
 deterministic on every tier. Rejected returning richer entries (name
 plus kind and size): that shape wants a struct and a stat per entry,
@@ -1496,18 +2579,17 @@ absent for every purpose a caller has.
 
 Error strings mirror Go's `os` package byte for byte (`open <path>:
 no such file or directory`, `remove <path>: ...`), the same rule
-`gy_open` already followed: the interpreter is the oracle, and the C
-runtime reproduces its messages from `errno` rather than inventing its
-own wording.
+`gy_open` already followed: the wording is Go's because the evaluator
+gets it from Go, and the C runtime reproduces it from `errno` rather
+than inventing its own.
 
 ## Testing
 
 ### One execution corpus, run by every tier *(new)*
 
-**Status: decided.** A test program is a `.gyro` file in
-`tests/testdata/run` beside the output it must produce, and it runs
-through the interpreter, the METALS evaluator and both native backends,
-all held to the same golden.
+**Status: decided.** A test program is a file in `tests/testdata/run`
+beside the output it must produce, and it runs through the METALS
+evaluator and both native backends, all held to the same golden.
 
 Before this, each tier kept its own programs as Go string literals, so a
 case was only cross-checked if someone remembered to paste it into all
@@ -1518,10 +2600,65 @@ were evaluated at exit rather than at registration, printing a tuple
 needed the same synthesized repr as a struct, and the native runtime
 detected neither use after free nor an uninitialized read.
 
-The interpreter defines the answer, so `-update` regenerates goldens from
-it. A known gap is a case carrying `//gyro:skip <tier> <reason>` — a gap
-with a program attached and a test that will fail the day it closes,
-rather than a line in a table.
+A known gap is a case carrying `//gyro:skip <tier> <reason>` — a gap with
+a program attached and a test that will fail the day it closes, rather
+than a line in a table.
+
+### The interpreter is removed, and no tier is the oracle *(new)*
+
+**Status: decided.** `internal/interp`, the tree-walking interpreter, is
+deleted. Three tiers remain, all of them over METALS: the evaluator and
+the two native backends. `gyro run` survives as the command that runs a
+program and now lowers first; since every input becomes METALS, it also
+accepts `.metals`, `.lisp`, `.c` and `.wasm`, and the separate `gyro
+meval` verb is gone rather than kept as a second spelling of one act.
+
+**Goldens are written by hand.** `-update` is deleted with the tier it
+regenerated from.
+
+Two reasons, and the second is the load-bearing one.
+
+The interpreter was falling behind. It walks Gyro syntax, so it could
+never run a `.metals`, `.lisp`, `.c` or `.wasm` root at all, and as
+METALS gained producers the share of the corpus it could execute kept
+shrinking. It was also the only tier that computed `f32` arithmetic at
+double precision — an `f32` multiply that must overflow to `+Inf` stayed
+finite — which is the shape of bug a tier accumulates when it reimplements
+semantics the other three get from one lowering.
+
+The deeper problem is that an oracle tier writes its own exam. `-update`
+regenerated goldens from interpreter output, so an interpreter bug became
+the specification the moment someone ran it, and the other three tiers
+were then held to that bug. A corpus is supposed to be the place a
+divergence surfaces; making one tier definitionally correct removes it
+from the set of things the corpus can catch. Removing the oracle makes
+`docs/language.md` the only specification, which it always claimed to be.
+
+The cost, accepted: writing a case now means deciding what it should
+print, rather than running it and keeping the answer. That is slower and
+it is the work. It also means a case whose output is tedious to derive by
+hand — a long digest table, a 652-example spec suite — is more expensive
+to add than it was; the ports that already exist keep their goldens, and
+a new one of that size should carry a driver in another language whose
+output can be diffed, which is what those ports already do.
+
+`//gyro:panic` is now checked against every tier rather than against the
+oracle alone. That immediately caught four cases whose fragment matched
+only the interpreter's wording, and one real divergence: `gy_free` writes
+its poison and then hands the block back to libc, which reuses those
+bytes, so the C runtime can never distinguish a double free from a wild
+pointer. Both messages became `free of memory that is not allocated`,
+and the precision returns when `gy_free` keeps the block instead.
+
+Rejected: **keeping the interpreter as a non-oracle fourth tier.** It
+would still be a second implementation of every runtime rule, still
+unable to run most producers' roots, and its disagreements would now be
+bugs in a tier nobody ships. Rejected: **promoting `meval` to oracle.**
+It has the same defect one level down — a lowering bug would become the
+golden — and it is the tier the native backends are most likely to share
+a mistake with, since all three read the same IR. Rejected: **deleting
+`gyro run`** and making people lower explicitly; the shortest path to
+running a program is worth a verb.
 
 ### A diagnostics fixture claims its own diagnostics *(new)*
 
@@ -1550,13 +2687,18 @@ and bound imports opaquely; it is deleted.
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, Gyro lowering, evaluator); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use; `@comptime` folding will subsume this. Module-level `var` does have identity and lowers to METALS storage |
-| checker/interpreter divergence on untyped operands | the checker folds `1 << 40` into an i64 context and adapts untyped bitwise operands, but the interpreter evaluates them as i32 at runtime and panics; found while diff-testing the lowering, which sides with the checker |
-| shift overflow semantics | the interpreter panics when `<<` overflows the operand's type, but METALS `shl` wraps (Go semantics), so the evaluator and the native backend agree with each other and not with the interpreter; whether `<<` is checked or wrapping needs a language decision |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
+| narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
+| narrowing a slice | there is no `xs[a..b]`, so a C API shaped `(pointer, size)` forces either a copy or a `(base, beg, end)` triple through every signature; distinct from pointer arithmetic, and the first thing a callback-driven library asks for |
+| formatting a float to a precision | `fmt` has no `%e`/`%f`/`%g` and nothing can read a double's bits, so no Gyro program can print a float to a fixed number of digits; the cJSON port needed 358 lines of exact decimal conversion to do what `printf("%.15g")` does |
+| a `const` in a match pattern binds | a bare name is a binding, so `match piece { WQ: "q"  WR: "r" }` matches the first arm for every value — it compiles clean and answers wrong. Either warn when a binding shadows a module-scope `const`, or let a path pattern mean equality |
+| what a match *expression* takes its type from | the first arm decides, so `Value::Text(s): s` beside `_: null` is E0516; a statement `match` writing into a pre-declared local is the workaround |
+| the scope of leak settling | an allocation stored into a field *through a pointer* (`p.child = n`) is not settled, though a struct-literal field is, and tracking does not survive a constructor call, so `var n = new_node()` is untracked entirely. cJSON does real manual memory management and warns zero times, having first been false-positived on the linked-list idiom |
+| viewing a literal's bytes | `bytes()` on a string literal allocates, so constant markup written into a byte buffer copies per emission |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
 | memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
-| native use-after-free and uninitialized reads | the interpreter and the evaluator poison freed cells and unwritten storage and abort on a read; the C runtime frees for real and leaves storage as the allocator returned it, so a native binary silently reads garbage where the other two tiers panic |
+| native use-after-free and uninitialized reads | the evaluator poisons freed cells and unwritten storage and aborts on a read; the C runtime frees for real and leaves storage as the allocator returned it, so a native binary silently reads garbage where the evaluator panics. It cannot even name a double free, since `gy_free` hands the block back to libc before a second free could read the poison |
 | green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
-| select fairness | the evaluator picks a ready arm at random (Go semantics); the native runtime polls arms in order — programs whose output depends on the choice among simultaneously-ready arms may diverge |
+| a fair `select` in the native runtime | the choice among ready arms is unspecified, so in-order polling conforms — but it can starve an arm behind a busy one, and fixing that means arms become a descriptor table the runtime chooses from |

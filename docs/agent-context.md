@@ -64,8 +64,8 @@ source
                         both link internal/crt, the shared C runtime
 ```
 
-`internal/interp` is a tree-walking interpreter over the **checked syntax
-tree** — it does not use METALS. It is the executable specification.
+Everything the compiler can read becomes METALS, and everything that
+runs, runs from METALS. There is no second execution path.
 
 ### Package sizes, roughly
 
@@ -74,7 +74,6 @@ tree** — it does not use METALS. It is the executable specification.
 | `sema`   | 6.4k  | the bulk of the compiler; every safety analysis lives here    |
 | `lower`  | 4.3k  | Gyro → METALS, including monomorphization and closure lifting |
 | `metals` | 3.5k  | IR types, text format, verifier                               |
-| `interp` | 3.2k  | the spec                                                      |
 | `nasm`   | 2.6k  | x86-64 code generation                                        |
 | `cgen`   | 2.5k  | the C sibling backend, prelude included                       |
 | `crt`    | 1.0k  | `src/rt.c`, the runtime both native backends link             |
@@ -85,19 +84,29 @@ tree** — it does not use METALS. It is the executable specification.
 
 Also: `tree-sitter-gyro/` and `tree-sitter-metals/` (grammars, external
 scanner, queries, corpus), `internal/stdlib/` (bundled `.gyro` sources
-compiled into the binary), `examples/` (8 reference programs).
+compiled into the binary), `examples/` (10 reference programs), and
+METALS' other producers — `internal/lisp/`, `internal/wasm/` and
+`internal/cc/` (C read directly, which is what a Gyro program imports a
+`.c` through; the wasm bridge keeps a `.c` that is the whole program).
 
-### The three-tier oracle
+### Three tiers, no oracle
 
 This is the single most important architectural fact.
 
 **Every program runs three ways and all three must agree byte for byte:**
-the interpreter, the METALS evaluator, and a native binary. The
-interpreter defines the answer; the other two are measured against it.
+the METALS evaluator, a native binary from the assembler backend, and a
+native binary from the C backend.
 
-When they disagree, the interpreter is right unless there is a reason to
-decide otherwise — and deciding otherwise is a language decision that
-belongs in `docs/decisions.md`.
+**No tier defines the answer.** The golden file does, and it is written
+by hand. There is no flag that regenerates it from a tier's output,
+because a tier that can write its own exam has stopped being a check on
+anything — the first version of this corpus rewrote goldens from the
+tree-walking interpreter, and what that bought was a tier whose bugs
+became the specification until someone read the file.
+
+So when tiers disagree, none of them is presumptively right: read
+`docs/language.md`, decide what the program should print, and record the
+decision in `docs/decisions.md` if the docs did not already answer it.
 
 ---
 
@@ -120,19 +129,18 @@ tests/testdata/run/cross-module/util.gyro
 tests/testdata/run/cross-module/expected.out
 ```
 
-Every case runs on **all four tiers** — `interp`, `metals`, `native`
-(x86-64) and `cnative` (generated C) — and all four are held to the same
-golden. `go test ./tests -update` rewrites goldens from what the
-interpreter produced.
+Every case runs on **all three tiers** — `metals`, `native` (x86-64) and
+`cnative` (generated C) — and all three are held to the same golden,
+which you write.
 
 Directives, written as comments in the root file:
 
-| directive                  | meaning                                                                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `//gyro:panic <fragment>`  | must abort; fragment matches the interpreter's message; the golden holds stdout before the panic |
-| `//gyro:unordered`         | concurrent output; tiers must all succeed but output is not compared                             |
-| `//gyro:skip <tier> <why>` | a known gap: `interp`, `metals`, `native` or `cnative`                                           |
-| `//gyro:args a b c`        | main's arguments, after a fixed `argv[0]` of `program`                                           |
+| directive                  | meaning                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| `//gyro:panic <fragment>`  | must abort; every tier's message must contain the fragment; the golden holds stdout before the panic |
+| `//gyro:unordered`         | concurrent output; tiers must all succeed but output is not compared                       |
+| `//gyro:skip <tier> <why>` | a known gap: `metals`, `native` or `cnative`                                               |
+| `//gyro:args a b c`        | main's arguments, after a fixed `argv[0]` of `program`                                     |
 
 **A gap belongs in the corpus as a skip with its reason attached, not in
 prose.** A skip is a program that will fail the day the gap closes. Three
@@ -174,20 +182,77 @@ Only what neither corpus can express:
 - `lsp` — protocol behaviour
 - `loader` — module graph, cycles, resolution
 - `diag` — rendering, and the catalogue tests
-- `interp` — `Panic`'s source position, nothing else
 - `lower` — METALS naming and record layout, nothing about output
 - `sema` — `editDistance`, and the `Info` the backends read
 
-### 3.4 Commands
+### 3.4 Benchmark suite — `tests/bench/`
+
+Gyro programs, each isolating one codegen decision, built by both native
+backends from the same lowered module and compared:
+
+| case            | what it isolates                                      |
+| --------------- | ----------------------------------------------------- |
+| `call-fib`      | call sequence: prologue, argument moves, return path  |
+| `loop-index`    | loop induction and `index.get` bounds checks          |
+| `arith-checked` | the overflow test on every add, subtract and multiply |
+| `struct-array`  | aggregate copies in and out of `Array<T>`             |
+| `string-concat` | allocation growth and the per-byte `String::push`     |
+| `startup`       | baseline: process start, runtime init, exit           |
+| `sha256`        | ported C: 32-bit arithmetic over a fixed buffer       |
+| `regex`         | ported C: calls, branches and backtracking            |
+| `jsmn`          | ported C: one read and a switch per input byte        |
+| `cjson`         | ported C: one heap node per value, pointer-chased     |
+| `md4c`          | ported C: ~90 functions behind a callback table       |
+| `perft`         | ported C: recursion over u64 bitboards and big tables |
+
+A case is `NAME.gyro` or a `NAME/` directory with `main.gyro` — the same
+two shapes the execution corpus uses. A directory case may carry a C
+**reference**: `reference.c`, a driver mirroring `main.gyro` line for
+line, plus the upstream library files copied in unmodified. The harness
+builds them with the flags `cgen` uses on its own output (`cc -O1
+-fno-strict-aliasing`) and adds a `cc` column with `nasm/cc` and
+`cgen/cc` beside it, so the table answers what the language costs against
+the C it replaces and not only what one backend costs against the other.
+A ported case imports its library **out of the execution corpus** rather
+than copying it, so there is one port per library: the one whose output
+the corpus already compares against the C original's.
+
+Each program times its own hot region with `time.monotonic` —
+`clock_gettime` in the C references — and prints `gyro:bench
+<nanoseconds>` on stderr, so setup, process start and runtime init stay
+out of the number; process wall time and build time are reported in a
+second table. Every binary in a case must print the same checksum on
+stdout or the case fails — comparing programs that computed different
+things measures nothing, and for a port that agreement is the whole
+claim.
+
+The suite is off during `go test ./...` and runs from `make bench`
+(`BENCH=<substring>` filters, `REPEAT=<n>` sets the run count; the
+fastest run counts). Read the **spread**, not the average: a backend
+behind by the same factor everywhere has one problem, a backend at 1.06x
+on four cases and 2.25x on the fifth has a specific one.
+
+The six ports spread widely against C — `regex` 1.4x, `perft` 4.4x,
+`md4c` 8.8x, `jsmn` 9.3x, `cjson` 11.1x, `sha256` 13.2x — and what
+separates them is how much work each does per element access, since every
+one of those goes through a runtime call and a bounds check while C reads
+a byte. The two backends spread differently, and along a different axis:
+`regex` 4.86x, `perft` 3.56x and `md4c` 3.42x are all call-dominated,
+while everything else sits between 1.00x and 2.10x, which is what points
+at inlining rather than register pressure.
+
+### 3.5 Commands
 
 ```sh
 make build     # -> bin/gyro
 make test      # go test ./...
+make bench     # both native backends on tests/bench, ratio reported
 make check     # parse every example
 make vet
 make grammar   # regenerate + test both tree-sitter grammars
-go test ./tests -update    # rewrite execution goldens
 ```
+
+Execution goldens are written by hand. There is no `-update`.
 
 Before any commit: `go test ./...`, `make check`, `make vet`. If grammars
 changed, `make grammar` too (46 and 8 parses respectively).
@@ -356,15 +421,23 @@ The IR. `docs/metals.md` is the spec.
   a function called before main.
 - the **verifier** is real and catches type mismatches, undefined
   registers, definiteness across branches, boundary rules
-- `internal/meval` executes it and is the lowering's oracle
+- `internal/meval` executes it, and is where a lowering bug shows up
+  first — it is the tier closest to what the lowering emitted
 
-### Native layout, v1
+### Native layout
 
-`docs/native.md`. **Every scalar occupies one qword. Nothing is packed.**
+`docs/native.md`. **Storage is C's; a register is one word.** A value in
+memory is what `sizeof` says in C, at C's alignment, padded where C pads.
+A register carries a scalar widened to a qword and an `f32` as a double,
+so a load widens and a store narrows.
 
-This bites. A `u8[]` slice is word-strided while a string's bytes are
-packed UTF-8 — the two cannot alias, which is why `bytes()` copies. Any
-"view" conversion between differently-strided representations is wrong.
+This bites in two places. What the runtime stores it stores the way
+memory looks — a channel's elements, an `Array`'s, an `any`'s payload —
+so a narrow scalar goes through a staging cell rather than by the address
+of its register; forget that and an `i8` loses its sign or an `f32`
+arrives as the bits of a double. And `metals.Layout` is the only place
+that computes an offset: a backend that adds up field sizes itself is
+wrong the first time a `u8` sits in front of a `u32`.
 
 ---
 
@@ -451,7 +524,7 @@ Bundled `.gyro` sources compiled into the binary, under
 body is ordinary Gyro, compiled like any other module.** What makes a
 struct an opaque handle is having no fields, not the module it lives in.
 
-Modules: `stdlib`, `mem`, `fs`, `net`, `convert`.
+Modules: `stdlib`, `mem`, `fs`, `net`, `convert`, `time`, `os`, `fmt`.
 
 Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `alloc`/`free`/`size`,
@@ -460,11 +533,13 @@ Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
 Written in Gyro: `String` (on `Array<u8>`), its UTF-8 encoder, and the
 text methods — `split`, `trim`, `contains`, `starts_with`, `ends_with`,
 `index_of`, `substring`, `repeat`. `join(parts, sep)` stays a function
-because its receiver would be the slice.
+because its receiver would be the slice. `fmt` is entirely Gyro too:
+`printf`/`sprintf`/`eprintf` walk the format string over an `...any` pack
+and read each argument with a `match`, so the whole formatter is one
+module and no tier implements it separately.
 
-**Prefer Gyro.** Three native implementations (interp, meval, rt.c) of
-something with no interesting runtime requirement is three places to
-diverge.
+**Prefer Gyro.** Two native implementations (meval, rt.c) of something
+with no interesting runtime requirement are two places to diverge.
 
 ### Prefer a library function over a keyword
 
@@ -478,33 +553,83 @@ grammar, check whether a closure-taking function would do.
 Kept honest in `docs/language.md` ("Still to come") and
 `docs/decisions.md` ("Still open"). The ones that matter most:
 
+**Open in the wasm bridge** (`internal/wasm`, see
+[`decisions.md`](decisions.md)):
+
+- **the float intrinsics** — `sqrt`, `floor`, `ceil`, `trunc`, `nearest`,
+  `abs`, `min`, `max`, `copysign` have no METALS instruction and no
+  runtime import, so a C program that reaches for one is refused by name.
+  They want a decision about where math belongs, not a patch.
+- **multi-value** blocks, results and calls; **SIMD**; **reference
+  types**; **atomics**; **passive data segments**. Each is refused with
+  its own message rather than skipped.
+- **an imported memory**, which is how wasm spells two modules sharing one
+  heap. Linking gives each module its own, which is right for a sandbox
+  and is the thing a real C front end will have to revisit.
+- **no libc.** The bridge links freestanding; a program reaches the
+  outside through an import it declares itself. wasi-libc's split — a
+  syscall floor as imports, everything above it compiled — is the shape
+  to copy, and nothing has been.
+
 **Blocking real applications:**
 
 - **memory reclamation** — every `#{}`, `split`, `text()` allocates and
   nothing frees it. Fine for a CLI that exits; fatal for a server.
 - no sorting
+- **FFI has two gaps left** — `@extern` carries primitives, `string`,
+  slices, structs by value and opaque handles. No callback and no
+  out-parameter, so a C API built on either (`qsort`, `SDL_PollEvent`)
+  is still out of reach *through `@extern`*. Importing the `.c` instead
+  routes through `internal/cc` and has no marshalling to have a gap in:
+  the out-parameter case works today (`tests/testdata/run/c-import/`).
+
+**Open in the C front end** (`internal/cc`, see
+[`metals.md`](metals.md), "The C front end"):
+
+- **`goto`** — needs the relooper LLVM does for the bridge. `switch` is
+  done; it is a multiway branch into a linear body, which nested blocks
+  express and arbitrary jumps do not.
+- **unions and bitfields**: a union's members share storage and a
+  record's do not, so there is no record shape to give one.
+- **function pointers, varargs, `void *` and casts between pointer
+  types**, and calling a function another translation unit defines.
+- **A case label inside a nested statement** — Duff's device. A switch
+  body is a flat list of labels and statements here.
+- **A C struct cannot cross into Gyro**, which is the same gap as the
+  linker's missing structural matching of record shapes.
+- **A local aggregate initializer writes zeros member by member**, so
+  `char buf[4096] = "hi"` is 4096 stores. Correct, because a `slot` is
+  zeroed by the native backends and deliberately left unwritten by the
+  evaluator, and a partial initializer must not depend on the tier. The
+  cheap fix is a bulk zero instruction, not a weaker evaluator.
 
 Closed since this list was written: `Map<K, V>` (ordinary Gyro over
 `Array<T>`), file writing and directory listing (`fs`), stdin, env vars
-and exit codes (`os`), clocks and sleep (`time`).
+and exit codes (`os`), clocks and sleep (`time`); string literals,
+file-scope and braced initializers, `static` locals, `switch`, and
+`sizeof(char *)` answering 8.
 
 **Safety holes:**
 
 - **mutation rules unchecked** — `*self` vs `self`, assigning through a
   value receiver
 - **native use-after-free and uninitialized reads undetected** — the
-  interpreter and evaluator poison and abort; the C runtime frees for
-  real and leaves storage as the allocator returned it. The tier you ship
-  is the one that does not check.
+  evaluator poisons and aborts; the C runtime frees for real and leaves
+  storage as the allocator returned it. The tier you ship is the one
+  that does not check. It cannot even name a double free: `gy_free`
+  writes its poison and then hands the block to libc, which reuses those
+  bytes, so both tiers say `free of memory that is not allocated`.
 - views through a pointer are untraceable
-- concrete effects (`io`, `alloc`) parsed and reserved but unchecked
+- effect rows under-report where a row cannot travel: calling a function
+  value contributes nothing, and creating a capturing closure is not
+  counted as `alloc`
 
-**Semantic divergences, undecided:**
-
-- checker folds `1 << 40` into i64 context; the interpreter evaluates as
-  i32 and panics
-- `<<` overflow panics in the interpreter, wraps in METALS `shl`
-- select fairness: evaluator picks at random, native polls in order
+Settled since: float division by zero and NaN ordering (IEEE for the
+operators, a total order for `compare`), `<<` overflow (a shift never
+panics, it drops the bits that leave the width), the untyped-operand
+folding that made `1 << 40` disagree between the checker and a tier, and
+the `select` arm chosen among ready arms, which is now unspecified by the
+language rather than a divergence — a fair native runtime is queued work.
 
 **Design questions open:** `@comptime` evaluation subset, drop/RAII (which
 governs `MutexGuard::unlock`, `free`, `close` alike), decorator execution
@@ -545,14 +670,16 @@ runtime import the evaluator could answer and the native backend could
 not. Moving it to one synthesized METALS function per type fixed both
 tiers at once, with no backend or C work. Prefer this shape.
 
-**The native layout is easy to forget and fails quietly.** One qword per
-scalar, nothing packed. A representation mismatch produces _correct
-interpreter output_ and native garbage, which reads like a backend bug
-and is not one. When anything crosses the Go/C boundary carrying a slice,
-check the stride first.
+**The native layout is easy to forget and fails quietly.** Storage is
+C's, a register is a word, and the two are not the same bytes. A
+representation mismatch produces _correct evaluator output_ and native
+garbage, which reads like a backend bug and is not one. When anything
+crosses the Go/C boundary carrying a slice or an element, check the
+stride and the width first.
 
 **Untyped literals need defaulting in more than one place.** `4.double()`
-needed `types.Default` in sema _and_ a matching case in the interpreter.
+needed `types.Default` in sema _and_ a matching case in the tier that
+runs it.
 
 **Empty error paths crash.** Returning "no type parameters" from an error
 path while the declaration named one panicked the checker. Error paths
@@ -570,7 +697,12 @@ with diagnostics, hover, definition, symbols, completion, inlay hints.
 Gyro is usable for **CLI tools today**. It is not usable for anything
 long-running, because nothing reclaims memory.
 
-A real program that works end to end, identically interpreted and native:
+It also reaches C. `@extern("SDL2")` on a bodyless declaration links a
+symbol, and `examples/triangle.gyro` rasterizes a Gouraud-shaded triangle
+in pure Gyro and puts it in an SDL window — which is the first thing here
+that the evaluator cannot run, since it is Go with no C in it.
+
+A real program that works end to end, identically on all three tiers:
 
 ```gyro
 import { println, eprintln, Array, String, join } from "stdlib"

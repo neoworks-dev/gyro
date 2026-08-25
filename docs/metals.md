@@ -7,9 +7,36 @@ producers, several consumers: the verifier, the evaluator
 (`internal/meval`, the oracle the lowering is diff-tested against), and
 the two native backends (`internal/nasm`, x86-64 via NASM, and
 `internal/cgen`, generated C — see
-[`native.md`](native.md)). `internal/lower` is the first producer:
-`gyro metals file.gyro` prints a whole program as one module, and
-`gyro build file.gyro` compiles it to a Linux executable.
+[`native.md`](native.md)). `internal/lower` is the first producer and
+`internal/lisp` — a statically typed Scheme — is the second, which is
+what keeps the format honest: anything the IR assumes about its input
+that only holds because Gyro's lowering happens to produce it shows up
+there as a wrong answer or a verifier complaint.
+
+`internal/wasm` is the third, and the one that stopped the format being
+polite. It reads a wasm32 module — which is what `clang` makes of C — and
+that is a language whose memory model METALS had no way to hold. Linear
+memory, `trunc` and `bitcast` are what it needed, and each is a thing the
+IR arguably should always have had for a producer that is not Gyro.
+
+`internal/cc` is the fourth, and it is what the third was reconnaissance
+for: a C front end that reads C itself and emits METALS' own types, so
+that a `struct Point *` arrives as a `ptr<%Point>` rather than as the
+`u32` it has become by the time clang is done. That is the difference
+between C that *runs* on these tiers and C a Gyro program can `import`.
+It shares Gyro's heap, which is allowed because a boundary is between
+runtimes and the two are one; see [Boundary rules](#boundary-rules).
+A C pointer is an `opt<ptr<T>>`, since C's is nullable and METALS' is
+not, which is what turns a null dereference from undefined into an abort
+that names itself.
+
+`gyro metals file.gyro` prints a whole program as one module,
+`gyro lisp file.lisp` prints what the Lisp front end produces,
+`gyro cc file.c` prints what C becomes,
+`gyro run a.metals b.metals` links modules and runs them — the same verb
+that runs a `.gyro`, because both become one module before anything
+executes — and `gyro build file.gyro` compiles a program to a Linux
+executable.
 
 This document is the source of truth for the format. The Go definitions
 live in `internal/metals`; the text format below is what the printer emits
@@ -30,13 +57,18 @@ Settled in review; recorded with rationale in
    SSA-constructs internally.
 3. **No generics.** Front ends monomorphize before METALS; the IR only
    ever sees concrete types. A generic function crossing a language
-   boundary is exported as concrete instantiations or with a `dyn`
+   boundary is exported as concrete instantiations or with an `any`
    signature.
-4. **`dyn` is the one escape hatch.** METALS is statically typed with a
+4. **`any` is the one escape hatch.** METALS is statically typed with a
    first-class dynamic value type and checked conversion ops. A Python
-   function can export a typed signature or a `dyn` one.
-5. **Copy at the boundary.** Values crossing between language runtimes
-   are converted/copied; no shared mutable memory between runtimes.
+   function can export a typed signature or an `any` one — and a
+   producer that *can* declare its types should, because then the call
+   is an ordinary call with nothing inspected at run time.
+5. **Copy at the boundary.** Values crossing between runtimes are
+   converted/copied; no shared mutable memory between runtimes. A
+   boundary is between runtimes and not between languages: producers
+   that compile into METALS become one module on one heap and call each
+   other outright.
    Pointers, channels and futures cannot appear in a cross-boundary
    signature. Long-lived foreign state is an opaque `handle`.
 6. **Concurrency is hybrid**, the same line Gyro's grammar draws:
@@ -61,13 +93,20 @@ import "gyro:rt" {
   fn @println_str(str)
 }
 import "js:./widgets" {
-  fn @render(dyn) -> dyn
+  fn @render(any) -> any
 }
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
 
 global @counter: i32
+global @greeting: array<u8, 3> = "hi\x00"
+
+init @setup
+
+fn @setup() {
+  return
+}
 
 export fn @add(%a: i32, %b: i32) -> i32 {
   %sum = iadd %a, %b
@@ -86,12 +125,35 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   `%"Pair<i32>"`. Both spellings name the same namespace; the printer
   quotes exactly when it must.
 - A global is module storage, zero-initialized and reached through
-  `global.ptr`. It carries no initializer: a front end lowers module-level
-  initialization into an ordinary function it arranges to run first, which
-  is where evaluation order is decided.
+  `global.ptr`. It may carry a byte image — `= "hi\x00"` — which is the
+  storage it starts with in place of those zeros, exactly `sizeof` bytes
+  in the target's own representation. That is not an initializer: an
+  initializer is an expression and needs an evaluation order, and static
+  bytes have none. What an image cannot hold is a pointer, whose value is
+  not known until the program is laid out, so the verifier refuses an
+  image for any type with a pointer anywhere inside it.
+- `init @name` is the function this module needs run before the program
+  starts, which is where a global that *does* name an address gets
+  written. It takes nothing and returns nothing. The linker prepends a
+  call to each module's init to `@main`, in dependency order, so a
+  module's storage is written after everything it imports has written
+  its own and before anything reads it. That is the only place the call
+  is made: a producer names the function, and does not arrange for it.
+- A `memory` is a linear memory (below). A `data` segment writes a span of
+  one before any function runs, which is a global's byte image one level
+  down.
 - Module names carry the producing language as a scheme prefix
-  (`gyro:`, `js:`, `py:`); `metals:` is reserved. Runtime intrinsics are
-  imports from runtime modules such as `gyro:rt`, not IR constructs.
+  (`gyro:`, `lisp:`, `cc:`, `wasm:`, `js:`, `py:`); `metals:` names a module
+  written as IR directly, with no source language above it. Runtime
+  intrinsics are imports from runtime modules such as `gyro:rt`, not IR
+  constructs.
+  `c:` is the one scheme that names no producer at all — `c:SDL2` is a
+  native library, so nothing links against it and the import survives to
+  the backend, which turns it into a symbol and a `-l` flag.
+- A call between two modules in different *runtimes* is a boundary
+  crossing, and the boundary rules below apply to its signature. Every
+  producer that compiles into METALS is one runtime; a native library and
+  a foreign engine are not.
 
 ## Types
 
@@ -109,15 +171,24 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `future<T>` | un-awaited async result |
 | `fn(A, B) -> R`, `async fn(A) -> R` | function values |
 | `%Name` | module-local record or enum |
-| `dyn` | dynamically typed value, converted with checked ops |
+| `any` | dynamically typed value, converted with checked ops |
 | `handle` | opaque foreign reference; compares by identity only |
 
 A function's result is absent for "returns nothing". Multiple results are
 one tuple, matching Gyro.
 
-Named types are module-local in v0. A record shape that must cross a
-boundary is redeclared by the importer and matched structurally; the
-linker (to come) enforces the match.
+**Layout belongs to the format, not to a consumer.** What a type occupies
+in memory is C's answer — `sizeof`, C's alignment, C's padding — and
+`metals.Layout` computes it once for every consumer, so that two backends
+cannot pad a record differently. A register is a separate question and a
+separate representation: one machine word per scalar, an `f32` carried as
+the double it widens to. [`native.md`](native.md#value-layout) has the
+table and the conversions between the two.
+
+Named types are module-local: linking qualifies each with its module's
+name, so two producers may declare the same one without colliding. A
+record shape that must cross a boundary is redeclared by the importer;
+matching the two declarations structurally is not implemented yet.
 
 ## Registers
 
@@ -149,15 +220,78 @@ Every instruction is one line, except the structured ones, which nest.
 %r = iadd %a, %b     ; isub imul idiv irem — checked: overflow and /0 abort
 %r = wadd %a, %b     ; wsub wmul — two's-complement wraparound
 %r = fadd %a, %b     ; fsub fmul fdiv
+%r = fmin %a, %b     ; fmax fcopysign
+%r = fsqrt %x        ; fabs fceil ffloor ftrunc fnearest
 %r = band %a, %b     ; bor bxor shl shr
 %r = neg %x          ; bnot (integers), not (bool)
 %r = eq %a, %b       ; ne — any comparable type, -> bool
 %r = lt %a, %b       ; le gt ge — numeric and rune, -> bool
 %r = conv %x -> u8   ; `as`: widening succeeds, narrowing aborts on loss
+%r = trunc %x -> u8  ; integer narrowing that keeps the low bits
+%r = bitcast %x -> u32 ; the same bits, read as another type of one width
 ```
 
 Integer operands must share one type; there are no implicit conversions in
 the IR either.
+
+### The float intrinsics
+
+`fsqrt`, `fabs`, `fceil`, `ffloor`, `ftrunc`, `fnearest`, `fmin`, `fmax`
+and `fcopysign` are instructions rather than runtime imports. Each is one
+machine instruction or a handful on both native backends, and a producer
+that has them as *opcodes* — wasm does, so C does — would otherwise have
+to call out of the sandbox to round a number.
+
+They operate at their operand's width and return it: `f32` in, `f32`
+back, rounded through single precision.
+
+Three of them have a definition worth stating, because the obvious C
+function is the wrong one:
+
+- **`fnearest` is roundTiesToEven.** `fnearest 0.5` is `0.0`, `fnearest
+  1.5` and `fnearest 2.5` are both `2.0`. C's `round` is
+  ties-away-from-zero and would answer `1.0` and `3.0`; `nearbyint` under
+  the default rounding mode is the C function that matches.
+- **`fmin` and `fmax` propagate NaN.** If either operand is NaN the
+  result is NaN. C's `fmin` and `fmax` return the operand that is *not*
+  NaN, which silently removes the NaN from the computation. They also
+  order the two zeros: `fmin -0.0, 0.0` is `-0.0` and `fmax` is `+0.0`,
+  either way round.
+- **The four roundings return a float**, not an integer. Rounding and
+  converting are separate questions, and `conv` is the one that can
+  abort. A NaN, an infinity and a signed zero pass through unchanged.
+
+`fsqrt` of a negative operand is NaN, not an abort — the same split as
+float division by zero: IEEE-754 defines an answer, so it is a value
+rather than a programmer error.
+
+A float constant that is not finite is spelled `inf`, `-inf` or `nan`:
+
+```metals
+%p = const.f64 inf
+%n = const.f64 -inf
+%q = const.f64 nan
+```
+
+The three conversions are deliberately separate, because they answer
+three different questions and a language that needs one usually needs all
+three:
+
+- `conv` is **value-preserving**. It widens freely and aborts when a
+  narrowing would lose the value. This is Gyro's `as`.
+- `trunc` **keeps the low bits** of an integer and never aborts. It only
+  narrows; widening is `conv`'s, which cannot lose anything. This is what
+  a C cast means.
+- `bitcast` **reinterprets** between two numeric types of the same width
+  and never aborts: `i32`↔`u32`, `i64`↔`u64`, `i32`↔`f32`, `i64`↔`f64`.
+  `bool` and `rune` are excluded, because not every bit pattern of their
+  width is one of their values.
+
+`bitcast` is what makes a signedness-per-operation source language
+expressible without a second set of instructions. A wasm `i32` has no
+signedness of its own — `i32.div_s` and `i32.div_u` carry it — so a
+producer holds the value in an `i32` register and reads it through `u32`
+for the unsigned operations. Nothing is copied and nothing is checked.
 
 ### Memory
 
@@ -169,7 +303,94 @@ free %p
 %v = load %p
 store %p, %v
 %q = field.ptr %p, 1 ; ptr<record> -> ptr<field 1's type>
+%q = elem.ptr %p     ; ptr<array<T, N>> -> ptr<T>, the first element
+%q = ptr.offset %p, %n ; ptr<T> -> the ptr<T> n elements along
+%n = ptr.diff %a, %b   ; ptr<T>, ptr<T> -> i64, how many elements apart
 ```
+
+`elem.ptr` is the array-to-pointer decay: an array's storage begins where
+its first element does, so it changes what a pointer points at and not
+where it points. It is separate from `ptr.offset` for exactly that
+reason.
+
+`ptr.offset` and `ptr.diff` are pointer arithmetic, and they are
+**unchecked on purpose**. A bounds test would need the object's extent at
+run time, which means a pointer stops being a machine word — and a
+pointer being a machine word is most of what compiling C in rather than
+sandboxing it buys. So the format says what C says: the result of
+`ptr.offset` is a pointer only while it stays inside the object `%p`
+points into, or one element past its end, and `ptr.diff` is defined only
+for two pointers into one object. A producer that leaves the object has
+written an undefined program.
+
+The evaluator holds a producer to that — it knows which object a pointer
+belongs to and aborts on a load through one that has left it — while the
+native backends compute the address. That is a deliberate asymmetry, and
+it is the same one `uninitVal` already has: the tiers agree on every
+defined program, and the evaluator is the tier that can *see* an
+undefined one.
+
+This is not a second addressing model. Linear memory is still the flat,
+bounds-checked, `u32`-addressed region it was, and a `memory` and a
+`ptr<T>` still never meet.
+
+### Linear memory
+
+```metals
+memory @heap 17, 1024      ; initial pages, and an optional maximum
+data @heap, 1024, "hello"  ; written before any function runs
+
+%v = mem.load.i32 @heap, %addr   ; i8 u8 i16 u16 i32 u32 i64 u64 f32 f64
+mem.store.i32 @heap, %addr, %v
+%n = mem.size @heap              ; -> u32, pages
+%n = mem.grow @heap, %pages      ; -> i32, pages before, or -1
+mem.copy @heap, %to, %from, %len
+mem.fill @heap, %to, %byte, %len ; %byte is a u8
+```
+
+A linear memory is a flat, byte-addressed, bounds-checked region of
+storage private to the module that declares it. It is sized in 64 KiB
+pages, starts zeroed, and grows only through `mem.grow`.
+
+It exists for producers whose source language has a memory model METALS'
+typed pointers cannot express — C's, where a pointer is an integer,
+objects overlap, `&local` outlives its type, and a struct is an offset
+table over bytes. Every one of those (pointer arithmetic, unions,
+bitfields, varargs, packed layout, unaligned access) is one flat region
+and offsets into it, which is why this is one declaration and six
+instructions rather than eight new type rules.
+
+The rules that make it safe to add:
+
+- **An address is a `u32`, not a `ptr<T>`.** So is every length and page
+  count. That is what keeps the boundary rules intact: a linear address
+  cannot appear in a crossing signature, because it is not a pointer and
+  carries no claim about what it points at. A module that uses linear
+  memory still exports the same copied values every other module does.
+- **`ptr<T>` is untouched** — typed, non-null, non-crossing. `slot`,
+  `new`, `field.ptr`, `load` and `store` mean exactly what they meant.
+  The two memory models coexist and never mix; a producer uses one.
+- **Every access is bounds-checked** against the memory's current size,
+  and an access that runs past it aborts. A producer that is internally
+  unsafe still cannot reach storage outside the region it declared. This
+  is the reason to compile an unsafe language *into* METALS rather than
+  link it: the sandbox is structural, not a promise.
+- **Little-endian, unconditionally.** A byte-addressed memory whose
+  meaning depended on the host would make a program's output a property
+  of the machine that ran it.
+- **A load's suffix names its result type and its width together.**
+  `mem.load.u8` reads one byte and zero-extends; `mem.load.i8` reads one
+  byte and sign-extends. A store requires its value's type to be exactly
+  the suffix's, so a producer narrowing a wider register says `trunc`
+  rather than letting the width of a store decide silently.
+- **Memories are module-local.** Linking qualifies a memory's name with
+  its module's, so two producers linked together get two memories rather
+  than one heap they can reach across. That is the conservative reading,
+  and the one the boundary rule already implies.
+
+`mem.grow` answers with the page count *before* the call, or `-1` when it
+cannot grow — a value the program handles, not an abort, because running
+out of memory is not a bug in the program's own arithmetic.
 
 ### Records, enums, tuples, arrays
 
@@ -205,13 +426,34 @@ type. A front end whose checker proves a value non-null (Gyro's
 narrowing) still emits `opt.unwrap`; the abort is that guarantee made
 explicit, in the same trapping style as `idiv` and `index.get`.
 
+**`opt<ptr<T>>` is one word.** Every `ptr<T>` in a verified module
+addresses an object METALS produced, so the null address is a pattern no
+live pointer has, and the format reserves it: an `opt<ptr<T>>` is laid
+out inside the pointer rather than beside it, is one machine word in
+storage and in a register, and travels in a register like any other
+pointer. `const.null` is the zeroed store it already was, a wrap is a
+move, an unwrap is a null test, and equality was always a word compare.
+
+That niche is `ptr<T>`'s alone. A `handle`, a `chan` and a `future` are
+the runtime's values, and which bit patterns they may hold is the
+runtime's business rather than the format's. Everything else keeps the
+flag-and-payload layout.
+
+The reason to have it is C. A C pointer is `opt<ptr<T>>` — see the C
+front end below — and with a flag beside the payload `sizeof(char *)`
+answers 16, which is self-consistent and is not C's ABI.
+
 ### Calls
 
 ```metals
 %r = call @f(%a, %b)
 %f = fn.ref @f
-%c = closure @lifted, %env    ; binds the env record as @lifted's first
-                              ; parameter; %c's type drops that parameter
+%c = closure @lifted, %env    ; binds the env as @lifted's first parameter;
+                              ; %c's type drops that parameter. %env is a
+                              ; ptr<record>, never a record value: the
+                              ; closure outlives the frame that built it,
+                              ; and a function value has one word to carry
+                              ; its environment in.
 %r = call.indirect %f(%a)
 return %v                     ; plain `return` for a void function
 abort "index out of range"
@@ -266,25 +508,72 @@ select {
 `spawn`, mutexes and everything else library-shaped are imports from a
 runtime module, called like any function.
 
-### dyn
+### any
 
 ```metals
-%d = dyn.wrap %v            ; any copyable value -> dyn
-%v = dyn.unwrap %d -> i32   ; checked; aborts on the wrong shape
-%r = dyn.call %d(%a, %b)    ; -> dyn
-%v = dyn.get %d, "name"     ; -> dyn
-dyn.set %d, "name", %v
+%d = any.wrap %v            ; any copyable value -> any
+%b = any.is %d -> i32       ; -> bool; the test that does not trap
+%v = any.unwrap %d -> i32   ; checked; aborts on the wrong shape
+%r = any.call %d(%a, %b)    ; -> any
+%v = any.get %d, "name"     ; -> any
+any.set %d, "name", %v
 ```
+
+`any.is` is what makes an `any` *receivable*. Every other way to look
+inside one traps on a mismatch, so a producer handed an `any` by a module
+it knows nothing about would have no way to ask before committing.
+
+An `any` is two words: a descriptor and a payload. Descriptors are static
+data, one per distinct type a program wraps or tests, so identity is
+structural equality and `any.is` is a pointer comparison. A value of one
+word rides in the payload, which is why wrapping a scalar allocates
+nothing; anything wider is heap storage the payload points at, and so is
+every record whatever its width, so that `any.set` through one reference
+is visible through the rest. Wrapping an `any` yields the same `any`:
+they do not nest, the way optionals do not.
+
+`any.get` and `any.set` reach the fields a record *declares*, by name.
+`any.call` applies a wrapped function: the arguments arrive as `any` and
+the result leaves as one, and the wrapped signature decides how each is
+converted, so a caller that knows nothing about the callee still hands it
+values of the types it declared.
+
+Nothing obliges a producer to use any of this. A front end that knows its
+types should declare them, and then a call from another language is an
+ordinary call — no descriptor, no box, no test.
 
 ## Boundary rules
 
-A signature is *boundary-crossing* when it is exported, or imported from
-a module with a different language scheme. The verifier enforces, on
-every parameter and result of such a signature:
+**A boundary is between two runtimes, not between two languages.** The
+schemes that name producers compiling *into* METALS — `gyro:`, `lisp:`,
+`cc:`, `wasm:`, `metals:` — are one runtime, because they literally
+become one:
+the linker makes them a single module, the verifier has checked all of
+it, and it runs on one heap with one allocator. A call between two of
+them is an ordinary call and may carry anything an ordinary call carries,
+pointers included.
+
+A boundary is where that stops being true, and there are two ways it can:
+`c:`, a native library nothing verified, whose idea of what to do with an
+address it is handed is its own; and another language's runtime embedded
+in the process — `js:`, `py:` — with its own heap, its own lifetimes, and
+in all likelihood a collector that moves things. An unrecognized scheme
+is read as one of those, which is the conservative way round.
+
+A signature is *boundary-crossing* when it is imported from a module in
+another runtime, or exported to one. The verifier enforces the first and
+the linker the second, because a module can see its own imports and only
+the linker sees who imports what it exports. On every parameter and
+result of such a signature:
 
 - allowed: primitives, `str`, `opt`, `tuple`, `array`, `slice`, records
-  and enums, `fn` (the runtime shims it), `dyn`, `handle`;
+  and enums, `fn` (the runtime shims it), `any`, `handle`;
 - forbidden: `ptr`, `chan`, `future`, and any type containing one.
+
+"Containing one" is walked rather than assumed, records and enums
+included: a struct crossing by value is its fields crossing by value, and
+one of them holding a `ptr` is the shared mutable state the rule exists
+to refuse.
 
 Crossing copies: the caller's runtime converts arguments into the
 callee's world and the result back. `slice` crosses as a copy of its
@@ -296,26 +585,171 @@ functions taking that handle.
 
 `metals.Verify` checks a module with no knowledge of its producer:
 
-- every named type, function, global and label resolves;
+- every named type, function, global, memory and label resolves;
 - every register: assigned before read on all paths, one type forever;
 - every instruction's operand and result types, per the rules above;
+- every linear-memory address, length and page count is a `u32`, every
+  access width is one a memory can hold, and every data segment fits
+  inside the pages its memory starts with;
 - `await` only inside `async fn`; `select`/`send`/`recv` only on channel
   types; `return` matches the declared result;
-- boundary rules on every exported and cross-scheme imported signature.
+- boundary rules on every signature imported out of another runtime. An
+  export is the linker's, which is the only side that knows who imports
+  it.
 
-Linking — matching an importer's declared signatures against the
-exporter's actual ones, structurally matching shared record shapes — is a
-separate pass that arrives with the METALS loader.
+## Linking
+
+Every consumer takes one module, so a program of several becomes one
+before any of them sees it. `metals.Link` takes the modules in dependency
+order, the root last, and returns that module.
+
+- **Signatures are matched.** An importer declares what it expects and
+  the exporter has actual ones; only the linker sees both. A name that is
+  missing, or declared but not exported, or exported with a different
+  signature, is an error here. This is the check the format had nowhere
+  to make.
+- **The export side of the boundary is checked.** When the importer and
+  the exporter are in different runtimes, the exporter's actual signature
+  has to obey the rules above — and only here is that a question with two
+  sides. It catches what the importer's own verification cannot: a record
+  redeclared across the boundary whose real shape holds a `ptr`.
+- **Names are qualified.** Everything a non-root module owns —
+  functions, named types, globals, memories — is prefixed with its module name, so
+  two producers may both export a `fib` and both declare a `Point`. The
+  root keeps its names, which is what leaves `@main` as `@main`.
+- **Initializers become calls.** Each module's `init`, if it names one,
+  is prepended to `@main` in dependency order. This is why a program of
+  one module is linked too: a producer names its initializer and never
+  arranges the call, so there has to be one pass that does, and it has to
+  be the pass that can see whether there is anything else to run first.
+  The linked module carries no `init` of its own afterwards.
+- **Resolved imports disappear.** A call to an imported function becomes
+  a direct call to the qualified symbol. An import of something that is
+  not a module in the program — `gyro:rt` and the runtime modules
+  generally — survives, deduplicated.
+
+Structural matching of record shapes redeclared across a boundary is not
+done yet: an importer that needs a foreign record must declare it, and
+nothing yet checks that the two declarations agree.
+
+## The C front end
+
+`internal/cc` reads C and emits METALS directly. It is what a Gyro
+program reaches when it imports a `.c` file; `internal/wasm` still owns a
+`.c` that *is* the program, because that is where the bundled libc is
+needed and where a sandbox is the point. The same file through both
+routes must agree on what it computes.
+
+It has its own preprocessor — Prosser's algorithm, with hidesets on the
+tokens — because a header is how C says what a library's types are, and
+`#include` is the only way to reach one. Without it an imported `.c`
+could only be a file written for this compiler; with it, an imported
+`.c` is a C file.
+
+The mapping, where it is not obvious:
+
+- `int` is `i32`, `long` and `long long` are `i64`, `char` is `i8` and
+  `unsigned char` is `u8` — LP64's widths, which is what Linux x86-64
+  means by C and what the runtime under all three tiers is built as.
+- **A pointer is `opt<ptr<T>>`.** C's is nullable and METALS' is not, so
+  every dereference is an `opt.unwrap` and a null one aborts where C
+  leaves it undefined. It costs nothing in storage: `opt<ptr<T>>` is laid
+  out inside the pointer, with the null address as the absent case, so
+  `sizeof(char *)` answers 8 and a struct of pointers is the bytes C lays
+  out. See the niche rule under Optionals.
+- **An array is storage, not a value.** `int a[5]` is a `slot
+  array<i32, 5>`; naming it anywhere but in a `sizeof` or a declaration
+  is an `elem.ptr`, which is C's decay. `a[i]` is lowered as `*(a + i)`
+  because that is what C defines it to be — which is also why `i[a]`
+  works and why `&a[i]` needs no separate rule.
+- **An enumeration is `int`**, which is what it is on this target, and
+  its constants are resolved during lowering rather than during the
+  parse — a local of the same name shadows one, and only the scope
+  chain knows that.
+- **Every local is a `slot`.** A C local's address may be taken, and
+  which ones escape is an analysis the backends are better placed to do.
+- **Arithmetic wraps**: `wadd` and not `iadd`. Signed overflow is
+  undefined in C, so either reading would do — and the wasm bridge
+  already translates the same program to the wrapping mnemonics.
+- A C cast that narrows is `trunc`, one that widens is `conv`, and
+  widening a signed value into a wider unsigned type is `conv` then
+  `trunc`, which is C's sign-extend-then-reinterpret written out.
+- A function without `static` is exported, which is C's own rule for
+  what leaves a translation unit.
+
+- **A string literal is module storage.** It is an `array<i8, N>` global
+  carrying its own bytes as an image, terminator included, interned by
+  content — so two identical literals are one array and comparing their
+  addresses answers true. Naming one is a `global.ptr`, and everything
+  else follows from the decay rule: `sizeof "abc"` is 4, `"abc"[1]` is
+  an index into storage, and `char buf[] = "abc"` copies rather than
+  points, because that is the one place C says a literal is not an
+  address.
+- **A file-scope initializer is one of two things.** One whose value is
+  already known becomes the global's byte image and costs nothing at run
+  time; one that names an address becomes stores in the module's `init`,
+  because a byte image cannot hold a relocation. C's own division
+  between an arithmetic constant expression and an address constant is
+  the same division.
+- **The null pointer constant is the integer 0**, cast or not, which is
+  what makes `#define NULL ((void *)0)` mean what every header expects.
+  It lowers to `const.null`, and the cast is seen through rather than
+  performed — `void *` has no METALS type and a null pointer of the type
+  it is about to become does not need one.
+
+- **A `switch` is nested blocks**, one per group of case labels, in
+  source order and innermost first, with the dispatch `switch` at the
+  bottom. `br` to a group's label lands where that group begins, and
+  running off the end of a group lands where the next one begins — so
+  fallthrough is what happens when a group does not branch, which is
+  exactly C's rule, and a `default` in the middle is just a group the
+  default arm branches to. This needs no relooper, which is why `switch`
+  is here and `goto` is not: C's switch is a multiway branch into a
+  linear body, and C's goto is not.
+- **A `static` local is module storage under a qualified name.** The
+  name is block-scoped and the storage is not, so the initializer is a
+  global's rather than a statement — which is also why C only lets it be
+  a constant expression. The symbol is `function$name`, and `$` is not
+  in C's identifier space, so nothing a translation unit declares can
+  collide with one.
+
+What it does not do yet, each refused by name rather than
+mistranslated: **`goto`**, which is where the relooper LLVM does for the
+bridge will have to be written, **varargs**, **function pointers**,
+**unions and bitfields** (a union's members share storage and a record's
+do not, so there is no record shape to give one), **`void *` and casts
+between pointer types**, and **calling a function another translation
+unit defines**. A C struct also cannot cross into Gyro yet: the generated
+header has no way to redeclare a `%Named`, which is the same gap the
+linker's structural matching is.
 
 ## Still open
 
 - What METALS expands to. The name predates the design.
-- The linking and loading model: how a program of mixed-language METALS
-  modules is assembled, and where signature mismatches surface.
+- Structural matching of record shapes that cross a boundary, which the
+  linker does not do yet.
 - The binary encoding.
 - How foreign runtimes embed: a JS engine and the Gyro runtime in one
-  process is a runtime problem the IR only gestures at via `dyn` and
+  process is a runtime problem the IR only gestures at via `any` and
   `handle`.
 - Effect rows: Gyro parses them, nothing checks them; whether they
   belong in METALS signatures is undecided.
 - `syntaxfn`, the METALS-facing parser-extension feature from the book.
+- Whether two modules may ever *share* a linear memory. Linking gives
+  each its own today, which is right for a sandbox and wrong for two C
+  translation units that expect one heap. The wasm bridge does not have
+  to answer this, because wasm-ld has already linked before anything
+  arrives, and `internal/cc` does not either — it uses `ptr<T>` and the
+  ordinary heap, which is the whole reason it exists.
+- Whether any other optional deserves a niche. `opt<ptr<T>>` has one and
+  nothing else does: a `handle` and a `chan` are the runtime's values,
+  and what they may hold is the runtime's business rather than the
+  format's. `opt<bool>` and a payload-free enum have obvious spare
+  patterns and no one has needed them.
+- How several C translation units become one program. `internal/cc`
+  compiles one file and refuses a call to a function it cannot see. The
+  preprocessor closed half of it — a header shared between files is a
+  header now — and what is left is linkage: an `extern` declaration
+  resolved against another `cc:` module rather than refused.
+- A memory declared by one module and imported by another, which is how
+  wasm spells the above and which the bridge refuses rather than guesses.
