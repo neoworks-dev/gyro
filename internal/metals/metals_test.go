@@ -1046,3 +1046,90 @@ func TestVerifierChecksDataSegments(t *testing.T) {
 	verifyError(t, "module \"csrc:test/v\"\n\nmemory @heap 1\ndata @heap, 65535, \"ab\"\n",
 		"does not fit memory @heap")
 }
+
+// An import may declare a type as well as a function. The shape is
+// written out in full, because a module holding one has to lay it out
+// and because Link has to have something to compare.
+func TestImportedTypeRoundTrip(t *testing.T) {
+	roundTrip(t, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i32, y: i32 }
+  type %Line = record { a: %Point, b: %Point }
+  type %Arena = opaque
+  fn @span(%Line) -> i32
+  fn @open() -> opt<ptr<%Arena>>
+}
+
+export fn @main() {
+  %s = slot %Line
+  %l = load %s
+  %n = call @span(%l)
+  return
+}
+`)
+}
+
+// An imported type is laid out here like any other: the module reserves
+// storage for one, so it has to know how big one is.
+func TestImportedTypeHasALayout(t *testing.T) {
+	module, err := metals.Parse(`
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i32, y: i32 }
+  fn @flip(%Point) -> %Point
+}
+
+export fn @main() {
+  return
+}
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	layout := metals.NewLayout(module, func(format string, args ...any) {
+		t.Fatalf("layout: "+format, args...)
+	})
+	if size := layout.Size(&metals.Named{Name: "Point"}); size != 8 {
+		t.Errorf("an imported record of two i32 is %d bytes, want 8", size)
+	}
+}
+
+func TestVerifierRefusesATypeBothDeclaredAndImported(t *testing.T) {
+	verifyError(t, `
+module "gyro:main"
+
+type %Point = record { x: i32 }
+
+import "cc:shapes" {
+  type %Point = record { x: i32 }
+  fn @zero() -> i32
+}
+
+export fn @main() {
+  return
+}
+`, "type %Point is declared twice")
+}
+
+func TestVerifierRefusesATypeImportedTwice(t *testing.T) {
+	verifyError(t, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i32 }
+  fn @zero() -> i32
+}
+
+import "cc:other" {
+  type %Point = record { x: i32 }
+  fn @one() -> i32
+}
+
+export fn @main() {
+  return
+}
+`, "type %Point is imported twice")
+}

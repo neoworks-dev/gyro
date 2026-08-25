@@ -57,7 +57,11 @@ module.exports = grammar({
       field('module', $.string),
       '{',
       $._end,
-      repeat(seq($.imported_function, $._end)),
+      // A type declaration here is the same text as a module's own, and
+      // means the module reuses the exporter's type rather than
+      // declaring a second one of the same shape. It carries its own
+      // terminator.
+      repeat(choice($.type_declaration, seq($.imported_function, $._end))),
       '}',
       $._end,
     ),

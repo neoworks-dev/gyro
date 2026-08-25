@@ -95,6 +95,10 @@ import "gyro:rt" {
 import "js:./widgets" {
   fn @render(any) -> any
 }
+import "cc:shapes" {
+  type %Rect = record { w: i32, h: i32 }
+  fn @area(%Rect) -> i32
+}
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
@@ -118,6 +122,14 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 
 - A module has a name, imports grouped by source module, named type
   declarations, globals, and functions.
+- An import declares functions, and may declare types. A type is nominal,
+  so two modules that each write `type %Rect = record { w: i32, h: i32 }`
+  have two types and a value of one is not a value of the other. Writing
+  the declaration inside an `import` says the opposite: this is the
+  exporter's type, laid out here because a module holding one has to
+  reserve the storage, and resolved to the exporter's declaration when
+  the program is linked. There is one `%Rect` in the linked module and
+  nothing is converted. See *Linking*.
 - `@name` is a function or global; `%name` is a register or a named type;
   `$name` is a control-flow label. The three sigils keep the namespaces
   from colliding.
@@ -723,6 +735,21 @@ order, the root last, and returns that module.
   functions, named types, globals, memories — is prefixed with its module name, so
   two producers may both export a `fib` and both declare a `Point`. The
   root keeps its names, which is what leaves `@main` as `@main`.
+- **Imported types are resolved and matched.** A type declared inside an
+  `import` is not a second type: it takes the exporter's qualified name,
+  so a chain of importers lands on the one module that declares the
+  shape and the linked program has one declaration of it. The importer's
+  declaration is compared against the exporter's first, member for
+  member in order, and a disagreement is an error here — that is the
+  structural matching the format had nowhere to do. The exporter has to
+  be a module in the program: a native library agreed to nothing.
+- **A signature that names a type has to mean the same type.** Within one
+  runtime, two modules whose signatures both say `%Rect` are only
+  agreeing if the name lands on the same declaration — otherwise the
+  match was a spelling. Importing the type is how the importer says so,
+  and not importing it is an error. Across a boundary the question does
+  not arise: the value is copied into the other side's own type, and
+  what may cross at all is the rule above.
 - **Initializers become calls.** Each module's `init`, if it names one,
   is prepended to `@main` in dependency order. This is why a program of
   one module is linked too: a producer names its initializer and never
@@ -733,10 +760,6 @@ order, the root last, and returns that module.
   a direct call to the qualified symbol. An import of something that is
   not a module in the program — `gyro:rt` and the runtime modules
   generally — survives, deduplicated.
-
-Structural matching of record shapes redeclared across a boundary is not
-done yet: an importer that needs a foreign record must declare it, and
-nothing yet checks that the two declarations agree.
 
 ## The C front end
 
@@ -960,22 +983,31 @@ two `goto` shapes above, which is where the relooper LLVM does for the
 bridge would have to be written. **Type punning** compiles and is a
 program only two tiers can run: reading one object's bytes as another
 type is undefined in C, `char *` aliasing included, and the evaluator
-holds a producer to it. A C struct cannot cross into Gyro yet either: the generated
-header has no way to redeclare a `%Named`, which is the same gap the
-linker's structural matching is. A callback does not cross into Gyro at
-all, because a code pointer is an address in this program and what may
-cross a runtime boundary is settled by the copy rule; nor does a
-variadic function, because a `...` says nothing about what a call passes
-and there is nothing for the far side to check. An export the header
-cannot spell is **left out** rather than made an error, so one such
-helper does not make the rest of a library unimportable, and naming a
-skipped one is reported where it is imported.
+holds a producer to it. A callback does not cross into Gyro yet, because
+Gyro has no spelling for a code pointer; nor does a `void *`, for the
+same reason; nor does a variadic function, because a `...` says nothing
+about what a call passes and there is nothing for the far side to check.
+A `union` does not cross either — Gyro has no declaration for one. An
+export the header cannot spell is **left out** rather than made an
+error, so one such helper does not make the rest of a library
+unimportable, and naming a skipped one is reported where it is imported.
+
+A struct does cross. The generated header declares it as a Gyro struct
+with the same members in the same order, and lowering imports the
+`%Named` this module declares rather than rebuilding one from that text
+— so a struct Gyro builds is one C reads a member of, and a pointer to a
+Gyro local is one C writes through. An incomplete type arrives as a
+fieldless struct, which is Gyro's own spelling for a handle it may keep
+and not look inside.
 
 ## Still open
 
 - What METALS expands to. The name predates the design.
-- Structural matching of record shapes that cross a boundary, which the
-  linker does not do yet.
+- Structural matching of record shapes that *cross a boundary*. Within
+  one runtime an importer says which type it means and the linker
+  compares the declarations; across a boundary the value is copied, and
+  nothing yet checks that two same-named records on either side have the
+  same shape.
 - The binary encoding.
 - How foreign runtimes embed: a JS engine and the Gyro runtime in one
   process is a runtime problem the IR only gestures at via `any` and

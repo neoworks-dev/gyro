@@ -425,6 +425,10 @@
         {
           "type": "imported_function",
           "named": true
+        },
+        {
+          "type": "type_declaration",
+          "named": true
         }
       ]
     }

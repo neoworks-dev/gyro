@@ -16,6 +16,9 @@ func Print(m *Module) string {
 	for _, imp := range m.Imports {
 		p.printf("import %s {", strconv.Quote(imp.Module))
 		p.indent++
+		for _, decl := range imp.Types {
+			p.typeDecl(decl)
+		}
 		for _, fn := range imp.Funcs {
 			prefix := "fn "
 			if fn.Sig.Async {
@@ -115,9 +118,16 @@ func (p *printer) printf(format string, args ...any) {
 }
 
 func (p *printer) typeDecl(decl *TypeDecl) {
+	p.printf("type %s = %s", reg(decl.Name), shapeText(decl))
+}
+
+// shapeText renders what a type declaration says after the `=`. It is
+// the half two modules have to agree on when one imports the other's
+// type, so a mismatch is reported in the same words the format is
+// written in.
+func shapeText(decl *TypeDecl) string {
 	if decl.Opaque {
-		p.printf("type %s = opaque", reg(decl.Name))
-		return
+		return "opaque"
 	}
 	if decl.Record != nil || decl.Union != nil {
 		shape := "record"
@@ -132,8 +142,7 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		for i, member := range members {
 			text[i] = member.Name + ": " + member.Type.String()
 		}
-		p.printf("type %s = %s { %s }", reg(decl.Name), shape, strings.Join(text, ", "))
-		return
+		return shape + " { " + strings.Join(text, ", ") + " }"
 	}
 	variants := make([]string, len(decl.Enum.Variants))
 	for i, variant := range decl.Enum.Variants {
@@ -147,7 +156,7 @@ func (p *printer) typeDecl(decl *TypeDecl) {
 		}
 		variants[i] = text
 	}
-	p.printf("type %s = enum { %s }", reg(decl.Name), strings.Join(variants, ", "))
+	return "enum { " + strings.Join(variants, ", ") + " }"
 }
 
 func (p *printer) function(fn *Func) {

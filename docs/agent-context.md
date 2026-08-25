@@ -607,19 +607,22 @@ Kept honest in `docs/language.md` ("Still to come") and
   too, `char *` aliasing included, and running it here would need a
   byte-addressable object model in the evaluator. See
   `tests/testdata/run/union-punning.metals`.
-- **A callback cannot cross into Gyro**: a code pointer is an address in
-  this program, and the copy rule settles what crosses a boundary. A
-  `void *` does not cross either, and for the same reason — `gyroType`
-  has no spelling for one, which is the honest answer. Neither does a
-  variadic function: a `...` says nothing about what a call passes.
-  `header` in `internal/loader/foreign.go` **skips** an export it cannot
-  spell rather than failing the module, so one such helper does not make
-  a whole C library unimportable; naming a skipped one is an error at the
-  import.
+- **A callback cannot cross into Gyro**: Gyro has no spelling for a code
+  pointer. A `void *` does not cross either, for the same reason —
+  `anyptr` has no Gyro spelling. Neither does a variadic function: a
+  `...` says nothing about what a call passes, so there is nothing for
+  the far side to check. Nor does a `union`, which Gyro cannot declare.
+  `headerGen` in `internal/loader/foreign.go` **skips** an export it
+  cannot spell rather than failing the module, so one such helper does
+  not make a whole C library unimportable; naming a skipped one is an
+  error at the import.
 - **A case label inside a nested statement** — Duff's device. A switch
   body is a flat list of labels and statements here.
-- **A C struct cannot cross into Gyro**, which is the same gap as the
-  linker's missing structural matching of record shapes.
+- **Structural matching across a *boundary***. Within one runtime an
+  importer says which type it means (`metals.Import.Types`) and the
+  linker compares the declarations. Across a boundary the value is
+  copied, and nothing checks that two same-named records on either side
+  agree.
 - **A local aggregate initializer writes zeros member by member**, so
   `char buf[4096] = "hi"` is 4096 stores. Correct, because a `slot` is
   zeroed by the native backends and deliberately left unwritten by the
@@ -636,8 +639,10 @@ types (`type %Name = opaque`, the way a library header hands out a
 handle), unions (`type %Name = union { ... }`, with the common initial
 sequence answered on every tier), bit-fields (a run packed into one
 member of bytes, with `record align N` carrying the alignment their
-declared types ask of the struct), and `goto` in the shapes C is
-actually written in.
+declared types ask of the struct), `goto` in the shapes C is actually
+written in, and a C struct crossing into Gyro (an `import` may declare
+types, the linker matches and resolves them, and there is one `%Point` in
+the linked program).
 
 **Safety holes:**
 

@@ -229,10 +229,12 @@ type %Point = record { x: i64, y: i64 }
 
 global @origin: %Point
 
-export fn @zero() -> %Point {
+export fn @zero() -> i64 {
   %p = global.ptr @origin
   %v = load %p
-  return %v
+  %x = field.ptr %p, 0
+  %n = load %x
+  return %n
 }
 `, `
 module "gyro:main"
@@ -240,7 +242,7 @@ module "gyro:main"
 type %Point = record { x: i64 }
 
 import "lisp:shapes" {
-  fn @zero() -> %Point
+  fn @zero() -> i64
 }
 
 export fn @main() {
@@ -260,5 +262,192 @@ export fn @main() {
 	}
 	if len(module.Globals) != 1 || module.Globals[0].Name != "lisp:shapes::origin" {
 		t.Errorf("the dependency's global was not qualified: %v", module.Globals)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Imported types
+// ---------------------------------------------------------------------------
+
+// A type is nominal, so two modules that both declare a %Point have two
+// types. Importing one says they are one, and the linked program has a
+// single declaration of it under the exporter's name.
+func TestLinkResolvesAnImportedTypeToTheExporter(t *testing.T) {
+	module := linked(t, `
+module "cc:shapes"
+
+type %Point = record { x: i64, y: i64 }
+
+export fn @flip(%p: %Point) -> %Point {
+  return %p
+}
+`, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i64, y: i64 }
+  fn @flip(%Point) -> %Point
+}
+
+export fn @main() {
+  %s = slot %Point
+  %p = load %s
+  %q = call @flip(%p)
+  return
+}
+`)
+
+	var names []string
+	for _, decl := range module.Types {
+		names = append(names, decl.Name)
+	}
+	if len(names) != 1 || names[0] != "cc:shapes::Point" {
+		t.Fatalf("expected one %%cc:shapes::Point in the linked program, got %v", names)
+	}
+	for _, imp := range module.Imports {
+		if len(imp.Types) > 0 {
+			t.Errorf("the resolved import still declares %%%s", imp.Types[0].Name)
+		}
+	}
+}
+
+// The shape is written out in full so that this pass has something to
+// compare. A disagreement is the error the format had nowhere to report.
+func TestLinkCatchesAnImportedTypeMismatch(t *testing.T) {
+	refusedLink(t, `imports %Point from "cc:shapes" as record { x: i64 }, but it is record { x: i64, y: i64 }`, `
+module "cc:shapes"
+
+type %Point = record { x: i64, y: i64 }
+
+export fn @zero() -> i64 {
+  %n = const.i64 0
+  return %n
+}
+`, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i64 }
+  fn @zero() -> i64
+}
+
+export fn @main() {
+  return
+}
+`)
+}
+
+func TestLinkCatchesAnImportedTypeThatIsNotThere(t *testing.T) {
+	refusedLink(t, `imports %Ghost from "cc:shapes", which does not declare it`, `
+module "cc:shapes"
+
+export fn @zero() -> i64 {
+  %n = const.i64 0
+  return %n
+}
+`, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Ghost = opaque
+  fn @zero() -> i64
+}
+
+export fn @main() {
+  return
+}
+`)
+}
+
+// A native library agrees to nothing: nothing over there was compiled by
+// anything that could have declared a type.
+func TestLinkRefusesATypeImportedFromOutsideTheProgram(t *testing.T) {
+	refusedLink(t, `imports %Point from "c:sdl2", which is not a module in this program`, `
+module "lisp:side"
+
+export fn @side() -> i64 {
+  %n = const.i64 1
+  return %n
+}
+`, `
+module "gyro:main"
+
+import "c:sdl2" {
+  type %Point = opaque
+  fn @use(i64)
+}
+
+import "lisp:side" {
+  fn @side() -> i64
+}
+
+export fn @main() {
+  return
+}
+`)
+}
+
+// Two names matching is a spelling. Within one runtime the value
+// survives as itself, so the importer has to say it means the same type.
+func TestLinkRefusesASignatureNamingAnUnimportedType(t *testing.T) {
+	refusedLink(t, `whose signature names %Point, which is not the %Point "cc:shapes" declares`, `
+module "cc:shapes"
+
+type %Point = record { x: i64 }
+
+export fn @flip(%p: %Point) -> %Point {
+  return %p
+}
+`, `
+module "gyro:main"
+
+type %Point = record { x: i64 }
+
+import "cc:shapes" {
+  fn @flip(%Point) -> %Point
+}
+
+export fn @main() {
+  return
+}
+`)
+}
+
+// A shape names other types, and those come with it: importing %Line
+// without %Point would be a type nothing can lay out.
+func TestLinkResolvesANestedImportedType(t *testing.T) {
+	module := linked(t, `
+module "cc:shapes"
+
+type %Point = record { x: i64, y: i64 }
+type %Line = record { a: %Point, b: %Point }
+
+export fn @span(%l: %Line) -> i64 {
+  %n = const.i64 0
+  return %n
+}
+`, `
+module "gyro:main"
+
+import "cc:shapes" {
+  type %Point = record { x: i64, y: i64 }
+  type %Line = record { a: %Point, b: %Point }
+  fn @span(%Line) -> i64
+}
+
+export fn @main() {
+  %s = slot %Line
+  %l = load %s
+  %n = call @span(%l)
+  return
+}
+`)
+	for _, decl := range module.Types {
+		if decl.Name != "cc:shapes::Point" && decl.Name != "cc:shapes::Line" {
+			t.Errorf("unexpected type %%%s in the linked program", decl.Name)
+		}
+	}
+	if len(module.Types) != 2 {
+		t.Errorf("expected two types, got %d", len(module.Types))
 	}
 }

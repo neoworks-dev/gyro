@@ -371,10 +371,43 @@ type DataSeg struct {
 	Bytes  []byte
 }
 
-// Import declares functions provided by another module.
+// Import declares what another module provides.
 type Import struct {
 	Module string
-	Funcs  []ImportedFunc
+
+	// Types are the named types this module reuses from the other one
+	// rather than declaring for itself. A type is nominal here, so two
+	// modules that both write `type %Point = record { x: i32, y: i32 }`
+	// have two types, and a value of one is not a value of the other —
+	// which is right when they are unrelated and useless when one of them
+	// is a C header's struct and the other is the program that calls it.
+	//
+	// An import says the second thing. The shape is written out in full,
+	// because a module has to lay the type out to hold one, and Link
+	// compares it against the exporter's own declaration — the same deal
+	// as an imported function's signature, and the only pass that can
+	// check either. What is imported keeps the exporter's identity, so
+	// there is one %Point in the linked program and no conversion.
+	Types []*TypeDecl
+
+	Funcs []ImportedFunc
+}
+
+// TypeEnv is every named type a module may mention: the ones it declares
+// and the ones it imports. Layout and verification both need the merged
+// view, and a name that is in both, or in two imports, is the error
+// whoever builds it reports.
+func (m *Module) TypeEnv() map[string]*TypeDecl {
+	env := map[string]*TypeDecl{}
+	for _, imp := range m.Imports {
+		for _, decl := range imp.Types {
+			env[decl.Name] = decl
+		}
+	}
+	for _, decl := range m.Types {
+		env[decl.Name] = decl
+	}
+	return env
 }
 
 type ImportedFunc struct {
@@ -382,8 +415,10 @@ type ImportedFunc struct {
 	Sig  *FnType
 }
 
-// TypeDecl is a module-local record, union, enum or opaque name. Exactly
-// one of the four is set.
+// TypeDecl is a record, union, enum or opaque name. Exactly one of the
+// four is set. A module declares its own and repeats the ones it imports
+// from another module in the program, which is where Import.Types says
+// what the repetition means.
 type TypeDecl struct {
 	Name   string
 	Record *RecordShape

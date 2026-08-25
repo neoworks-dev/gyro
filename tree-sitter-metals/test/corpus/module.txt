@@ -11,6 +11,10 @@ import "gyro:rt" {
 import "js:./widgets" {
   fn @render(any) -> any
 }
+import "cc:shapes" {
+  type %Rect = record { w: i32, h: i32 }
+  fn @area(%Rect) -> i32
+}
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
@@ -56,6 +60,22 @@ export fn @add(%a: i32, %b: i32) -> i32 {
       (global_name)
       (signature
         (primitive_type)
+        (primitive_type))))
+  (import_declaration
+    (string)
+    (type_declaration
+      (type_name)
+      (record_shape
+        (field_declaration
+          (identifier)
+          (primitive_type))
+        (field_declaration
+          (identifier)
+          (primitive_type))))
+    (imported_function
+      (global_name)
+      (signature
+        (type_name)
         (primitive_type))))
   (type_declaration
     (type_name)

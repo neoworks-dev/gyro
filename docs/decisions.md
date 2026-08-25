@@ -2599,6 +2599,53 @@ the block. A label inside a switch body is refused too — that body is a
 list of case labels, a multiway branch into a linear run rather than
 something a branch can leave.
 
+### An importer names the exporter's type rather than redeclaring it *(new)*
+
+**Status: decided.** A METALS `import` may declare types as well as
+functions. The shape is written out in full, the module lays it out and
+holds values of it, and `Link` resolves the name to the exporter's
+declaration after comparing the two member for member. The linked program
+has one declaration and converts nothing.
+
+This is what let a C struct cross into Gyro. Everything else was already
+there — layout is C's on both sides, one heap, one runtime — and the one
+missing thing was **identity**. A type in METALS is nominal, so a Gyro
+`struct Point` and a C `struct Point` were two types with the same bytes,
+and passing one where the other was wanted was a name coincidence the
+linker read as agreement.
+
+**Rejected: structural type identity.** Two records with the same members
+could simply *be* the same type, and then nothing needs declaring. It
+would work, and it would mean a Gyro `Point` used for graphics is the
+same type as a C `Point` in an unrelated library because both hold two
+`i32`s. Nominal is the right default for a format whose whole premise is
+that producers are not trusted, and a coincidence is not an agreement.
+
+**Rejected: erasing the type at the boundary.** The generated header
+could spell every C struct as bytes, or as `anyptr`, and hand the program
+accessors. That is what the wasm bridge already does by accident — by the
+time clang is finished, a `struct Point *` is a `u32` — and it is the
+reason `internal/cc` exists at all. Losing the type is the thing this
+front end was written not to do.
+
+**Rejected: qualifying the name at the source.** Lowering could emit the
+foreign module's qualified name directly and declare nothing. Then the
+Gyro module alone does not verify — it mentions a type nothing declares —
+and a module that only verifies as part of a program is exactly what the
+format is arranged to avoid.
+
+Two consequences fell out. **A signature that names a type has to mean
+the same type**: within one runtime, importing a function whose signature
+says `%Rect` without importing `%Rect` is now refused, because until this
+existed there was no way to say which `%Rect` was meant and the linker was
+matching spellings. And **a foreign name is spoken for**: an imported
+type keeps the exporter's name, so a Gyro type that would take it is the
+one that moves, to `gyro::Point`.
+
+**An incomplete type crosses as a fieldless struct**, which is the
+spelling Gyro already uses for a handle it may hold and not look inside —
+the same shape as `struct File {}` in the standard library.
+
 ## Native backend
 
 Design in [`native.md`](native.md).

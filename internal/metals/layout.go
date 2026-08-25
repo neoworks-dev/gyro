@@ -41,21 +41,19 @@ type Layout struct {
 	fail     func(format string, args ...any)
 }
 
-// NewLayout indexes a module's type declarations. onError is called with
+// NewLayout indexes the types a module may mention, its own and the ones
+// it imports — an imported type is laid out here because a module that
+// holds one has to reserve the storage. onError is called with
 // a message a type that has no layout — an unknown name, or a cycle —
 // and must not return; a backend passes its own failure path.
 func NewLayout(m *Module, onError func(format string, args ...any)) *Layout {
-	l := &Layout{
-		types:    map[string]*TypeDecl{},
+	return &Layout{
+		types:    m.TypeEnv(),
 		size:     map[string]int{},
 		align:    map[string]int{},
 		building: map[string]bool{},
 		fail:     onError,
 	}
-	for _, decl := range m.Types {
-		l.types[decl.Name] = decl
-	}
-	return l
 }
 
 // Size is a type's storage size in bytes: what sizeof would say in C,

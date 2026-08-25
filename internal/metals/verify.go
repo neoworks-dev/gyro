@@ -36,11 +36,29 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		v.regTypes = map[string]map[string]Type{}
 	}
 
+	// An imported type is registered first and is checked like any other:
+	// a module that repeats a shape has to be able to lay it out, and
+	// whether the other module agrees is Link's question, not this one's.
+	for _, imp := range m.Imports {
+		for _, decl := range imp.Types {
+			if _, dup := v.types[decl.Name]; dup {
+				return nil, fmt.Errorf("type %%%s is imported twice", decl.Name)
+			}
+			v.types[decl.Name] = decl
+		}
+	}
 	for _, decl := range m.Types {
 		if _, dup := v.types[decl.Name]; dup {
 			return nil, fmt.Errorf("type %%%s is declared twice", decl.Name)
 		}
 		v.types[decl.Name] = decl
+	}
+	for _, imp := range m.Imports {
+		for _, decl := range imp.Types {
+			if err := v.checkDeclShapes(decl); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for _, decl := range m.Types {
 		if err := v.checkDeclShapes(decl); err != nil {
@@ -295,6 +313,13 @@ func findType(m *Module, name string) *TypeDecl {
 	for _, decl := range m.Types {
 		if decl.Name == name {
 			return decl
+		}
+	}
+	for _, imp := range m.Imports {
+		for _, decl := range imp.Types {
+			if decl.Name == name {
+				return decl
+			}
 		}
 	}
 	return nil

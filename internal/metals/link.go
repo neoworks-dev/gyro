@@ -28,6 +28,15 @@ func Link(modules []*Module) (*Module, error) {
 	}
 	if len(modules) == 1 {
 		only := modules[0]
+		// Nothing here can resolve an imported type: the module it names
+		// is not in the program, so no shape ever arrives and the linked
+		// output would carry a type declared nowhere.
+		for _, imp := range only.Imports {
+			if len(imp.Types) > 0 {
+				return nil, fmt.Errorf("link: %s imports %%%s from %q, which is not a module in this program",
+					only.Name, imp.Types[0].Name, imp.Module)
+			}
+		}
 		if err := applyInits(only, []string{only.Init}); err != nil {
 			return nil, err
 		}
@@ -38,6 +47,7 @@ func Link(modules []*Module) (*Module, error) {
 		byName:    map[string]*Module{},
 		exports:   map[string]map[string]*Func{},
 		typeDecls: map[string]map[string]*TypeDecl{},
+		typeNames: map[string]map[string]string{},
 	}
 	for _, m := range modules {
 		if _, dup := l.byName[m.Name]; dup {
@@ -53,11 +63,7 @@ func Link(modules []*Module) (*Module, error) {
 		}
 		l.exports[m.Name] = byFunc
 
-		byType := map[string]*TypeDecl{}
-		for _, decl := range m.Types {
-			byType[decl.Name] = decl
-		}
-		l.typeDecls[m.Name] = byType
+		l.typeDecls[m.Name] = m.TypeEnv()
 	}
 
 	root := modules[len(modules)-1]
@@ -66,11 +72,38 @@ func Link(modules []*Module) (*Module, error) {
 	seenImport := map[string]bool{}
 	var inits []string
 
+	// Where every named type ends up, resolved before anything else. An
+	// imported type takes the exporter's answer, which the dependency
+	// order has already computed — so a chain of importers lands on the
+	// one module that declares the shape, and there is one of it in the
+	// linked program.
+	for _, m := range modules {
+		owned := map[string]string{}
+		for _, imp := range m.Imports {
+			exporter, internal := l.byName[imp.Module]
+			if !internal {
+				continue
+			}
+			for _, decl := range imp.Types {
+				owned[decl.Name] = l.typeNames[exporter.Name][decl.Name]
+			}
+		}
+		prefix := m.Name + "::"
+		if m == root {
+			prefix = ""
+		}
+		for _, decl := range m.Types {
+			owned[decl.Name] = prefix + decl.Name
+		}
+		l.typeNames[m.Name] = owned
+	}
+
 	for _, m := range modules {
 		if err := l.check(m); err != nil {
 			return nil, err
 		}
 	}
+
 	for _, m := range modules {
 		l.current = m
 		l.rootModule = m == root
@@ -184,7 +217,26 @@ func (l *linker) check(m *Module) error {
 	for _, imp := range m.Imports {
 		exporter, internal := l.byName[imp.Module]
 		if !internal {
+			// A native library declares nothing this pass can read, so an
+			// import of one has no type to reuse. A module that wants
+			// C's `struct timespec` beside an `@extern` call declares its
+			// own; nothing over there would have agreed to anything.
+			if len(imp.Types) > 0 {
+				return fmt.Errorf("link: %s imports %%%s from %q, which is not a module in this program",
+					m.Name, imp.Types[0].Name, imp.Module)
+			}
 			continue
+		}
+		for _, want := range imp.Types {
+			have := l.typeDecls[exporter.Name][want.Name]
+			if have == nil {
+				return fmt.Errorf("link: %s imports %%%s from %q, which does not declare it",
+					m.Name, want.Name, imp.Module)
+			}
+			if !sameShape(want, have) {
+				return fmt.Errorf("link: %s imports %%%s from %q as %s, but it is %s",
+					m.Name, want.Name, imp.Module, shapeText(want), shapeText(have))
+			}
 		}
 		for _, want := range imp.Funcs {
 			have, ok := l.exports[exporter.Name][want.Name]
@@ -200,19 +252,141 @@ func (l *linker) check(m *Module) error {
 				return fmt.Errorf("link: %s imports @%s from %q as %s, but it is %s",
 					m.Name, want.Name, imp.Module, want.Sig, have.Sig())
 			}
-			// An export obeys the boundary rules when something out of
-			// another runtime imports it, and that is a question with two
-			// sides — which is why it is asked here and not in Verify,
-			// where a module can only see its own name.
 			if !SameRuntime(m.Name, exporter.Name) {
+				// An export obeys the boundary rules when something out
+				// of another runtime imports it, and that is a question
+				// with two sides — which is why it is asked here and not
+				// in Verify, where a module can only see its own name.
+				//
+				// Nothing else is asked about the types in the signature:
+				// a value crossing a boundary is copied into the other
+				// side's own type, so two declarations of one shape are
+				// what a crossing is made of.
 				if err := checkBoundary(want.Name, have.Sig(), l.typeDecls[exporter.Name]); err != nil {
 					return fmt.Errorf("link: %s imports @%s from %q: %w",
 						m.Name, want.Name, imp.Module, err)
 				}
+			} else if bad := l.strayName(m, exporter, want.Sig); bad != "" {
+				// Within one runtime the value survives as itself, and
+				// equal signatures are not enough when one of them names
+				// a type. A type is nominal, and until now two modules
+				// that each declared a %Point read as agreeing because
+				// the two names matched — which is a spelling and not an
+				// agreement. Saying it is one type is what importing it
+				// does.
+				return fmt.Errorf("link: %s imports @%s from %q, whose signature names %%%s, "+
+					"which is not the %%%s %q declares; import the type to say they are one",
+					m.Name, want.Name, imp.Module, bad, bad, imp.Module)
 			}
 		}
 	}
 	return nil
+}
+
+// strayName is the first named type in a signature that the two modules
+// do not agree about, or "". They agree when the name lands on the same
+// declaration in the linked program, which for the importer means it
+// imported the type — from this module or from whichever one both of
+// them got it from.
+func (l *linker) strayName(importer, exporter *Module, t Type) string {
+	switch t := t.(type) {
+	case *Named:
+		if l.typeNames[importer.Name][t.Name] != l.typeNames[exporter.Name][t.Name] {
+			return t.Name
+		}
+	case *Ptr:
+		return l.strayName(importer, exporter, t.Elem)
+	case *Opt:
+		return l.strayName(importer, exporter, t.Elem)
+	case *SliceOf:
+		return l.strayName(importer, exporter, t.Elem)
+	case *ArrayOf:
+		return l.strayName(importer, exporter, t.Elem)
+	case *ChanOf:
+		return l.strayName(importer, exporter, t.Elem)
+	case *FutureOf:
+		return l.strayName(importer, exporter, t.Result)
+	case *TupleOf:
+		for _, elem := range t.Elems {
+			if bad := l.strayName(importer, exporter, elem); bad != "" {
+				return bad
+			}
+		}
+	case *FnType:
+		for _, param := range t.Params {
+			if bad := l.strayName(importer, exporter, param); bad != "" {
+				return bad
+			}
+		}
+		if t.Result != nil {
+			return l.strayName(importer, exporter, t.Result)
+		}
+	case *CodeType:
+		for _, param := range t.Params {
+			if bad := l.strayName(importer, exporter, param); bad != "" {
+				return bad
+			}
+		}
+		if t.Result != nil {
+			return l.strayName(importer, exporter, t.Result)
+		}
+	}
+	return ""
+}
+
+// sameShape reports whether an importer's declaration of a type says
+// exactly what the exporter's does.
+//
+// Exactly, and not "close enough": a member's name is part of the shape
+// because instructions reach members by name, and the order is part of
+// it because the offsets come from the order. An importer that knew less
+// — a record imported as opaque, say — would be a weaker and still
+// sound claim, and it is refused anyway, because then a module's own
+// verification would be answering a different question from the linked
+// program's, and it is worth more that they answer the same one.
+func sameShape(a, b *TypeDecl) bool {
+	switch {
+	case a.Opaque || b.Opaque:
+		return a.Opaque && b.Opaque
+	case (a.Record != nil) != (b.Record != nil):
+		return false
+	case (a.Union != nil) != (b.Union != nil):
+		return false
+	case (a.Enum != nil) != (b.Enum != nil):
+		return false
+	case a.Align != b.Align:
+		return false
+	}
+
+	if a.Enum != nil {
+		if len(a.Enum.Variants) != len(b.Enum.Variants) {
+			return false
+		}
+		for i, want := range a.Enum.Variants {
+			have := b.Enum.Variants[i]
+			if want.Name != have.Name || len(want.Payload) != len(have.Payload) {
+				return false
+			}
+			for j, typ := range want.Payload {
+				if !TypesEqual(typ, have.Payload[j]) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	wantMembers, haveMembers := a.Members(), b.Members()
+	if len(wantMembers) != len(haveMembers) {
+		return false
+	}
+	for i, want := range wantMembers {
+		have := haveMembers[i]
+		if want.Name != have.Name || !TypesEqual(want.Type, have.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 func findFunc(m *Module, name string) *Func {
@@ -230,6 +404,9 @@ type linker struct {
 	// typeDecls is each module's named types, which is where a %Named in
 	// its signatures resolves and nowhere else.
 	typeDecls map[string]map[string]*TypeDecl
+	// typeNames maps a module's local type name to the name it has in the
+	// linked program, which for an imported type is the exporter's.
+	typeNames map[string]map[string]string
 	// root is the module whose names survive unqualified; current is the
 	// one being rewritten.
 	root       *Module
@@ -247,7 +424,15 @@ func (l *linker) symbol(name string) string {
 	return l.current.Name + "::" + name
 }
 
-func (l *linker) typeName(name string) string { return l.symbol(name) }
+// typeName is where a named type ended up. A type the current module
+// declares keeps its own qualification; one it imports takes the
+// exporter's, which is the whole point of importing it.
+func (l *linker) typeName(name string) string {
+	if resolved, ok := l.typeNames[l.current.Name][name]; ok {
+		return resolved
+	}
+	return l.symbol(name)
+}
 
 // callee resolves a name the current module referenced. It is either an
 // import of another module in the program — in which case it names that

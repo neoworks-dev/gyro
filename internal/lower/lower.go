@@ -27,19 +27,23 @@ import (
 // Lower translates the program into one verified-shape METALS module.
 func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err error) {
 	l := &lowerer{
-		prog:       prog,
-		info:       info,
-		moduleOf:   map[ast.Node]*loader.Module{},
-		tags:       map[string]string{},
-		imports:    map[string]*metals.FnType{},
-		importFrom: map[string]string{},
-		declared:   map[string]*metals.TypeDecl{},
-		reprs:      map[string]string{},
-		hashes:     map[string]bool{},
-		globalOf:   map[*ast.VarDecl][]int{},
-		lowered:    map[string]bool{},
-		errVariant: map[*types.Struct]int{},
-		anyVariant: map[string]int{},
+		prog:          prog,
+		info:          info,
+		moduleOf:      map[ast.Node]*loader.Module{},
+		tags:          map[string]string{},
+		imports:       map[string]*metals.FnType{},
+		importFrom:    map[string]string{},
+		declared:      map[string]*metals.TypeDecl{},
+		foreignOf:     map[string]*metals.Module{},
+		foreignName:   map[string]bool{},
+		importedTypes: map[string]*metals.TypeDecl{},
+		importedFrom:  map[string]string{},
+		reprs:         map[string]string{},
+		hashes:        map[string]bool{},
+		globalOf:      map[*ast.VarDecl][]int{},
+		lowered:       map[string]bool{},
+		errVariant:    map[*types.Struct]int{},
+		anyVariant:    map[string]int{},
 	}
 	defer func() {
 		switch failure := recover().(type) {
@@ -115,6 +119,21 @@ type lowerer struct {
 	// declared maps METALS type names to their emitted declarations.
 	declared map[string]*metals.TypeDecl
 
+	// foreignOf maps a module path to the METALS another language made of
+	// it, and foreignName is every type name those modules declare.
+	//
+	// A foreign type keeps the exporter's name — that is what importing
+	// one means — so the name is spoken for before this program lowers a
+	// line, and a Gyro type that would take it gives way instead. See
+	// typeName.
+	foreignOf   map[string]*metals.Module
+	foreignName map[string]bool
+
+	// importedTypes collects the foreign types the program actually
+	// mentions, and importedFrom names the module each belongs to.
+	importedTypes map[string]*metals.TypeDecl
+	importedFrom  map[string]string
+
 	// reprs maps a type to the synthesized function that renders it, so a
 	// recursive type reaches its own repr while it is still being built.
 	reprs map[string]string
@@ -177,6 +196,13 @@ func (l *lowerer) indexModules() {
 		}
 		seen[tag] = true
 		l.tags[module.Path] = tag
+
+		if module.Foreign != nil {
+			l.foreignOf[module.Path] = module.Foreign
+			for name := range module.Foreign.TypeEnv() {
+				l.foreignName[name] = true
+			}
+		}
 
 		for _, decl := range module.Tree.Decls {
 			l.moduleOf[decl] = module
@@ -261,6 +287,13 @@ func (l *lowerer) typeName(name, modulePath string, args []types.Type) string {
 	}
 	if tag := l.tags[modulePath]; tag != "" {
 		full = tag + "::" + full
+	}
+	// A type imported from another producer arrives under the name that
+	// producer gave it, and this program cannot rename it without giving
+	// up the identity it imported the type for. So a Gyro type of the
+	// same name is the one that moves.
+	if l.foreignName[full] {
+		full = "gyro::" + full
 	}
 	return full
 }
@@ -360,6 +393,14 @@ func (l *lowerer) metalsFnType(t *types.Func) *metals.FnType {
 func (l *lowerer) metalsStruct(t *types.Struct) metals.Type {
 	if isOpaqueHandle(t) {
 		return &metals.Handle{}
+	}
+	// A struct another producer declared is imported rather than
+	// rebuilt. The Gyro declaration for it was generated from the METALS
+	// one, and rebuilding it from the generated text would put a second
+	// type of the same shape in the program — right about every field and
+	// wrong about which type it is.
+	if foreign := l.foreignOf[t.Module]; foreign != nil {
+		return l.importType(foreign, t.Name)
 	}
 	origin := t
 	if t.Origin != nil {
@@ -529,37 +570,114 @@ func (l *lowerer) ensureForeignImport(module, name string, sig *types.Func) {
 	l.importFrom[name] = module
 }
 
-func (l *lowerer) attachImports() {
-	if len(l.imports) == 0 {
-		return
+// importType registers a type another producer's module declares and
+// returns the reference to it. Everything the shape names comes along:
+// a record holding a %Point is unusable without %Point, and the module
+// it belongs to is the same one.
+func (l *lowerer) importType(foreign *metals.Module, name string) metals.Type {
+	if l.importedTypes[name] != nil {
+		return &metals.Named{Name: name}
 	}
-	names := make([]string, 0, len(l.imports))
-	for name := range l.imports {
-		names = append(names, name)
+	decl := foreign.TypeEnv()[name]
+	if decl == nil {
+		l.fail("%s declares no type %%%s, and this program's declarations were generated from it",
+			foreign.Name, name)
 	}
-	sort.Strings(names)
+	l.importedTypes[name] = decl
+	l.importedFrom[name] = foreign.Name
 
+	for _, member := range decl.Members() {
+		l.importNamed(foreign, member.Type)
+	}
+	if decl.Enum != nil {
+		for _, variant := range decl.Enum.Variants {
+			for _, payload := range variant.Payload {
+				l.importNamed(foreign, payload)
+			}
+		}
+	}
+	return &metals.Named{Name: name}
+}
+
+// importNamed imports every named type a type mentions.
+func (l *lowerer) importNamed(foreign *metals.Module, t metals.Type) {
+	switch t := t.(type) {
+	case *metals.Named:
+		l.importType(foreign, t.Name)
+	case *metals.Ptr:
+		l.importNamed(foreign, t.Elem)
+	case *metals.Opt:
+		l.importNamed(foreign, t.Elem)
+	case *metals.SliceOf:
+		l.importNamed(foreign, t.Elem)
+	case *metals.ArrayOf:
+		l.importNamed(foreign, t.Elem)
+	case *metals.ChanOf:
+		l.importNamed(foreign, t.Elem)
+	case *metals.FutureOf:
+		l.importNamed(foreign, t.Result)
+	case *metals.TupleOf:
+		for _, elem := range t.Elems {
+			l.importNamed(foreign, elem)
+		}
+	case *metals.FnType:
+		for _, param := range t.Params {
+			l.importNamed(foreign, param)
+		}
+		if t.Result != nil {
+			l.importNamed(foreign, t.Result)
+		}
+	case *metals.CodeType:
+		for _, param := range t.Params {
+			l.importNamed(foreign, param)
+		}
+		if t.Result != nil {
+			l.importNamed(foreign, t.Result)
+		}
+	}
+}
+
+func (l *lowerer) attachImports() {
 	// Grouped by module, and the groups ordered, so the printed IR is the
 	// same on every run.
 	groups := map[string]*metals.Import{}
 	var order []string
-	for _, name := range names {
+	group := func(from string) *metals.Import {
+		existing, ok := groups[from]
+		if !ok {
+			existing = &metals.Import{Module: from}
+			groups[from] = existing
+			order = append(order, from)
+		}
+		return existing
+	}
+
+	for _, name := range sortedKeys(l.importedTypes) {
+		into := group(l.importedFrom[name])
+		into.Types = append(into.Types, l.importedTypes[name])
+	}
+	for _, name := range sortedKeys(l.imports) {
 		from := l.importFrom[name]
 		if from == "" {
 			from = "gyro:rt"
 		}
-		group, ok := groups[from]
-		if !ok {
-			group = &metals.Import{Module: from}
-			groups[from] = group
-			order = append(order, from)
-		}
-		group.Funcs = append(group.Funcs, metals.ImportedFunc{Name: name, Sig: l.imports[name]})
+		group(from).Funcs = append(group(from).Funcs,
+			metals.ImportedFunc{Name: name, Sig: l.imports[name]})
 	}
+
 	sort.Strings(order)
 	for _, from := range order {
 		l.module.Imports = append(l.module.Imports, groups[from])
 	}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ---------------------------------------------------------------------------

@@ -363,6 +363,18 @@ func (p *parser) importDecl(m *Module) error {
 			return p.endOfLine()
 		}
 
+		if p.scan.peek().text == "type" {
+			decl, err := p.typeShape()
+			if err != nil {
+				return err
+			}
+			imp.Types = append(imp.Types, decl)
+			if err := p.endOfLine(); err != nil {
+				return err
+			}
+			continue
+		}
+
 		async := false
 		if p.scan.peek().text == "async" {
 			p.scan.next()
@@ -418,13 +430,25 @@ func (p *parser) signature(async bool) (*FnType, error) {
 }
 
 func (p *parser) typeDecl(m *Module) error {
-	p.scan.next() // type
-	name, err := p.reg()
+	decl, err := p.typeShape()
 	if err != nil {
 		return err
 	}
+	m.Types = append(m.Types, decl)
+	return p.endOfLine()
+}
+
+// typeShape parses one `type %N = ...` line. The same text declares a
+// module's own type and repeats an imported one, because it is the same
+// claim about the same shape — only who owns it differs.
+func (p *parser) typeShape() (*TypeDecl, error) {
+	p.scan.next() // type
+	name, err := p.reg()
+	if err != nil {
+		return nil, err
+	}
 	if err := p.punct("="); err != nil {
-		return err
+		return nil, err
 	}
 
 	kind := p.scan.next()
@@ -432,29 +456,28 @@ func (p *parser) typeDecl(m *Module) error {
 	switch kind.text {
 	case "record":
 		if err := p.alignment(decl); err != nil {
-			return err
+			return nil, err
 		}
 		if err := p.recordShape(decl); err != nil {
-			return err
+			return nil, err
 		}
 	case "union":
 		if err := p.alignment(decl); err != nil {
-			return err
+			return nil, err
 		}
 		if err := p.unionShape(decl); err != nil {
-			return err
+			return nil, err
 		}
 	case "enum":
 		if err := p.enumShape(decl); err != nil {
-			return err
+			return nil, err
 		}
 	case "opaque":
 		decl.Opaque = true
 	default:
-		return p.errf("a type is a record, a union, an enum or opaque, not %q", kind.text)
+		return nil, p.errf("a type is a record, a union, an enum or opaque, not %q", kind.text)
 	}
-	m.Types = append(m.Types, decl)
-	return p.endOfLine()
+	return decl, nil
 }
 
 // alignment reads the optional `align N` after `record` or `union`,
