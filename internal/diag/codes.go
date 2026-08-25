@@ -82,6 +82,7 @@ const (
 	EEntryPointSignature Code = "E0523"
 	EVariadicParam       Code = "E0524"
 	EBadSpread           Code = "E0525"
+	ENoAddress           Code = "E0526"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -234,6 +235,8 @@ var explanations = map[Code]explanation{
 		"A parameter written `name: ...T` collects the remaining arguments and\nis a T[] slice inside the body. Only the last parameter may be one, and\nit takes no default: a call that passes nothing for it gives it an empty\nslice."},
 	EBadSpread: {"spread argument is misplaced",
 		"A trailing `...` on an argument forwards an existing slice as a whole\nvariadic pack. It needs a variadic parameter to spread into, and since\nit supplies the entire pack, nothing may follow it."},
+	ENoAddress: {"this function has no single address",
+		"`&f` on a declared function is a `code(...)`: the function's address\nand nothing beside it. An async function is run by this program's\nscheduler rather than by whoever holds the address, and a variadic one\ncarries an argument pack a bare address cannot."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",

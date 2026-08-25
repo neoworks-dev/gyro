@@ -236,6 +236,10 @@
         "named": true
       },
       {
+        "type": "code_type",
+        "named": true
+      },
+      {
         "type": "function_type",
         "named": true
       },
@@ -819,6 +823,21 @@
       "types": [
         {
           "type": "closure_parameter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "code_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_type",
           "named": true
         }
       ]
@@ -2679,6 +2698,10 @@
   {
     "type": "char_literal",
     "named": true
+  },
+  {
+    "type": "code",
+    "named": false
   },
   {
     "type": "const",

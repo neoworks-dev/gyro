@@ -286,6 +286,13 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		}
 		sig.Result = c.resultType(t.Results)
 		return sig
+	case *ast.CodeType:
+		code := &types.Code{}
+		for _, param := range t.Params {
+			code.Params = append(code.Params, c.resolveType(param))
+		}
+		code.Result = c.resultType(t.Results)
+		return code
 	case *ast.ChanType:
 		return &types.Chan{Elem: c.resolveType(t.Elem)}
 	}

@@ -64,6 +64,8 @@ func synthesizedRepr(t types.Type) bool {
 		return true
 	case *types.Basic:
 		return t.Kind == types.AnyPtrKind
+	case *types.Code:
+		return true
 	}
 	return false
 }
@@ -98,6 +100,10 @@ func (l *lowerer) buildRepr(name string, t types.Type) {
 		// already gives for a chan, and given on every tier because it
 		// is decided here rather than in a backend.
 		b.emit(&metals.Return{Val: b.text("anyptr")})
+	case *types.Code:
+		// And a code pointer, for the same reason: what is at the far
+		// end is instructions.
+		b.emit(&metals.Return{Val: b.text("code")})
 	}
 
 	l.module.Funcs = append(l.module.Funcs, b.fn)

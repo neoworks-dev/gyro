@@ -65,6 +65,11 @@ func (p *Parser) parseBaseType() ast.Type {
 		return &ast.ChanType{Offset: offset, Elem: elem}
 
 	case token.Ident:
+		// `code` is contextual: only a `(` right after it makes a code
+		// pointer type, so a program may still name something `code`.
+		if p.tok().Text == "code" && p.peekAt(1).Kind == token.LParen {
+			return p.parseCodeType()
+		}
 		return &ast.NamedType{Offset: offset, Path: p.parseTypePathInType()}
 	}
 
@@ -133,6 +138,27 @@ func (p *Parser) parseParenType() ast.Type {
 		return elements[0]
 	}
 	return &ast.TupleType{Offset: offset, Elements: elements}
+}
+
+// parseCodeType parses `code(A, B): C`, the address of a function with
+// nothing beside it. No `async` and no effect row: neither would be a
+// claim anyone checked, since what is at the address may not even have
+// been compiled by this compiler.
+func (p *Parser) parseCodeType() ast.Type {
+	typ := &ast.CodeType{Offset: p.offset()}
+	p.next() // code
+	p.expect(token.LParen)
+
+	for !p.at(token.RParen) && !p.atEOF() {
+		typ.Params = append(typ.Params, p.parseType())
+		if !p.accept(token.Comma) {
+			break
+		}
+	}
+	p.expect(token.RParen)
+
+	typ.Results = p.parseResults()
+	return typ
 }
 
 // parseFuncType parses `fn(A, B): C` for function-valued parameters.

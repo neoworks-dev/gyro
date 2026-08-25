@@ -248,6 +248,8 @@ func offenderIn(t types.Type, seen map[*types.Struct]bool, inStruct bool) string
 		return "a future is a Gyro runtime object"
 	case *types.Func:
 		return "a callback is not in the first version of @extern"
+	case *types.Code:
+		return "a code pointer is an address in this program, which the boundary does not share"
 	case *types.Tuple:
 		return "a tuple is a Gyro layout; return one value or take an out-parameter"
 	case *types.Array:

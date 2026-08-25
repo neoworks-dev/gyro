@@ -564,6 +564,13 @@ func (idx *index) indexType(typ ast.Type) {
 		for _, result := range t.Results {
 			idx.indexType(result)
 		}
+	case *ast.CodeType:
+		for _, param := range t.Params {
+			idx.indexType(param)
+		}
+		for _, result := range t.Results {
+			idx.indexType(result)
+		}
 	case *ast.OptionalType:
 		idx.indexType(t.Elem)
 	case *ast.ChanType:

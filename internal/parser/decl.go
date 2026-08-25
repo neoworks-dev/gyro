@@ -339,6 +339,7 @@ func (p *Parser) parseResultList() []ast.Type {
 	// A parenthesized list here is a multi-value return rather than a
 	// tuple-typed single value.
 	if p.at(token.LParen) {
+		offset := p.offset()
 		p.next()
 		var results []ast.Type
 		for !p.at(token.RParen) && !p.atEOF() {
@@ -348,6 +349,23 @@ func (p *Parser) parseResultList() []ast.Type {
 			}
 		}
 		p.expect(token.RParen)
+
+		// A `?` after the parens says they were grouping, because a
+		// result *list* has nothing to be null. It is the one way to
+		// write a nullable code pointer or function type — whose own
+		// spelling ends in a result the marker would otherwise bind to
+		// — and it settles the parenthesized tuple the same way.
+		if p.at(token.Question) && len(results) > 0 {
+			var typ ast.Type = results[0]
+			if len(results) != 1 {
+				typ = &ast.TupleType{Offset: offset, Elements: results}
+			}
+			for p.at(token.Question) {
+				typ = &ast.OptionalType{Offset: p.offset(), Elem: typ}
+				p.next()
+			}
+			return []ast.Type{typ}
+		}
 		return results
 	}
 

@@ -273,6 +273,19 @@ func (f *funcLowerer) fnValue(decl *ast.FuncDecl) string {
 	return out
 }
 
+// codeValue is `&f`: the address of a declared function, with no
+// environment beside it. A body is needed for there to be an address at
+// all — a runtime intrinsic is a name the tiers answer, not a symbol.
+func (f *funcLowerer) codeValue(decl *ast.FuncDecl) string {
+	if decl.Body == nil {
+		f.l.fail("@%s: %s has no body, so it has no address", f.fn.Name, decl.Name)
+	}
+	name := f.l.ensureFunc(decl, nil)
+	out := f.newReg("code")
+	f.emit(&metals.CodeRef{Dst: out, Callee: name})
+	return out
+}
+
 // moduleValue reads a module-level binding. A var has storage and is read
 // through it; a const has no identity to share, so its initializer stays a
 // getter that re-evaluates per use. @comptime folding will subsume that.
@@ -465,6 +478,14 @@ func (f *funcLowerer) evalUnary(e *ast.UnaryExpr) string {
 		f.emit(&metals.Un{Dst: out, Op: "bnot", X: value})
 		return out
 	case token.Amp:
+		// The address of a declared function is the function's address
+		// and nothing beside it, which is one word rather than the two
+		// a closure needs.
+		if _, code := f.typeOf(e).(*types.Code); code {
+			if decl, ok := f.refOf(e.X).(*ast.FuncDecl); ok {
+				return f.codeValue(decl)
+			}
+		}
 		target := f.placeOfAddressable(e.X)
 		if target == nil {
 			f.l.fail("@%s: cannot take the address of this expression", f.fn.Name)

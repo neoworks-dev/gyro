@@ -472,6 +472,17 @@ func (p *printer) node(node Node) {
 		p.effects(n.Effects)
 		p.indent--
 
+	case *CodeType:
+		p.line("CodeType")
+		p.indent++
+		for _, param := range n.Params {
+			p.child("Param", param)
+		}
+		for _, result := range n.Results {
+			p.child("Result", result)
+		}
+		p.indent--
+
 	case *ChanType:
 		p.line("ChanType")
 		p.indent++

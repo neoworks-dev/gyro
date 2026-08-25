@@ -35,6 +35,12 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 		return &types.Chan{Elem: c.substType(t.Elem, s)}
 	case *types.Future:
 		return &types.Future{Result: c.substType(t.Result, s)}
+	case *types.Code:
+		params := make([]types.Type, len(t.Params))
+		for i, param := range t.Params {
+			params[i] = c.substType(param, s)
+		}
+		return &types.Code{Params: params, Result: c.substType(t.Result, s)}
 	case *types.Tuple:
 		elems := make([]types.Type, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -214,6 +220,12 @@ func cacheString(t types.Type) string {
 		return "chan<" + cacheString(t.Elem) + ">"
 	case *types.Future:
 		return "future<" + cacheString(t.Result) + ">"
+	case *types.Code:
+		parts := make([]string, len(t.Params))
+		for i, param := range t.Params {
+			parts[i] = cacheString(param)
+		}
+		return "code(" + strings.Join(parts, ", ") + "): " + cacheString(t.Result)
 	case *types.Tuple:
 		parts := make([]string, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -324,6 +336,17 @@ func unify(pattern, actual types.Type, s subst) bool {
 			}
 		}
 		return unify(p.Result, a.Result, s)
+	case *types.Code:
+		a, ok := actual.(*types.Code)
+		if !ok || len(p.Params) != len(a.Params) {
+			return false
+		}
+		for i := range p.Params {
+			if !unify(p.Params[i], a.Params[i], s) {
+				return false
+			}
+		}
+		return unify(p.Result, a.Result, s)
 	case *types.Struct:
 		a, ok := actual.(*types.Struct)
 		if !ok || a.Origin == nil || p.Origin == nil || a.Origin != p.Origin {
@@ -367,6 +390,13 @@ func containsTypeParam(t types.Type) bool {
 	case *types.Chan:
 		return containsTypeParam(t.Elem)
 	case *types.Future:
+		return containsTypeParam(t.Result)
+	case *types.Code:
+		for _, param := range t.Params {
+			if containsTypeParam(param) {
+				return true
+			}
+		}
 		return containsTypeParam(t.Result)
 	case *types.Tuple:
 		for _, elem := range t.Elems {

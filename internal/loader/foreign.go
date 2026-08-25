@@ -264,6 +264,14 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// `?` binds to the outermost type, and a spelling that ends in
+		// its own result type would swallow it: `code(i32): i32?` is a
+		// code pointer returning a nullable, not a nullable code
+		// pointer. Parentheses are how Gyro says which, the same way C
+		// says it with the declarator's.
+		if endsInAType(t.Elem) {
+			return "(" + elem + ")?", nil
+		}
 		return elem + "?", nil
 	case *metals.Ptr:
 		// `?` binds to the outermost type in Gyro, so an opt<ptr<T>> —
@@ -283,6 +291,24 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 			parts[i] = spelling
 		}
 		return "(" + strings.Join(parts, ", ") + ")", nil
+	case *metals.CodeType:
+		params := make([]string, len(t.Params))
+		for i, param := range t.Params {
+			spelling, err := h.spell(param)
+			if err != nil {
+				return "", err
+			}
+			params[i] = spelling
+		}
+		out := "code(" + strings.Join(params, ", ") + ")"
+		if t.Result != nil {
+			spelling, err := h.spell(t.Result)
+			if err != nil {
+				return "", err
+			}
+			out += ": " + spelling
+		}
+		return out, nil
 	case *metals.Named:
 		if !h.spellable[t.Name] {
 			return "", fmt.Errorf("%s has no Gyro declaration", t)
@@ -291,6 +317,19 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 		return t.Name, nil
 	}
 	return "", fmt.Errorf("%s has no Gyro spelling", t)
+}
+
+// endsInAType reports whether a Gyro spelling finishes with a nested
+// type, so that a `?` written after it would attach to that instead of
+// to the whole thing.
+func endsInAType(t metals.Type) bool {
+	switch t := t.(type) {
+	case *metals.CodeType:
+		return t.Result != nil
+	case *metals.FnType:
+		return t.Result != nil
+	}
+	return false
 }
 
 // want marks a type for declaration, and everything its members name

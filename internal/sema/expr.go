@@ -461,6 +461,14 @@ func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
 		c.errorf(e.Offset, "operator ~ inverts integers, not %s", operand)
 
 	case token.Amp:
+		// The address of a declared function is a code pointer: one
+		// word, no environment, which is what a C callback is. A `fn`
+		// value is two words because it may have captured something,
+		// and `&f` on a local holding one is still a pointer to that
+		// local.
+		if decl := c.namedFunc(e.X); decl != nil {
+			return c.codePointer(e.Offset, decl, operand)
+		}
 		c.killFactsFor(e.X)
 		return &types.Pointer{Elem: types.Default(operand)}
 
@@ -709,6 +717,52 @@ func (c *checker) equality(e *ast.BinaryExpr) {
 	}
 	if !c.comparable(left, right) {
 		c.errorf(e.Offset, "cannot compare %s with %s", describeType(left), describeType(right))
+	}
+}
+
+// namedFunc is the declaration an expression names, when it names one
+// directly. A local holding a function value is not one: it is a
+// binding, and its address is a pointer to the binding.
+func (c *checker) namedFunc(e ast.Expr) *ast.FuncDecl {
+	switch e.(type) {
+	case *ast.Ident, *ast.Path:
+	default:
+		return nil
+	}
+	decl, _ := c.program.info.Refs[e].(*ast.FuncDecl)
+	return decl
+}
+
+// codePointer is the type of `&f`.
+//
+// A generic function and a method never reach here: neither is a value
+// on its own, so typing the operand has already said so — the first
+// needs its parameters inferred from a call and the second needs a
+// receiver, and both messages are about the same missing thing.
+func (c *checker) codePointer(offset int, decl *ast.FuncDecl, signature types.Type) types.Type {
+	sig, ok := signature.(*types.Func)
+	if !ok {
+		return types.Unknown
+	}
+	switch {
+	case sig.Async:
+		c.errorf(offset, "%s is async, and what runs it is this program's scheduler rather than a caller",
+			decl.Name)
+		return types.Unknown
+	case sig.Variadic:
+		c.errorf(offset, "%s is variadic, and a code pointer carries no argument pack", decl.Name)
+		return types.Unknown
+	}
+	return &types.Code{Params: sig.Params, Result: sig.Result}
+}
+
+// codeSignature is a code pointer read as a callable, which is how the
+// call checker asks about arity and argument types.
+func codeSignature(code *types.Code) *types.Func {
+	return &types.Func{
+		Params:   code.Params,
+		Required: len(code.Params),
+		Result:   code.Result,
 	}
 }
 
@@ -1207,7 +1261,7 @@ func anyPayload(t types.Type) bool {
 		return true
 	case *types.Struct:
 		return !isRuntimeHandle(t)
-	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.TypeParam:
+	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam:
 		return false
 	case *types.Pointer:
 		return anyPayload(t.Elem)

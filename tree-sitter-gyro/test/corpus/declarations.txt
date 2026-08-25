@@ -724,3 +724,56 @@ fn show(label: string, rest: ...any) {
           (arguments
             (spread_argument
               (identifier))))))))
+
+==================
+code pointers
+==================
+
+fn dispatch(
+  cmp: code(i32, i32): i32,
+  hook: code(),
+  maybe: (code(i32): i32)?,
+) {}
+
+fn code(n: i32): i32 { return n }
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (code_type
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (code_type))
+      (parameter
+        (identifier)
+        (optional_type
+          (parenthesized_type
+            (code_type
+              (named_type
+                (type_identifier))
+              (named_type
+                (type_identifier)))))))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (identifier)))))

@@ -148,6 +148,21 @@ type Func struct {
 	Variadic bool
 }
 
+// Code is `code(A, B): R`: the address of a function and nothing beside
+// it, which is what C's function pointer is.
+//
+// It is not a Func with a flag. A Func is a closure — two words, code
+// and the environment it captured — and the whole point of this type is
+// that there is no environment, because the C on the other side has
+// nowhere to put one. A type that said "a function value that promises
+// not to capture" would be a claim the type does not make and the
+// checker would have to keep making instead.
+type Code struct {
+	Params []Type
+	// Result is Void for a code pointer that returns nothing.
+	Result Type
+}
+
 // Future is the value of an un-awaited async call; await unwraps it.
 type Future struct{ Result Type }
 
@@ -195,6 +210,18 @@ func (f *Func) String() string {
 	}
 	if f.Result != Void {
 		signature += ": " + f.Result.String()
+	}
+	return signature
+}
+
+func (c *Code) String() string {
+	parts := make([]string, len(c.Params))
+	for i, param := range c.Params {
+		parts[i] = param.String()
+	}
+	signature := "code(" + strings.Join(parts, ", ") + ")"
+	if c.Result != Void {
+		signature += ": " + c.Result.String()
 	}
 	return signature
 }
@@ -498,6 +525,17 @@ func Identical(a, b Type) bool {
 	case *Func:
 		y, ok := b.(*Func)
 		if !ok || x.Async != y.Async || x.Variadic != y.Variadic || len(x.Params) != len(y.Params) {
+			return false
+		}
+		for i := range x.Params {
+			if !Identical(x.Params[i], y.Params[i]) {
+				return false
+			}
+		}
+		return Identical(x.Result, y.Result)
+	case *Code:
+		y, ok := b.(*Code)
+		if !ok || len(x.Params) != len(y.Params) {
 			return false
 		}
 		for i := range x.Params {

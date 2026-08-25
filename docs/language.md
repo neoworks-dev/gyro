@@ -561,6 +561,7 @@ unknown decorator name is a compile error.
 | `(A, B)` | tuple |
 | `fn(A, B): C` | function |
 | `async fn(A): B` | async function |
+| `code(A, B): C` | the address of a function, with no environment; C's function pointer |
 | `ast::Literal` | namespaced name |
 | `Pair<i32>` | generic instantiation |
 
@@ -662,6 +663,52 @@ It exists for C. A library that holds what you gave it without being told
 what that is — every registry, callback table and generic container in C
 — is written over `void *`, and until there was a spelling for one, none
 of those functions could be imported at all.
+
+### Code pointers
+
+`code(A, B): C` is the address of a function and nothing beside it.
+`&f` on a declared function is one:
+
+```gyro
+import { count_kept, fold } from "./filter.c"
+
+fn big(v: i32): i32 {
+  if v > 5 { return 1 }
+  return 0
+}
+
+fn sum(acc: i32, v: i32): i32 { return acc + v }
+
+var kept = count_kept(&big)      // C's loop, this program's decision
+var total = fold(&sum, 0)
+```
+
+It is not a `fn` with a flag. A `fn` is a closure — two words, the code
+and whatever it captured — and a C signature has nowhere to put the
+second one. A type that meant "a function value that promises not to
+capture" would be a promise the type does not make and the checker would
+have to keep making instead, so the two have two names and neither
+becomes the other.
+
+`&f` needs `f` to have one address to take. A generic function has one
+per instantiation and a method needs a receiver, so neither is a value to
+begin with; an `async` function is run by this program's scheduler rather
+than by whoever holds the address; and a variadic one carries an argument
+pack a bare address cannot.
+
+A nullable code pointer needs parentheses — `(code(i32): i32)?` — because
+a `?` written after the result would bind to the result. That is the same
+grouping C spells with the declarator's parentheses, and it works for a
+`fn` type and a parenthesized tuple result the same way.
+
+A code pointer is called like anything else, compares by identity, cannot
+cross an `@extern` boundary and cannot go into an `any`. Printing one
+prints the word `code`.
+
+It exists for C. Every library that lets its caller decide what happens —
+a comparison for a sort, an event filter, a timer — takes a function
+pointer, and until there was a spelling for one none of those functions
+could be imported.
 
 ### Tuples
 
@@ -1091,8 +1138,8 @@ for the call. Scalars, fixed arrays and other such structs are members; a
 field's type rather than the struct's.
 
 Rejected, with a diagnostic naming the type: `*T`, `anyptr`, `chan<T>`,
-futures, function values, `any`, tuples, enums, and `T?` of anything but
-a handle.
+futures, function values, code pointers, `any`, tuples, enums, and `T?`
+of anything but a handle.
 Several results are rejected too — a C function returns one value, and
 `(T, error?)` is Gyro's shape, not C's.
 

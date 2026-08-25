@@ -983,9 +983,8 @@ two `goto` shapes above, which is where the relooper LLVM does for the
 bridge would have to be written. **Type punning** compiles and is a
 program only two tiers can run: reading one object's bytes as another
 type is undefined in C, `char *` aliasing included, and the evaluator
-holds a producer to it. A callback does not cross into Gyro yet, because
-Gyro has no spelling for a code pointer; nor does a variadic function,
-because a `...` says nothing about what a call passes and there is
+holds a producer to it. A variadic function does not cross into Gyro
+yet, because a `...` says nothing about what a call passes and there is
 nothing for the far side to check.
 A `union` does not cross either — Gyro has no declaration for one. An
 export the header cannot spell is **left out** rather than made an
@@ -993,7 +992,11 @@ error, so one such helper does not make the rest of a library
 unimportable, and naming a skipped one is reported where it is imported.
 
 A `void *` does cross, as Gyro's `anyptr` — one word, comparable, with
-`as` in both directions and nothing to load through.
+`as` in both directions and nothing to load through. So does a function
+pointer, as Gyro's `code(A, B): C`, in both directions: C's loop runs a
+Gyro function it was handed, and a pointer C returns is called from
+Gyro. `&f` on a declared Gyro function is the one word a C signature has
+room for.
 
 A struct does cross. The generated header declares it as a Gyro struct
 with the same members in the same order, and lowering imports the

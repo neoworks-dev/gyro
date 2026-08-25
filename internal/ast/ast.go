@@ -882,6 +882,23 @@ type FuncType struct {
 func (f *FuncType) Pos() int  { return f.Offset }
 func (f *FuncType) typeNode() {}
 
+// CodeType is `code(A, B): C`: the address of a function and nothing
+// beside it, which is what a C function pointer is. `code` is a
+// contextual identifier — only a `(` after it in a type position makes
+// this — so a program may still call a variable `code`.
+//
+// It carries no `async` and no effect row. Neither would be a claim
+// anyone checked: what is at the address may have been compiled by
+// another language, and an address does not remember its effects.
+type CodeType struct {
+	Offset  int
+	Params  []Type
+	Results []Type
+}
+
+func (c *CodeType) Pos() int  { return c.Offset }
+func (c *CodeType) typeNode() {}
+
 // OptionalType is `T?`, the only type that may hold null.
 //
 // The marker binds to the whole type, so `*Node?` is a nullable pointer. A

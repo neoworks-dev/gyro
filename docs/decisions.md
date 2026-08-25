@@ -2677,6 +2677,39 @@ address has to have come from somewhere.
 program may read, so `println(p)` writes `anyptr` — decided in lowering,
 so all three tiers say it, rather than left to a backend to refuse.
 
+### A code pointer is its own type, and `&f` is how you get one *(new)*
+
+**Status: decided.** `code(A, B): C` is the address of a function with no
+environment beside it — METALS' `code(...)`, which is what C's function
+pointer is. `&f` on a declared function produces one. `code` is a
+contextual identifier: only a `(` after it in a type position makes the
+type, so a program may still call a variable `code`.
+
+**Rejected: reusing `fn`.** A Gyro `fn` is two words, code and the
+environment it captured, and a C signature has nowhere to put the second.
+Accepting a `fn` where C wants a callback and then refusing every value
+that captured something would be a type that says one thing while the
+checker says another. Two different things, two names.
+
+**Rejected: `*fn(A, B): C`.** It reads well and it already means
+something else: `*T` is `ptr<T>`, so that is a pointer to a closure
+sitting in memory. Two spellings of one syntax is worse than one more
+type.
+
+**Rejected: context-typing a bare function name.** `sort(xs, compare)`
+could make a code pointer out of `compare` because the parameter's type
+says to. Sema's rule is that `want` types untyped literals and infers
+closure parameters *and nothing else — typed values never convert*, and
+that rule is worth more than the four saved characters. `&compare` says
+the same thing and says it locally.
+
+**A nullable one needs parentheses.** `code(i32): i32?` is a code pointer
+returning a nullable, because the `?` binds to the result it follows.
+`(code(i32): i32)?` is the nullable code pointer. A parenthesized result
+list followed by `?` is read as grouping, since a result *list* has
+nothing to be null — which also gives a nullable tuple result a spelling
+it did not have.
+
 ## Native backend
 
 Design in [`native.md`](native.md).

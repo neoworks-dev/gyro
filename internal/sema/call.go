@@ -72,6 +72,9 @@ func (c *checker) resolveCallee(call *ast.CallExpr) callee {
 	if fn, ok := t.(*types.Func); ok {
 		return callee{fnType: fn, name: "the function value"}
 	}
+	if code, ok := t.(*types.Code); ok {
+		return callee{fnType: codeSignature(code), name: "the code pointer"}
+	}
 	if !flexible(t) {
 		c.errorf(call.Fun.Pos(), "%s is not callable", describeType(t))
 	}
@@ -106,13 +109,30 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 	if sym.fn != nil {
 		return callee{name: fun.Name, method: sym.fn}
 	}
-	if fn, ok := sym.typ.(*types.Func); ok {
+	// The narrowed type, not the declared one: a `code(...)?` checked
+	// against null is callable on the path where it is not.
+	typ := sym.typ
+	if c.facts[sym] {
+		if optional, ok := typ.(*types.Optional); ok {
+			typ = optional.Elem
+		}
+	}
+	// A callee that is a *value* gets its type recorded, narrowing and
+	// all. Nothing else here does — a method or a declaration is not an
+	// expression — but lowering has to evaluate this one, and the
+	// unwrap a narrowed optional needs is only visible in the type.
+	if fn, ok := typ.(*types.Func); ok {
+		c.record(fun, typ)
 		return callee{name: fun.Name, fnType: fn}
 	}
-	if sym.typ == nil || flexible(sym.typ) {
+	if code, ok := typ.(*types.Code); ok {
+		c.record(fun, typ)
+		return callee{name: fun.Name, fnType: codeSignature(code)}
+	}
+	if typ == nil || flexible(typ) {
 		return callee{bad: true}
 	}
-	c.errorf(fun.Offset, "%s is %s, which is not callable", fun.Name, sym.typ)
+	c.errorf(fun.Offset, "%s is %s, which is not callable", fun.Name, typ)
 	return callee{bad: true}
 }
 
@@ -131,12 +151,18 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 		return callee{bad: true}
 	}
 
-	// A field of function type wins over a method of the same name.
+	// A field of function type wins over a method of the same name, and
+	// so does one holding a code pointer: a dispatch table's entry is
+	// called through, not looked up as a method.
 	if strct, ok := recv.(*types.Struct); ok {
 		if field := strct.FieldNamed(fun.Name); field != nil {
-			if fn, ok := field.Type.(*types.Func); ok {
+			switch typ := field.Type.(type) {
+			case *types.Func:
 				c.checkFieldVisibility(fun.Offset, strct, field)
-				return callee{name: fun.Name, fnType: fn}
+				return callee{name: fun.Name, fnType: typ}
+			case *types.Code:
+				c.checkFieldVisibility(fun.Offset, strct, field)
+				return callee{name: fun.Name, fnType: codeSignature(typ)}
 			}
 		}
 	}
@@ -173,6 +199,9 @@ func (c *checker) calleeFromPathee(offset int, p pathee) callee {
 	}
 	if fn, ok := p.valueType.(*types.Func); ok {
 		return callee{name: "the function", fnType: fn}
+	}
+	if code, ok := p.valueType.(*types.Code); ok {
+		return callee{name: "the code pointer", fnType: codeSignature(code)}
 	}
 	if p.typ != nil {
 		c.errorf(offset, "%s is a type, not a function", p.typ)

@@ -325,6 +325,15 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 		return &metals.TupleOf{Elems: elems}
 	case *types.Func:
 		return l.metalsFnType(t)
+	case *types.Code:
+		code := &metals.CodeType{}
+		for _, param := range t.Params {
+			code.Params = append(code.Params, l.metalsType(param))
+		}
+		if !isVoid(t.Result) {
+			code.Result = l.metalsType(t.Result)
+		}
+		return code
 	case *types.Future:
 		return &metals.FutureOf{Result: l.metalsType(t.Result)}
 	case *types.Struct:

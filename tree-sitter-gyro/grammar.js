@@ -754,6 +754,7 @@ module.exports = grammar({
       $.tuple_type,
       $.parenthesized_type,
       $.function_type,
+      $.code_type,
       $.chan_type,
       $.optional_type,
     ),
@@ -804,6 +805,17 @@ module.exports = grammar({
       ')',
       optional(seq(':', $._type)),
       optional($.effect_row),
+    )),
+
+    // `code` is a contextual identifier — only a `(` after it makes a
+    // code pointer type — so a program may still name something `code`.
+    // No `async` and no effect row: an address does not remember either.
+    code_type: $ => prec.right(seq(
+      'code',
+      '(',
+      commaSep($._type),
+      ')',
+      optional(seq(':', $._type)),
     )),
 
     chan_type: $ => seq('chan', '<', field('element', $._type), '>'),
