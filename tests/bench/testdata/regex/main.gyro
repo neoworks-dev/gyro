@@ -1,0 +1,56 @@
+// tiny-regex-c's matcher over a fixed table of texts: the port the
+// execution corpus already checks, measured against the C it came from.
+//
+// The pattern is compiled once, outside the timed region, because C's
+// re_compile writes into a single static buffer and could not hold more
+// than one anyway. What is left in the loop is the matcher: a recursive
+// walk over the compiled nodes, one byte read per step, and the
+// backtracking `.?\w+jsj$` forces on a text that does not end in jsj.
+//
+// Against sha256's flat arithmetic this is the branch-and-call shape:
+// short calls, a value read through a slice on every step, and a
+// character class tested by scanning its bytes.
+//
+// The module is imported out of the corpus rather than copied, so there
+// is exactly one regex port: the one whose 76 match results the corpus
+// compares against the C original's.
+
+import { println, eprintln, Array } from "stdlib"
+import { monotonic } from "time"
+import * as regex from "../../../testdata/run/regex/regex"
+
+const ROUNDS: i64 = 5000
+
+fn texts(): Array<u8[]> {
+  var table = Array<u8[]>::new()
+  table.push("%JxLLcVx8wxrjsj".bytes())
+  table.push("=KbvUQjsj".bytes())
+  table.push("^uDnoZjsj".bytes())
+  table.push("UzZbjsj".bytes())
+  table.push("zLa_FTEjsj".bytes())
+  table.push("\"mw3p8_Ojsj".bytes())
+  table.push("abcdefghijklmnopqrstuvwxyz0123456789".bytes())
+  table.push("the quick brown fox jumps over the lazy dog".bytes())
+  return table
+}
+
+fn main() {
+  var pattern = regex::compile(".?\\w+jsj$".bytes())
+  var table = texts()
+
+  var start = monotonic()
+  var acc: u64 = 0
+  for var round: i64 = 0; round < ROUNDS; round += 1 {
+    for text in table.slice() {
+      var offset, length = regex::matchp(pattern, text)
+      acc = acc *% 31 +% ((offset + 1) as u64) *% 7 +% (length as u64)
+    }
+  }
+  var stop = monotonic()
+
+  println(acc)
+  eprintln("gyro:bench #{stop - start}")
+
+  table.free()
+  pattern.free()
+}

@@ -1,0 +1,9 @@
+puts and println share one stdout
+true
+42
+11
+0
+true
+1.4142135623730951
+12
+freed

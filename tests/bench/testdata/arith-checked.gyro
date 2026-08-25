@@ -1,0 +1,26 @@
+// Scalar arithmetic in a tight loop: every add, subtract and multiply
+// carries an overflow test, and the loop body is otherwise trivial, so
+// what is left is how well the backend keeps values in registers.
+//
+// No division here on purpose. `idiv` costs tens of cycles in both
+// backends, and a loop containing one hides everything else behind it —
+// the same body with `% 1000003` in place of the mask measures 1.3x
+// where this one measures 5x.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+  var start = monotonic()
+  var acc: i64 = 1
+  var mixed: i64 = 0
+  for var i: i64 = 1; i < 32000000; i += 1 {
+    acc = (acc * 3 + i) & 1048575
+    mixed = mixed + acc - (i & 7)
+  }
+  var stop = monotonic()
+
+  println(acc)
+  println(mixed)
+  eprintln("gyro:bench #{stop - start}")
+}

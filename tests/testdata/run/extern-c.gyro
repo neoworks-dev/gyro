@@ -1,0 +1,63 @@
+// @extern reaching into libc and libm: every kind of value the boundary
+// carries in v1, on the two tiers that can call C at all.
+//
+//gyro:skip metals the evaluator is Go and cannot call a C function
+
+import { println } from "stdlib"
+
+@extern("c")
+fn puts(text: string): i32 !{ io }
+
+// A C name that is not the one this program wants to read at call sites.
+@extern("c", symbol = "abs")
+fn absolute(value: i32): i32 !{}
+
+@extern("c")
+fn strlen(text: string): usize !{}
+
+// Two slices, each repacked from Gyro's one-qword-per-element layout
+// into the bytes memcmp expects.
+@extern("c")
+fn memcmp(a: u8[], b: u8[], size: usize): i32 !{}
+
+@extern("m")
+fn sqrt(value: f64): f64 !{}
+
+@extern("m")
+fn ldexp(fraction: f64, exponent: i32): f64 !{}
+
+// An opaque pointer the library owns. Fieldless, so there is nothing to
+// read through it; malloc may fail, so it comes back nullable.
+@extern("c")
+struct Block {}
+
+@extern("c")
+fn malloc(size: usize): Block? !{ alloc }
+
+@extern("c")
+fn free(block: Block) !{}
+
+fn main() {
+  var written = puts("puts and println share one stdout")
+  println(written >= 0)
+
+  println(absolute(0 - 42))
+  // Ten code points, eleven bytes: strlen counts what C sees.
+  println(strlen("répertoire"))
+
+  var left: u8[] = [1, 2, 3]
+  var right: u8[] = [1, 2, 4]
+  println(memcmp(left, left, 3))
+  println(memcmp(left, right, 3) < 0)
+
+  println(sqrt(2.0))
+  println(ldexp(0.75, 4))
+
+  var block = malloc(64)
+  if block == null {
+    println("out of memory")
+    return
+  }
+  free(block)
+  println("freed")
+}

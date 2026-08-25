@@ -1,0 +1,17 @@
+i32 8
+string of 5
+bool true
+point 1,2
+shape Shape::Circle(2.5)
+something else
+42
+42
+42
+mixed: 0
+mixed: 5
+  [1]
+  [two]
+  [false]
+  [3.5]
+  [Point{ x: 3, y: 4 }]
+["a", 1]

@@ -1,0 +1,126 @@
+; Pointer arithmetic, on the three METALS tiers.
+;
+; `elem.ptr`, `ptr.offset` and `ptr.diff` are what a C array is: the name
+; of an array decays to a pointer at its first element, indexing is that
+; pointer plus a count, and subtracting two of them counts the elements
+; between. Nothing Gyro lowers reaches them — a Gyro array is bounds
+; checked and knows its length — so the case is written as IR, the way
+; the C front end emits it.
+;
+; The arithmetic is unchecked by design: the result is a pointer only
+; while it stays inside the object, and one past the end is a value a
+; program may form and compare and must not read. What every tier does
+; agree on is what is written here.
+
+module "metals:pointer-arithmetic"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Point = record { x: i64, y: i64 }
+
+; sum walks a run of i32 with a pointer and a count, which is the loop
+; every C string and buffer routine is.
+fn @sum(%p: ptr<i32>, %n: i64) -> i64 {
+  %total = const.i64 0
+  %i = const.i64 0
+  block $done {
+    loop $next {
+      %more = lt %i, %n
+      %stop = not %more
+      br_if %stop, $done
+      %at = ptr.offset %p, %i
+      %v = load %at
+      %w = conv %v -> i64
+      %total = iadd %total, %w
+      %one = const.i64 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+  return %total
+}
+
+export fn @main() {
+  ; --- an array in a slot, reached through its first element ---
+  %a = slot array<i32, 5>
+  %base = elem.ptr %a
+
+  %i = const.i64 0
+  block $filled {
+    loop $fill {
+      %five = const.i64 5
+      %more = lt %i, %five
+      %stop = not %more
+      br_if %stop, $filled
+      %at = ptr.offset %base, %i
+      %wide = imul %i, %i
+      %narrow = trunc %wide -> i32
+      store %at, %narrow
+      %one = const.i64 1
+      %i = iadd %i, %one
+      br $fill
+    }
+  }
+
+  ; 0 + 1 + 4 + 9 + 16
+  %five = const.i64 5
+  %total = call @sum(%base, %five)
+  call @"println<i64>"(%total)
+
+  ; --- a negative offset walks back ---
+  %third = const.i64 3
+  %p3 = ptr.offset %base, %third
+  %minusTwo = const.i64 -2
+  %p1 = ptr.offset %p3, %minusTwo
+  %v1 = load %p1
+  %v1w = conv %v1 -> i64
+  call @"println<i64>"(%v1w)
+
+  ; --- ptr.diff counts elements, not bytes ---
+  %gap = ptr.diff %p3, %p1
+  call @"println<i64>"(%gap)
+  %back = ptr.diff %p1, %p3
+  call @"println<i64>"(%back)
+
+  ; --- one past the end is a pointer a program may form and compare ---
+  %end = ptr.offset %base, %five
+  %length = ptr.diff %end, %base
+  call @"println<i64>"(%length)
+  %same = eq %end, %base
+  call @"println<bool>"(%same)
+  %reached = eq %end, %end
+  call @"println<bool>"(%reached)
+
+  ; --- and a zero offset is the pointer itself ---
+  %zero = const.i64 0
+  %still = ptr.offset %base, %zero
+  %identical = eq %still, %base
+  call @"println<bool>"(%identical)
+
+  ; --- an array of records: elem.ptr then field.ptr ---
+  %pts = slot array<%Point, 3>
+  %p = elem.ptr %pts
+  %one = const.i64 1
+  %second = ptr.offset %p, %one
+  %xp = field.ptr %second, 0
+  %yp = field.ptr %second, 1
+  %seven = const.i64 7
+  %eight = const.i64 8
+  store %xp, %seven
+  store %yp, %eight
+
+  %readx = load %xp
+  %ready = load %yp
+  %s = iadd %readx, %ready
+  call @"println<i64>"(%s)
+
+  ; The record beside it is its own storage, which is what a stride of
+  ; sizeof(%Point) rather than of a word means.
+  %third2 = ptr.offset %p, %one
+  %step = ptr.diff %third2, %p
+  call @"println<i64>"(%step)
+  return
+}

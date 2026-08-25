@@ -1,4 +1,4 @@
-//gyro:panic double free
+//gyro:panic free of memory that is not allocated
 
 import { alloc, free } from "mem"
 

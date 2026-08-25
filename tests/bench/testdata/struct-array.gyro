@@ -1,0 +1,40 @@
+// Struct copies through Array<T>: a value type wider than a register
+// goes in and out of the buffer by copy, so this measures how many moves
+// a get/set pair costs and whether the copy goes through memory twice.
+
+import { println, eprintln, Array } from "stdlib"
+import { monotonic } from "time"
+
+struct Particle {
+  x: i64
+  y: i64
+  vx: i64
+  vy: i64
+}
+
+fn main() {
+  var world = Array<Particle>::new()
+  defer world.free()
+  for var i: i64 = 0; i < 512; i += 1 {
+    world.push(Particle{ x: i, y: -i, vx: 1, vy: 2 })
+  }
+
+  var start = monotonic()
+  for var step = 0; step < 16384; step += 1 {
+    for var i: usize = 0; i < world.len(); i += 1 {
+      var p = world.get(i)
+      p.x += p.vx
+      p.y += p.vy
+      world.set(i, p)
+    }
+  }
+  var stop = monotonic()
+
+  var checksum: i64 = 0
+  for var i: usize = 0; i < world.len(); i += 1 {
+    checksum += world.get(i).x + world.get(i).y
+  }
+
+  println(checksum)
+  eprintln("gyro:bench #{stop - start}")
+}

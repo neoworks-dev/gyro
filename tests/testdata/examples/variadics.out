@@ -1,0 +1,11 @@
+0
+10
+5
+mixed: (5)
+  1 is an i32
+  2.5 is an f64
+  three is a string of 5
+  true is a bool
+  Point{ x: 4, y: 5 } is a point at 4,5
+7
+cart   has  3 items, 40% of ff

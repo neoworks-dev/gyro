@@ -1,0 +1,50 @@
+// A type test on an any may name a type no path can spell. The arm then
+// carries the type itself: `(i32, string)(pair)`, `i32[](xs)`, `*Node(n)`.
+
+import { println } from "stdlib"
+
+struct Node { value: i32 }
+
+fn kind(v: any): string {
+  return match v {
+    (i32, string)(pair): "tuple #{pair.0}/#{pair.1}"
+    (i32, i32)(pair):    "int pair #{pair.0}/#{pair.1}"
+    i32[3](a):           "i32[3] holding #{a[0]}"
+    i32[](xs):           "i32 slice of #{xs.len()}"
+    string[](ss):        "string slice of #{ss.len()}"
+    *Node(n):            "pointer to #{n.value}"
+    i32(n):              "i32 #{n}"
+    _:                   "other"
+  }
+}
+
+// A slice borrowed from a caller keeps its slice-ness: a fixed-size array
+// and a view of one are different types, and the test tells them apart.
+// The row says nothing because an any is not a view type to the borrow
+// analysis, the same way a struct holding a slice is not.
+fn borrow(xs: i32[]): any {
+  return xs as any
+}
+
+fn main() {
+  println(kind((1, "x") as any))
+  println(kind((4, 5) as any))
+
+  var arr = [1, 2, 3]
+  println(kind(arr as any))
+  println(kind(borrow(arr)))
+  println(kind(["a", "b"] as any))
+
+  var node = Node{ value: 9 }
+  println(kind(&node as any))
+  println(kind(5 as any))
+  println(kind(true as any))
+
+  // Unwrapping with `as` names the same types.
+  var t = (1, "x") as any
+  var pair = t as (i32, string)
+  println(pair.1)
+
+  var view = borrow(arr)
+  println((view as i32[]).len())
+}

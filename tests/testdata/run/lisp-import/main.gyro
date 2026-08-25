@@ -1,0 +1,30 @@
+// A Gyro program calling a module another language produced.
+//
+// The interpreter walks Gyro syntax, and an imported Lisp function has
+// none: it exists as METALS. The three METALS tiers link the two modules
+// and run the whole program.
+
+import { fib, gcd, classify, scale_by, offset_by } from "./fib.lisp"
+import { println } from "stdlib"
+
+fn main() {
+  println(fib(10))
+  println(fib(20))
+  println(gcd(1071, 462))
+
+  println(classify(-4))
+  println(classify(0))
+  println(classify(12))
+  println(classify(7))
+
+  println(scale_by(3, 14))
+  println(offset_by(100, 23))
+
+  // Calls in Gyro's own code and calls across the boundary compose the
+  // way any other two functions do.
+  var total: i64 = 0
+  for var i: i64 = 0; i < 10; i += 1 {
+    total = total + fib(i)
+  }
+  println(total)
+}

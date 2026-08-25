@@ -1,0 +1,10 @@
+hello world, you are 42
+hex ff FF 0a
+pad |   42|42   |00042|   right|
+char Gyr
+100% done
+values true 3.5 Point{ x: 1, y: 2 }
+missing one %!(MISSING)
+no arguments at all
+negatives -7 ffffffff
+widths ff ffff

@@ -1,0 +1,10 @@
+tuple 1/x
+int pair 4/5
+i32[3] holding 1
+i32 slice of 3
+other
+pointer to 9
+i32 5
+other
+x
+3

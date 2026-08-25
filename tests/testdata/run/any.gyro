@@ -1,0 +1,49 @@
+import { println } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+enum Shape {
+  Circle(f64)
+  Square(f64)
+}
+
+fn describe(v: any): string {
+  return match v {
+    i32(n): "i32 #{n + 1}"
+    string(s): "string of #{s.len()}"
+    bool(b): "bool #{b}"
+    Point(p): "point #{p.x},#{p.y}"
+    Shape(s): "shape #{s}"
+    _: "something else"
+  }
+}
+
+fn show(label: string, args: ...any) {
+  println("#{label} #{args.len()}")
+  for a in args {
+    println("  [#{a}]")
+  }
+}
+
+fn main() {
+  println(describe(7 as any))
+  println(describe("hello" as any))
+  println(describe(true as any))
+  println(describe(Point{ x: 1, y: 2 } as any))
+  println(describe(Shape::Circle(2.5) as any))
+  println(describe(1.5 as any))
+
+  var v: any = 42 as any
+  println(v as i32)
+  println(v)
+  println("#{v}")
+
+  show("mixed:")
+  show("mixed:", 1, "two", false, 3.5, Point{ x: 3, y: 4 })
+
+  var wrapped = ["a" as any, 1 as any]
+  println(wrapped)
+}

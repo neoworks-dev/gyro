@@ -1,0 +1,54 @@
+// A Gyro program driving a C library that was compiled into the same
+// module — header, preprocessor, arrays, pointer arithmetic and all.
+//
+// sortlib.c is not written for this compiler. It includes its own
+// header, which defines macros and a typedef and an enum; it keeps a
+// fixed array in module storage inside a file-scope struct; and its
+// quicksort partitions through `int *` rather than through indices.
+// internal/cc reads it, the loader files it as a foreign module, and the
+// linker puts the two together before any tier sees them.
+
+import { println } from "stdlib"
+import { reset, push, count, at, sort, find, median, checksum } from "./sortlib.c"
+
+// The C enum's constants are the C module's own; what crosses is the
+// int, which is what an enumeration is on this target.
+const ASCENDING = 0
+const DESCENDING = 1
+
+fn main() {
+  reset()
+  for value in [42, 7, 13, 99, 7, 1, 64, 28] {
+    push(value)
+  }
+  println(count())
+
+  sort(ASCENDING)
+  println(at(0))
+  println(at(1))
+  println(at(7))
+  println(median())
+
+  // Binary search over what the quicksort left behind.
+  println(find(13))
+  println(find(99))
+  println(find(5))
+
+  println(checksum())
+
+  sort(DESCENDING)
+  println(at(0))
+  println(at(7))
+  println(checksum())
+
+  // The array is fixed, and the library says so rather than writing past
+  // it: 64 fit, and this program has already used eight of them.
+  var accepted = 0
+  var i = 0
+  while i < 100 {
+    accepted = accepted + push(i)
+    i = i + 1
+  }
+  println(accepted)
+  println(count())
+}

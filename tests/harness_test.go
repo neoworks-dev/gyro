@@ -1,19 +1,25 @@
-// Package tests holds the execution corpus: Gyro programs paired with the
+// Package tests holds the execution corpus: programs paired with the
 // output they must produce.
 //
-// A program is run four ways — the interpreter, the METALS evaluator, a
-// native binary from the assembler backend, and a native binary from the C
-// backend — and all four must agree with the golden file. The tiers are
-// meant to be indistinguishable, so a case written once is a case checked
+// A program is run three ways — the METALS evaluator, a native binary
+// from the assembler backend, and a native binary from the C backend —
+// and all three must agree with the golden file. The tiers are meant to
+// be indistinguishable, so a case written once is a case checked
 // everywhere; before this corpus existed each tier kept its own
 // hand-picked subset and a program was only cross-checked if someone
 // remembered to paste it into all of them.
+//
+// No tier is the oracle. A golden file says what the program prints and
+// is written by hand, deliberately, the way one states an expectation;
+// there is no flag that regenerates it from a tier's output. A tier that
+// disagrees with the golden is wrong, and so is a tier that disagrees
+// with another tier — which is the property that stops one backend from
+// quietly redefining the language it implements.
 package tests
 
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,16 +29,15 @@ import (
 
 	"github.com/gyro-lang/gyro/internal/cgen"
 	"github.com/gyro-lang/gyro/internal/diag"
-	"github.com/gyro-lang/gyro/internal/interp"
+	"github.com/gyro-lang/gyro/internal/lisp"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/meval"
 	"github.com/gyro-lang/gyro/internal/nasm"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/wasm"
 )
-
-var update = flag.Bool("update", false, "rewrite the golden files from what the interpreter produces")
 
 // TestMain pins one environment variable for every case, so os.env has a
 // value to observe deterministically: the in-process tiers read it
@@ -47,15 +52,16 @@ func TestMain(m *testing.M) {
 // Directives
 // ---------------------------------------------------------------------------
 
-// directives are `//gyro:` lines in the root file. They say what a case
-// expects beyond its output.
+// directives are `//gyro:` lines in the root file — `;gyro:` in a root
+// whose language comments with a semicolon. They say what a case expects
+// beyond its output.
 //
-//	//gyro:panic <fragment>   the program must abort; fragment matches the
-//	                          interpreter's message, and the golden holds
-//	                          whatever reached stdout first
+//	//gyro:panic <fragment>   the program must abort; every tier's message
+//	                          must contain the fragment, and the golden
+//	                          holds whatever reached stdout first
 //	//gyro:unordered          concurrent output; the tiers must all succeed
 //	                          but their output is not compared
-//	//gyro:skip <tier> <why>  a known gap: interp, metals, native or cnative
+//	//gyro:skip <tier> <why>  a known gap: metals, native or cnative
 //	//gyro:args a b c         main's arguments, after a fixed argv[0]
 //	//gyro:stdin <text>       one line of stdin, newline included; repeat
 //	                          the directive for more lines
@@ -71,7 +77,7 @@ type directives struct {
 }
 
 // tiers are the names //gyro:skip accepts.
-var tiers = map[string]bool{"interp": true, "metals": true, "native": true, "cnative": true}
+var tiers = map[string]bool{"metals": true, "native": true, "cnative": true}
 
 // entryName is argv[0] for every case. The three tiers would otherwise
 // disagree — a source path, a temp binary — over something no program
@@ -82,7 +88,13 @@ func parseDirectives(t *testing.T, source string) directives {
 	t.Helper()
 	found := directives{skipped: map[string]string{}, args: []string{entryName}}
 	for _, line := range strings.Split(source, "\n") {
-		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "//gyro:")
+		// `//` is Gyro's comment and `;` is METALS' and Lisp's; a
+		// directive reads the same either way.
+		trimmed := strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(trimmed, "//gyro:")
+		if !ok {
+			rest, ok = strings.CutPrefix(trimmed, ";gyro:")
+		}
 		if !ok {
 			continue
 		}
@@ -151,20 +163,16 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 	}
 	found := parseDirectives(t, string(source))
 
-	program, info := compile(t, rootPath)
-	interpResult := runInterp(t, program, found)
-	if interpResult.exit != found.wantExit() {
-		t.Errorf("interp exited with %d, the case expects %d", interpResult.exit, found.wantExit())
+	// One module, however it was written: a .gyro is loaded, checked and
+	// lowered, and anything else comes through its own producer.
+	var module *metals.Module
+	if filepath.Ext(rootPath) == ".gyro" {
+		program, info := compile(t, rootPath)
+		module = lowerVerified(t, program, info, found)
+	} else {
+		module = foreignRoot(t, rootPath, string(source))
 	}
 
-	if *update {
-		writeGolden(t, goldenBase, interpResult, found)
-	}
-	if !found.unordered {
-		compareGolden(t, "interp", goldenBase, interpResult)
-	}
-
-	module := lowerVerified(t, program, info, found)
 	t.Run("metals", func(t *testing.T) {
 		if reason, skip := found.skipped["metals"]; skip {
 			t.Skip(reason)
@@ -172,7 +180,7 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 		if module == nil {
 			t.Fatal("the program did not lower")
 		}
-		compare(t, "metals", goldenBase, runMetals(t, module, found), interpResult, found)
+		compare(t, "metals", goldenBase, runMetals(t, module, found), found)
 	})
 	t.Run("native", func(t *testing.T) {
 		if reason, skip := found.skipped["native"]; skip {
@@ -184,7 +192,7 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 		if module == nil {
 			t.Fatal("the program did not lower")
 		}
-		compare(t, "native", goldenBase, runBinary(t, module, found, nasm.Build), interpResult, found)
+		compare(t, "native", goldenBase, runBinary(t, module, found, nasm.Build), found)
 	})
 	t.Run("cnative", func(t *testing.T) {
 		if reason, skip := found.skipped["cnative"]; skip {
@@ -196,17 +204,23 @@ func runCase(t *testing.T, rootPath, goldenBase string) {
 		if module == nil {
 			t.Fatal("the program did not lower")
 		}
-		compare(t, "cnative", goldenBase, runBinary(t, module, found, cgen.Build), interpResult, found)
+		compare(t, "cnative", goldenBase, runBinary(t, module, found, cgen.Build), found)
 	})
 }
 
-// compare holds a tier to the golden, and to the interpreter for the parts
-// the golden does not pin.
-func compare(t *testing.T, tier, goldenBase string, got, want result, found directives) {
+// compare holds one tier to what the case declares: the exit code, the
+// panic text when one is expected, and the golden files. Nothing here
+// consults another tier — the case is the authority, so a tier cannot
+// pass by matching a sibling that is also wrong.
+func compare(t *testing.T, tier, goldenBase string, got result, found directives) {
 	t.Helper()
-	if got.exit != want.exit {
-		t.Errorf("%s exit code differs: interp exited %d, %s exited %d\n%s: %s",
-			tier, want.exit, tier, got.exit, tier, got.message)
+	if got.exit != found.wantExit() {
+		t.Errorf("%s exited with %d, the case expects %d\n%s: %s",
+			tier, got.exit, found.wantExit(), tier, got.message)
+	}
+	if found.panicFragment != "" && !strings.Contains(got.message, found.panicFragment) {
+		t.Errorf("%s aborted with %q, which does not contain %q",
+			tier, got.message, found.panicFragment)
 	}
 	if found.unordered {
 		return
@@ -239,33 +253,54 @@ func readGolden(t *testing.T, path string) string {
 	return string(content)
 }
 
-// writeGolden records what the interpreter produced. The interpreter is the
-// specification, so it is the tier allowed to define the answer.
-func writeGolden(t *testing.T, goldenBase string, got result, found directives) {
-	t.Helper()
-	if found.unordered {
-		return
-	}
-	writeOrRemove(t, goldenBase+".out", got.stdout)
-	writeOrRemove(t, goldenBase+".err", got.stderr)
-}
-
-func writeOrRemove(t *testing.T, path, content string) {
-	t.Helper()
-	if content == "" {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			t.Fatal(err)
-		}
-		return
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // The tiers
 // ---------------------------------------------------------------------------
+
+// foreignRoot produces the module for a case another producer wrote. It
+// is the same path `gyro build` takes for such a file, verifier included:
+// the format trusts no producer, and these cases exist to hold the ones
+// in this repository to that.
+func foreignRoot(t *testing.T, rootPath, source string) *metals.Module {
+	t.Helper()
+
+	var module *metals.Module
+	var err error
+	switch filepath.Ext(rootPath) {
+	case ".metals":
+		module, err = metals.Parse(source)
+	case ".lisp":
+		module, err = lisp.Compile(rootPath, source)
+	case ".c":
+		// The bridge shells out to clang, so a machine without one skips
+		// the case rather than failing it — the same courtesy the native
+		// tiers get for a missing assembler.
+		if reason := wasm.Toolchain(); reason != nil {
+			t.Skipf("skipping: %v", reason)
+		}
+		module, err = wasm.CompileC(rootPath)
+	default:
+		t.Fatalf("no producer for %s", rootPath)
+	}
+	if err != nil {
+		t.Fatalf("%s: %v", filepath.Base(rootPath), err)
+	}
+	if err := metals.Verify(module); err != nil {
+		t.Fatalf("%s does not verify: %v\n%s", filepath.Base(rootPath), err, metals.Print(module))
+	}
+
+	// A program of one module is still linked, because that is also where
+	// a module's initializer becomes the call at the top of main.
+	linked, err := metals.Link([]*metals.Module{module})
+	if err != nil {
+		t.Fatalf("%s: %v", filepath.Base(rootPath), err)
+	}
+	if err := metals.Verify(linked); err != nil {
+		t.Fatalf("%s does not verify once linked: %v\n%s",
+			filepath.Base(rootPath), err, metals.Print(linked))
+	}
+	return linked
+}
 
 func compile(t *testing.T, rootPath string) (*loader.Program, *sema.Info) {
 	t.Helper()
@@ -282,42 +317,6 @@ func compile(t *testing.T, rootPath string) (*loader.Program, *sema.Info) {
 		t.Fatalf("the program does not check cleanly: %v", bag.Items())
 	}
 	return program, info
-}
-
-func runInterp(t *testing.T, program *loader.Program, found directives) result {
-	t.Helper()
-	var stdout, stderr bytes.Buffer
-	err := interp.Run(program, found.args, strings.NewReader(found.stdin), &stdout, &stderr)
-	got := result{stdout: stdout.String(), stderr: stderr.String()}
-	if err != nil {
-		got.message = err.Error()
-	}
-
-	var exit *interp.Exit
-	if errors.As(err, &exit) {
-		got.exit = exit.Code
-		return got
-	}
-
-	if found.panicFragment == "" {
-		if err != nil {
-			t.Fatalf("the interpreter aborted: %v", err)
-		}
-		return got
-	}
-
-	var abort *interp.Panic
-	if !errors.As(err, &abort) {
-		t.Fatalf("expected a panic containing %q, got %v", found.panicFragment, err)
-	}
-	if !strings.Contains(abort.Message, found.panicFragment) {
-		t.Errorf("panic %q does not contain %q", abort.Message, found.panicFragment)
-	}
-	got.exit = 1
-	// The panic text carries a source position and is not part of the
-	// golden, since the other tiers word a few of them differently.
-	got.stderr = ""
-	return got
 }
 
 // lowerVerified lowers a checked program, verifies it, and pins the text

@@ -1,0 +1,14 @@
+// Baseline: no work at all. Its hot region is two clock reads, and its
+// wall time is process start, runtime init and exit — the fixed cost
+// every other case in the table also pays.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+  var start = monotonic()
+  var stop = monotonic()
+
+  println(0)
+  eprintln("gyro:bench #{stop - start}")
+}

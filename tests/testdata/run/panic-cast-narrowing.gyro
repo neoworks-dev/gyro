@@ -1,4 +1,4 @@
-//gyro:panic does not fit u8
+//gyro:panic conversion loses the value
 
 import { println } from "stdlib"
 

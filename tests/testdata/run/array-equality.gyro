@@ -1,0 +1,29 @@
+// A fixed-size array is a value, so == compares its elements. A slice is
+// a view and the checker refuses == on one, since a view could as easily
+// mean its contents as its identity.
+
+import { println } from "stdlib"
+
+struct Pair { a: i32, b: i32 }
+
+fn main() {
+  var a = [1, 2, 3]
+  var b = [1, 2, 3]
+  var c = [1, 2, 4]
+  println(a == b)
+  println(a == c)
+  println(a != c)
+
+  var strings = ["x", "y"]
+  var same = ["x", "y"]
+  println(strings == same)
+
+  var structs = [Pair{ a: 1, b: 2 }]
+  var others = [Pair{ a: 1, b: 3 }]
+  println(structs == others)
+
+  // The same rule reached through an any, which is a closed sum and so
+  // compares like the enum it lowers to.
+  println((a as any) == (b as any))
+  println((a as any) == (c as any))
+}

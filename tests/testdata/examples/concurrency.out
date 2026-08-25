@@ -1,4 +1,4 @@
 total: 285
 first fetch: stub body for https://example.com
 no more results
-fetch failed: the interpreter has no network
+fetch failed: this runtime has no network

@@ -4,6 +4,12 @@ fn pair(): (i32, string) {
   return 4, "four"
 }
 
+// A tuple literal types each element from its position: the negated
+// literal is an i64 here, not the i32 a bare literal would default to.
+fn missing(): (i64, i64) {
+  return (-1, 0)
+}
+
 fn main() {
   var n, word = pair()
   println(n)
@@ -11,6 +17,9 @@ fn main() {
 
   var t = pair()
   println(t.1)
+
+  var at, length = missing()
+  println("#{at} #{length}")
 
   var counts = (1, 2)
   counts.0 = 10

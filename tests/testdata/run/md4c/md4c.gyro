@@ -1,0 +1,4109 @@
+// A port of md4c's block and inline parser (github.com/mity/md4c, MIT,
+// (c) 2016-2026 Martin Mitas) — src/md4c.c.
+//
+// Scope: the CommonMark dialect with no extensions, which is what md2html
+// runs with no flags. Every `ctx->parser.flags` branch upstream is dead
+// under that configuration, so tables, footnotes, wiki links, LaTeX math,
+// strikethrough, task lists, admonitions, spoilers, sub/superscripts,
+// highlights, permissive autolinks, underline, whitespace collapsing,
+// hard-soft breaks and preserved blank lines are all absent here rather
+// than present and switched off. `code_indent_offset` is therefore always
+// 4 and the mark character map is a fixed set.
+//
+// What the port changes, and why:
+//
+//   * md4c drives the renderer through MD_PARSER, a struct of function
+//     pointers. Here that is a struct of function values, and the
+//     renderer's state travels in the closures rather than in a `void*
+//     userdata` threaded through every callback.
+//   * md4c hands a callback `const CHAR* text, MD_SIZE size` — an
+//     interior pointer. Gyro has no way to make a slice of a slice, so a
+//     text callback takes the whole source plus a half-open [beg, end).
+//     The three literals md4c passes that way (" ", "\n", the NUL
+//     placeholder) are module-level byte arrays, so nothing is allocated
+//     to hand over a constant.
+//   * Every `OFF* p_end` out-parameter becomes part of a returned tuple,
+//     and where C returns four or five of them the port returns a small
+//     struct instead (LabelSpan, TitleSpan, CodeSpan, LinkAttr).
+//   * Offsets are i64, not `unsigned`. md4c relies on unsigned wraparound
+//     nowhere, but it does compute `off - 1` and `end - 1` freely, and
+//     Gyro's arithmetic panics on underflow rather than wrapping.
+//   * MD_CTX's block buffer is a byte array holding MD_BLOCKs each
+//     followed by its MD_LINEs. Here it is two arrays, `blocks` and
+//     `lines`, with each block naming where its lines start. The one
+//     place upstream reads the last eight bytes of that buffer and hopes
+//     they are an MD_BLOCK (the "list item starting with two blank
+//     lines" hack) becomes an explicit "the last record pushed was an LI
+//     container" test.
+//   * MD_CTX's label hash table is a plain array searched in order. The
+//     table exists upstream to make duplicate labels resolve to the
+//     first definition; a first-match linear scan says the same thing.
+//   * md4c's callbacks may abort the parse by returning non-zero and
+//     every call site checks. Nothing in the md2html pipeline ever does,
+//     so the callbacks here return nothing; a fallible callback in Gyro
+//     would return `error?` and want a different shape anyway.
+//   * Nothing is freed. Gyro reclaims no memory yet, so the malloc/free
+//     pairs upstream keeps (the merged-line buffers, the attribute
+//     builds, the mark pointer stack) are simply allocations here.
+
+import { Array } from "stdlib"
+import * as unicode from "./unicode"
+
+// ---------------------------------------------------------------------------
+// The public surface: what a renderer is handed
+// ---------------------------------------------------------------------------
+
+export enum BlockKind {
+  Doc,
+  Quote,
+  Ul,
+  Ol,
+  Li,
+  Hr,
+  H,
+  Code,
+  Html,
+  P,
+}
+
+export enum SpanKind {
+  Em,
+  Strong,
+  A,
+  Img,
+  Code,
+}
+
+export enum TextKind {
+  Normal,
+  NullChar,
+  Br,
+  SoftBr,
+  Entity,
+  Code,
+  Html,
+}
+
+// An Attribute is text that travels outside the normal flow — a link
+// destination, a title, a code fence's info string — and which may be cut
+// into runs of differing kinds, because an entity inside it is still an
+// entity. `offsets` holds one more entry than `types`: the last is the
+// total size, exactly as md4c documents MD_ATTRIBUTE.
+//
+// An absent attribute is an empty one. Upstream signals absence with a
+// null `text` pointer, and every place it does so also has size 0, so the
+// two spellings agree.
+export struct Attribute {
+  export text: Array<u8>
+  export types: Array<TextKind>
+  export offsets: Array<i64>
+}
+
+var NO_TEXT: Array<u8> = Array<u8>::new()
+var NO_TYPES: Array<TextKind> = Array<TextKind>::new()
+var NO_OFFSETS: Array<i64> = Array<i64>::new()
+
+export fn Attribute::absent(): Attribute {
+  return Attribute{ text: NO_TEXT, types: NO_TYPES, offsets: NO_OFFSETS }
+}
+
+export fn Attribute::present(self): bool {
+  return self.text.len() > 0
+}
+
+export fn Attribute::size(self): i64 {
+  return self.text.len() as i64
+}
+
+// Detail carries what md4c splits across a dozen MD_*_DETAIL structs. One
+// struct is enough here because Gyro has no unions and the renderer reads
+// only the fields belonging to the kind it was handed.
+export struct Detail {
+  export level: i64          // H
+  export start: i64          // Ol
+  export is_tight: bool      // Ul, Ol
+  export mark: u8            // Ul bullet, Ol delimiter
+  export fence_char: u8      // Code
+  export info: Attribute     // Code
+  export lang: Attribute     // Code
+  export href: Attribute     // A, Img
+  export title: Attribute    // A, Img
+  export is_autolink: bool   // A
+}
+
+export fn Detail::none(): Detail {
+  return Detail{
+    level: 0,
+    start: 0,
+    is_tight: false,
+    mark: 0,
+    fence_char: 0,
+    info: Attribute::absent(),
+    lang: Attribute::absent(),
+    href: Attribute::absent(),
+    title: Attribute::absent(),
+    is_autolink: false,
+  }
+}
+
+// Parser is md4c's MD_PARSER: the renderer, as function values. The text
+// callback takes the source it should read plus a half-open range, since
+// there are no interior pointers to hand over.
+export struct Parser {
+  export enter_block: fn(BlockKind, Detail)
+  export leave_block: fn(BlockKind, Detail)
+  export enter_span: fn(SpanKind, Detail)
+  export leave_span: fn(SpanKind, Detail)
+  export text: fn(TextKind, u8[], i64, i64)
+}
+
+// ---------------------------------------------------------------------------
+// Constants that upstream keeps as macros
+// ---------------------------------------------------------------------------
+
+// Code span marks longer than this are not considered, which is what keeps
+// resolving many openers of differing lengths out of O(n^2).
+const CODESPAN_MARK_MAXLEN: i64 = 32
+
+const CODE_INDENT_OFFSET: i64 = 4
+
+const MARK_POTENTIAL_OPENER: i64 = 0x01
+const MARK_POTENTIAL_CLOSER: i64 = 0x02
+const MARK_OPENER: i64 = 0x04
+const MARK_CLOSER: i64 = 0x08
+const MARK_RESOLVED: i64 = 0x10
+
+// Type-specific flags, sharing the bits above 0x10.
+const MARK_EMPH_OC: i64 = 0x20
+const MARK_EMPH_MOD3_0: i64 = 0x40
+const MARK_EMPH_MOD3_1: i64 = 0x80
+const MARK_EMPH_MOD3_2: i64 = 0xc0
+const MARK_EMPH_MOD3_MASK: i64 = 0xc0
+const MARK_AUTOLINK: i64 = 0x20
+const MARK_AUTOLINK_MISSING_MAILTO: i64 = 0x40
+const MARK_BRACKET_CANBEIMAGE: i64 = 0x20
+const MARK_BRACKET_HASNESTED: i64 = 0x40
+
+// Block record flags.
+const BLOCK_CONTAINER_OPENER: i64 = 0x01
+const BLOCK_CONTAINER_CLOSER: i64 = 0x02
+const BLOCK_CONTAINER: i64 = 0x03
+const BLOCK_LOOSE_LIST: i64 = 0x04
+const BLOCK_SETEXT_HEADER: i64 = 0x08
+
+// The stack of unresolved openers, one slot per (character, opener-only vs
+// mixed, length mod 3) combination the "rule of three" distinguishes, plus
+// one for brackets. Upstream keeps nineteen and uses these fifteen; the
+// four belonging to extensions are gone with them.
+const N_OPENER_STACKS: i64 = 13
+const BRACKET_OPENERS: i64 = 12
+
+// Line kinds, as md4c's MD_LINETYPE minus the table ones.
+enum LineKind {
+  Blank,
+  Hr,
+  AtxHeader,
+  SetextHeader,
+  SetextUnderline,
+  IndentedCode,
+  FencedCode,
+  Html,
+  Text,
+}
+
+// ---------------------------------------------------------------------------
+// Literals handed to the text callback
+// ---------------------------------------------------------------------------
+
+var SPACE: u8[1] = [32]
+var NEWLINE: u8[1] = [10]
+// What md4c passes for MD_TEXT_NULLCHAR: a one-byte placeholder the
+// renderer never reads, since the kind already says what to emit.
+var NUL: u8[1] = [0]
+// Code blocks are indented sixteen columns at a time.
+var INDENT_CHUNK: u8[16] = [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+
+var HTML_COMMENT_CLOSE: u8[3] = [45, 45, 62]                      // -->
+var HTML_PI_CLOSE: u8[2] = [63, 62]                               // ?>
+var HTML_DECL_CLOSE: u8[1] = [62]                                 // >
+var HTML_CDATA_CLOSE: u8[3] = [93, 93, 62]                        // ]]>
+var HTML_CDATA_OPEN: u8[8] = [33, 91, 67, 68, 65, 84, 65, 91]     // ![CDATA[
+var MAILTO: u8[7] = [109, 97, 105, 108, 116, 111, 58]             // mailto:
+
+var BRACKET_CHARS: u8[3] = [91, 33, 93]                           // [ ! ]
+var EMPH_CHARS: u8[3] = [38, 42, 95]                              // & * _
+
+// ---------------------------------------------------------------------------
+// Character classes
+//
+// md4c's ISxxx_ macros cast to unsigned before comparing, so a byte at or
+// above 0x80 falls out of every ASCII class. A u8 does the same by
+// construction.
+// ---------------------------------------------------------------------------
+
+fn is_blank(c: u8): bool { return c == 32 || c == 9 }
+fn is_newline(c: u8): bool { return c == 13 || c == 10 }
+fn is_space_class(c: u8): bool { return c == 32 || c == 9 || c == 11 || c == 12 }
+fn is_cntrl(c: u8): bool { return c <= 31 || c == 127 }
+fn is_ascii(c: u8): bool { return c <= 127 }
+fn is_upper(c: u8): bool { return c >= 65 && c <= 90 }
+fn is_lower(c: u8): bool { return c >= 97 && c <= 122 }
+fn is_alpha(c: u8): bool { return is_upper(c) || is_lower(c) }
+fn is_digit(c: u8): bool { return c >= 48 && c <= 57 }
+fn is_alnum(c: u8): bool { return is_alpha(c) || is_digit(c) }
+fn is_xdigit(c: u8): bool {
+  return is_digit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)
+}
+fn is_punct(c: u8): bool {
+  return (c >= 33 && c <= 47) || (c >= 58 && c <= 64)
+      || (c >= 91 && c <= 96) || (c >= 123 && c <= 126)
+}
+
+// The palettes md4c spells as string literals inside ISANYOF.
+fn is_tag_delim(c: u8): bool {
+  // " ' = < > `
+  return c == 34 || c == 39 || c == 61 || c == 60 || c == 62 || c == 96
+}
+
+fn is_attr_name_char(c: u8): bool {
+  // _ . : -
+  return c == 95 || c == 46 || c == 58 || c == 45
+}
+
+fn is_bullet(c: u8): bool {
+  // - + *
+  return c == 45 || c == 43 || c == 42
+}
+
+fn is_hr_char(c: u8): bool {
+  // - _ *
+  return c == 45 || c == 95 || c == 42
+}
+
+fn is_email_user_char(c: u8): bool {
+  // . ! # $ % & ' * + / = ? ^ _ ` { | } ~ -
+  return c == 46 || c == 33 || c == 35 || c == 36 || c == 37 || c == 38
+      || c == 39 || c == 42 || c == 43 || c == 47 || c == 61 || c == 63
+      || c == 94 || c == 95 || c == 96 || c == 123 || c == 124 || c == 125
+      || c == 126 || c == 45
+}
+
+fn contains_byte(set: u8[], c: u8): bool {
+  for wanted in set {
+    if wanted == c {
+      return true
+    }
+  }
+  return false
+}
+
+fn lower_ascii(c: u8): u8 {
+  if is_upper(c) {
+    return c + 32
+  }
+  return c
+}
+
+// ---------------------------------------------------------------------------
+// UTF-8
+// ---------------------------------------------------------------------------
+
+fn is_utf8_lead1(b: u8): bool { return b <= 0x7f }
+fn is_utf8_lead2(b: u8): bool { return (b & 0xe0) == 0xc0 }
+fn is_utf8_lead3(b: u8): bool { return (b & 0xf0) == 0xe0 }
+fn is_utf8_lead4(b: u8): bool { return (b & 0xf8) == 0xf0 }
+fn is_utf8_tail(b: u8): bool { return (b & 0xc0) == 0x80 }
+
+// decode answers the code point at `off` and how many bytes it took. An
+// ill-formed sequence decodes as its lead byte, one byte wide, which is
+// what md4c does.
+fn decode(text: u8[], off: i64, size: i64): (u32, i64) {
+  var lead = text[off as usize]
+  if !is_utf8_lead1(lead) {
+    if is_utf8_lead2(lead) {
+      if off + 1 < size && is_utf8_tail(text[(off + 1) as usize]) {
+        return ((lead as u32 & 0x1f) << 6) | (text[(off + 1) as usize] as u32 & 0x3f), 2
+      }
+    } elif is_utf8_lead3(lead) {
+      if off + 2 < size && is_utf8_tail(text[(off + 1) as usize]) && is_utf8_tail(text[(off + 2) as usize]) {
+        return ((lead as u32 & 0x0f) << 12)
+             | ((text[(off + 1) as usize] as u32 & 0x3f) << 6)
+             | (text[(off + 2) as usize] as u32 & 0x3f), 3
+      }
+    } elif is_utf8_lead4(lead) {
+      if off + 3 < size && is_utf8_tail(text[(off + 1) as usize])
+          && is_utf8_tail(text[(off + 2) as usize]) && is_utf8_tail(text[(off + 3) as usize]) {
+        return ((lead as u32 & 0x07) << 18)
+             | ((text[(off + 1) as usize] as u32 & 0x3f) << 12)
+             | ((text[(off + 2) as usize] as u32 & 0x3f) << 6)
+             | (text[(off + 3) as usize] as u32 & 0x3f), 4
+      }
+    }
+  }
+  return lead as u32, 1
+}
+
+// decode_before answers the code point ending just before `off`.
+fn decode_before(text: u8[], off: i64): u32 {
+  var last = text[(off - 1) as usize]
+  if !is_utf8_lead1(last) {
+    if off > 1 && is_utf8_lead2(text[(off - 2) as usize]) && is_utf8_tail(last) {
+      return ((text[(off - 2) as usize] as u32 & 0x1f) << 6) | (last as u32 & 0x3f)
+    }
+    if off > 2 && is_utf8_lead3(text[(off - 3) as usize])
+        && is_utf8_tail(text[(off - 2) as usize]) && is_utf8_tail(last) {
+      return ((text[(off - 3) as usize] as u32 & 0x0f) << 12)
+           | ((text[(off - 2) as usize] as u32 & 0x3f) << 6)
+           | (last as u32 & 0x3f)
+    }
+    if off > 3 && is_utf8_lead4(text[(off - 4) as usize])
+        && is_utf8_tail(text[(off - 3) as usize]) && is_utf8_tail(text[(off - 2) as usize])
+        && is_utf8_tail(last) {
+      return ((text[(off - 4) as usize] as u32 & 0x07) << 18)
+           | ((text[(off - 3) as usize] as u32 & 0x3f) << 12)
+           | ((text[(off - 2) as usize] as u32 & 0x3f) << 6)
+           | (last as u32 & 0x3f)
+    }
+  }
+  return last as u32
+}
+
+// ---------------------------------------------------------------------------
+// The records the parser builds
+// ---------------------------------------------------------------------------
+
+// A mark is a position in the block's text that might begin or end a span.
+// `prev`/`next` are an opener stack while the mark is unresolved and the
+// link to the matching mark once it is resolved.
+struct Mark {
+  beg: i64
+  end: i64
+  prev: i64
+  next: i64
+  ch: u8
+  flags: i64
+}
+
+// A line of a block. `indent` is only meaningful for the verbatim lines of
+// a code or raw-HTML block, where it is the indentation the block strips.
+struct Line {
+  beg: i64
+  end: i64
+  indent: i64
+}
+
+// LineAnalysis is what one pass over a source line decided about it.
+struct LineAnalysis {
+  kind: LineKind
+  data: i64
+  enforce_new_block: bool
+  beg: i64
+  end: i64
+  indent: i64
+}
+
+fn blank_line(): LineAnalysis {
+  return LineAnalysis{ kind: LineKind::Blank, data: 0, enforce_new_block: false, beg: 0, end: 0, indent: 0 }
+}
+
+struct Block {
+  kind: BlockKind
+  flags: i64
+  // H: level. Code: non-zero if fenced. Ul/Ol: the mark character.
+  data: i64
+  // Leaf blocks: how many lines. Ol: the start index. Li: unused here.
+  n_lines: i64
+  // Leaf blocks: where those lines begin in ctx.lines.
+  first_line: i64
+}
+
+struct Container {
+  ch: u8
+  is_loose: bool
+  start: i64
+  mark_indent: i64
+  contents_indent: i64
+  // Where this list's Ul/Ol opener sits in ctx.blocks, so a later blank
+  // line can go back and call the list loose.
+  block_index: i64
+}
+
+fn empty_container(): Container {
+  return Container{ ch: 0, is_loose: false, start: 0, mark_indent: 0, contents_indent: 0, block_index: 0 }
+}
+
+// A link reference definition. The label and title are owned copies: md4c
+// points into the document when it can and mallocs when the definition
+// spans lines, and carrying both shapes would buy nothing here.
+struct RefDef {
+  label: Array<u8>
+  hash: u32
+  title: Array<u8>
+  dest_beg: i64
+  dest_end: i64
+}
+
+// What resolving a link produced. An empty title means no title.
+struct LinkAttr {
+  dest_beg: i64
+  dest_end: i64
+  title: Array<u8>
+}
+
+// The six results md_is_link_label() reports through out-parameters.
+struct LabelSpan {
+  ok: bool
+  end: i64
+  beg_line: i64
+  end_line: i64
+  contents_beg: i64
+  contents_end: i64
+}
+
+// Likewise for md_is_link_title().
+struct TitleSpan {
+  ok: bool
+  end: i64
+  beg_line: i64
+  end_line: i64
+  contents_beg: i64
+  contents_end: i64
+}
+
+// What md_is_code_span() reports. `opener_end` is set even on failure: the
+// caller needs it to skip the run of backticks it just examined.
+struct CodeSpan {
+  ok: bool
+  opener_beg: i64
+  opener_end: i64
+  closer_beg: i64
+  closer_end: i64
+  reached_paragraph_end: bool
+}
+
+// ---------------------------------------------------------------------------
+// The parsing context
+// ---------------------------------------------------------------------------
+
+struct Ctx {
+  text: u8[]
+  size: i64
+  parser: Parser
+
+  // Marks. The array is reused between blocks; n_marks is the logical
+  // length, exactly as upstream keeps n_marks beside alloc_marks.
+  marks: Array<Mark>
+  n_marks: i64
+  opener_stacks: Array<i64>
+
+  // Bracket pairs waiting to be resolved as links, oldest closer first.
+  unresolved_link_head: i64
+  unresolved_link_tail: i64
+
+  // How far each raw-HTML closer has been searched for already, so a
+  // failed scan is not repeated for every opener on the line.
+  html_comment_horizon: i64
+  html_proc_instr_horizon: i64
+  html_decl_horizon: i64
+  html_cdata_horizon: i64
+
+  // While resolving brackets: the innermost link and image resolved so
+  // far, which is how nested brackets are ruled out.
+  last_link_beg: i64
+  last_link_end: i64
+  last_img_beg: i64
+  last_img_end: i64
+
+  // Titles owned by resolved link marks, referenced by index because a
+  // mark has no room for a buffer.
+  titles: Array<Array<u8>>
+
+  // The block stream and the lines belonging to it.
+  blocks: Array<Block>
+  n_blocks: i64
+  lines: Array<Line>
+  n_lines: i64
+  current_block: i64
+
+  containers: Array<Container>
+  n_containers: i64
+
+  ref_defs: Array<RefDef>
+  max_ref_def_output: i64
+
+  code_fence_length: i64
+  html_block_type: i64
+  last_line_has_list_loosening_effect: bool
+  last_list_item_starts_with_two_blank_lines: bool
+}
+
+fn Ctx::ch(self, off: i64): u8 {
+  if off < 0 || off >= self.size {
+    return 0
+  }
+  return self.text[off as usize]
+}
+
+// ---------------------------------------------------------------------------
+// Emitting to the renderer
+// ---------------------------------------------------------------------------
+
+// emit is md4c's MD_TEXT: an empty run is not reported.
+fn Ctx::emit(self, kind: TextKind, source: u8[], beg: i64, end: i64) {
+  if end > beg {
+    self.parser.text(kind, source, beg, end)
+  }
+}
+
+// emit_insecure is MD_TEXT_INSECURE: the same, except that a NUL in the
+// run is reported separately so the renderer can substitute U+FFFD.
+fn Ctx::emit_insecure(self, kind: TextKind, source: u8[], beg: i64, end: i64) {
+  var start = beg
+  var off = beg
+  while true {
+    while off < end && source[off as usize] != 0 {
+      off += 1
+    }
+    if off > start {
+      self.parser.text(kind, source, start, off)
+    }
+    if off >= end {
+      return
+    }
+    self.parser.text(TextKind::NullChar, NUL, 0, 1)
+    off += 1
+    start = off
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Marks
+// ---------------------------------------------------------------------------
+
+fn Ctx::mark(self, index: i64): Mark {
+  return self.marks.get(index as usize)
+}
+
+fn Ctx::put_mark(*self, index: i64, mark: Mark) {
+  self.marks.set(index as usize, mark)
+}
+
+fn Ctx::add_mark(*self, ch: u8, beg: i64, end: i64, flags: i64) {
+  var mark = Mark{ beg: beg, end: end, prev: -1, next: -1, ch: ch, flags: flags }
+  var index = self.n_marks
+  if index < self.marks.len() as i64 {
+    self.marks.set(index as usize, mark)
+  } else {
+    self.marks.push(mark)
+  }
+  self.n_marks += 1
+}
+
+fn Ctx::stack_top(self, stack: i64): i64 {
+  return self.opener_stacks.get(stack as usize)
+}
+
+fn Ctx::stack_push(*self, stack: i64, mark_index: i64) {
+  var mark = self.mark(mark_index)
+  mark.next = self.stack_top(stack)
+  self.put_mark(mark_index, mark)
+  self.opener_stacks.set(stack as usize, mark_index)
+}
+
+fn Ctx::stack_pop(*self, stack: i64): i64 {
+  var top = self.stack_top(stack)
+  if top >= 0 {
+    self.opener_stacks.set(stack as usize, self.mark(top).next)
+  }
+  return top
+}
+
+// resolve_range ties an opener to its closer and marks both settled.
+fn Ctx::resolve_range(*self, opener_index: i64, closer_index: i64) {
+  var opener = self.mark(opener_index)
+  opener.next = closer_index
+  opener.flags = opener.flags | MARK_OPENER | MARK_RESOLVED
+  self.put_mark(opener_index, opener)
+
+  var closer = self.mark(closer_index)
+  closer.prev = opener_index
+  closer.flags = closer.flags | MARK_CLOSER | MARK_RESOLVED
+  self.put_mark(closer_index, closer)
+}
+
+// pop_openers drops every unresolved opener at or after the given mark, so
+// no two resolved ranges can cross.
+fn Ctx::pop_openers(*self, opener_index: i64) {
+  for var stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
+    while self.stack_top(stack) >= opener_index {
+      var _ = self.stack_pop(stack)
+    }
+  }
+}
+
+// disable_marks turns a span of marks into dummies, which the later phases
+// skip over.
+fn Ctx::disable_marks(*self, first: i64, limit: i64) {
+  for var i = first; i < limit; i += 1 {
+    var mark = self.mark(i)
+    mark.ch = 68           // 'D'
+    mark.flags = 0
+    self.put_mark(i, mark)
+  }
+}
+
+// Which opener stack an emphasis mark of this character and flags belongs
+// to. The "rule of three" needs the original length modulo three, and
+// openers that could also close are kept apart from openers that could not.
+fn emph_stack(ch: u8, flags: i64): i64 {
+  var stack: i64 = 0
+  if ch == 95 {            // '_'
+    stack = 6
+  }
+  if (flags & MARK_EMPH_OC) != 0 {
+    stack += 3
+  }
+  var mod3 = flags & MARK_EMPH_MOD3_MASK
+  if mod3 == MARK_EMPH_MOD3_1 {
+    stack += 1
+  } elif mod3 == MARK_EMPH_MOD3_2 {
+    stack += 2
+  }
+  return stack
+}
+
+fn Ctx::opener_stack_of(self, mark_index: i64): i64 {
+  var mark = self.mark(mark_index)
+  if mark.ch == 42 || mark.ch == 95 {     // '*' '_'
+    return emph_stack(mark.ch, mark.flags)
+  }
+  return BRACKET_OPENERS
+}
+
+// ---------------------------------------------------------------------------
+// Lines
+// ---------------------------------------------------------------------------
+
+fn Ctx::line(self, index: i64): Line {
+  return self.lines.get(index as usize)
+}
+
+// lookup_line answers the index, relative to lines_off, of the line holding
+// the offset. An offset falling in the gap between two lines answers the
+// following one. -1 means the offset is outside the block.
+fn Ctx::lookup_line(self, off: i64, lines_off: i64, n_lines: i64): i64 {
+  var low: i64 = 0
+  var high = n_lines - 1
+  while low <= high {
+    var pivot = (low + high) / 2
+    var line = self.line(lines_off + pivot)
+
+    if off < line.beg {
+      if high == 0 || self.line(lines_off + high - 1).end < off {
+        return pivot
+      }
+      high = pivot - 1
+    } elif off > line.end {
+      low = pivot + 1
+    } else {
+      return pivot
+    }
+  }
+  return -1
+}
+
+// merge_lines copies [beg, end) out of the document, replacing each line
+// break with one character, and hands back storage of its own.
+fn Ctx::merge_lines(self, beg: i64, end: i64, lines_off: i64, replacement: u8): Array<u8> {
+  var out = Array<u8>::new()
+  var line_index: i64 = 0
+  var off = beg
+
+  while true {
+    var line_end = self.line(lines_off + line_index).end
+    if end < line_end {
+      line_end = end
+    }
+    while off < line_end {
+      out.push(self.ch(off))
+      off += 1
+    }
+    if off >= end {
+      return out
+    }
+    out.push(replacement)
+    line_index += 1
+    off = self.line(lines_off + line_index).beg
+  }
+  return out
+}
+
+// copy_range is merge_lines' single-line sibling: a plain copy out of the
+// document, which the port needs wherever md4c would have passed a pointer
+// into it.
+fn Ctx::copy_range(self, beg: i64, end: i64): Array<u8> {
+  var out = Array<u8>::new()
+  for var off = beg; off < end; off += 1 {
+    out.push(self.ch(off))
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Recognizing entities
+// ---------------------------------------------------------------------------
+
+fn is_hex_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  while off < max_end && is_xdigit(text[off as usize]) && off - beg <= 8 {
+    off += 1
+  }
+  if 1 <= off - beg && off - beg <= 6 {
+    return true, off
+  }
+  return false, off
+}
+
+fn is_dec_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  while off < max_end && is_digit(text[off as usize]) && off - beg <= 8 {
+    off += 1
+  }
+  if 1 <= off - beg && off - beg <= 7 {
+    return true, off
+  }
+  return false, off
+}
+
+fn is_named_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  if off < max_end && is_alpha(text[off as usize]) {
+    off += 1
+  } else {
+    return false, off
+  }
+  while off < max_end && is_alnum(text[off as usize]) && off - beg <= 48 {
+    off += 1
+  }
+  if 2 <= off - beg && off - beg <= 48 {
+    return true, off
+  }
+  return false, off
+}
+
+// is_entity reports whether an entity starts at `beg`, and where it ends.
+// md4c knows no list of names here: anything shaped like one counts, and
+// the renderer decides what an unknown name means.
+export fn is_entity(text: u8[], beg: i64, max_end: i64): (bool, i64) {
+  var off = beg + 1
+  var ok = false
+
+  if off + 2 < max_end && text[off as usize] == 35
+      && (text[(off + 1) as usize] == 120 || text[(off + 1) as usize] == 88) {
+    ok, off = is_hex_entity_contents(text, off + 2, max_end)
+  } elif off + 1 < max_end && text[off as usize] == 35 {
+    ok, off = is_dec_entity_contents(text, off + 1, max_end)
+  } else {
+    ok, off = is_named_entity_contents(text, off, max_end)
+  }
+
+  if ok && off < max_end && text[off as usize] == 59 {      // ';'
+    return true, off + 1
+  }
+  return false, off
+}
+
+// ---------------------------------------------------------------------------
+// Attributes
+// ---------------------------------------------------------------------------
+
+// build_attribute cuts raw text into runs of ordinary text, entities and
+// NUL characters, resolving backslash escapes on the way unless the source
+// is an autolink destination, where a backslash is just a backslash.
+fn build_attribute(source: u8[], beg: i64, size: i64, keep_escapes: bool): Attribute {
+  if size <= 0 {
+    return Attribute::absent()
+  }
+
+  var text = Array<u8>::new()
+  var types = Array<TextKind>::new()
+  var offsets = Array<i64>::new()
+
+  var raw_off = beg
+  var limit = beg + size
+  var out: i64 = 0
+  var last_kind = TextKind::Normal
+  var have_run = false
+
+  while raw_off < limit {
+    var c = source[raw_off as usize]
+
+    if c == 0 {
+      types.push(TextKind::NullChar)
+      offsets.push(out)
+      last_kind = TextKind::NullChar
+      have_run = true
+      text.push(c)
+      out += 1
+      raw_off += 1
+      continue
+    }
+
+    if c == 38 {           // '&'
+      var found, ent_end = is_entity(source, raw_off, limit)
+      if found {
+        types.push(TextKind::Entity)
+        offsets.push(out)
+        last_kind = TextKind::Entity
+        have_run = true
+        while raw_off < ent_end {
+          text.push(source[raw_off as usize])
+          out += 1
+          raw_off += 1
+        }
+        continue
+      }
+    }
+
+    if !have_run || last_kind != TextKind::Normal {
+      types.push(TextKind::Normal)
+      offsets.push(out)
+      last_kind = TextKind::Normal
+      have_run = true
+    }
+
+    if !keep_escapes && c == 92 && raw_off + 1 < limit          // '\\'
+        && (is_punct(source[(raw_off + 1) as usize]) || is_newline(source[(raw_off + 1) as usize])) {
+      raw_off += 1
+    }
+
+    text.push(source[raw_off as usize])
+    out += 1
+    raw_off += 1
+  }
+
+  offsets.push(out)
+  return Attribute{ text: text, types: types, offsets: offsets }
+}
+
+// ---------------------------------------------------------------------------
+// Link labels
+//
+// Two labels are the same when they agree after collapsing whitespace runs
+// and case folding, which is why a label needs both its own hash and its
+// own comparison.
+// ---------------------------------------------------------------------------
+
+const FNV1A_BASE: u32 = 2166136261
+const FNV1A_PRIME: u32 = 16777619
+
+fn fnv1a_u32(base: u32, value: u32): u32 {
+  var hash = base
+  var shifted = value
+  for var i: i64 = 0; i < 4; i += 1 {
+    hash = hash ^ (shifted & 0xff)
+    hash = hash *% FNV1A_PRIME
+    shifted = shifted >> 8
+  }
+  return hash
+}
+
+// skip_label_whitespace walks past a run of whitespace, newlines included.
+fn skip_label_whitespace(label: u8[], off: i64): i64 {
+  var size = label.len() as i64
+  var at = off
+  while at < size {
+    var codepoint, width = decode(label, at, size)
+    if !unicode::is_whitespace(codepoint) && !is_newline(label[at as usize]) {
+      break
+    }
+    at += width
+  }
+  return at
+}
+
+fn label_hash(label: u8[]): u32 {
+  var size = label.len() as i64
+  var hash = FNV1A_BASE
+  var off = skip_label_whitespace(label, 0)
+
+  while off < size {
+    var codepoint, width = decode(label, off, size)
+    if unicode::is_whitespace(codepoint) || is_newline(label[off as usize]) {
+      hash = fnv1a_u32(hash, 32)
+      off = skip_label_whitespace(label, off)
+    } else {
+      var a, b, c, n = unicode::fold(codepoint)
+      hash = fnv1a_u32(hash, a)
+      if n > 1 {
+        hash = fnv1a_u32(hash, b)
+      }
+      if n > 2 {
+        hash = fnv1a_u32(hash, c)
+      }
+      off += width
+    }
+  }
+  return hash
+}
+
+// Folding state for one side of a label comparison: up to three code
+// points and how many have been consumed.
+struct FoldRun {
+  first: u32
+  second: u32
+  third: u32
+  count: i64
+  taken: i64
+}
+
+fn FoldRun::at(self, index: i64): u32 {
+  if index == 0 {
+    return self.first
+  }
+  if index == 1 {
+    return self.second
+  }
+  return self.third
+}
+
+// load_fold advances one side by one code point. The end of a label counts
+// as whitespace, which is what makes "foo " and "foo" the same label.
+fn load_fold(label: u8[], off: i64): (FoldRun, i64) {
+  var size = label.len() as i64
+  if off >= size {
+    return FoldRun{ first: 32, second: 0, third: 0, count: 1, taken: 0 }, skip_label_whitespace(label, off)
+  }
+
+  var codepoint, width = decode(label, off, size)
+  if unicode::is_whitespace(codepoint) {
+    return FoldRun{ first: 32, second: 0, third: 0, count: 1, taken: 0 }, skip_label_whitespace(label, off + width)
+  }
+
+  var a, b, c, n = unicode::fold(codepoint)
+  return FoldRun{ first: a, second: b, third: c, count: n, taken: 0 }, off + width
+}
+
+fn label_cmp(a_label: u8[], b_label: u8[]): i64 {
+  var a_size = a_label.len() as i64
+  var b_size = b_label.len() as i64
+  var a_off = skip_label_whitespace(a_label, 0)
+  var b_off = skip_label_whitespace(b_label, 0)
+  var a_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
+  var b_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
+
+  while a_off < a_size || a_run.taken < a_run.count || b_off < b_size || b_run.taken < b_run.count {
+    if a_run.taken >= a_run.count {
+      a_run, a_off = load_fold(a_label, a_off)
+    }
+    if b_run.taken >= b_run.count {
+      b_run, b_off = load_fold(b_label, b_off)
+    }
+
+    var order = b_run.at(b_run.taken) as i64 - a_run.at(a_run.taken) as i64
+    if order != 0 {
+      return order
+    }
+    a_run.taken += 1
+    b_run.taken += 1
+  }
+  return 0
+}
+
+// ---------------------------------------------------------------------------
+// Link reference definitions
+// ---------------------------------------------------------------------------
+
+fn Ctx::add_ref_def(*self, label: Array<u8>, title: Array<u8>, dest_beg: i64, dest_end: i64) {
+  self.ref_defs.push(RefDef{
+    label: label,
+    hash: label_hash(label.slice()),
+    title: title,
+    dest_beg: dest_beg,
+    dest_end: dest_end,
+  })
+}
+
+// lookup_ref_def answers the first definition of a label, which is the one
+// CommonMark says wins. Upstream reaches it through a hash table built for
+// the purpose; the hash is kept here because it makes the common miss one
+// integer comparison rather than a fold-and-compare.
+fn Ctx::lookup_ref_def(self, label: u8[]): i64 {
+  var hash = label_hash(label)
+  for var i: i64 = 0; i < self.ref_defs.len() as i64; i += 1 {
+    var def = self.ref_defs.get(i as usize)
+    if def.hash == hash && label_cmp(def.label.slice(), label) == 0 {
+      return i
+    }
+  }
+  return -1
+}
+
+// ---------------------------------------------------------------------------
+// Recognizing raw HTML
+//
+// These serve two callers: inline raw HTML, which knows the block's lines,
+// and the start condition of an HTML block, which does not and passes
+// n_lines == 0 to say the whole tag has to sit on one line.
+// ---------------------------------------------------------------------------
+
+fn Ctx::is_html_tag(self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  var line_end = self.size
+  if n_lines > 0 {
+    line_end = self.line(lines_off).end
+  }
+  var line_index: i64 = 0
+
+  if off + 1 >= line_end {
+    return false, 0
+  }
+  off += 1
+
+  // The attribute automaton:
+  //   -1  a closer tag, no attributes allowed
+  //    0  an attribute may follow after whitespace
+  //    1  after whitespace, an attribute name may follow
+  //    2  after an attribute name, '=' may follow
+  //    3  after '=', a value must follow
+  //   41  inside an unquoted value
+  //   42  inside a single-quoted value
+  //   43  inside a double-quoted value
+  var attr_state: i64 = 0
+
+  if self.ch(off) == 47 {            // '/'
+    attr_state = -1
+    off += 1
+  }
+
+  if off >= line_end || !is_alpha(self.ch(off)) {
+    return false, 0
+  }
+  off += 1
+  while off < line_end && (is_alnum(self.ch(off)) || self.ch(off) == 45) {
+    off += 1
+  }
+
+  var closed = false
+  while !closed {
+    while off < line_end && !is_newline(self.ch(off)) {
+      var c = self.ch(off)
+
+      if attr_state > 40 {
+        if attr_state == 41 && (is_blank(c) || is_tag_delim(c)) {
+          attr_state = 0
+          off -= 1                   // re-inspect the character in the new state
+        } elif attr_state == 42 && c == 39 {
+          attr_state = 0
+        } elif attr_state == 43 && c == 34 {
+          attr_state = 0
+        }
+        off += 1
+      } elif is_space_class(c) {
+        if attr_state == 0 {
+          attr_state = 1
+        }
+        off += 1
+      } elif attr_state <= 2 && c == 62 {                  // '>'
+        closed = true
+      } elif attr_state <= 2 && c == 47 && off + 1 < line_end && self.ch(off + 1) == 62 {
+        off += 1                                           // the '/>' digraph
+        closed = true
+      } elif (attr_state == 1 || attr_state == 2)
+          && (is_alpha(c) || c == 95 || c == 58) {          // '_' ':'
+        off += 1
+        while off < line_end && (is_alnum(self.ch(off)) || is_attr_name_char(self.ch(off))) {
+          off += 1
+        }
+        attr_state = 2
+      } elif attr_state == 2 && c == 61 {                   // '='
+        off += 1
+        attr_state = 3
+      } elif attr_state == 3 {
+        if c == 34 {
+          attr_state = 43
+        } elif c == 39 {
+          attr_state = 42
+        } elif !is_tag_delim(c) && !is_newline(c) {
+          attr_state = 41
+        } else {
+          return false, 0
+        }
+        off += 1
+      } else {
+        return false, 0
+      }
+
+      if closed {
+        break
+      }
+    }
+
+    if closed {
+      break
+    }
+
+    // A tag may only span lines when the caller knows what the lines are.
+    if n_lines == 0 {
+      return false, 0
+    }
+    line_index += 1
+    if line_index >= n_lines {
+      return false, 0
+    }
+    off = self.line(lines_off + line_index).beg
+    line_end = self.line(lines_off + line_index).end
+    if attr_state == 0 || attr_state == 41 {
+      attr_state = 1
+    }
+    if off >= max_end {
+      return false, 0
+    }
+  }
+
+  if off >= max_end {
+    return false, 0
+  }
+  return true, off + 1
+}
+
+// The four horizons, kept apart so a failed scan for one closer does not
+// suppress a scan for another. Upstream reaches them through a pointer; a
+// small integer and two accessors do the same here.
+const HORIZON_COMMENT: i64 = 0
+const HORIZON_PROC_INSTR: i64 = 1
+const HORIZON_DECL: i64 = 2
+const HORIZON_CDATA: i64 = 3
+
+fn Ctx::horizon(self, which: i64): i64 {
+  if which == HORIZON_COMMENT {
+    return self.html_comment_horizon
+  }
+  if which == HORIZON_PROC_INSTR {
+    return self.html_proc_instr_horizon
+  }
+  if which == HORIZON_DECL {
+    return self.html_decl_horizon
+  }
+  return self.html_cdata_horizon
+}
+
+fn Ctx::set_horizon(*self, which: i64, value: i64) {
+  if which == HORIZON_COMMENT {
+    self.html_comment_horizon = value
+  } elif which == HORIZON_PROC_INSTR {
+    self.html_proc_instr_horizon = value
+  } elif which == HORIZON_DECL {
+    self.html_decl_horizon = value
+  } else {
+    self.html_cdata_horizon = value
+  }
+}
+
+fn Ctx::equals_at(self, off: i64, needle: u8[]): bool {
+  for var i: i64 = 0; i < needle.len() as i64; i += 1 {
+    if self.ch(off + i) != needle[i as usize] {
+      return false
+    }
+  }
+  return true
+}
+
+fn Ctx::scan_for_html_closer(*self, needle: u8[], lines_off: i64, n_lines: i64,
+                             beg: i64, max_end: i64, which_horizon: i64): (bool, i64) {
+  var len = needle.len() as i64
+  var off = beg
+  var line_index: i64 = 0
+
+  var scanned = self.horizon(which_horizon)
+  if off < scanned && scanned >= max_end - len {
+    // Already scanned this far and found nothing.
+    return false, 0
+  }
+
+  while true {
+    while off + len <= self.line(lines_off + line_index).end && off + len <= max_end {
+      if self.equals_at(off, needle) {
+        return true, off + len
+      }
+      off += 1
+    }
+
+    line_index += 1
+    if off >= max_end || line_index >= n_lines {
+      self.set_horizon(which_horizon, off)
+      return false, 0
+    }
+    off = self.line(lines_off + line_index).beg
+  }
+  return false, 0
+}
+
+fn Ctx::is_html_comment(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  if off + 4 >= self.line(lines_off).end {
+    return false, 0
+  }
+  if self.ch(off + 1) != 33 || self.ch(off + 2) != 45 || self.ch(off + 3) != 45 {
+    return false, 0
+  }
+  // Only "<!" is skipped, so that "<!-->" and "<!--->" are comments too.
+  return self.scan_for_html_closer(HTML_COMMENT_CLOSE, lines_off, n_lines,
+                                   off + 2, max_end, HORIZON_COMMENT)
+}
+
+fn Ctx::is_html_processing_instruction(*self, lines_off: i64, n_lines: i64,
+                                       beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  if off + 2 >= self.line(lines_off).end {
+    return false, 0
+  }
+  if self.ch(off + 1) != 63 {          // '?'
+    return false, 0
+  }
+  return self.scan_for_html_closer(HTML_PI_CLOSE, lines_off, n_lines,
+                                   off + 2, max_end, HORIZON_PROC_INSTR)
+}
+
+fn Ctx::is_html_declaration(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  var line_end = self.line(lines_off).end
+  if off + 2 >= line_end {
+    return false, 0
+  }
+  if self.ch(off + 1) != 33 {          // '!'
+    return false, 0
+  }
+  off += 2
+
+  if off >= line_end || !is_alpha(self.ch(off)) {
+    return false, 0
+  }
+  off += 1
+  while off < line_end && is_alpha(self.ch(off)) {
+    off += 1
+  }
+
+  return self.scan_for_html_closer(HTML_DECL_CLOSE, lines_off, n_lines,
+                                   off, max_end, HORIZON_DECL)
+}
+
+fn Ctx::is_html_cdata(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg
+  if off + 9 >= self.line(lines_off).end {
+    return false, 0
+  }
+  if !self.equals_at(off + 1, HTML_CDATA_OPEN) {
+    return false, 0
+  }
+  return self.scan_for_html_closer(HTML_CDATA_CLOSE, lines_off, n_lines,
+                                   off + 9, max_end, HORIZON_CDATA)
+}
+
+fn Ctx::is_html_any(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+  var ok, end = self.is_html_tag(lines_off, n_lines, beg, max_end)
+  if ok { return true, end }
+  ok, end = self.is_html_comment(lines_off, n_lines, beg, max_end)
+  if ok { return true, end }
+  ok, end = self.is_html_processing_instruction(lines_off, n_lines, beg, max_end)
+  if ok { return true, end }
+  ok, end = self.is_html_declaration(lines_off, n_lines, beg, max_end)
+  if ok { return true, end }
+  return self.is_html_cdata(lines_off, n_lines, beg, max_end)
+}
+
+// ---------------------------------------------------------------------------
+// Code spans and autolinks
+// ---------------------------------------------------------------------------
+
+// is_code_span looks for a run of backticks matching the one at `beg`.
+// `last_closers` remembers, per mark length, the furthest backtick run seen
+// so far, so a paragraph full of unmatched backticks is not rescanned from
+// the top for every opener.
+fn Ctx::is_code_span(self, lines_off: i64, n_lines: i64, beg: i64,
+                     last_closers: Array<i64>, reached_end: bool): CodeSpan {
+  var opener_beg = beg
+  var line_index: i64 = 0
+  var line_end = self.line(lines_off).end
+
+  var opener_end = opener_beg
+  while opener_end < line_end && self.ch(opener_end) == 96 {
+    opener_end += 1
+  }
+  var has_space_after_opener = opener_end < line_end && self.ch(opener_end) == 32
+  var has_eol_after_opener = opener_end == line_end
+
+  var failure = CodeSpan{
+    ok: false, opener_beg: opener_beg, opener_end: opener_end,
+    closer_beg: 0, closer_end: 0, reached_paragraph_end: reached_end,
+  }
+
+  var mark_len = opener_end - opener_beg
+  if mark_len > CODESPAN_MARK_MAXLEN {
+    return failure
+  }
+
+  var known = last_closers.get((mark_len - 1) as usize)
+  if known >= self.line(lines_off + n_lines - 1).end || (reached_end && known < opener_end) {
+    return failure
+  }
+
+  var closer_beg = opener_end
+  var closer_end = opener_end
+  var has_space_before_closer = false
+  var has_eol_before_closer = false
+  var has_only_space = true
+
+  while true {
+    while closer_beg < line_end && self.ch(closer_beg) != 96 {
+      if self.ch(closer_beg) != 32 {
+        has_only_space = false
+      }
+      closer_beg += 1
+    }
+    closer_end = closer_beg
+    while closer_end < line_end && self.ch(closer_end) == 96 {
+      closer_end += 1
+    }
+
+    if closer_end - closer_beg == mark_len {
+      has_space_before_closer = closer_beg > self.line(lines_off + line_index).beg
+          && self.ch(closer_beg - 1) == 32
+      has_eol_before_closer = closer_beg == self.line(lines_off + line_index).beg
+      break
+    }
+
+    if closer_end - closer_beg > 0 {
+      has_only_space = false
+      var run = closer_end - closer_beg
+      if run < CODESPAN_MARK_MAXLEN {
+        if closer_beg > last_closers.get((run - 1) as usize) {
+          last_closers.set((run - 1) as usize, closer_beg)
+        }
+      }
+    }
+
+    if closer_end >= line_end {
+      line_index += 1
+      if line_index >= n_lines {
+        failure.reached_paragraph_end = true
+        return failure
+      }
+      line_end = self.line(lines_off + line_index).end
+      closer_beg = self.line(lines_off + line_index).beg
+    } else {
+      closer_beg = closer_end
+    }
+  }
+
+  // A space or line break on both sides, in a span that is not all spaces,
+  // is part of the marks rather than of the code.
+  if !has_only_space && (has_space_after_opener || has_eol_after_opener)
+      && (has_space_before_closer || has_eol_before_closer) {
+    if has_space_after_opener {
+      opener_end += 1
+    } else {
+      opener_end = self.line(lines_off + 1).beg
+    }
+
+    if has_space_before_closer {
+      closer_beg -= 1
+    } else {
+      closer_beg = self.line(lines_off + line_index - 1).end
+      while closer_beg < self.size && is_blank(self.ch(closer_beg)) {
+        closer_beg += 1
+      }
+    }
+  }
+
+  return CodeSpan{
+    ok: true, opener_beg: opener_beg, opener_end: opener_end,
+    closer_beg: closer_beg, closer_end: closer_end, reached_paragraph_end: reached_end,
+  }
+}
+
+fn Ctx::is_autolink_uri(self, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg + 1
+
+  if off >= max_end || !is_alnum(self.ch(off)) {
+    return false, 0
+  }
+  off += 1
+  while true {
+    if off >= max_end {
+      return false, 0
+    }
+    if off - beg > 32 {
+      return false, 0
+    }
+    if self.ch(off) == 58 && off - beg >= 3 {     // ':'
+      break
+    }
+    var c = self.ch(off)
+    if !is_alnum(c) && c != 43 && c != 45 && c != 46 {
+      return false, 0
+    }
+    off += 1
+  }
+
+  while off < max_end && self.ch(off) != 62 {     // '>'
+    var c = self.ch(off)
+    if is_space_class(c) || is_cntrl(c) || c == 60 {
+      return false, 0
+    }
+    off += 1
+  }
+
+  if off >= max_end {
+    return false, 0
+  }
+  return true, off + 1
+}
+
+fn Ctx::is_autolink_email(self, beg: i64, max_end: i64): (bool, i64) {
+  var off = beg + 1
+
+  while off < max_end && (is_alnum(self.ch(off)) || is_email_user_char(self.ch(off))) {
+    off += 1
+  }
+  if off <= beg + 1 {
+    return false, 0
+  }
+
+  if off >= max_end || self.ch(off) != 64 {        // '@'
+    return false, 0
+  }
+  off += 1
+
+  // Labels separated by '.', each 1 to 63 alphanumerics or '-', with '-'
+  // neither first nor last.
+  var label_len: i64 = 0
+  while off < max_end {
+    var c = self.ch(off)
+    if is_alnum(c) {
+      label_len += 1
+    } elif c == 45 && label_len > 0 {
+      label_len += 1
+    } elif c == 46 && label_len > 0 && self.ch(off - 1) != 45 {
+      label_len = 0
+    } else {
+      break
+    }
+
+    if label_len > 63 {
+      return false, 0
+    }
+    off += 1
+  }
+
+  if label_len <= 0 || off >= max_end || self.ch(off) != 62 || self.ch(off - 1) == 45 {
+    return false, 0
+  }
+  return true, off + 1
+}
+
+// is_autolink also reports whether the destination needs a "mailto:" put in
+// front of it, which is the case for the bare e-mail form.
+fn Ctx::is_autolink(self, beg: i64, max_end: i64): (bool, i64, bool) {
+  var ok, end = self.is_autolink_uri(beg, max_end)
+  if ok {
+    return true, end, false
+  }
+  ok, end = self.is_autolink_email(beg, max_end)
+  if ok {
+    return true, end, true
+  }
+  return false, 0, false
+}
+
+// ---------------------------------------------------------------------------
+// Collecting marks
+//
+// One pass over the block's text records every character that could open or
+// close a span. The mark character set is fixed here, because it only grows
+// with extensions: backslash, the two emphasis characters, backtick, the
+// two entity delimiters, the two angle brackets, the three bracket
+// characters and NUL.
+// ---------------------------------------------------------------------------
+
+fn is_mark_char(c: u8): bool {
+  return c == 92 || c == 42 || c == 95 || c == 96 || c == 38 || c == 59
+      || c == 60 || c == 62 || c == 91 || c == 33 || c == 93 || c == 0
+}
+
+fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
+  var last_closers = Array<i64>::new()
+  for var i: i64 = 0; i < CODESPAN_MARK_MAXLEN; i += 1 {
+    last_closers.push(0)
+  }
+  var reached_end = false
+
+  var line_index: i64 = 0
+  while line_index < n_lines {
+    var line_beg = self.line(lines_off + line_index).beg
+    var line_end = self.line(lines_off + line_index).end
+    var off = line_beg
+
+    while true {
+      while off < line_end && !is_mark_char(self.ch(off)) {
+        off += 1
+      }
+      if off >= line_end {
+        break
+      }
+
+      var ch = self.ch(off)
+
+      // A backslash escape. It may reach past the line's end, since an
+      // escaped newline is a hard break.
+      if ch == 92 && off + 1 < self.size
+          && (is_punct(self.ch(off + 1)) || is_newline(self.ch(off + 1))) {
+        // A hard break cannot sit on the block's last line.
+        if !is_newline(self.ch(off + 1)) || line_index + 1 < n_lines {
+          self.add_mark(ch, off, off + 2, MARK_RESOLVED)
+        }
+        off += 2
+        continue
+      }
+
+      // Emphasis, possibly strong.
+      if ch == 42 || ch == 95 {
+        var run_end = off + 1
+        while run_end < line_end && self.ch(run_end) == ch {
+          run_end += 1
+        }
+
+        // 0 = whitespace, 1 = punctuation, 2 = anything else.
+        var left: i64 = 2
+        if off == line_beg || unicode::is_whitespace(decode_before(self.text, off)) {
+          left = 0
+        } elif unicode::is_punct(decode_before(self.text, off)) {
+          left = 1
+        }
+
+        var right: i64 = 2
+        if run_end == line_end {
+          right = 0
+        } else {
+          var codepoint, _ = decode(self.text, run_end, self.size)
+          if unicode::is_whitespace(codepoint) {
+            right = 0
+          } elif unicode::is_punct(codepoint) {
+            right = 1
+          }
+        }
+
+        // An underscore inside a word means nothing.
+        if ch == 95 && left == 2 && right == 2 {
+          left = 0
+          right = 0
+        }
+
+        if left != 0 || right != 0 {
+          var flags: i64 = 0
+          if left > 0 && left >= right {
+            flags = flags | MARK_POTENTIAL_CLOSER
+          }
+          if right > 0 && right >= left {
+            flags = flags | MARK_POTENTIAL_OPENER
+          }
+          if flags == (MARK_POTENTIAL_OPENER | MARK_POTENTIAL_CLOSER) {
+            flags = flags | MARK_EMPH_OC
+          }
+
+          // The rule of three needs the run's original length modulo
+          // three, before a shorter closer splits it.
+          var mod3 = (run_end - off) % 3
+          if mod3 == 0 {
+            flags = flags | MARK_EMPH_MOD3_0
+          } elif mod3 == 1 {
+            flags = flags | MARK_EMPH_MOD3_1
+          } else {
+            flags = flags | MARK_EMPH_MOD3_2
+          }
+
+          self.add_mark(ch, off, run_end, flags)
+
+          // "**foo* bar*" splits one run into several spans, so reserve a
+          // dummy per character to split into.
+          off += 1
+          while off < run_end {
+            self.add_mark(68, off, off, 0)
+            off += 1
+          }
+          continue
+        }
+
+        off = run_end
+        continue
+      }
+
+      // A code span is recognized here, not later, because doing it later
+      // would cost a rescan per opener.
+      if ch == 96 {
+        var span = self.is_code_span(lines_off + line_index, n_lines - line_index,
+                                     off, last_closers, reached_end)
+        reached_end = span.reached_paragraph_end
+        if span.ok {
+          self.add_mark(96, span.opener_beg, span.opener_end, MARK_POTENTIAL_OPENER)
+          self.add_mark(96, span.closer_beg, span.closer_end, MARK_POTENTIAL_CLOSER)
+          self.resolve_range(self.n_marks - 2, self.n_marks - 1)
+          off = span.closer_end
+
+          if off > line_end {
+            line_index = self.lookup_line(off, lines_off, n_lines)
+            line_beg = self.line(lines_off + line_index).beg
+            line_end = self.line(lines_off + line_index).end
+          }
+          continue
+        }
+
+        off = span.opener_end
+        continue
+      }
+
+      if ch == 38 {          // '&', maybe an entity start
+        self.add_mark(ch, off, off + 1, MARK_POTENTIAL_OPENER)
+        off += 1
+        continue
+      }
+
+      if ch == 59 {          // ';', an entity end only right after a '&'
+        if self.n_marks > 0 && self.mark(self.n_marks - 1).ch == 38 {
+          self.add_mark(ch, off, off + 1, MARK_POTENTIAL_CLOSER)
+        }
+        off += 1
+        continue
+      }
+
+      if ch == 60 {          // '<', maybe raw HTML or an autolink
+        var is_html, html_end = self.is_html_any(lines_off + line_index, n_lines - line_index,
+                                                 off, self.line(lines_off + n_lines - 1).end)
+        if is_html {
+          self.add_mark(60, off, off, MARK_OPENER | MARK_RESOLVED)
+          self.add_mark(62, html_end, html_end, MARK_CLOSER | MARK_RESOLVED)
+          var opener = self.n_marks - 2
+          var closer = self.n_marks - 1
+          var opener_mark = self.mark(opener)
+          opener_mark.next = closer
+          self.put_mark(opener, opener_mark)
+          var closer_mark = self.mark(closer)
+          closer_mark.prev = opener
+          self.put_mark(closer, closer_mark)
+          off = html_end
+
+          if off > line_end {
+            line_index = self.lookup_line(off, lines_off, n_lines)
+            line_beg = self.line(lines_off + line_index).beg
+            line_end = self.line(lines_off + line_index).end
+          }
+          continue
+        }
+
+        var is_link, link_end, missing_mailto =
+            self.is_autolink(off, self.line(lines_off + n_lines - 1).end)
+        if is_link {
+          var flags = MARK_RESOLVED | MARK_AUTOLINK
+          if missing_mailto {
+            flags = flags | MARK_AUTOLINK_MISSING_MAILTO
+          }
+          self.add_mark(60, off, off + 1, MARK_OPENER | flags)
+          self.add_mark(62, link_end - 1, link_end, MARK_CLOSER | flags)
+          var opener = self.n_marks - 2
+          var closer = self.n_marks - 1
+          var opener_mark = self.mark(opener)
+          opener_mark.next = closer
+          self.put_mark(opener, opener_mark)
+          var closer_mark = self.mark(closer)
+          closer_mark.prev = opener
+          self.put_mark(closer, closer_mark)
+          off = link_end
+          continue
+        }
+
+        off += 1
+        continue
+      }
+
+      // A link or image opener, with two dummies behind it to hold the
+      // destination and the title once it resolves.
+      if ch == 91 || (ch == 33 && off + 1 < line_end && self.ch(off + 1) == 91) {
+        if ch == 33 {
+          self.add_mark(ch, off + 1, off + 2,
+                                MARK_POTENTIAL_OPENER | MARK_BRACKET_CANBEIMAGE)
+          off += 2
+        } else {
+          self.add_mark(ch, off, off + 1, MARK_POTENTIAL_OPENER)
+          off += 1
+        }
+        self.add_mark(68, off, off, 0)
+        self.add_mark(68, off, off, 0)
+        continue
+      }
+
+      if ch == 93 {
+        self.add_mark(ch, off, off + 1, MARK_POTENTIAL_CLOSER)
+        off += 1
+        continue
+      }
+
+      if ch == 0 {
+        self.add_mark(ch, off, off + 1, MARK_RESOLVED)
+        off += 1
+        continue
+      }
+
+      off += 1
+    }
+
+    line_index += 1
+  }
+
+  // A resolved sentinel past the end, so processing never has to ask
+  // whether there is a next mark.
+  self.add_mark(127, self.size, self.size, MARK_RESOLVED)
+  last_closers.free()
+}
+
+// ---------------------------------------------------------------------------
+// Resolving brackets into links and images
+// ---------------------------------------------------------------------------
+
+// analyze_bracket only pairs brackets up; whether a pair is a link needs
+// more context than one mark has. The pairs are collected in closing order,
+// so resolving walks them from the innermost outwards.
+fn Ctx::analyze_bracket(*self, mark_index: i64) {
+  var mark = self.mark(mark_index)
+
+  if (mark.flags & MARK_POTENTIAL_OPENER) != 0 {
+    var top = self.stack_top(BRACKET_OPENERS)
+    if top >= 0 {
+      var outer = self.mark(top)
+      outer.flags = outer.flags | MARK_BRACKET_HASNESTED
+      self.put_mark(top, outer)
+    }
+    self.stack_push(BRACKET_OPENERS, mark_index)
+    return
+  }
+
+  if self.stack_top(BRACKET_OPENERS) >= 0 {
+    var opener_index = self.stack_pop(BRACKET_OPENERS)
+
+    var opener = self.mark(opener_index)
+    opener.next = mark_index
+    self.put_mark(opener_index, opener)
+    mark = self.mark(mark_index)
+    mark.prev = opener_index
+    self.put_mark(mark_index, mark)
+
+    // The list of pairs to resolve reuses opener->prev, since opener->next
+    // is now the closer.
+    if self.unresolved_link_tail >= 0 {
+      var tail = self.mark(self.unresolved_link_tail)
+      tail.prev = opener_index
+      self.put_mark(self.unresolved_link_tail, tail)
+    } else {
+      self.unresolved_link_head = opener_index
+    }
+    self.unresolved_link_tail = opener_index
+
+    opener = self.mark(opener_index)
+    opener.prev = -1
+    self.put_mark(opener_index, opener)
+  }
+}
+
+// is_link_reference resolves "[label]" against the collected definitions.
+fn Ctx::is_link_reference(*self, lines_off: i64, n_lines: i64, beg: i64, end: i64): (bool, LinkAttr) {
+  var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+
+  if self.max_ref_def_output == 0 {
+    return false, attr
+  }
+
+  var label_beg = beg + 1
+  if self.ch(beg) == 33 {          // '!'
+    label_beg = beg + 2
+  }
+  var label_end = end - 1
+
+  var beg_line = self.lookup_line(label_beg, lines_off, n_lines)
+  var label = NO_TEXT
+  if label_end > self.line(lines_off + beg_line).end {
+    label = self.merge_lines(label_beg, label_end, lines_off + beg_line, 32)
+  } else {
+    label = self.copy_range(label_beg, label_end)
+  }
+
+  var index = self.lookup_ref_def(label.slice())
+  label.free()
+  if index < 0 {
+    return false, attr
+  }
+
+  var def = self.ref_defs.get(index as usize)
+  attr.dest_beg = def.dest_beg
+  attr.dest_end = def.dest_end
+  attr.title = def.title
+
+  // A document may not instantiate more reference definition text than a
+  // multiple of its own size; see md4c issue 238.
+  var estimate = def.label.len() as i64 + def.title.len() as i64 + def.dest_end - def.dest_beg
+  if estimate < self.max_ref_def_output {
+    self.max_ref_def_output -= estimate
+    return true, attr
+  }
+  self.max_ref_def_output = 0
+  return false, attr
+}
+
+// resolve_bracket_link decides whether one bracket pair is a link or an
+// image, and if so records the destination and title in the two dummy marks
+// behind the opener. It answers the index of the next pair to consider.
+fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
+                             opener_index: i64, closer_index: i64, next_index: i64): i64 {
+  var opener = self.mark(opener_index)
+  var closer = self.mark(closer_index)
+  var next_opener_index: i64 = -1
+  var next_closer_index: i64 = -1
+  if next_index >= 0 {
+    next_opener_index = next_index
+    next_closer_index = self.mark(next_index).next
+  }
+
+  var is_link = false
+  var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+  var following = next_index
+
+  if next_opener_index >= 0 && self.mark(next_opener_index).beg == closer.end {
+    var next_opener = self.mark(next_opener_index)
+    var next_closer = self.mark(next_closer_index)
+
+    if next_closer.beg > closer.end + 1 {
+      // Perhaps a full reference link: "[text][label]".
+      if (next_opener.flags & MARK_BRACKET_HASNESTED) == 0 {
+        is_link, attr = self.is_link_reference(lines_off, n_lines, next_opener.beg, next_closer.end)
+      }
+    } else {
+      // Perhaps a collapsed reference link: "[label][]".
+      if (opener.flags & MARK_BRACKET_HASNESTED) == 0 {
+        is_link, attr = self.is_link_reference(lines_off, n_lines, opener.beg, closer.end)
+      }
+    }
+
+    if is_link {
+      closer = self.mark(closer_index)
+      closer.end = next_closer.end
+      self.put_mark(closer_index, closer)
+      // The label must not be examined as a link of its own.
+      following = self.mark(following).prev
+    }
+  } else {
+    if closer.end < self.size && self.ch(closer.end) == 40 {      // '('
+      var inline_end: i64 = 0
+      var following_mark = closer_index + 1
+
+      is_link, inline_end, attr = self.is_inline_link_spec(lines_off, n_lines, closer.end)
+
+      // The closing ')' must not sit inside a range already resolved with
+      // a higher priority, a code span for instance.
+      if is_link {
+        while following_mark < self.n_marks {
+          var mark = self.mark(following_mark)
+          if mark.beg >= inline_end {
+            break
+          }
+          if (mark.flags & (MARK_OPENER | MARK_RESOLVED)) == (MARK_OPENER | MARK_RESOLVED) {
+            if self.mark(mark.next).beg >= inline_end {
+              is_link = false
+              break
+            }
+            following_mark = mark.next + 1
+          } else {
+            following_mark += 1
+          }
+        }
+      }
+
+      if is_link {
+        closer = self.mark(closer_index)
+        closer.end = inline_end
+        self.put_mark(closer_index, closer)
+        self.disable_marks(closer_index + 1, following_mark)
+      }
+    }
+
+    if !is_link {
+      // Perhaps a shortcut reference link: "[label]".
+      if (self.mark(opener_index).flags & MARK_BRACKET_HASNESTED) == 0 {
+        is_link, attr = self.is_link_reference(lines_off, n_lines,
+                                               self.mark(opener_index).beg,
+                                               self.mark(closer_index).end)
+      }
+    }
+  }
+
+  if !is_link {
+    return following
+  }
+
+  opener = self.mark(opener_index)
+  opener.flags = opener.flags | MARK_OPENER | MARK_RESOLVED
+  self.put_mark(opener_index, opener)
+  closer = self.mark(closer_index)
+  closer.flags = closer.flags | MARK_CLOSER | MARK_RESOLVED
+  self.put_mark(closer_index, closer)
+
+  var dest = self.mark(opener_index + 1)
+  dest.beg = attr.dest_beg
+  dest.end = attr.dest_end
+  self.put_mark(opener_index + 1, dest)
+
+  var title_index = self.titles.len() as i64
+  self.titles.push(attr.title)
+  var title = self.mark(opener_index + 2)
+  title.beg = title_index
+  self.put_mark(opener_index + 2, title)
+
+  if opener.ch == 91 {           // '['
+    self.last_link_beg = opener.beg
+    self.last_link_end = closer.end
+  } else {
+    self.last_img_beg = opener.beg
+    self.last_img_end = closer.end
+  }
+
+  self.analyze_link_contents(lines_off, n_lines, opener_index + 1, closer_index)
+  return following
+}
+
+fn Ctx::resolve_brackets(*self, lines_off: i64, n_lines: i64) {
+  var opener_index = self.unresolved_link_head
+  self.last_link_beg = 0
+  self.last_link_end = 0
+  self.last_img_beg = 0
+  self.last_img_end = 0
+
+  // The pairs are ordered by their closer, so this walks from the
+  // innermost bracket pair outwards.
+  while opener_index >= 0 {
+    var opener = self.mark(opener_index)
+    var closer_index = opener.next
+    var next_index = opener.prev
+
+    if opener.ch == 68 {         // disabled in an earlier round
+      opener_index = next_index
+      continue
+    }
+
+    // An image is a '[' that may still swallow the '!' before it.
+    if (opener.flags & MARK_BRACKET_CANBEIMAGE) != 0 {
+      opener.ch = 33
+      opener.beg -= 1
+      self.put_mark(opener_index, opener)
+    }
+
+    var closer = self.mark(closer_index)
+
+    // Nested brackets: an outer pair may not end inside the inner pair's
+    // "(...)", and an outer link may not contain an inner link — though an
+    // outer image may.
+    if (opener.beg < self.last_link_beg && closer.end < self.last_link_end)
+        || (opener.beg < self.last_img_beg && closer.end < self.last_img_end)
+        || (opener.beg < self.last_link_end && opener.ch != 33) {
+      opener_index = next_index
+      continue
+    }
+
+    opener_index = self.resolve_bracket_link(lines_off, n_lines, opener_index, closer_index, next_index)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entities and emphasis
+// ---------------------------------------------------------------------------
+
+// analyze_entity does all the work on the '&', because an entity can only
+// be a '&' with its ';' as the very next mark.
+fn Ctx::analyze_entity(*self, mark_index: i64) {
+  if mark_index + 1 >= self.n_marks {
+    return
+  }
+  var closer = self.mark(mark_index + 1)
+  if closer.ch != 59 {
+    return
+  }
+
+  var opener = self.mark(mark_index)
+  var ok, _ = is_entity(self.text, opener.beg, closer.end)
+  if ok {
+    self.resolve_range(mark_index, mark_index + 1)
+    opener = self.mark(mark_index)
+    opener.end = closer.end
+    self.put_mark(mark_index, opener)
+  }
+}
+
+// split_emph_mark cuts `n` characters off the end of a mark into the dummy
+// that follows it, which is what lets "**foo* bar*" resolve.
+fn Ctx::split_emph_mark(*self, mark_index: i64, n: i64): i64 {
+  var mark = self.mark(mark_index)
+  var new_index = mark_index + (mark.end - mark.beg - n)
+
+  var dummy = mark
+  mark.end -= n
+  dummy.beg = mark.end
+  self.put_mark(mark_index, mark)
+  self.put_mark(new_index, dummy)
+  return new_index
+}
+
+// better_opener keeps whichever candidate opener reaches furthest right,
+// which is md4c's "most recent mark from the allowed stacks".
+fn Ctx::better_opener(self, best: i64, stack: i64): i64 {
+  var top = self.stack_top(stack)
+  if top < 0 {
+    return best
+  }
+  if best < 0 {
+    return top
+  }
+  if self.mark(top).end > self.mark(best).end {
+    return top
+  }
+  return best
+}
+
+fn Ctx::analyze_emph(*self, mark_index: i64) {
+  var mark = self.mark(mark_index)
+
+  if (mark.flags & MARK_POTENTIAL_CLOSER) != 0 {
+    var flags = mark.flags
+    var mod3 = flags & MARK_EMPH_MOD3_MASK
+    var opener_index: i64 = -1
+
+    // The rule of three: a mark that is both opener and closer may not
+    // match one whose combined length is a multiple of three unless both
+    // lengths are.
+    opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_0 | MARK_EMPH_OC))
+    if mod3 != MARK_EMPH_MOD3_2 {
+      opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_1 | MARK_EMPH_OC))
+    }
+    if mod3 != MARK_EMPH_MOD3_1 {
+      opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_2 | MARK_EMPH_OC))
+    }
+    opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_0))
+    if (flags & MARK_EMPH_OC) == 0 || mod3 != MARK_EMPH_MOD3_2 {
+      opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_1))
+    }
+    if (flags & MARK_EMPH_OC) == 0 || mod3 != MARK_EMPH_MOD3_1 {
+      opener_index = self.better_opener(opener_index, emph_stack(mark.ch, MARK_EMPH_MOD3_2))
+    }
+
+    if opener_index >= 0 {
+      var opener = self.mark(opener_index)
+      var opener_size = opener.end - opener.beg
+      var closer_size = mark.end - mark.beg
+      var stack = self.opener_stack_of(opener_index)
+
+      if opener_size > closer_size {
+        opener_index = self.split_emph_mark(opener_index, closer_size)
+        self.stack_push(stack, opener_index)
+      } elif opener_size < closer_size {
+        var _ = self.split_emph_mark(mark_index, closer_size - opener_size)
+      }
+
+      self.pop_openers(opener_index)
+      self.resolve_range(opener_index, mark_index)
+      return
+    }
+  }
+
+  mark = self.mark(mark_index)
+  if (mark.flags & MARK_POTENTIAL_OPENER) != 0 {
+    self.stack_push(emph_stack(mark.ch, mark.flags), mark_index)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Driving the analyses
+// ---------------------------------------------------------------------------
+
+fn Ctx::analyze_marks(*self, lines_off: i64, mark_beg: i64, mark_end: i64, mark_chars: u8[]) {
+  var i = mark_beg
+  var last_end = self.line(lines_off).beg
+
+  while i < mark_end {
+    var mark = self.mark(i)
+
+    // Skip over what is already resolved.
+    if (mark.flags & MARK_RESOLVED) != 0 {
+      if (mark.flags & MARK_OPENER) != 0 {
+        i = mark.next + 1
+      } else {
+        i += 1
+      }
+      continue
+    }
+
+    if !contains_byte(mark_chars, mark.ch) {
+      i += 1
+      continue
+    }
+
+    // An earlier round may have expanded a mark over this one.
+    if mark.beg < last_end {
+      i += 1
+      continue
+    }
+
+    if mark.ch == 91 || mark.ch == 33 || mark.ch == 93 {
+      self.analyze_bracket(i)
+    } elif mark.ch == 38 {
+      self.analyze_entity(i)
+    } elif mark.ch == 42 || mark.ch == 95 {
+      self.analyze_emph(i)
+    }
+
+    mark = self.mark(i)
+    if (mark.flags & MARK_RESOLVED) != 0 {
+      if (mark.flags & MARK_OPENER) != 0 {
+        last_end = self.mark(mark.next).end
+      } else {
+        last_end = mark.end
+      }
+    }
+
+    i += 1
+  }
+}
+
+fn Ctx::analyze_link_contents(*self, lines_off: i64, n_lines: i64, mark_beg: i64, mark_end: i64) {
+  self.analyze_marks(lines_off, mark_beg, mark_end, EMPH_CHARS)
+  for var stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
+    self.opener_stacks.set(stack as usize, -1)
+  }
+}
+
+fn Ctx::analyze_inlines(*self, lines_off: i64, n_lines: i64) {
+  self.n_marks = 0
+  self.collect_marks(lines_off, n_lines)
+
+  // Brackets first: a link's extent decides what the emphasis inside it
+  // may reach.
+  self.analyze_marks(lines_off, 0, self.n_marks, BRACKET_CHARS)
+  self.resolve_brackets(lines_off, n_lines)
+  self.opener_stacks.set(BRACKET_OPENERS as usize, -1)
+  self.unresolved_link_head = -1
+  self.unresolved_link_tail = -1
+
+  self.analyze_link_contents(lines_off, n_lines, 0, self.n_marks)
+}
+
+// ---------------------------------------------------------------------------
+// Recognizing links
+//
+// Shared between block analysis, which looks for reference definitions, and
+// inline analysis, which looks for links.
+// ---------------------------------------------------------------------------
+
+fn Ctx::is_link_label(self, lines_off: i64, n_lines: i64, beg: i64): LabelSpan {
+  var span = LabelSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
+  var off = beg
+  var contents_beg: i64 = 0
+  var contents_end: i64 = 0
+  var line_index: i64 = 0
+  var length: i64 = 0
+
+  if self.ch(off) != 91 {          // '['
+    return span
+  }
+  off += 1
+
+  while true {
+    var line_end = self.line(lines_off + line_index).end
+
+    while off < line_end {
+      if self.ch(off) == 92 && off + 1 < self.size
+          && (is_punct(self.ch(off + 1)) || is_newline(self.ch(off + 1))) {
+        if contents_end == 0 {
+          contents_beg = off
+          span.beg_line = line_index
+        }
+        contents_end = off + 2
+        off += 2
+      } elif self.ch(off) == 91 {
+        return span
+      } elif self.ch(off) == 93 {
+        if contents_beg < contents_end {
+          span.ok = true
+          span.contents_beg = contents_beg
+          span.contents_end = contents_end
+          span.end = off + 1
+          span.end_line = line_index
+          return span
+        }
+        // A label has to hold something other than whitespace.
+        return span
+      } else {
+        var codepoint, width = decode(self.text, off, self.size)
+        if !unicode::is_whitespace(codepoint) {
+          if contents_end == 0 {
+            contents_beg = off
+            span.beg_line = line_index
+          }
+          contents_end = off + width
+        }
+        off += width
+      }
+
+      length += 1
+      if length > 999 {
+        return span
+      }
+    }
+
+    line_index += 1
+    length += 1
+    if line_index < n_lines {
+      off = self.line(lines_off + line_index).beg
+    } else {
+      break
+    }
+  }
+
+  return span
+}
+
+// The "<...>" form of a destination.
+fn Ctx::is_link_destination_angle(self, beg: i64, max_end: i64): (bool, i64, i64, i64) {
+  var off = beg
+  if off >= max_end || self.ch(off) != 60 {
+    return false, 0, 0, 0
+  }
+  off += 1
+
+  while off < max_end {
+    if self.ch(off) == 92 && off + 1 < max_end && is_punct(self.ch(off + 1)) {
+      off += 2
+      continue
+    }
+    if is_newline(self.ch(off)) || self.ch(off) == 60 {
+      return false, 0, 0, 0
+    }
+    if self.ch(off) == 62 {
+      return true, off + 1, beg + 1, off
+    }
+    off += 1
+  }
+  return false, 0, 0, 0
+}
+
+// The bare form, which may hold balanced parentheses.
+fn Ctx::is_link_destination_bare(self, beg: i64, max_end: i64): (bool, i64, i64, i64) {
+  var off = beg
+  var depth: i64 = 0
+
+  while off < max_end {
+    if self.ch(off) == 92 && off + 1 < max_end && is_punct(self.ch(off + 1)) {
+      off += 2
+      continue
+    }
+    if is_space_class(self.ch(off)) || is_cntrl(self.ch(off)) {
+      break
+    }
+
+    // Nesting is capped at 32, which is what keeps a pathological
+    // destination from costing quadratic time.
+    if self.ch(off) == 40 {
+      depth += 1
+      if depth > 32 {
+        return false, 0, 0, 0
+      }
+    } elif self.ch(off) == 41 {
+      if depth == 0 {
+        break
+      }
+      depth -= 1
+    }
+    off += 1
+  }
+
+  if depth != 0 || off == beg {
+    return false, 0, 0, 0
+  }
+  return true, off, beg, off
+}
+
+fn Ctx::is_link_destination(self, beg: i64, max_end: i64): (bool, i64, i64, i64) {
+  if self.ch(beg) == 60 {
+    return self.is_link_destination_angle(beg, max_end)
+  }
+  return self.is_link_destination_bare(beg, max_end)
+}
+
+fn Ctx::is_link_title(self, lines_off: i64, n_lines: i64, beg: i64): TitleSpan {
+  var span = TitleSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
+  var off = beg
+  var line_index: i64 = 0
+
+  // Whitespace, with at most one line break in it.
+  while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
+    off += 1
+  }
+  if off >= self.line(lines_off + line_index).end {
+    line_index += 1
+    if line_index >= n_lines {
+      return span
+    }
+    off = self.line(lines_off + line_index).beg
+  }
+  if off == beg {
+    return span
+  }
+
+  span.beg_line = line_index
+
+  var closer: u8 = 0
+  var c = self.ch(off)
+  if c == 34 {
+    closer = 34
+  } elif c == 39 {
+    closer = 39
+  } elif c == 40 {
+    closer = 41
+  } else {
+    return span
+  }
+  off += 1
+
+  span.contents_beg = off
+
+  while line_index < n_lines {
+    var line_end = self.line(lines_off + line_index).end
+
+    while off < line_end {
+      if self.ch(off) == 92 && off + 1 < self.size
+          && (is_punct(self.ch(off + 1)) || is_newline(self.ch(off + 1))) {
+        off += 1
+      } elif self.ch(off) == closer {
+        span.ok = true
+        span.contents_end = off
+        span.end = off + 1
+        span.end_line = line_index
+        return span
+      } elif closer == 41 && self.ch(off) == 40 {
+        // A "(...)" title may not hold an unescaped '('.
+        return span
+      }
+      off += 1
+    }
+
+    line_index += 1
+  }
+
+  return span
+}
+
+// is_link_reference_definition answers how many lines the definition at the
+// head of the block takes, or 0 when there is none.
+fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
+  var label = self.is_link_label(lines_off, n_lines, self.line(lines_off).beg)
+  if !label.ok {
+    return 0
+  }
+  var line_index = label.end_line
+  var label_is_multiline = label.beg_line != line_index
+  var off = label.end
+
+  if off >= self.line(lines_off + line_index).end || self.ch(off) != 58 {   // ':'
+    return 0
+  }
+  off += 1
+
+  // Optional whitespace, with at most one line break in it.
+  while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
+    off += 1
+  }
+  if off >= self.line(lines_off + line_index).end {
+    line_index += 1
+    if line_index >= n_lines {
+      return 0
+    }
+    off = self.line(lines_off + line_index).beg
+  }
+
+  var dest_ok, dest_end, dest_beg, dest_contents_end =
+      self.is_link_destination(off, self.line(lines_off + line_index).end)
+  if !dest_ok {
+    return 0
+  }
+  off = dest_end
+
+  // A title only counts when nothing else follows it on its last line.
+  var title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
+  var title_is_multiline = false
+  var title_beg: i64 = off
+  var title_end: i64 = off
+  var title_line: i64 = 0
+
+  // Note the offset moves past a title that was recognized even when it is
+  // then rejected for having something after it, which is what upstream's
+  // `md_is_link_title(..., &off) && off >= ...` does through its
+  // out-parameter.
+  if title.ok {
+    off = title.end
+  }
+  if title.ok && off >= self.line(lines_off + line_index + title.end_line).end {
+    title_is_multiline = title.end_line != title.beg_line
+    title_beg = title.contents_beg
+    title_end = title.contents_end
+    title_line = title.beg_line + line_index
+    line_index += title.end_line
+  } else {
+    title_beg = off
+    title_end = off
+  }
+
+  // Nothing more may follow on the last line.
+  if off < self.line(lines_off + line_index).end {
+    return 0
+  }
+
+  var label_bytes = NO_TEXT
+  if label_is_multiline {
+    label_bytes = self.merge_lines(label.contents_beg, label.contents_end,
+                                   lines_off + label.beg_line, 32)
+  } else {
+    label_bytes = self.copy_range(label.contents_beg, label.contents_end)
+  }
+
+  var title_bytes = NO_TEXT
+  if title_is_multiline {
+    title_bytes = self.merge_lines(title_beg, title_end, lines_off + title_line, 10)
+  } else {
+    title_bytes = self.copy_range(title_beg, title_end)
+  }
+
+  self.add_ref_def(label_bytes, title_bytes, dest_beg, dest_contents_end)
+  return line_index + 1
+}
+
+// is_inline_link_spec reads the "(destination \"title\")" that may follow a
+// link's text.
+fn Ctx::is_inline_link_spec(self, lines_off: i64, n_lines: i64, beg: i64): (bool, i64, LinkAttr) {
+  var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+  var line_index = self.lookup_line(beg, lines_off, n_lines)
+  var off = beg + 1
+
+  // Optional whitespace, with at most one line break in it.
+  while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
+    off += 1
+  }
+  if off >= self.line(lines_off + line_index).end && (off >= self.size || is_newline(self.ch(off))) {
+    line_index += 1
+    if line_index >= n_lines {
+      return false, 0, attr
+    }
+    off = self.line(lines_off + line_index).beg
+  }
+
+  // The destination may be left out, but then there can be no title.
+  if off < self.size && self.ch(off) == 41 {
+    attr.dest_beg = off
+    attr.dest_end = off
+    return true, off + 1, attr
+  }
+
+  var dest_ok, dest_end, dest_beg, dest_contents_end =
+      self.is_link_destination(off, self.line(lines_off + line_index).end)
+  if !dest_ok {
+    return false, 0, attr
+  }
+  attr.dest_beg = dest_beg
+  attr.dest_end = dest_contents_end
+  off = dest_end
+
+  var title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
+  var title_is_multiline = false
+  var title_beg = off
+  var title_end = off
+  var title_line: i64 = 0
+
+  if title.ok {
+    title_is_multiline = title.end_line != title.beg_line
+    title_beg = title.contents_beg
+    title_end = title.contents_end
+    title_line = title.beg_line + line_index
+    line_index += title.end_line
+    off = title.end
+  }
+
+  // Optional whitespace, then the closing ')'.
+  while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
+    off += 1
+  }
+  if off >= self.line(lines_off + line_index).end {
+    line_index += 1
+    if line_index >= n_lines {
+      return false, 0, attr
+    }
+    off = self.line(lines_off + line_index).beg
+  }
+  if self.ch(off) != 41 {
+    return false, 0, attr
+  }
+  off += 1
+
+  if title_beg >= title_end {
+    attr.title = NO_TEXT
+  } elif !title_is_multiline {
+    attr.title = self.copy_range(title_beg, title_end)
+  } else {
+    attr.title = self.merge_lines(title_beg, title_end, lines_off + title_line, 10)
+  }
+
+  return true, off, attr
+}
+
+// ---------------------------------------------------------------------------
+// Rendering the inlines
+// ---------------------------------------------------------------------------
+
+// enter_leave_span_a reports a link or an image, building the attributes
+// each time so the renderer sees the same detail entering and leaving.
+fn Ctx::span_a(self, enter: bool, kind: SpanKind, dest: u8[], dest_beg: i64, dest_size: i64,
+               is_autolink: bool, title: u8[], title_size: i64) {
+  var detail = Detail::none()
+  var no_escapes = is_autolink
+  detail.href = build_attribute(dest, dest_beg, dest_size, no_escapes)
+  detail.title = build_attribute(title, 0, title_size, false)
+  detail.is_autolink = is_autolink
+
+  if enter {
+    self.parser.enter_span(kind, detail)
+  } else {
+    self.parser.leave_span(kind, detail)
+  }
+}
+
+fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
+  var line_index: i64 = 0
+  var off = self.line(lines_off).beg
+  var end = self.line(lines_off + n_lines - 1).end
+  var text_kind = TextKind::Normal
+  var enforce_hardbreak = false
+
+  // There is always at least one resolved mark: the sentinel past the end.
+  var mark_index: i64 = 0
+  while (self.mark(mark_index).flags & MARK_RESOLVED) == 0 {
+    mark_index += 1
+  }
+
+  while true {
+    var line_end = self.line(lines_off + line_index).end
+    var mark = self.mark(mark_index)
+
+    // Everything up to the next mark or the end of the line is text.
+    var stop = line_end
+    if mark.beg < stop {
+      stop = mark.beg
+    }
+    if stop > off {
+      self.emit(text_kind, self.text, off, stop)
+      off = stop
+    }
+
+    if off >= mark.beg {
+      var ch = mark.ch
+
+      if ch == 92 {                     // a backslash escape
+        if is_newline(self.ch(mark.beg + 1)) {
+          enforce_hardbreak = true
+        } else {
+          self.emit(text_kind, self.text, mark.beg + 1, mark.beg + 2)
+        }
+      } elif ch == 96 {                 // a code span
+        if (mark.flags & MARK_OPENER) != 0 {
+          self.parser.enter_span(SpanKind::Code, Detail::none())
+          text_kind = TextKind::Code
+        } else {
+          self.parser.leave_span(SpanKind::Code, Detail::none())
+          text_kind = TextKind::Normal
+        }
+      } elif ch == 42 || ch == 95 {     // emphasis, strong emphasis
+        if (mark.flags & MARK_OPENER) != 0 {
+          if (mark.end - off) % 2 == 1 {
+            self.parser.enter_span(SpanKind::Em, Detail::none())
+            off += 1
+          }
+          while off + 1 < mark.end {
+            self.parser.enter_span(SpanKind::Strong, Detail::none())
+            off += 2
+          }
+        } else {
+          while off + 1 < mark.end {
+            self.parser.leave_span(SpanKind::Strong, Detail::none())
+            off += 2
+          }
+          if (mark.end - off) % 2 == 1 {
+            self.parser.leave_span(SpanKind::Em, Detail::none())
+            off += 1
+          }
+        }
+      } elif ch == 91 || ch == 33 || ch == 93 {   // a link or an image
+        var opener_index = mark_index
+        if ch == 93 {
+          opener_index = mark.prev
+        }
+        var opener = self.mark(opener_index)
+        var dest_mark = self.mark(opener_index + 1)
+        var title_mark = self.mark(opener_index + 2)
+        var title = self.titles.get(title_mark.beg as usize)
+
+        var kind = SpanKind::A
+        if opener.ch == 33 {
+          kind = SpanKind::Img
+        }
+        self.span_a(ch != 93, kind, self.text, dest_mark.beg, dest_mark.end - dest_mark.beg,
+                    false, title.slice(), title.len() as i64)
+
+        // A link's closer may sit on a later line than its opener.
+        if ch == 93 {
+          while mark.end > self.line(lines_off + line_index).end {
+            line_index += 1
+          }
+        }
+      } elif ch == 60 || ch == 62 {     // raw HTML, or an autolink
+        if (mark.flags & MARK_AUTOLINK) == 0 {
+          if (mark.flags & MARK_OPENER) != 0 {
+            text_kind = TextKind::Html
+          } else {
+            text_kind = TextKind::Normal
+          }
+        } else {
+          var opener_index = mark_index
+          if (mark.flags & MARK_OPENER) == 0 {
+            opener_index = mark.prev
+          }
+          var opener = self.mark(opener_index)
+          var closer = self.mark(opener.next)
+          var dest_beg = opener.end
+          var dest_size = closer.beg - opener.end
+
+          if (opener.flags & MARK_AUTOLINK_MISSING_MAILTO) != 0 {
+            var buffer = Array<u8>::new()
+            for var i: i64 = 0; i < 7; i += 1 {
+              buffer.push(MAILTO[i as usize])
+            }
+            for var i: i64 = 0; i < dest_size; i += 1 {
+              buffer.push(self.ch(dest_beg + i))
+            }
+            self.span_a((mark.flags & MARK_OPENER) != 0, SpanKind::A,
+                        buffer.slice(), 0, buffer.len() as i64, true, NO_TEXT.slice(), 0)
+          } else {
+            self.span_a((mark.flags & MARK_OPENER) != 0, SpanKind::A,
+                        self.text, dest_beg, dest_size, true, NO_TEXT.slice(), 0)
+          }
+        }
+      } elif ch == 38 {                 // an entity
+        self.emit(TextKind::Entity, self.text, mark.beg, mark.end)
+      } elif ch == 0 {
+        self.parser.text(TextKind::NullChar, NUL, 0, 1)
+      } elif ch == 127 {                // the sentinel: the block is done
+        return
+      }
+
+      off = mark.end
+
+      // On to the next resolved mark.
+      mark_index += 1
+      while (self.mark(mark_index).flags & MARK_RESOLVED) == 0 || self.mark(mark_index).beg < off {
+        mark_index += 1
+      }
+    }
+
+    line_end = self.line(lines_off + line_index).end
+    if off >= line_end {
+      if off >= end {
+        return
+      }
+
+      if text_kind == TextKind::Code {
+        // Trailing whitespace inside a code span is part of the code, and
+        // the line break itself becomes one space.
+        var blank_beg = off
+        while off < self.size && is_blank(self.ch(off)) {
+          off += 1
+        }
+        if off > blank_beg {
+          self.emit(text_kind, self.text, blank_beg, off)
+        }
+        if off < self.mark(mark_index).beg && is_newline(self.ch(off)) {
+          self.emit(text_kind, SPACE, 0, 1)
+        }
+      } elif text_kind == TextKind::Html {
+        // Inside raw HTML the line break is verbatim, trailing spaces
+        // included.
+        var blank_end = off
+        while blank_end < end && is_blank(self.ch(blank_end)) {
+          blank_end += 1
+        }
+        if blank_end > off {
+          self.emit(TextKind::Html, self.text, off, blank_end)
+        }
+        self.emit(TextKind::Html, NEWLINE, 0, 1)
+      } else {
+        var break_kind = TextKind::SoftBr
+        if text_kind == TextKind::Normal {
+          if enforce_hardbreak {
+            break_kind = TextKind::Br
+          } else {
+            while off < self.size && is_blank(self.ch(off)) {
+              off += 1
+            }
+            if off >= line_end + 2 && self.ch(off - 2) == 32 && self.ch(off - 1) == 32
+                && is_newline(self.ch(off)) {
+              break_kind = TextKind::Br
+            }
+          }
+        }
+        self.emit(break_kind, NEWLINE, 0, 1)
+      }
+
+      line_index += 1
+      var next_beg = self.line(lines_off + line_index).beg
+      if next_beg > off {
+        off = next_beg
+      }
+      enforce_hardbreak = false
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The HTML tags that start a block
+//
+// Upstream keeps these as a two-level table of C string literals. Here they
+// are one flat byte buffer with a span per name, built once, so a
+// comparison never has to turn a `string` into bytes.
+// ---------------------------------------------------------------------------
+
+var TAG_NAMES: string[66] = [
+  "pre", "script", "style", "textarea",
+  "address", "article", "aside",
+  "base", "basefont", "blockquote", "body",
+  "caption", "center", "col", "colgroup",
+  "dd", "details", "dialog", "dir", "div", "dl", "dt",
+  "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset",
+  "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr", "html",
+  "iframe",
+  "legend", "li", "link",
+  "main", "menu", "menuitem",
+  "nav", "noframes",
+  "ol", "optgroup", "option",
+  "p", "param",
+  "search", "section", "summary",
+  "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr", "track",
+  "ul",
+]
+
+struct NameTable {
+  text: Array<u8>
+  beg: Array<i64>
+  end: Array<i64>
+}
+
+fn build_tags(): NameTable {
+  var text = Array<u8>::new()
+  var beg = Array<i64>::new()
+  var end = Array<i64>::new()
+  for name in TAG_NAMES {
+    beg.push(text.len() as i64)
+    for byte in name.bytes() {
+      text.push(byte)
+    }
+    end.push(text.len() as i64)
+  }
+  return NameTable{ text: text, beg: beg, end: end }
+}
+
+var TAGS: NameTable = build_tags()
+
+// The four tags that start an HTML block of type 1.
+const TYPE1_BEG: i64 = 0
+const TYPE1_END: i64 = 4
+
+// Where each initial letter's type-6 tags sit, a..z. An empty span means no
+// tag starts with that letter.
+var TYPE6_BEG: i64[26] = [
+   4,  7, 11, 15,  0, 22,  0, 29, 39,  0,  0, 40, 43,
+  46, 48, 51,  0,  0, 53, 56, 65,  0,  0,  0,  0,  0,
+]
+var TYPE6_END: i64[26] = [
+   7, 11, 15, 22,  0, 29,  0, 39, 40,  0,  0, 43, 46,
+  48, 51, 53,  0,  0, 56, 65, 66,  0,  0,  0,  0,  0,
+]
+
+fn tag_len(tag: i64): i64 {
+  return TAGS.end.get(tag as usize) - TAGS.beg.get(tag as usize)
+}
+
+fn Ctx::tag_matches(self, off: i64, tag: i64): bool {
+  var beg = TAGS.beg.get(tag as usize)
+  var end = TAGS.end.get(tag as usize)
+  for var i = beg; i < end; i += 1 {
+    if lower_ascii(self.ch(off + i - beg)) != TAGS.text.get(i as usize) {
+      return false
+    }
+  }
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// The block stream
+// ---------------------------------------------------------------------------
+
+fn Ctx::block(self, index: i64): Block {
+  return self.blocks.get(index as usize)
+}
+
+fn Ctx::put_block(*self, index: i64, block: Block) {
+  self.blocks.set(index as usize, block)
+}
+
+fn Ctx::push_block(*self, block: Block): i64 {
+  var index = self.n_blocks
+  if index < self.blocks.len() as i64 {
+    self.blocks.set(index as usize, block)
+  } else {
+    self.blocks.push(block)
+  }
+  self.n_blocks += 1
+  return index
+}
+
+fn Ctx::push_line(*self, line: Line) {
+  if self.n_lines < self.lines.len() as i64 {
+    self.lines.set(self.n_lines as usize, line)
+  } else {
+    self.lines.push(line)
+  }
+  self.n_lines += 1
+}
+
+fn Ctx::container(self, index: i64): Container {
+  return self.containers.get(index as usize)
+}
+
+fn Ctx::put_container(*self, index: i64, container: Container) {
+  if index < self.containers.len() as i64 {
+    self.containers.set(index as usize, container)
+  } else {
+    self.containers.push(container)
+  }
+}
+
+fn Ctx::start_new_block(*self, line: LineAnalysis) {
+  var kind = BlockKind::P
+  if line.kind == LineKind::Hr {
+    kind = BlockKind::Hr
+  } elif line.kind == LineKind::AtxHeader || line.kind == LineKind::SetextHeader {
+    kind = BlockKind::H
+  } elif line.kind == LineKind::FencedCode || line.kind == LineKind::IndentedCode {
+    kind = BlockKind::Code
+  } elif line.kind == LineKind::Html {
+    kind = BlockKind::Html
+  }
+
+  self.current_block = self.push_block(Block{
+    kind: kind, flags: 0, data: line.data, n_lines: 0, first_line: self.n_lines,
+  })
+}
+
+fn Ctx::add_line_into_current_block(*self, line: LineAnalysis) {
+  var block = self.block(self.current_block)
+  var indent: i64 = 0
+  if block.kind == BlockKind::Code || block.kind == BlockKind::Html {
+    indent = line.indent
+  }
+  self.push_line(Line{ beg: line.beg, end: line.end, indent: indent })
+  block.n_lines += 1
+  self.put_block(self.current_block, block)
+}
+
+// consume_link_reference_definitions eats any definitions from the start of
+// the current block. They can only be at the start, since a definition
+// cannot interrupt a paragraph.
+fn Ctx::consume_link_reference_definitions(*self) {
+  var block = self.block(self.current_block)
+  var first = block.first_line
+  var n_lines = block.n_lines
+  var taken: i64 = 0
+
+  while taken < n_lines {
+    var consumed = self.is_link_reference_definition(first + taken, n_lines - taken)
+    if consumed == 0 {
+      break
+    }
+    taken += consumed
+  }
+
+  if taken == 0 {
+    return
+  }
+
+  if taken == n_lines {
+    // The whole block was definitions.
+    self.n_lines -= taken
+    self.n_blocks -= 1
+    self.current_block = -1
+    return
+  }
+
+  for var i: i64 = 0; i < n_lines - taken; i += 1 {
+    self.lines.set((first + i) as usize, self.line(first + taken + i))
+  }
+  self.n_lines -= taken
+  block = self.block(self.current_block)
+  block.n_lines -= taken
+  self.put_block(self.current_block, block)
+}
+
+fn Ctx::end_current_block(*self) {
+  if self.current_block < 0 {
+    return
+  }
+
+  // A reference definition may span lines, so it is recognized here rather
+  // than during line analysis.
+  var block = self.block(self.current_block)
+  if block.kind == BlockKind::P
+      || (block.kind == BlockKind::H && (block.flags & BLOCK_SETEXT_HEADER) != 0) {
+    var first = self.line(block.first_line)
+    if first.beg < self.size && self.ch(first.beg) == 91 {
+      self.consume_link_reference_definitions()
+      if self.current_block < 0 {
+        return
+      }
+    }
+  }
+
+  block = self.block(self.current_block)
+  if block.kind == BlockKind::H && (block.flags & BLOCK_SETEXT_HEADER) != 0 {
+    if block.n_lines > 1 {
+      // Drop the underline.
+      block.n_lines -= 1
+      self.n_lines -= 1
+      self.put_block(self.current_block, block)
+    } else {
+      // Only the underline is left after eating the definitions; keep it as
+      // the start of an ordinary paragraph.
+      block.kind = BlockKind::P
+      self.put_block(self.current_block, block)
+      return
+    }
+  }
+
+  self.current_block = -1
+}
+
+fn Ctx::push_container_block(*self, kind: BlockKind, start: i64, data: i64, flags: i64) {
+  self.end_current_block()
+  var _ = self.push_block(Block{
+    kind: kind, flags: flags, data: data, n_lines: start, first_line: self.n_lines,
+  })
+}
+
+// top_block_is_li reports whether the last thing pushed was a list item
+// opener with nothing after it. Upstream reads the last eight bytes of its
+// block buffer and reinterprets them as an MD_BLOCK, which is the same
+// question asked less safely.
+fn Ctx::top_block_is_li(self): bool {
+  if self.n_blocks == 0 {
+    return false
+  }
+  var block = self.block(self.n_blocks - 1)
+  return block.kind == BlockKind::Li && block.first_line == self.n_lines
+}
+
+// ---------------------------------------------------------------------------
+// Rendering blocks
+// ---------------------------------------------------------------------------
+
+fn Ctx::process_normal_block_contents(*self, lines_off: i64, n_lines: i64) {
+  self.analyze_inlines(lines_off, n_lines)
+  self.process_inlines(lines_off, n_lines)
+}
+
+fn Ctx::process_verbatim_block_contents(*self, kind: TextKind, lines_off: i64, n_lines: i64) {
+  for var i: i64 = 0; i < n_lines; i += 1 {
+    var line = self.line(lines_off + i)
+    var indent = line.indent
+
+    while indent > 16 {
+      self.emit(kind, INDENT_CHUNK, 0, 16)
+      indent -= 16
+    }
+    if indent > 0 {
+      self.emit(kind, INDENT_CHUNK, 0, indent)
+    }
+
+    self.emit_insecure(kind, self.text, line.beg, line.end)
+    self.emit(kind, NEWLINE, 0, 1)
+  }
+}
+
+fn Ctx::process_code_block_contents(*self, is_fenced: bool, lines_off: i64, n_lines: i64) {
+  var first = lines_off
+  var count = n_lines
+
+  if is_fenced {
+    // The opening fence is the first line; the closing one was never added.
+    first += 1
+    count -= 1
+  } else {
+    // Blank lines at either end of an indented code block are not code.
+    while count > 0 && self.line(first).beg == self.line(first).end {
+      first += 1
+      count -= 1
+    }
+    while count > 0 && self.line(first + count - 1).beg == self.line(first + count - 1).end {
+      count -= 1
+    }
+  }
+
+  if count == 0 {
+    return
+  }
+  self.process_verbatim_block_contents(TextKind::Code, first, count)
+}
+
+fn Ctx::fenced_code_detail(self, block: Block): Detail {
+  var detail = Detail::none()
+  var fence_line = self.line(block.first_line)
+  var beg = fence_line.beg
+  var end = fence_line.end
+  var fence_ch = self.ch(beg)
+
+  while beg < self.size && self.ch(beg) == fence_ch {
+    beg += 1
+  }
+  while beg < self.size && self.ch(beg) == 32 {
+    beg += 1
+  }
+  while end > beg && self.ch(end - 1) == 32 {
+    end -= 1
+  }
+
+  detail.info = build_attribute(self.text, beg, end - beg, false)
+
+  var lang_end = beg
+  while lang_end < end && !is_space_class(self.ch(lang_end)) {
+    lang_end += 1
+  }
+  detail.lang = build_attribute(self.text, beg, lang_end - beg, false)
+  detail.fence_char = fence_ch
+  return detail
+}
+
+fn Ctx::process_leaf_block(*self, block_index: i64) {
+  var block = self.block(block_index)
+  var detail = Detail::none()
+
+  var is_in_tight_list = false
+  if self.n_containers > 0 {
+    is_in_tight_list = !self.container(self.n_containers - 1).is_loose
+  }
+
+  if block.kind == BlockKind::H {
+    detail.level = block.data
+  } elif block.kind == BlockKind::Code && block.data != 0 {
+    detail = self.fenced_code_detail(block)
+  }
+
+  if !is_in_tight_list || block.kind != BlockKind::P {
+    self.parser.enter_block(block.kind, detail)
+  }
+
+  if block.kind == BlockKind::Hr {
+    // No contents.
+  } elif block.kind == BlockKind::Code {
+    self.process_code_block_contents(block.data != 0, block.first_line, block.n_lines)
+  } elif block.kind == BlockKind::Html {
+    self.process_verbatim_block_contents(TextKind::Html, block.first_line, block.n_lines)
+  } else {
+    self.process_normal_block_contents(block.first_line, block.n_lines)
+  }
+
+  if !is_in_tight_list || block.kind != BlockKind::P {
+    self.parser.leave_block(block.kind, detail)
+  }
+}
+
+fn Ctx::process_all_blocks(*self) {
+  // The container stack is no longer needed for detecting lists, so it is
+  // reused for tracking which enclosing lists are loose.
+  self.n_containers = 0
+
+  for var index: i64 = 0; index < self.n_blocks; index += 1 {
+    var block = self.block(index)
+    var detail = Detail::none()
+
+    if block.kind == BlockKind::Ul {
+      detail.is_tight = (block.flags & BLOCK_LOOSE_LIST) == 0
+      detail.mark = block.data as u8
+    } elif block.kind == BlockKind::Ol {
+      detail.start = block.n_lines
+      detail.is_tight = (block.flags & BLOCK_LOOSE_LIST) == 0
+      detail.mark = block.data as u8
+    }
+
+    if (block.flags & BLOCK_CONTAINER) != 0 {
+      if (block.flags & BLOCK_CONTAINER_CLOSER) != 0 {
+        self.parser.leave_block(block.kind, detail)
+        if block.kind == BlockKind::Ul || block.kind == BlockKind::Ol
+            || block.kind == BlockKind::Quote {
+          self.n_containers -= 1
+        }
+      }
+
+      if (block.flags & BLOCK_CONTAINER_OPENER) != 0 {
+        self.parser.enter_block(block.kind, detail)
+        if block.kind == BlockKind::Ul || block.kind == BlockKind::Ol {
+          var entry = empty_container()
+          entry.is_loose = (block.flags & BLOCK_LOOSE_LIST) != 0
+          self.put_container(self.n_containers, entry)
+          self.n_containers += 1
+        } elif block.kind == BlockKind::Quote {
+          // Text in a block quote is wrapped in <p> even inside a tight
+          // list item.
+          var entry = empty_container()
+          entry.is_loose = true
+          self.put_container(self.n_containers, entry)
+          self.n_containers += 1
+        }
+      }
+    } else {
+      self.process_leaf_block(index)
+    }
+  }
+
+  self.n_blocks = 0
+  self.n_lines = 0
+}
+
+// ---------------------------------------------------------------------------
+// Line analysis
+// ---------------------------------------------------------------------------
+
+fn Ctx::is_hr_line(self, beg: i64): (bool, i64, i64) {
+  var off = beg + 1
+  var n: i64 = 1
+
+  while off < self.size && (self.ch(off) == self.ch(beg) || self.ch(off) == 32 || self.ch(off) == 9) {
+    if self.ch(off) == self.ch(beg) {
+      n += 1
+    }
+    off += 1
+  }
+
+  if n < 3 {
+    return false, 0, off
+  }
+  // Nothing else may be on the line.
+  if off < self.size && !is_newline(self.ch(off)) {
+    return false, 0, off
+  }
+  return true, off, 0
+}
+
+fn Ctx::is_atxheader_line(self, beg: i64): (bool, i64, i64, i64) {
+  var off = beg + 1
+  while off < self.size && self.ch(off) == 35 && off - beg < 7 {
+    off += 1
+  }
+  var level = off - beg
+
+  if level > 6 {
+    return false, 0, 0, 0
+  }
+  if off < self.size && !is_blank(self.ch(off)) && !is_newline(self.ch(off)) {
+    return false, 0, 0, 0
+  }
+  while off < self.size && is_blank(self.ch(off)) {
+    off += 1
+  }
+  return true, off, off, level
+}
+
+fn Ctx::is_setext_underline(self, beg: i64): (bool, i64, i64) {
+  var off = beg + 1
+  while off < self.size && self.ch(off) == self.ch(beg) {
+    off += 1
+  }
+  while off < self.size && is_blank(self.ch(off)) {
+    off += 1
+  }
+  if off < self.size && !is_newline(self.ch(off)) {
+    return false, 0, 0
+  }
+  var level: i64 = 2
+  if self.ch(beg) == 61 {          // '='
+    level = 1
+  }
+  return true, off, level
+}
+
+fn Ctx::is_opening_code_fence(*self, beg: i64): (bool, i64) {
+  var off = beg
+  while off < self.size && self.ch(off) == self.ch(beg) {
+    off += 1
+  }
+  if off - beg < 3 {
+    return false, 0
+  }
+  self.code_fence_length = off - beg
+
+  while off < self.size && self.ch(off) == 32 {
+    off += 1
+  }
+  while off < self.size && !is_newline(self.ch(off)) {
+    // A backtick fence's info string may not hold a backtick.
+    if self.ch(beg) == 96 && self.ch(off) == 96 {
+      return false, 0
+    }
+    off += 1
+  }
+  return true, off
+}
+
+// The offset comes back even on failure: a line that is not a closing fence
+// is eaten whole anyway.
+fn Ctx::is_closing_code_fence(self, ch: u8, beg: i64): (bool, i64) {
+  var off = beg
+  while off < self.size && self.ch(off) == ch {
+    off += 1
+  }
+  if off - beg < self.code_fence_length {
+    return false, off
+  }
+  while off < self.size && is_blank(self.ch(off)) {
+    off += 1
+  }
+  if off < self.size && !is_newline(self.ch(off)) {
+    return false, off
+  }
+  return true, off
+}
+
+// is_html_block_start_condition answers which of CommonMark's seven kinds
+// of raw HTML block starts here, or 0 for none.
+fn Ctx::is_html_block_start_condition(self, beg: i64): i64 {
+  var off = beg + 1
+
+  // Type 1: <pre, <script, <style, <textarea.
+  for var tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
+    if off + tag_len(tag) <= self.size && self.tag_matches(off, tag) {
+      return 1
+    }
+  }
+
+  // Type 2: <!--
+  if off + 3 < self.size && self.ch(off) == 33 && self.ch(off + 1) == 45 && self.ch(off + 2) == 45 {
+    return 2
+  }
+
+  // Type 3: <?
+  if off < self.size && self.ch(off) == 63 {
+    return 3
+  }
+
+  // Types 4 and 5: <! ...
+  if off < self.size && self.ch(off) == 33 {
+    if off + 1 < self.size && is_ascii(self.ch(off + 1)) {
+      return 4
+    }
+    if off + 8 < self.size && self.equals_at(off, HTML_CDATA_OPEN) {
+      return 5
+    }
+  }
+
+  // Type 6: one of the block-level tags.
+  if off + 1 < self.size && (is_alpha(self.ch(off)) || (self.ch(off) == 47 && is_alpha(self.ch(off + 1)))) {
+    if self.ch(off) == 47 {
+      off += 1
+    }
+    var slot = lower_ascii(self.ch(off)) as i64 - 97
+    var first = TYPE6_BEG[slot as usize]
+    var limit = TYPE6_END[slot as usize]
+
+    for var tag = first; tag < limit; tag += 1 {
+      if off + tag_len(tag) <= self.size && self.tag_matches(off, tag) {
+        var after = off + tag_len(tag)
+        if after >= self.size {
+          return 6
+        }
+        if is_blank(self.ch(after)) || is_newline(self.ch(after)) || self.ch(after) == 62 {
+          return 6
+        }
+        if after + 1 < self.size && self.ch(after) == 47 && self.ch(after + 1) == 62 {
+          return 6
+        }
+        break
+      }
+    }
+  }
+
+  // Type 7: any other complete tag, alone on its line.
+  if off + 1 < self.size {
+    var ok, end = self.is_html_tag(0, 0, beg, self.size)
+    if ok {
+      while end < self.size && is_space_class(self.ch(end)) {
+        end += 1
+      }
+      if end >= self.size || is_newline(self.ch(end)) {
+        return 7
+      }
+    }
+  }
+
+  return 0
+}
+
+// line_contains looks for a substring before the end of the line. The
+// offset comes back either way, since a raw HTML block's contents are not
+// analyzed further.
+fn Ctx::line_contains(self, beg: i64, needle: u8[]): (bool, i64) {
+  var len = needle.len() as i64
+  var i = beg
+  while i + len < self.size {
+    if is_newline(self.ch(i)) {
+      break
+    }
+    if self.equals_at(i, needle) {
+      return true, i + len
+    }
+    i += 1
+  }
+  return false, i
+}
+
+fn Ctx::is_html_block_end_condition(self, beg: i64): (i64, i64) {
+  if self.html_block_type == 1 {
+    var off = beg
+    while off + 1 < self.size && !is_newline(self.ch(off)) {
+      if self.ch(off) == 60 && self.ch(off + 1) == 47 {
+        for var tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
+          if off + 2 + tag_len(tag) < self.size {
+            if self.tag_matches(off + 2, tag) && self.ch(off + 2 + tag_len(tag)) == 62 {
+              return 1, off + 2 + tag_len(tag) + 1
+            }
+          }
+        }
+      }
+      off += 1
+    }
+    return 0, off
+  }
+
+  if self.html_block_type == 2 {
+    var found, end = self.line_contains(beg, HTML_COMMENT_CLOSE)
+    if found { return 2, end }
+    return 0, end
+  }
+  if self.html_block_type == 3 {
+    var found, end = self.line_contains(beg, HTML_PI_CLOSE)
+    if found { return 3, end }
+    return 0, end
+  }
+  if self.html_block_type == 4 {
+    var found, end = self.line_contains(beg, HTML_DECL_CLOSE)
+    if found { return 4, end }
+    return 0, end
+  }
+  if self.html_block_type == 5 {
+    var found, end = self.line_contains(beg, HTML_CDATA_CLOSE)
+    if found { return 5, end }
+    return 0, end
+  }
+
+  // Types 6 and 7 end at a blank line.
+  if beg >= self.size || is_newline(self.ch(beg)) {
+    return self.html_block_type, beg
+  }
+  return 0, beg
+}
+
+fn is_container_compatible(pivot: Container, container: Container): bool {
+  // A block quote has no items the way a list does.
+  if container.ch == 62 {
+    return false
+  }
+  if container.ch != pivot.ch {
+    return false
+  }
+  if container.mark_indent > pivot.contents_indent {
+    return false
+  }
+  return true
+}
+
+fn Ctx::is_container_mark(self, indent: i64, beg: i64): (bool, i64, Container) {
+  var container = empty_container()
+  var off = beg
+
+  if off >= self.size || indent >= CODE_INDENT_OFFSET {
+    return false, 0, container
+  }
+
+  if self.ch(off) == 62 {              // '>'
+    off += 1
+    container.ch = 62
+    container.mark_indent = indent
+    container.contents_indent = indent + 1
+    return true, off, container
+  }
+
+  if is_bullet(self.ch(off)) && (off + 1 >= self.size || is_blank(self.ch(off + 1)) || is_newline(self.ch(off + 1))) {
+    container.ch = self.ch(off)
+    container.mark_indent = indent
+    container.contents_indent = indent + 1
+    return true, off + 1, container
+  }
+
+  var max_end = off + 9
+  if max_end > self.size {
+    max_end = self.size
+  }
+  while off < max_end && is_digit(self.ch(off)) {
+    container.start = container.start * 10 + (self.ch(off) as i64 - 48)
+    off += 1
+  }
+  if off > beg && off < self.size
+      && (self.ch(off) == 46 || self.ch(off) == 41)
+      && (off + 1 >= self.size || is_blank(self.ch(off + 1)) || is_newline(self.ch(off + 1))) {
+    container.ch = self.ch(off)
+    container.mark_indent = indent
+    container.contents_indent = indent + off - beg + 1
+    return true, off + 1, container
+  }
+
+  return false, 0, container
+}
+
+fn Ctx::line_indentation(self, total_indent: i64, beg: i64): (i64, i64) {
+  var off = beg
+  var indent = total_indent
+
+  while off < self.size && is_blank(self.ch(off)) {
+    if self.ch(off) == 9 {
+      indent = (indent + 4) & -4
+    } else {
+      indent += 1
+    }
+    off += 1
+  }
+  return indent - total_indent, off
+}
+
+fn Ctx::enter_child_containers(*self, n_children: i64) {
+  for var i = self.n_containers - n_children; i < self.n_containers; i += 1 {
+    var c = self.container(i)
+
+    if c.ch == 62 {
+      self.push_container_block(BlockKind::Quote, 0, 0, BLOCK_CONTAINER_OPENER)
+    } else {
+      var kind = BlockKind::Ul
+      if c.ch == 41 || c.ch == 46 {
+        kind = BlockKind::Ol
+      }
+      // Remember where the list opener sits, so a later blank line can go
+      // back and mark the list loose.
+      self.end_current_block()
+      c.block_index = self.n_blocks
+      self.put_container(i, c)
+
+      self.push_container_block(kind, c.start, c.ch as i64, BLOCK_CONTAINER_OPENER)
+      self.push_container_block(BlockKind::Li, 0, 0, BLOCK_CONTAINER_OPENER)
+    }
+  }
+}
+
+fn Ctx::leave_child_containers(*self, n_keep: i64) {
+  while self.n_containers > n_keep {
+    var c = self.container(self.n_containers - 1)
+
+    if c.ch == 62 {
+      self.push_container_block(BlockKind::Quote, 0, 0, BLOCK_CONTAINER_CLOSER)
+    } else {
+      var kind = BlockKind::Ul
+      if c.ch == 41 || c.ch == 46 {
+        kind = BlockKind::Ol
+      }
+      self.push_container_block(BlockKind::Li, 0, 0, BLOCK_CONTAINER_CLOSER)
+      self.push_container_block(kind, 0, c.ch as i64, BLOCK_CONTAINER_CLOSER)
+    }
+
+    self.n_containers -= 1
+  }
+}
+
+// analyze_line decides what one source line is, which is the main input to
+// deciding where blocks begin and end. It answers the analysis and the
+// offset the next line starts at.
+fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i64) {
+  var pivot = pivot_in
+  var line = LineAnalysis{
+    kind: LineKind::Text, data: 0, enforce_new_block: false, beg: 0, end: 0, indent: 0,
+  }
+  var total_indent: i64 = 0
+  var n_parents: i64 = 0
+  var n_brothers: i64 = 0
+  var n_children: i64 = 0
+  var container = empty_container()
+  var prev_line_loosens = self.last_line_has_list_loosening_effect
+  var off = beg
+  var hr_killer: i64 = 0
+
+  var indent, after = self.line_indentation(total_indent, off)
+  line.indent = indent
+  off = after
+  total_indent += line.indent
+  line.beg = off
+
+  // How many of the open containers this line still belongs to, given its
+  // indentation and its block quote marks.
+  while n_parents < self.n_containers {
+    var c = self.container(n_parents)
+
+    if c.ch == 62 && line.indent < CODE_INDENT_OFFSET && off < self.size && self.ch(off) == 62 {
+      off += 1
+      total_indent += 1
+      indent, after = self.line_indentation(total_indent, off)
+      line.indent = indent
+      off = after
+      total_indent += line.indent
+
+      // The one optional space after '>' belongs to the mark.
+      if line.indent > 0 {
+        line.indent -= 1
+      }
+      line.beg = off
+    } elif c.ch != 62 && line.indent >= c.contents_indent {
+      line.indent -= c.contents_indent
+    } else {
+      break
+    }
+
+    n_parents += 1
+  }
+
+  if off >= self.size || is_newline(self.ch(off)) {
+    // A blank line needs no indentation to be nested inside a list.
+    if n_brothers + n_children == 0 {
+      while n_parents < self.n_containers && self.container(n_parents).ch != 62 {
+        n_parents += 1
+      }
+    }
+  }
+
+  while true {
+    // Fenced code continuation.
+    if pivot.kind == LineKind::FencedCode {
+      line.beg = off
+
+      // Another fenced code line, unless it is the closing fence, which
+      // becomes a blank line.
+      if line.indent < CODE_INDENT_OFFSET {
+        var closing, fence_end = self.is_closing_code_fence(self.ch(pivot.beg), off)
+        off = fence_end
+        if closing {
+          line.kind = LineKind::Blank
+          self.last_line_has_list_loosening_effect = false
+          break
+        }
+      }
+
+      if n_parents == self.n_containers {
+        // Indentation is measured against the opening fence.
+        if line.indent > pivot.indent {
+          line.indent -= pivot.indent
+        } else {
+          line.indent = 0
+        }
+        line.kind = LineKind::FencedCode
+        break
+      }
+    }
+
+    // Raw HTML block continuation.
+    if pivot.kind == LineKind::Html && self.html_block_type > 0 {
+      if n_parents < self.n_containers {
+        // The enclosing container ending ends the HTML block too.
+        self.html_block_type = 0
+      } else {
+        var kind, end = self.is_html_block_end_condition(off)
+        off = end
+        if kind > 0 {
+          self.html_block_type = 0
+          // Two of the end conditions are blank lines as well.
+          if kind == 6 || kind == 7 {
+            line.kind = LineKind::Blank
+            line.indent = 0
+            break
+          }
+        }
+        line.kind = LineKind::Html
+        n_parents = self.n_containers
+        break
+      }
+    }
+
+    // A blank line.
+    if off >= self.size || is_newline(self.ch(off)) {
+      if pivot.kind == LineKind::IndentedCode && n_parents == self.n_containers {
+        line.kind = LineKind::IndentedCode
+        if line.indent > CODE_INDENT_OFFSET {
+          line.indent -= CODE_INDENT_OFFSET
+        } else {
+          line.indent = 0
+        }
+        self.last_line_has_list_loosening_effect = false
+      } else {
+        line.kind = LineKind::Blank
+        self.last_line_has_list_loosening_effect = n_parents > 0
+            && n_brothers + n_children == 0
+            && self.container(n_parents - 1).ch != 62
+
+        // A list item may begin with at most one blank line. Being the
+        // second blank line of an item that is still empty means the next
+        // non-blank line has to end the list; see md4c issue 6.
+        if n_parents > 0 && self.container(n_parents - 1).ch != 62
+            && n_brothers + n_children == 0 && self.current_block < 0
+            && self.top_block_is_li() {
+          self.last_list_item_starts_with_two_blank_lines = true
+        }
+      }
+      break
+    }
+
+    // The other half of that: end the list now that a non-blank line
+    // would otherwise continue the item.
+    if self.last_list_item_starts_with_two_blank_lines {
+      if n_parents > 0 && n_parents == self.n_containers
+          && self.container(n_parents - 1).ch != 62
+          && n_brothers + n_children == 0 && self.current_block < 0
+          && self.top_block_is_li() {
+        n_parents -= 1
+
+        line.indent = total_indent
+        if n_parents > 0 {
+          var reduce = self.container(n_parents - 1).contents_indent
+          if reduce > line.indent {
+            reduce = line.indent
+          }
+          line.indent -= reduce
+        }
+      }
+
+      self.last_list_item_starts_with_two_blank_lines = false
+    }
+    self.last_line_has_list_loosening_effect = false
+
+    // A Setext underline.
+    if line.indent < CODE_INDENT_OFFSET && pivot.kind == LineKind::Text
+        && off < self.size && (self.ch(off) == 61 || self.ch(off) == 45)
+        && n_parents == self.n_containers {
+      var ok, end, level = self.is_setext_underline(off)
+      if ok {
+        off = end
+        line.kind = LineKind::SetextUnderline
+        line.data = level
+        break
+      }
+    }
+
+    // A thematic break.
+    if line.indent < CODE_INDENT_OFFSET && off < self.size && off >= hr_killer
+        && is_hr_char(self.ch(off)) {
+      var ok, end, killer = self.is_hr_line(off)
+      if ok {
+        off = end
+        line.kind = LineKind::Hr
+        break
+      }
+      hr_killer = killer
+    }
+
+    // Another item of a list already open.
+    if n_parents < self.n_containers && n_brothers + n_children == 0 {
+      var found, mark_end, candidate = self.is_container_mark(line.indent, off)
+      if found && is_container_compatible(self.container(n_parents), candidate) {
+        container = candidate
+        pivot = blank_line()
+        off = mark_end
+
+        total_indent += container.contents_indent - container.mark_indent
+        indent, after = self.line_indentation(total_indent, off)
+        line.indent = indent
+        off = after
+        total_indent += line.indent
+        line.beg = off
+
+        // Some of the whitespace after the mark is still part of it.
+        if off >= self.size || is_newline(self.ch(off)) {
+          container.contents_indent += 1
+        } elif line.indent <= CODE_INDENT_OFFSET {
+          container.contents_indent += line.indent
+          line.indent = 0
+        } else {
+          container.contents_indent += 1
+          line.indent -= 1
+        }
+
+        var parent = self.container(n_parents)
+        parent.mark_indent = container.mark_indent
+        parent.contents_indent = container.contents_indent
+        self.put_container(n_parents, parent)
+
+        n_brothers += 1
+        continue
+      }
+    }
+
+    // Indented code, which cannot interrupt a paragraph.
+    if line.indent >= CODE_INDENT_OFFSET && pivot.kind != LineKind::Text {
+      line.kind = LineKind::IndentedCode
+      line.indent -= CODE_INDENT_OFFSET
+      line.data = 0
+      break
+    }
+
+    // A new container block.
+    if line.indent < CODE_INDENT_OFFSET {
+      var found, mark_end, candidate = self.is_container_mark(line.indent, off)
+      if found {
+        // Note the offset moves past the mark either way, exactly as
+        // upstream's out-parameter does.
+        off = mark_end
+        container = candidate
+
+        var suppressed = false
+        if pivot.kind == LineKind::Text && n_parents == self.n_containers
+            && (off >= self.size || is_newline(self.ch(off))) && container.ch != 62 {
+          // A list mark on an otherwise blank line cannot interrupt a
+          // paragraph.
+          suppressed = true
+        } elif pivot.kind == LineKind::Text && n_parents == self.n_containers
+            && (container.ch == 46 || container.ch == 41) && container.start != 1 {
+          // An ordered list can only interrupt a paragraph at index 1.
+          suppressed = true
+        }
+
+        if !suppressed {
+          total_indent += container.contents_indent - container.mark_indent
+          indent, after = self.line_indentation(total_indent, off)
+          line.indent = indent
+          off = after
+          total_indent += line.indent
+
+          line.beg = off
+          line.data = container.ch as i64
+
+          if off >= self.size || is_newline(self.ch(off)) {
+            container.contents_indent += 1
+          } elif line.indent <= CODE_INDENT_OFFSET {
+            container.contents_indent += line.indent
+            line.indent = 0
+          } else {
+            container.contents_indent += 1
+            line.indent -= 1
+          }
+
+          if n_brothers + n_children == 0 {
+            pivot = blank_line()
+          }
+          if n_children == 0 {
+            self.leave_child_containers(n_parents + n_brothers)
+          }
+
+          n_children += 1
+          self.put_container(self.n_containers, container)
+          self.n_containers += 1
+          continue
+        }
+      }
+    }
+
+    // An ATX header.
+    if line.indent < CODE_INDENT_OFFSET && off < self.size && self.ch(off) == 35 {
+      var ok, header_beg, end, level = self.is_atxheader_line(off)
+      if ok {
+        line.beg = header_beg
+        off = end
+        line.kind = LineKind::AtxHeader
+        line.data = level
+        break
+      }
+    }
+
+    // An opening code fence.
+    if line.indent < CODE_INDENT_OFFSET && off < self.size
+        && (self.ch(off) == 96 || self.ch(off) == 126) {
+      var ok, end = self.is_opening_code_fence(off)
+      if ok {
+        off = end
+        line.kind = LineKind::FencedCode
+        line.data = 1
+        line.enforce_new_block = true
+        break
+      }
+    }
+
+    // A raw HTML block.
+    if off < self.size && self.ch(off) == 60 {
+      self.html_block_type = self.is_html_block_start_condition(off)
+
+      // Type 7 cannot interrupt a paragraph.
+      if self.html_block_type == 7 && pivot.kind == LineKind::Text {
+        self.html_block_type = 0
+      }
+
+      if self.html_block_type > 0 {
+        // The line may close the block immediately.
+        var kind, end = self.is_html_block_end_condition(off)
+        off = end
+        if kind == self.html_block_type {
+          self.html_block_type = 0
+        }
+
+        line.enforce_new_block = true
+        line.kind = LineKind::Html
+        break
+      }
+    }
+
+    // Anything else is text.
+    line.kind = LineKind::Text
+    if pivot.kind == LineKind::Text && n_brothers + n_children == 0 {
+      // Lazy continuation.
+      n_parents = self.n_containers
+    }
+    break
+  }
+
+  // Scan for the end of the line.
+  while off < self.size && !is_newline(self.ch(off)) {
+    off += 1
+  }
+  line.end = off
+
+  // An ATX header drops its optional trailing run of '#'.
+  if line.kind == LineKind::AtxHeader {
+    var trimmed = line.end
+    while trimmed > line.beg && is_blank(self.ch(trimmed - 1)) {
+      trimmed -= 1
+    }
+    while trimmed > line.beg && self.ch(trimmed - 1) == 35 {
+      trimmed -= 1
+    }
+    if trimmed == line.beg || is_blank(self.ch(trimmed - 1)) {
+      line.end = trimmed
+    }
+  }
+
+  // Trailing spaces are not content, except in verbatim blocks.
+  if line.kind != LineKind::IndentedCode && line.kind != LineKind::FencedCode
+      && line.kind != LineKind::Html {
+    while line.end > line.beg && is_blank(self.ch(line.end - 1)) {
+      line.end -= 1
+    }
+  }
+
+  // Eat the line break.
+  if off < self.size && self.ch(off) == 13 {
+    off += 1
+  }
+  if off < self.size && self.ch(off) == 10 {
+    off += 1
+  }
+
+  // A list that continues after a blank line is loose.
+  if prev_line_loosens && line.kind != LineKind::Blank && n_parents + n_brothers > 0 {
+    var c = self.container(n_parents + n_brothers - 1)
+    if c.ch != 62 {
+      var block = self.block(c.block_index)
+      block.flags = block.flags | BLOCK_LOOSE_LIST
+      self.put_block(c.block_index, block)
+    }
+  }
+
+  // Leave the containers this line is no longer part of.
+  if n_children == 0 && n_parents + n_brothers < self.n_containers {
+    self.leave_child_containers(n_parents + n_brothers)
+  }
+
+  // Enter the containers a mark was found for.
+  if n_brothers > 0 {
+    self.push_container_block(BlockKind::Li, 0, 0, BLOCK_CONTAINER_CLOSER)
+    self.push_container_block(BlockKind::Li, 0, 0, BLOCK_CONTAINER_OPENER)
+  }
+
+  if n_children > 0 {
+    self.enter_child_containers(n_children)
+  }
+
+  return line, off
+}
+
+// process_line folds one analyzed line into the block stream. It answers
+// the pivot line the next analysis should be measured against.
+fn Ctx::process_line(*self, pivot_in: LineAnalysis, line: LineAnalysis): LineAnalysis {
+  var pivot = pivot_in
+
+  // A blank line ends the current leaf block.
+  if line.kind == LineKind::Blank {
+    self.end_current_block()
+    return blank_line()
+  }
+
+  if line.enforce_new_block {
+    self.end_current_block()
+  }
+
+  // Some line kinds are a block of their own.
+  if line.kind == LineKind::Hr || line.kind == LineKind::AtxHeader {
+    self.end_current_block()
+    self.start_new_block(line)
+    self.add_line_into_current_block(line)
+    self.end_current_block()
+    return blank_line()
+  }
+
+  // A Setext underline changes what the block above it means, and ends it.
+  if line.kind == LineKind::SetextUnderline {
+    var block = self.block(self.current_block)
+    block.kind = BlockKind::H
+    block.data = line.data
+    block.flags = block.flags | BLOCK_SETEXT_HEADER
+    self.put_block(self.current_block, block)
+    self.add_line_into_current_block(line)
+    self.end_current_block()
+    if self.current_block < 0 {
+      return blank_line()
+    }
+    // Everything above turned out to be reference definitions, so the
+    // underline is the start of an ordinary paragraph instead.
+    var downgraded = line
+    downgraded.kind = LineKind::Text
+    return downgraded
+  }
+
+  // A line of a different kind ends the current block.
+  if line.kind != pivot.kind {
+    self.end_current_block()
+  }
+
+  if self.current_block < 0 {
+    self.start_new_block(line)
+    pivot = line
+  }
+
+  self.add_line_into_current_block(line)
+  return pivot
+}
+
+fn Ctx::process_doc(*self) {
+  var pivot = blank_line()
+  var off: i64 = 0
+
+  self.parser.enter_block(BlockKind::Doc, Detail::none())
+
+  while off < self.size {
+    var line, next = self.analyze_line(off, pivot)
+    off = next
+    pivot = self.process_line(pivot, line)
+  }
+
+  self.end_current_block()
+  self.leave_child_containers(0)
+  self.process_all_blocks()
+
+  self.parser.leave_block(BlockKind::Doc, Detail::none())
+}
+
+// ---------------------------------------------------------------------------
+// The public entry point
+// ---------------------------------------------------------------------------
+
+export fn parse(text: u8[], parser: Parser) {
+  var size = text.len() as i64
+  var stacks = Array<i64>::new()
+  for var i: i64 = 0; i < N_OPENER_STACKS; i += 1 {
+    stacks.push(-1)
+  }
+
+  // A document may not instantiate more reference-definition text than
+  // sixteen times its own size, capped so a huge document does not lift the
+  // cap with it. See md4c issue 238.
+  var capped = size
+  if capped > 65536 {
+    capped = 65536
+  }
+
+  var ctx = Ctx{
+    text: text,
+    size: size,
+    parser: parser,
+
+    marks: Array<Mark>::new(),
+    n_marks: 0,
+    opener_stacks: stacks,
+
+    unresolved_link_head: -1,
+    unresolved_link_tail: -1,
+
+    html_comment_horizon: 0,
+    html_proc_instr_horizon: 0,
+    html_decl_horizon: 0,
+    html_cdata_horizon: 0,
+
+    last_link_beg: 0,
+    last_link_end: 0,
+    last_img_beg: 0,
+    last_img_end: 0,
+
+    titles: Array<Array<u8>>::new(),
+
+    blocks: Array<Block>::new(),
+    n_blocks: 0,
+    lines: Array<Line>::new(),
+    n_lines: 0,
+    current_block: -1,
+
+    containers: Array<Container>::new(),
+    n_containers: 0,
+
+    ref_defs: Array<RefDef>::new(),
+    max_ref_def_output: 16 * capped,
+
+    code_fence_length: 0,
+    html_block_type: 0,
+    last_line_has_list_loosening_effect: false,
+    last_list_item_starts_with_two_blank_lines: false,
+  }
+
+  ctx.process_doc()
+
+  // What md_parse() frees on the way out. The reference definitions'
+  // labels and titles are left alone: a title is also reachable from the
+  // mark that resolved to it, and Gyro has no way to say "free this once".
+  ctx.marks.free()
+  ctx.blocks.free()
+  ctx.lines.free()
+  ctx.containers.free()
+  ctx.opener_stacks.free()
+  ctx.ref_defs.free()
+  ctx.titles.free()
+}

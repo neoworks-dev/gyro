@@ -29,7 +29,11 @@ func TestCorpus(t *testing.T) {
 			continue
 		}
 		found++
-		t.Run(strings.TrimSuffix(entry.Name(), ".gyro"), func(t *testing.T) {
+		name := entry.Name()
+		for _, suffix := range rootSuffixes {
+			name = strings.TrimSuffix(name, suffix)
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			runCase(t, root, golden)
 		})
@@ -39,15 +43,23 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
+// A single-file case is a .gyro program, or a module another producer
+// wrote: .metals for hand-written IR, .lisp for the Lisp front end, and
+// .c for the wasm bridge. Every root runs on the same three tiers,
+// because every root becomes the same thing — a METALS module.
+var rootSuffixes = []string{".gyro", ".metals", ".lisp", ".c"}
+
 func corpusCase(dir, name string, isDir bool) (root, golden string, ok bool) {
 	if isDir {
 		return filepath.Join(dir, name, "main.gyro"), filepath.Join(dir, name, "expected"), true
 	}
-	if !strings.HasSuffix(name, ".gyro") {
-		return "", "", false
+	for _, suffix := range rootSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			base := strings.TrimSuffix(name, suffix)
+			return filepath.Join(dir, name), filepath.Join(dir, base), true
+		}
 	}
-	base := strings.TrimSuffix(name, ".gyro")
-	return filepath.Join(dir, name), filepath.Join(dir, base), true
+	return "", "", false
 }
 
 // TestExamples holds the reference programs to the same standard. Their

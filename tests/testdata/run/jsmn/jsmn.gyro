@@ -1,0 +1,321 @@
+// A port of jsmn (github.com/zserge/jsmn, MIT), the header-only JSON
+// tokenizer: it does not build a tree or copy anything, it labels spans
+// of the input.
+//
+// The build ported is upstream's default one — neither JSMN_STRICT nor
+// JSMN_PARENT_LINKS — because that is what `make test_default` runs and
+// what the two examples use.
+//
+// What the port changes, and why:
+//
+//   * C's caller hands in a `jsmntok_t*` and a count, and passing NULL
+//     asks for a token count without writing any. A null array is not a
+//     thing here, so the mode is an explicit `count_only` flag and the
+//     buffer is an Array the parser pushes into, bounded by max_tokens
+//     the way C is bounded by num_tokens.
+//   * C holds a `jsmntok_t*` into that array and mutates through it.
+//     Gyro has no interior pointers, so every touch is a get, a field
+//     write on the copy, and a set. The index is what the port keeps.
+//   * `jsmn_parse_primitive` leaves its loop with `goto found`, and in
+//     the default build falling off the end of the loop lands on the
+//     same label. There is no goto here: the scan sets `stopped` and
+//     both exits run the same tail.
+//   * Every read of the input goes through `byte_at`, which answers 0
+//     past the end, so `js[pos]` never leaves the buffer even where C
+//     relies on reading its NUL terminator.
+//   * Offsets are i64, not usize: `toksuper` and the closing-bracket
+//     scan both walk to -1, and Gyro's arithmetic panics on underflow
+//     rather than wrapping.
+
+import { Array } from "stdlib"
+
+export enum Kind {
+  Undefined,
+  Object,
+  Array,
+  String,
+  Primitive,
+}
+
+// The negative returns of jsmn_parse. C shares one int between the token
+// count and these, and so does this.
+export const ERROR_NOMEM: i64 = -1
+export const ERROR_INVAL: i64 = -2
+export const ERROR_PART: i64 = -3
+
+// A token is a span of the input: [start, end) and how many children it
+// has. An object counts its keys, a key counts its one value.
+export struct Token {
+  export kind: Kind
+  export start: i64
+  export end: i64
+  export size: i64
+}
+
+export struct Parser {
+  export pos: i64
+  export toknext: i64
+  export toksuper: i64
+}
+
+export fn init(): Parser {
+  return Parser{ pos: 0, toknext: 0, toksuper: -1 }
+}
+
+fn byte_at(bytes: u8[], index: i64): u8 {
+  if index < 0 || index >= bytes.len() as i64 {
+    return 0
+  }
+  return bytes[index as usize]
+}
+
+// alloc takes the next token out of the pool, or answers -1 when the
+// pool is spent — C's NULL return from jsmn_alloc_token.
+fn Parser::alloc(*self, tokens: Array<Token>, max_tokens: i64): i64 {
+  if self.toknext >= max_tokens {
+    return -1
+  }
+  var index = self.toknext
+  self.toknext += 1
+  if index < tokens.len() as i64 {
+    tokens.set(index as usize, Token{ kind: Kind::Undefined, start: -1, end: -1, size: 0 })
+  } else {
+    tokens.push(Token{ kind: Kind::Undefined, start: -1, end: -1, size: 0 })
+  }
+  return index
+}
+
+fn fill(tokens: Array<Token>, index: i64, kind: Kind, start: i64, end: i64) {
+  tokens.set(index as usize, Token{ kind: kind, start: start, end: end, size: 0 })
+}
+
+fn grow(tokens: Array<Token>, index: i64) {
+  var token = tokens.get(index as usize)
+  token.size += 1
+  tokens.set(index as usize, token)
+}
+
+// ---------------------------------------------------------------------------
+// The two leaf scanners
+// ---------------------------------------------------------------------------
+
+// primitive is a number, true, false or null: everything up to the next
+// separator. The default build ends one at end of input too.
+fn Parser::primitive(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
+  var start = self.pos
+  var len = js.len() as i64
+
+  while self.pos < len && byte_at(js, self.pos) != 0 {
+    var c = byte_at(js, self.pos)
+    if c == ':' as u8 || c == '\t' as u8 || c == '\r' as u8 || c == '\n' as u8
+        || c == ' ' as u8 || c == ',' as u8 || c == ']' as u8 || c == '}' as u8 {
+      break
+    }
+    if c < 32 || c >= 127 {
+      self.pos = start
+      return ERROR_INVAL
+    }
+    self.pos += 1
+  }
+
+  if count_only {
+    self.pos -= 1
+    return 0
+  }
+  var index = self.alloc(tokens, max_tokens)
+  if index < 0 {
+    self.pos = start
+    return ERROR_NOMEM
+  }
+  fill(tokens, index, Kind::Primitive, start, self.pos)
+  self.pos -= 1
+  return 0
+}
+
+// string spans a quoted string, escapes included; the token covers what
+// is between the quotes.
+fn Parser::string(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
+  var start = self.pos
+  var len = js.len() as i64
+
+  // Skip the opening quote.
+  self.pos += 1
+
+  while self.pos < len && byte_at(js, self.pos) != 0 {
+    var c = byte_at(js, self.pos)
+
+    if c == '"' as u8 {
+      if count_only {
+        return 0
+      }
+      var index = self.alloc(tokens, max_tokens)
+      if index < 0 {
+        self.pos = start
+        return ERROR_NOMEM
+      }
+      fill(tokens, index, Kind::String, start + 1, self.pos)
+      return 0
+    }
+
+    if c == '\\' as u8 && self.pos + 1 < len {
+      self.pos += 1
+      var escaped = byte_at(js, self.pos)
+      if escaped == '"' as u8 || escaped == '/' as u8 || escaped == '\\' as u8
+          || escaped == 'b' as u8 || escaped == 'f' as u8 || escaped == 'r' as u8
+          || escaped == 'n' as u8 || escaped == 't' as u8 {
+        // An allowed escape; nothing else to check.
+      } elif escaped == 'u' as u8 {
+        self.pos += 1
+        var digits: i64 = 0
+        while digits < 4 && self.pos < len && byte_at(js, self.pos) != 0 {
+          var hex = byte_at(js, self.pos)
+          var ok = (hex >= 48 && hex <= 57) || (hex >= 65 && hex <= 70) || (hex >= 97 && hex <= 102)
+          if !ok {
+            self.pos = start
+            return ERROR_INVAL
+          }
+          self.pos += 1
+          digits += 1
+        }
+        self.pos -= 1
+      } else {
+        self.pos = start
+        return ERROR_INVAL
+      }
+    }
+    self.pos += 1
+  }
+
+  self.pos = start
+  return ERROR_PART
+}
+
+// ---------------------------------------------------------------------------
+// The parser
+// ---------------------------------------------------------------------------
+
+// parse tokenizes js into tokens, returning how many tokens the input
+// holds or one of the three errors. With count_only the tokens array is
+// left alone and only the count comes back, which is C's tokens == NULL.
+export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
+  var count = self.toknext
+  var len = js.len() as i64
+
+  while self.pos < len && byte_at(js, self.pos) != 0 {
+    var c = byte_at(js, self.pos)
+
+    if c == '{' as u8 || c == '[' as u8 {
+      count += 1
+      if !count_only {
+        var index = self.alloc(tokens, max_tokens)
+        if index < 0 {
+          return ERROR_NOMEM
+        }
+        if self.toksuper != -1 {
+          grow(tokens, self.toksuper)
+        }
+        var token = tokens.get(index as usize)
+        if c == '{' as u8 {
+          token.kind = Kind::Object
+        } else {
+          token.kind = Kind::Array
+        }
+        token.start = self.pos
+        tokens.set(index as usize, token)
+        self.toksuper = self.toknext - 1
+      }
+    } elif c == '}' as u8 || c == ']' as u8 {
+      if !count_only {
+        var kind = Kind::Array
+        if c == '}' as u8 {
+          kind = Kind::Object
+        }
+
+        // Close the innermost open token, then find the one enclosing
+        // it. C walks the array backwards twice for this.
+        var i = self.toknext - 1
+        var closed = false
+        while i >= 0 {
+          var token = tokens.get(i as usize)
+          if token.start != -1 && token.end == -1 {
+            if token.kind != kind {
+              return ERROR_INVAL
+            }
+            self.toksuper = -1
+            token.end = self.pos + 1
+            tokens.set(i as usize, token)
+            closed = true
+            break
+          }
+          i -= 1
+        }
+        if !closed {
+          return ERROR_INVAL
+        }
+        while i >= 0 {
+          var token = tokens.get(i as usize)
+          if token.start != -1 && token.end == -1 {
+            self.toksuper = i
+            break
+          }
+          i -= 1
+        }
+      }
+    } elif c == '"' as u8 {
+      var result = self.string(js, tokens, max_tokens, count_only)
+      if result < 0 {
+        return result
+      }
+      count += 1
+      if self.toksuper != -1 && !count_only {
+        grow(tokens, self.toksuper)
+      }
+    } elif c == '\t' as u8 || c == '\r' as u8 || c == '\n' as u8 || c == ' ' as u8 {
+      // Whitespace between tokens.
+    } elif c == ':' as u8 {
+      self.toksuper = self.toknext - 1
+    } elif c == ',' as u8 {
+      if !count_only && self.toksuper != -1 {
+        var parent = tokens.get(self.toksuper as usize)
+        if parent.kind != Kind::Array && parent.kind != Kind::Object {
+          var i = self.toknext - 1
+          while i >= 0 {
+            var token = tokens.get(i as usize)
+            if token.kind == Kind::Array || token.kind == Kind::Object {
+              if token.start != -1 && token.end == -1 {
+                self.toksuper = i
+                break
+              }
+            }
+            i -= 1
+          }
+        }
+      }
+    } else {
+      // The default build takes every unquoted value as a primitive.
+      var result = self.primitive(js, tokens, max_tokens, count_only)
+      if result < 0 {
+        return result
+      }
+      count += 1
+      if self.toksuper != -1 && !count_only {
+        grow(tokens, self.toksuper)
+      }
+    }
+    self.pos += 1
+  }
+
+  if !count_only {
+    var i = self.toknext - 1
+    while i >= 0 {
+      var token = tokens.get(i as usize)
+      // An object or array that was opened and never closed.
+      if token.start != -1 && token.end == -1 {
+        return ERROR_PART
+      }
+      i -= 1
+    }
+  }
+
+  return count
+}

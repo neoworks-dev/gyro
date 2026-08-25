@@ -1,0 +1,32 @@
+// md4c over the CommonMark specification's own examples.
+//
+// Every one of the 652 examples in md4c's test/spec.txt is rendered and
+// printed with its number, so a mismatch names the failing example rather
+// than just failing. The golden is what upstream md2html actually prints,
+// captured by ../../../../c-ports/md4c/gyro/reference.c, and not the HTML
+// the specification lists: md4c deviates in known places and the spec's
+// HTML is written to be normalized before comparison.
+//
+// The parser and the renderer are md4c.gyro and html.gyro beside this,
+// the named-entity table and the Unicode maps are entity.gyro and
+// unicode.gyro, and examples.gyro is generated from spec.txt.
+
+import { print, from_utf8 } from "stdlib"
+import * as html from "./html"
+import * as examples from "./examples"
+
+fn main() {
+  for var i: i64 = 0; i < examples::COUNT; i += 1 {
+    var rendered = html::render_html(examples::source(i).bytes())
+    var text = from_utf8(rendered.slice())
+
+    print("### #{examples::number(i)}\n")
+    print(text)
+    // md4c's output ends in a newline whenever it is not empty; the guard
+    // keeps the next header on a line of its own either way.
+    if rendered.len() == 0 || rendered.get(rendered.len() - 1) != 10 {
+      print("\n")
+    }
+    rendered.free()
+  }
+}

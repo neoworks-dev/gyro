@@ -1,0 +1,108 @@
+; Module storage that starts as something other than zeros, on the three
+; METALS tiers.
+;
+; A global carries no initializer, because an initializer is an
+; expression and an expression needs an evaluation order. Static bytes
+; need none, which is the same reason a data segment is allowed to exist
+; — so a global may carry the image it starts with, and that is where a C
+; string literal lives.
+;
+; What an image cannot carry is a pointer: its value is not known until
+; the program is laid out. That is what `init` is for. The two halves are
+; both here, and the order between them is the point: @setup runs before
+; @main's first instruction, so @cursor is a pointer by the time anything
+; reads it.
+
+module "metals:global-image"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Header = record { magic: u32, count: i16, flag: bool }
+
+; A C string literal, byte for byte, terminator included.
+global @greeting: array<u8, 5> = "gyro\x00"
+
+; magic = 0x12345678 little-endian, count = -2, flag = true, and the one
+; byte of padding a u32 alignment leaves at the end.
+global @header: %Header = "\x78\x56\x34\x12\xfe\xff\x01\x00"
+
+; A pointer into @greeting. No image can say this; @setup writes it.
+global @cursor: opt<ptr<u8>>
+global @total: i64
+
+init @setup
+
+fn @setup() {
+  %g = global.ptr @greeting
+  %first = elem.ptr %g
+  %one = const.i64 1
+  %second = ptr.offset %first, %one
+  %wrapped = opt.wrap %second
+  %c = global.ptr @cursor
+  store %c, %wrapped
+
+  %t = global.ptr @total
+  %n = const.i64 42
+  store %t, %n
+  return
+}
+
+; byteAt reads one byte of @greeting and widens it, which is every C
+; string walk in one instruction sequence.
+fn @byteAt(%i: i64) -> i64 {
+  %g = global.ptr @greeting
+  %first = elem.ptr %g
+  %at = ptr.offset %first, %i
+  %b = load %at
+  %w = conv %b -> i64
+  return %w
+}
+
+export fn @main() {
+  ; The image, read back one byte at a time: g, y, r, o and the NUL.
+  %i = const.i64 0
+  %five = const.i64 5
+  block $done {
+    loop $next {
+      %more = lt %i, %five
+      %stop = not %more
+      br_if %stop, $done
+      %b = call @byteAt(%i)
+      call @"println<i64>"(%b)
+      %one = const.i64 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+
+  ; A record's image, member by member, at the offsets the layout table
+  ; gives every tier.
+  %h = global.ptr @header
+  %mp = field.ptr %h, 0
+  %magic = load %mp
+  %m64 = conv %magic -> i64
+  call @"println<i64>"(%m64)
+  %cp = field.ptr %h, 1
+  %count = load %cp
+  %c64 = conv %count -> i64
+  call @"println<i64>"(%c64)
+  %fp = field.ptr %h, 2
+  %flag = load %fp
+  call @"println<bool>"(%flag)
+
+  ; What @setup wrote, which is the half an image cannot do.
+  %cur = global.ptr @cursor
+  %opt = load %cur
+  %p = opt.unwrap %opt
+  %byte = load %p
+  %b64 = conv %byte -> i64
+  call @"println<i64>"(%b64)
+
+  %tp = global.ptr @total
+  %total = load %tp
+  call @"println<i64>"(%total)
+  return
+}

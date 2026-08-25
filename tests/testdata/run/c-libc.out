@@ -1,0 +1,24 @@
+42 00042 +42  42 ff FF 0xff 10
+[     7][7     ][0007][  0007]
+[gyro][     right][left      ][tru]
+ok -9223372036854775808 18446744073709551615 4096
+    3|3.14|%
+0.2 0.3 1.5 2.5
+3.141590 2.72 0
+1.234568e+03 1.23e+03 100000 1e+06 0.0001
+inf -inf 0.000000
+malloc, then strcat
+calloc zeroed: 1
+realloc kept: malloc, then strcat
+allocations: 600
+world ,b .c
+1 0 0 4
+-42 31 511 0
+end=rest
+18446744073709551615 123
+2500.000 -0.125
+abcdefgh-12345 (14)
+trun (9)
+01233456789
+found 7
+Qq 1 0 1

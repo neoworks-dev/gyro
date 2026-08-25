@@ -1,4 +1,7 @@
 // A shift wider than the type is defined, not undefined: it clears.
+// Bits that leave the width are gone, both ends: `<<` drops the high
+// ones as quietly as `>>` drops the low ones. Only the arithmetic
+// operators call a lost value a bug.
 
 import { println } from "stdlib"
 
@@ -14,4 +17,26 @@ fn main() {
   var byte: u8 = 10
   var shift: u8 = 3
   println(byte << shift)
+
+  // Shifting bits off the top.
+  var top: u32 = 0x80000000
+  var once: u32 = 1
+  println(top << once)
+  var high: u8 = 0xff
+  var four: u8 = 4
+  println(high << four)
+  var sign: i32 = 0x40000000
+  var oneI: i32 = 1
+  println(sign << oneI)
+
+  // A count between the width and 64 is not special: it clears too.
+  var small: u32 = 1
+  var forty: u32 = 40
+  println(small << forty)
+
+  // A rotate is the reason: what falls off one end comes back at the
+  // other, which is only writable because neither shift complains.
+  var value: u32 = 0x12345678
+  var by: u32 = 8
+  println((value << by) | (value >> (32 - by)))
 }

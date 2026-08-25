@@ -1,0 +1,124 @@
+; Linear memory, written as IR directly.
+;
+; Nothing Gyro lowers reaches these instructions — Gyro has typed
+; pointers and no need of a flat byte region. They exist for a producer
+; whose source language has C's memory model, and this case is what such
+; a producer emits: addresses are u32 arithmetic, objects are offsets,
+; and the width of an access is the instruction's, not the value's.
+;
+; The properties under test are the ones a wrong answer would be silent
+; about: little-endian byte order, sign versus zero extension on a
+; narrow load, and trunc against conv.
+
+
+module "metals:linear-memory"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<f64>"(f64)
+  fn @"println<string>"(str)
+}
+
+memory @m 1, 4
+data @m, 0, "\x01\x02\x03\x04"
+data @m, 8, "hi"
+
+fn @pu(%v: u32) {
+  %w = conv %v -> i64
+  call @"println<i64>"(%w)
+  return
+}
+
+fn @pi(%v: i32) {
+  %w = conv %v -> i64
+  call @"println<i64>"(%w)
+  return
+}
+
+export fn @main() {
+  %zero = const.u32 0
+
+  ; --- the data segment landed, and a wide load reads it low byte first ---
+  %b0 = mem.load.u8 @m, %zero
+  %b0w = conv %b0 -> u32
+  call @pu(%b0w)                  ; 1
+
+  %word = mem.load.u32 @m, %zero
+  call @pu(%word)                 ; 0x04030201
+
+  ; A byte past the segment is zero: the memory starts cleared.
+  %at4 = const.u32 4
+  %empty = mem.load.u32 @m, %at4
+  call @pu(%empty)                ; 0
+
+  ; --- a narrow load extends by its own signedness, not the value's ---
+  %at64 = const.u32 64
+  %ff = const.u8 255
+  mem.store.u8 @m, %at64, %ff
+  %signed = mem.load.i8 @m, %at64
+  %signedw = conv %signed -> i32
+  call @pi(%signedw)              ; -1
+  %unsigned = mem.load.u8 @m, %at64
+  %unsignedw = conv %unsigned -> u32
+  call @pu(%unsignedw)            ; 255
+
+  ; --- trunc keeps the low bits where conv would abort ---
+  %big = const.i32 300
+  %low = trunc %big -> u8
+  %loww = conv %low -> u32
+  call @pu(%loww)                 ; 44
+
+  ; --- bitcast rereads the same bits, and never aborts ---
+  %minus = const.i32 -1
+  %asU = bitcast %minus -> u32
+  call @pu(%asU)                  ; 4294967295
+
+  %one = const.f32 1.0
+  %bits = bitcast %one -> u32
+  call @pu(%bits)                 ; 1065353216
+
+  ; --- a float round-trips through eight bytes ---
+  %at128 = const.u32 128
+  %pi = const.f64 3.5
+  mem.store.f64 @m, %at128, %pi
+  %back = mem.load.f64 @m, %at128
+  call @"println<f64>"(%back)     ; 3.5
+
+  ; --- fill, then copy the filled span somewhere else ---
+  %at256 = const.u32 256
+  %at512 = const.u32 512
+  %four = const.u32 4
+  %ab = const.u8 171
+  mem.fill @m, %at256, %ab, %four
+  mem.copy @m, %at512, %at256, %four
+  %copied = mem.load.u32 @m, %at512
+  call @pu(%copied)               ; 0xabababab
+
+  ; --- size and growth are counted in pages ---
+  %pages = mem.size @m
+  call @pu(%pages)                ; 1
+  %one_page = const.u32 1
+  %before = mem.grow @m, %one_page
+  call @pi(%before)               ; 1
+  %now = mem.size @m
+  call @pu(%now)                  ; 2
+
+  ; The declared maximum is four pages, so asking for four more fails and
+  ; says so with -1 rather than aborting.
+  %four_pages = const.u32 4
+  %refused = mem.grow @m, %four_pages
+  call @pi(%refused)              ; -1
+  %after = mem.size @m
+  call @pu(%after)                ; 2
+
+  ; --- growth zeroes what it added, and leaves what was there alone ---
+  %fresh = const.u32 70000
+  %zeroed = mem.load.u32 @m, %fresh
+  call @pu(%zeroed)               ; 0
+  %kept = mem.load.u32 @m, %zero
+  call @pu(%kept)                 ; 0x04030201
+
+  %done = const.str "ok"
+  call @"println<string>"(%done)
+  return
+}

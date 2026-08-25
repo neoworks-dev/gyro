@@ -1,0 +1,58 @@
+// Perft: recursion, 64-bit bit manipulation and two large indexed tables
+// at once, which is a combination none of the other cases has. Every node
+// copies an 18-word position, pops bits off a bitboard one at a time, and
+// reaches a 262144-entry table through a multiply that deliberately
+// overflows.
+//
+// The module is imported out of the corpus rather than copied, so there
+// is exactly one port: the one whose divide the corpus compares against
+// the C original's, line for line.
+//
+// bbc.h beside this file is upstream's `src/bbc/perft_test/bbc.c`, copied
+// in byte for byte (only the extension differs, so that the harness does
+// not compile it separately — it carries its own main). It is GPL-3; it
+// is built here as a standalone benchmark binary and nothing of it is
+// linked into the Gyro compiler or its runtime.
+//
+// Table initialization is outside the timed region, in both programs: it
+// is a fixed cost that says nothing about how fast the tree is walked.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+import * as chess from "../../../testdata/run/perft/perft"
+
+// The six standard perft positions, each to depth 3. One position would
+// measure one shape of tree; these six between them cover a wide opening
+// tree, a slider endgame, and the three tactical positions that reach
+// castling, en passant and promotion within the depth — and the sum of
+// their leaf counts is a checksum every one of them contributes to.
+const START: string = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
+const KIWIPETE: string = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 "
+const POSITION_3: string = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 "
+const POSITION_4: string = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1 "
+const POSITION_5: string = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 "
+const POSITION_6: string = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 "
+
+const DEPTH: i32 = 3
+
+fn main() {
+  chess::init_all()
+
+  var start = monotonic()
+  var nodes: i64 = 0
+  nodes += count(START)
+  nodes += count(KIWIPETE)
+  nodes += count(POSITION_3)
+  nodes += count(POSITION_4)
+  nodes += count(POSITION_5)
+  nodes += count(POSITION_6)
+  var stop = monotonic()
+
+  println(nodes)
+  eprintln("gyro:bench #{stop - start}")
+}
+
+fn count(fen: string): i64 {
+  var board = chess::parse_fen(fen)
+  return chess::perft(&board, DEPTH, 0)
+}
