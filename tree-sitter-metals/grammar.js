@@ -34,7 +34,10 @@ module.exports = grammar({
       $.module_declaration,
       $.import_declaration,
       $.type_declaration,
+      $.memory_declaration,
+      $.data_declaration,
       $.global_declaration,
+      $.init_declaration,
       $.function_declaration,
       $._newline,
     )),
@@ -106,13 +109,45 @@ module.exports = grammar({
       optional(seq('(', commaSep($._type), ')')),
     ),
 
-    // Module storage, zero-initialized. There is no initializer: a front
-    // end lowers one into a function that runs before main.
+    // A linear memory: a flat, bounds-checked byte region, sized in
+    // 64 KiB pages, that a producer with C's memory model compiles into.
+    memory_declaration: $ => seq(
+      'memory',
+      field('name', $.global_name),
+      field('minimum', $.number),
+      optional(seq(',', field('maximum', $.number))),
+      $._end,
+    ),
+
+    // A span of a linear memory, written before any function runs. This
+    // is a global's missing initializer, one level down.
+    data_declaration: $ => seq(
+      'data',
+      field('memory', $.global_name),
+      ',',
+      field('offset', $.number),
+      ',',
+      field('bytes', $.string),
+      $._end,
+    ),
+
+    // Module storage, zero-initialized unless it carries the bytes it
+    // starts with. Those bytes are storage, not an initializer: an
+    // expression would need an evaluation order, and this has none.
     global_declaration: $ => seq(
       'global',
       field('name', $.global_name),
       ':',
       field('type', $._type),
+      optional(seq('=', field('image', $.string))),
+      $._end,
+    ),
+
+    // The function this module needs run before the program starts,
+    // which the linker calls ahead of main.
+    init_declaration: $ => seq(
+      'init',
+      field('name', $.global_name),
       $._end,
     ),
 
@@ -303,7 +338,7 @@ module.exports = grammar({
       'u8', 'u16', 'u32', 'u64', 'usize',
       'f32', 'f64',
       'bool', 'rune', 'str',
-      'dyn', 'handle',
+      'any', 'handle',
     ),
 
     generic_type: $ => seq(
@@ -347,7 +382,11 @@ module.exports = grammar({
 
     char: $ => token(/'([^'\\\n]|\\.)*'/),
 
-    number: $ => token(/-?(0[xX][0-9a-fA-F]+|[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)/),
+    // `inf`, `-inf` and `nan` are how a float constant that is not a
+    // number is written. Unsigned, they also lex as identifiers, which
+    // costs nothing here; the signed form needs this rule to exist at
+    // all, since the leading `-` is not otherwise an operand.
+    number: $ => token(/-?(0[xX][0-9a-fA-F]+|[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?|inf|nan)/),
 
     identifier: $ => /[A-Za-z_][A-Za-z0-9_.]*/,
 

@@ -85,6 +85,9 @@ module.exports = grammar({
     [$._expression, $.type_arguments],
     [$.closure_parameter_list, $.function_type],
     [$.closure_parameter, $.named_type],
+    // `i32[](xs)` in a match arm: the path is read as a pattern until the
+    // `[` says it was a slice type's element instead.
+    [$.variant_pattern, $.named_type],
     [$.if_statement],
     [$.elif_clause],
   ],
@@ -185,9 +188,13 @@ module.exports = grammar({
 
     receiver: $ => seq(optional('*'), 'self'),
 
+    // A `...` before the type makes this the variadic parameter: it
+    // collects the remaining arguments, and the type written is the
+    // element type, since the body sees a slice of it.
     parameter: $ => seq(
       field('name', $.identifier),
       ':',
+      optional('...'),
       field('type', $._type),
       optional(seq('=', field('default', $._expression))),
     ),
@@ -600,8 +607,14 @@ module.exports = grammar({
 
     arguments: $ => seq(
       '(',
-      commaSep(choice($.named_argument, $._expression)),
+      commaSep(choice($.named_argument, $.spread_argument, $._expression)),
       ')',
+    ),
+
+    // `f(xs...)` forwards an existing slice as a whole variadic pack.
+    spread_argument: $ => seq(
+      field('value', $._expression),
+      '...',
     ),
 
     named_argument: $ => seq(
@@ -688,6 +701,7 @@ module.exports = grammar({
       $.wildcard_pattern,
       $.literal_pattern,
       $.variant_pattern,
+      $.type_test_pattern,
       $.binding_pattern,
     ),
 
@@ -715,6 +729,15 @@ module.exports = grammar({
         repeat1(seq('::', $.identifier)),
         optional(field('payload', $.pattern_payload)),
       ),
+    ),
+
+    // A type test on an `any` whose type no path can spell: a tuple, a
+    // slice, an array or a pointer. A type that is a plain name stays a
+    // variant_pattern, since the two are the same syntax until the
+    // subject says which one it is.
+    type_test_pattern: $ => seq(
+      field('type', choice($.tuple_type, $.slice_type, $.array_type, $.pointer_type)),
+      optional(field('payload', $.pattern_payload)),
     ),
 
     pattern_payload: $ => seq('(', commaSep($._pattern), ')'),

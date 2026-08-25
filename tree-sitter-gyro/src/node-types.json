@@ -148,6 +148,10 @@
         "named": true
       },
       {
+        "type": "type_test_pattern",
+        "named": true
+      },
+      {
         "type": "variant_pattern",
         "named": true
       },
@@ -275,6 +279,10 @@
         },
         {
           "type": "named_argument",
+          "named": true
+        },
+        {
+          "type": "spread_argument",
           "named": true
         }
       ]
@@ -2061,6 +2069,22 @@
     }
   },
   {
+    "type": "spread_argument",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "string_literal",
     "named": true,
     "fields": {},
@@ -2236,6 +2260,44 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "type_test_pattern",
+    "named": true,
+    "fields": {
+      "payload": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pattern_payload",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "pointer_type",
+            "named": true
+          },
+          {
+            "type": "slice_type",
+            "named": true
+          },
+          {
+            "type": "tuple_type",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2491,6 +2553,10 @@
   },
   {
     "type": "..",
+    "named": false
+  },
+  {
+    "type": "...",
     "named": false
   },
   {

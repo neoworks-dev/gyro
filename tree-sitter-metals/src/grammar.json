@@ -22,7 +22,19 @@
           },
           {
             "type": "SYMBOL",
+            "name": "memory_declaration"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "data_declaration"
+          },
+          {
+            "type": "SYMBOL",
             "name": "global_declaration"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "init_declaration"
           },
           {
             "type": "SYMBOL",
@@ -467,6 +479,105 @@
         }
       ]
     },
+    "memory_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "memory"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "global_name"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "minimum",
+          "content": {
+            "type": "SYMBOL",
+            "name": "number"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ","
+                },
+                {
+                  "type": "FIELD",
+                  "name": "maximum",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "number"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_end"
+        }
+      ]
+    },
+    "data_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "data"
+        },
+        {
+          "type": "FIELD",
+          "name": "memory",
+          "content": {
+            "type": "SYMBOL",
+            "name": "global_name"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ","
+        },
+        {
+          "type": "FIELD",
+          "name": "offset",
+          "content": {
+            "type": "SYMBOL",
+            "name": "number"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ","
+        },
+        {
+          "type": "FIELD",
+          "name": "bytes",
+          "content": {
+            "type": "SYMBOL",
+            "name": "string"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_end"
+        }
+      ]
+    },
     "global_declaration": {
       "type": "SEQ",
       "members": [
@@ -492,6 +603,52 @@
           "content": {
             "type": "SYMBOL",
             "name": "_type"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "="
+                },
+                {
+                  "type": "FIELD",
+                  "name": "image",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "string"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_end"
+        }
+      ]
+    },
+    "init_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "init"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "global_name"
           }
         },
         {
@@ -1400,7 +1557,7 @@
         },
         {
           "type": "STRING",
-          "value": "dyn"
+          "value": "any"
         },
         {
           "type": "STRING",
@@ -1645,7 +1802,7 @@
       "type": "TOKEN",
       "content": {
         "type": "PATTERN",
-        "value": "-?(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?)"
+        "value": "-?(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?|inf|nan)"
       }
     },
     "identifier": {

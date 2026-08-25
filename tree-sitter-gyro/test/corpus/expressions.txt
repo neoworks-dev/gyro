@@ -620,3 +620,73 @@ fn main() {
           (call_expression
             (identifier)
             (arguments)))))))
+
+==================
+type test patterns on an any
+==================
+
+fn f(v: any): i32 {
+  return match v {
+    (i32, string)(pair): 1
+    i32[](xs): 2
+    *Node(n): 3
+    Point(p): 4
+    _: 5
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (match_expression
+          (identifier)
+          (match_arm
+            (type_test_pattern
+              (tuple_type
+                (named_type
+                  (type_identifier))
+                (named_type
+                  (type_identifier)))
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (type_test_pattern
+              (slice_type
+                (named_type
+                  (type_identifier)))
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (type_test_pattern
+              (pointer_type
+                (named_type
+                  (type_identifier)))
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (variant_pattern
+              (identifier)
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (wildcard_pattern)
+            (int_literal)))))))

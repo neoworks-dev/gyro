@@ -678,3 +678,49 @@ fn String::from(text: string): String {
         (identifier))
       (return_statement
         (identifier)))))
+
+==================
+variadic parameters and spread
+==================
+
+fn sum(xs: ...i32): i32 {
+  return 0
+}
+
+fn show(label: string, rest: ...any) {
+  sum(rest...)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (int_literal))))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (spread_argument
+              (identifier))))))))

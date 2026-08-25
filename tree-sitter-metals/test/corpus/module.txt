@@ -9,13 +9,20 @@ import "gyro:rt" {
   fn @println_str(str)
 }
 import "js:./widgets" {
-  fn @render(dyn) -> dyn
+  fn @render(any) -> any
 }
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
 
 global @counter: i32
+global @greeting: array<u8, 3> = "hi\x00"
+
+init @setup
+
+fn @setup() {
+  return
+}
 
 export fn @add(%a: i32, %b: i32) -> i32 {
   %sum = iadd %a, %b
@@ -69,6 +76,19 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   (global_declaration
     (global_name)
     (primitive_type))
+  (global_declaration
+    (global_name)
+    (generic_type
+      (type_constructor)
+      (primitive_type)
+      (number))
+    (string))
+  (init_declaration
+    (global_name))
+  (function_declaration
+    (global_name)
+    (instruction
+      (mnemonic)))
   (function_declaration
     (global_name)
     (parameter
@@ -505,3 +525,135 @@ fn @f() {
     (instruction
       (mnemonic)
       (comment))))
+
+==================
+linear memory
+==================
+
+module "m"
+
+memory @heap 1, 16
+data @heap, 8, "hi\x00"
+
+fn @f(%a: u32, %v: i32) {
+  %b = mem.load.u8 @heap, %a
+  mem.store.i32 @heap, %a, %v
+  %n = mem.size @heap
+  %g = mem.grow @heap, %a
+  mem.copy @heap, %a, %a, %a
+  mem.fill @heap, %a, %b, %a
+  %t = trunc %v -> u8
+  %c = bitcast %v -> u32
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (memory_declaration
+    (global_name)
+    (number)
+    (number))
+  (data_declaration
+    (global_name)
+    (number)
+    (string))
+  (function_declaration
+    (global_name)
+    (parameter
+      (register)
+      (primitive_type))
+    (parameter
+      (register)
+      (primitive_type))
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name)
+      (register))
+    (instruction
+      (mnemonic)
+      (global_name)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name))
+    (instruction
+      (register)
+      (mnemonic)
+      (global_name)
+      (register))
+    (instruction
+      (mnemonic)
+      (global_name)
+      (register)
+      (register)
+      (register))
+    (instruction
+      (mnemonic)
+      (global_name)
+      (register)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (identifier))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (identifier))))
+
+==================
+float intrinsics and non-finite constants
+==================
+
+module "m"
+
+fn @f() {
+  %a = const.f64 inf
+  %b = const.f64 -inf
+  %c = const.f64 nan
+  %d = fsqrt %a
+  %e = fmin %a, %b
+  %g = fcopysign %a, %b
+}
+
+---
+
+(source_file
+  (module_declaration
+    (string))
+  (function_declaration
+    (global_name)
+    (instruction
+      (register)
+      (mnemonic)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))))

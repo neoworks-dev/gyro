@@ -46,6 +46,42 @@
     }
   },
   {
+    "type": "data_declaration",
+    "named": true,
+    "fields": {
+      "bytes": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "memory": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "global_name",
+            "named": true
+          }
+        ]
+      },
+      "offset": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "enum_shape",
     "named": true,
     "fields": {},
@@ -231,6 +267,16 @@
     "type": "global_declaration",
     "named": true,
     "fields": {
+      "image": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -364,6 +410,22 @@
     }
   },
   {
+    "type": "init_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "global_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "instruction",
     "named": true,
     "fields": {
@@ -467,6 +529,42 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "memory_declaration",
+    "named": true,
+    "fields": {
+      "maximum": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          }
+        ]
+      },
+      "minimum": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "global_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -773,6 +871,10 @@
       "required": false,
       "types": [
         {
+          "type": "data_declaration",
+          "named": true
+        },
+        {
           "type": "function_declaration",
           "named": true
         },
@@ -782,6 +884,14 @@
         },
         {
           "type": "import_declaration",
+          "named": true
+        },
+        {
+          "type": "init_declaration",
+          "named": true
+        },
+        {
+          "type": "memory_declaration",
           "named": true
         },
         {
@@ -1011,6 +1121,10 @@
     "named": false
   },
   {
+    "type": "any",
+    "named": false
+  },
+  {
     "type": "async",
     "named": false
   },
@@ -1036,11 +1150,11 @@
     "extra": true
   },
   {
-    "type": "default",
+    "type": "data",
     "named": false
   },
   {
-    "type": "dyn",
+    "type": "default",
     "named": false
   },
   {
@@ -1108,11 +1222,19 @@
     "named": false
   },
   {
+    "type": "init",
+    "named": false
+  },
+  {
     "type": "label",
     "named": true
   },
   {
     "type": "loop",
+    "named": false
+  },
+  {
+    "type": "memory",
     "named": false
   },
   {
