@@ -678,6 +678,86 @@ func TestVerifierChecksPointerErasure(t *testing.T) {
 `, "wants an opt<anyptr>")
 }
 
+// An opaque declaration says a name exists and nothing else. What that
+// buys is a pointer that keeps a type it cannot look inside; what it
+// costs is every operation that would measure the object, which is the
+// same list C refuses on a pointer to an incomplete type.
+func TestOpaqueTypeRoundTrip(t *testing.T) {
+	roundTrip(t, `
+module "cc:test/opaque"
+
+type %Session = opaque
+type %Guts = record { seed: i64 }
+
+export fn @open(%g: ptr<%Guts>) -> ptr<%Session> {
+  %e = ptr.erase %g
+  %h = ptr.cast %e -> ptr<%Session>
+  return %h
+}
+
+export fn @same(%a: opt<ptr<%Session>>, %b: opt<ptr<%Session>>) -> bool {
+  %r = eq %a, %b
+  return %r
+}
+`)
+}
+
+func TestVerifierRefusesAnOpaqueTypeWithALayout(t *testing.T) {
+	const opaque = header + "type %S = opaque\n\n"
+
+	// Every position but a pointer's target: a value, a member, an
+	// element, a result. None of them has a size to reserve.
+	verifyError(t, opaque+`fn @f(%s: %S) {
+  return
+}
+`, "only a pointer to it has a layout")
+
+	verifyError(t, opaque+`type %R = record { s: %S }
+
+fn @f() {
+  return
+}
+`, "only a pointer to it has a layout")
+
+	verifyError(t, opaque+`fn @f() {
+  %s = slot array<%S, 4>
+  return
+}
+`, "only a pointer to it has a layout")
+
+	verifyError(t, opaque+`fn @f() {
+  %s = slot %S
+  return
+}
+`, "only a pointer to it has a layout")
+
+	// And the four instructions that measure what a pointer addresses.
+	verifyError(t, opaque+`fn @f(%p: ptr<%S>) {
+  %v = load %p
+  return
+}
+`, "load needs %S's layout, and it is opaque")
+
+	verifyError(t, opaque+`fn @f(%p: ptr<%S>, %q: ptr<%S>) {
+  %n = const.i64 1
+  %r = ptr.offset %p, %n
+  return
+}
+`, "ptr.offset needs %S's layout, and it is opaque")
+
+	verifyError(t, opaque+`fn @f(%p: ptr<%S>, %q: ptr<%S>) {
+  %d = ptr.diff %p, %q
+  return
+}
+`, "ptr.diff needs %S's layout, and it is opaque")
+
+	verifyError(t, opaque+`fn @f(%p: ptr<%S>) {
+  %v = field.ptr %p, 0
+  return
+}
+`, "opaque, so it has no fields to reach")
+}
+
 // An address is this program's address space whether or not the format
 // still knows what is at it. Forgetting the target's type makes one less
 // crossable rather than more.

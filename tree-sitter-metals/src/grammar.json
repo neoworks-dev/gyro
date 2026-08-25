@@ -277,6 +277,10 @@
               {
                 "type": "SYMBOL",
                 "name": "enum_shape"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "opaque_shape"
               }
             ]
           }
@@ -286,6 +290,10 @@
           "name": "_end"
         }
       ]
+    },
+    "opaque_shape": {
+      "type": "STRING",
+      "value": "opaque"
     },
     "record_shape": {
       "type": "SEQ",

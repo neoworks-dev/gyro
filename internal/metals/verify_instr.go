@@ -160,6 +160,9 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		return fv.memCounts(state, "mem.fill", i.Len)
 
 	case *Slot:
+		if err := fv.checkType(i.Type); err != nil {
+			return fmt.Errorf("slot: %w", err)
+		}
 		return fv.def(state, i.Dst, &Ptr{Elem: i.Type})
 	case *GlobalPtr:
 		typ, ok := fv.globals[i.Name]
@@ -168,6 +171,9 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, &Ptr{Elem: typ})
 	case *New:
+		if err := fv.checkType(i.Type); err != nil {
+			return fmt.Errorf("new: %w", err)
+		}
 		return fv.def(state, i.Dst, &Ptr{Elem: i.Type})
 
 	case *Free:
@@ -175,10 +181,11 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := typ.(*Ptr); !ok {
+		pointer, ok := typ.(*Ptr)
+		if !ok {
 			return fmt.Errorf("free wants a pointer, not %s", typ)
 		}
-		return nil
+		return fv.sized(pointer.Elem, "free")
 
 	case *Load:
 		typ, err := fv.use(state, i.Ptr)
@@ -188,6 +195,9 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		pointer, ok := typ.(*Ptr)
 		if !ok {
 			return fmt.Errorf("load wants a pointer, not %s", typ)
+		}
+		if err := fv.sized(pointer.Elem, "load"); err != nil {
+			return err
 		}
 		return fv.def(state, i.Dst, pointer.Elem)
 
@@ -199,6 +209,9 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		pointer, ok := ptrType.(*Ptr)
 		if !ok {
 			return fmt.Errorf("store wants a pointer, not %s", ptrType)
+		}
+		if err := fv.sized(pointer.Elem, "store"); err != nil {
+			return err
 		}
 		valType, err := fv.use(state, i.Val)
 		if err != nil {
@@ -247,8 +260,12 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := typ.(*Ptr); !ok {
+		pointer, ok := typ.(*Ptr)
+		if !ok {
 			return fmt.Errorf("ptr.offset wants a pointer, not %s", typ)
+		}
+		if err := fv.sized(pointer.Elem, "ptr.offset"); err != nil {
+			return err
 		}
 		count, err := fv.use(state, i.N)
 		if err != nil {
@@ -268,11 +285,15 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		if _, ok := a.(*Ptr); !ok {
+		pointer, ok := a.(*Ptr)
+		if !ok {
 			return fmt.Errorf("ptr.diff wants two pointers, not %s", a)
 		}
 		if !TypesEqual(a, b) {
 			return fmt.Errorf("ptr.diff subtracts two pointers of one type, not %s and %s", a, b)
+		}
+		if err := fv.sized(pointer.Elem, "ptr.diff"); err != nil {
+			return err
 		}
 		return fv.def(state, i.Dst, TInt64)
 

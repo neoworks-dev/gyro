@@ -115,6 +115,10 @@ func (p *printer) printf(format string, args ...any) {
 }
 
 func (p *printer) typeDecl(decl *TypeDecl) {
+	if decl.Opaque {
+		p.printf("type %s = opaque", reg(decl.Name))
+		return
+	}
 	if decl.Record != nil {
 		fields := make([]string, len(decl.Record.Fields))
 		for i, field := range decl.Record.Fields {

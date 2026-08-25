@@ -80,9 +80,13 @@ module.exports = grammar({
       'type',
       field('name', alias($.register, $.type_name)),
       '=',
-      field('body', choice($.record_shape, $.enum_shape)),
+      field('body', choice($.record_shape, $.enum_shape, $.opaque_shape)),
       $._end,
     ),
+
+    // A name with no shape: a type the module knows exists and knows
+    // nothing else about, which only a pointer may address.
+    opaque_shape: $ => 'opaque',
 
     record_shape: $ => seq(
       'record',

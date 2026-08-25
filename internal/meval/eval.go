@@ -671,6 +671,14 @@ func (m *machine) checkCast(p ptrVal, to metals.Type) {
 	if p.index < 0 || p.index >= len(p.cells) {
 		return
 	}
+	// An opaque target says nothing about what is at the address — that
+	// is what makes it opaque — so there is no claim here to disagree
+	// with. Casting a `void *` to a handle type is the whole idiom.
+	if named, ok := target.Elem.(*metals.Named); ok {
+		if decl := m.types[named.Name]; decl != nil && decl.Opaque {
+			return
+		}
+	}
 	if got, want := describe(p.cells[p.index]), target.Elem; got != nil && !metals.TypesEqual(got, want) {
 		m.throw("ptr.cast to ptr<%s> of an address holding a %s", want, got)
 	}

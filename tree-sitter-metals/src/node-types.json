@@ -1072,6 +1072,10 @@
             "named": true
           },
           {
+            "type": "opaque_shape",
+            "named": true
+          },
+          {
             "type": "record_shape",
             "named": true
           }
@@ -1302,6 +1306,10 @@
   },
   {
     "type": "number",
+    "named": true
+  },
+  {
+    "type": "opaque_shape",
     "named": true
   },
   {

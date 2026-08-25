@@ -112,6 +112,19 @@ func (t *ctype) isFuncPointer() bool { return t.kind == kPtr && t.elem.isFunc() 
 // are errors on one.
 func (t *ctype) isVoidPointer() bool { return t.kind == kPtr && t.elem.isVoid() }
 
+// isOpaquePointer is a pointer to a struct tag no file completes, which
+// C calls a pointer to an incomplete type. A program may hold one, pass
+// it, compare it and hand it back to whoever made it, and may do nothing
+// that measures the object — which is the same list `void *` refuses,
+// for the same reason and with a name still attached.
+//
+// It is what a library header is written in: `struct SDL_Window;` and
+// then `SDL_Window *` everywhere, so that the caller keeps the type and
+// never learns the shape.
+func (t *ctype) isOpaquePointer() bool {
+	return t.kind == kPtr && t.elem.isStruct() && t.elem.fields == nil
+}
+
 // The two parameters a variadic function is given beyond the ones it
 // declares: the arguments after the last named one, spilled and reached
 // by address, and how many of them there are.

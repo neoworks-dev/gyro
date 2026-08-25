@@ -492,6 +492,14 @@ func (p *parser) structType() *ctype {
 			if fieldType.isVoid() {
 				p.fail(pos, "field %s is declared void", name)
 			}
+			// A member needs storage, so its type has to be complete
+			// here — which is C's rule and also what rules out a struct
+			// holding itself. A pointer to an incomplete type is not
+			// affected: an address is a word whatever is at the far end,
+			// which is what makes the forward declaration useful.
+			if !fieldType.isComplete() {
+				p.fail(pos, "field %s is %s, which is not complete here", name, fieldType)
+			}
 			fields = append(fields, field{name: name, typ: fieldType})
 			if !p.accept(",") {
 				break

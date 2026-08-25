@@ -98,6 +98,7 @@ import "js:./widgets" {
 
 type %Point = record { x: i32, y: i32 }
 type %Shape = enum { Circle(f64), Rect(f64, f64), Point }
+type %Session = opaque
 
 global @counter: i32
 global @greeting: array<u8, 3> = "hi\x00"
@@ -172,7 +173,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `future<T>` | un-awaited async result |
 | `fn(A, B) -> R`, `async fn(A) -> R` | function values: `{ code, env }`, two words |
 | `code(A, B) -> R` | the address of a function, one word, no environment |
-| `%Name` | module-local record or enum |
+| `%Name` | module-local record, enum, or opaque name |
 | `any` | dynamically typed value, converted with checked ops |
 | `handle` | opaque foreign reference; compares by identity only |
 
@@ -191,6 +192,24 @@ Named types are module-local: linking qualifies each with its module's
 name, so two producers may declare the same one without colliding. A
 record shape that must cross a boundary is redeclared by the importer;
 matching the two declarations structurally is not implemented yet.
+
+**`type %Name = opaque` is a name with no shape.** It has no size, no
+alignment and no fields, so the only position it may be written in is a
+`ptr<T>`'s target — as a value, a member, an element, a parameter or a
+result it is refused, and `load`, `store`, `ptr.offset`, `ptr.diff` and
+`field.ptr` all refuse it too, each naming the layout as the reason. What
+is left is a pointer that can be held, passed, stored, compared against
+another of its type and against null, and have another type claimed onto
+it with `ptr.cast`.
+
+That is C's incomplete type, which is how every library header hands out
+a handle: `struct SDL_Window;` and then `SDL_Window *` everywhere, so the
+caller keeps the type and never learns the shape. Erasing one to `anyptr`
+instead would compile and would throw away the point of the header — an
+`SDL_Window *` and an `SDL_Renderer *` are different types, and staying
+different is the whole of what the caller gets in exchange for being told
+nothing. A pointer that forgot and a pointer to something unknown are two
+different admissions, and only the second one is still checkable.
 
 ## Registers
 
@@ -768,6 +787,23 @@ The mapping, where it is not obvious:
   not join in: `void *` addresses storage, and converting one to a code
   pointer is a POSIX guarantee about a machine rather than a C one about
   a program.
+- **A tag no file defines is `type %Tag = opaque`.** That is C's
+  incomplete type and the way a library header hands out a handle: a
+  caller may hold a `struct SDL_Window *`, pass it, store it, compare it
+  and hand it back, and may not dereference one, reach a member, step
+  one, subtract two or ask what one is the size of. Each of those six is
+  refused here, with a position in the C source, and refused again by the
+  verifier if the front end ever lets one slip. A member of an incomplete
+  type is refused where it is written, which is C's rule and also what
+  rules out a struct holding itself without the layout table having to
+  notice the cycle.
+
+  A conversion between two pointers to different types now needs a cast,
+  which C's own constraints say and most C compilers only warn about.
+  Through `void *` nothing is written in either direction, which is C's
+  exception and the reason the type is there. Without that, two opaque
+  handles would assign to each other freely and the distinction the
+  header exists to keep would be decorative.
 
 - **A `switch` is nested blocks**, one per group of case labels, in
   source order and innermost first, with the dispatch `switch` at the

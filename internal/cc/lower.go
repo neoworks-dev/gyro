@@ -175,7 +175,15 @@ func (l *lowerer) declareRecords(module string, units []*translation) {
 	for _, tag := range order {
 		s := shapes[tag]
 		if s.fields == nil {
-			fail(position{file: module}, "struct %s is used but never defined", tag)
+			// A tag no file completes is C's incomplete type, and METALS
+			// has a declaration for exactly that. The program may hold a
+			// pointer to one and pass it around; everything that would
+			// need the size — a dereference, a member, arithmetic, a
+			// sizeof, a variable of it — is refused here and refused
+			// again by the verifier if this front end ever lets one slip.
+			l.records[tag] = s
+			l.out.Types = append(l.out.Types, &metals.TypeDecl{Name: tag, Opaque: true})
+			continue
 		}
 		decl := &metals.TypeDecl{Name: tag, Record: &metals.RecordShape{}}
 		for _, f := range s.fields {
@@ -424,6 +432,10 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 	f.scopes = []map[string]*binding{{}}
 
 	if !fn.result.isVoid() {
+		if !fn.result.isComplete() {
+			fail(fn.pos, "%s returns %s, which is not complete here, so there is nothing to copy back",
+				fn.name, fn.result)
+		}
 		f.out.Result = fn.result.metalsType()
 	}
 
@@ -433,6 +445,10 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 	// after the last named one; `va$` is not in C's identifier space, so
 	// nothing but va_start can reach them.
 	for _, p := range fn.typ().signature() {
+		if !p.typ.isComplete() {
+			fail(fn.pos, "parameter %s of %s is %s, which is not complete here, so it has no storage to arrive in",
+				p.name, fn.name, p.typ)
+		}
 		incoming := f.reserve(p.name + ".in")
 		f.out.Params = append(f.out.Params, metals.Param{Name: incoming, Type: p.typ.metalsType()})
 		cell := f.reserve(p.name)

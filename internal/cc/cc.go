@@ -9,9 +9,10 @@
 // imported into Gyro as the type it started as.
 //
 // So this front end reads C itself and emits METALS' own types. A C
-// struct becomes a record, a `T *` becomes `ptr<T>`, and the storage
-// under both is C's already — that is the layout rule the native
-// backends have kept from the beginning. Gyro and C end up as one linked
+// struct becomes a record, a `T *` becomes `ptr<T>`, a tag nothing
+// defines becomes an opaque declaration, and the storage under all of
+// them is C's already — that is the layout rule the native backends have
+// kept from the beginning. Gyro and C end up as one linked
 // module over one heap, which is why a pointer may cross between them:
 // a boundary is between runtimes, and there is only one runtime here.
 // See docs/decisions.md, "Values copy at runtime boundaries".

@@ -224,7 +224,7 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 		defer delete(seen, t.Name)
 
 		decl := findType(m, t.Name)
-		if decl == nil {
+		if decl == nil || decl.Opaque {
 			return t
 		}
 		if decl.Record != nil {
@@ -273,6 +273,12 @@ type verifier struct {
 // ---------------------------------------------------------------------------
 
 func (v *verifier) checkDeclShapes(decl *TypeDecl) error {
+	if decl.Opaque {
+		if decl.Record != nil || decl.Enum != nil {
+			return fmt.Errorf("type %%%s is opaque and also has a shape", decl.Name)
+		}
+		return nil
+	}
 	if decl.Record != nil {
 		for _, field := range decl.Record.Fields {
 			if err := v.checkType(field.Type); err != nil {
@@ -291,14 +297,29 @@ func (v *verifier) checkDeclShapes(decl *TypeDecl) error {
 	return nil
 }
 
-// checkType walks a type and requires every Named reference to resolve.
+// checkType walks a type and requires every Named reference to resolve,
+// and every one of them to have a shape — except directly under a
+// pointer, which is the one position an opaque name is written in.
 func (v *verifier) checkType(t Type) error {
 	switch t := t.(type) {
 	case *Named:
-		if v.types[t.Name] == nil {
+		decl := v.types[t.Name]
+		if decl == nil {
 			return fmt.Errorf("unknown type %%%s", t.Name)
 		}
+		if decl.Opaque {
+			return fmt.Errorf("type %%%s is opaque; only a pointer to it has a layout", t.Name)
+		}
 	case *Ptr:
+		// A pointer may address a type this module cannot see inside.
+		// Nothing that would need the target's layout accepts one, so
+		// letting the name through here costs no checking.
+		if named, ok := t.Elem.(*Named); ok {
+			if v.types[named.Name] == nil {
+				return fmt.Errorf("unknown type %%%s", named.Name)
+			}
+			return nil
+		}
 		return v.checkType(t.Elem)
 	case *Opt:
 		return v.checkType(t.Elem)
@@ -412,7 +433,7 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) 
 		}
 	case *Named:
 		decl := types[t.Name]
-		if decl == nil || seen[t.Name] {
+		if decl == nil || decl.Opaque || seen[t.Name] {
 			return ""
 		}
 		seen[t.Name] = true
@@ -681,10 +702,33 @@ func (fv *funcVerifier) memCounts(state *regState, what string, names ...string)
 	return nil
 }
 
+// sized refuses an opaque target where the layout of what a pointer
+// addresses is what the instruction is made of. Reading, writing,
+// stepping and subtracting all measure in the target's size, and an
+// opaque type has none — which is exactly why C refuses the same four on
+// a pointer to an incomplete type.
+//
+// Only a bare name has to be asked: an opaque type nested inside any
+// other type is already refused by checkType, since a pointer's target
+// is the one position it is allowed in.
+func (fv *funcVerifier) sized(t Type, what string) error {
+	named, ok := t.(*Named)
+	if !ok {
+		return nil
+	}
+	if decl := fv.types[named.Name]; decl != nil && decl.Opaque {
+		return fmt.Errorf("%s needs %%%s's layout, and it is opaque", what, named.Name)
+	}
+	return nil
+}
+
 func (fv *funcVerifier) recordShape(name string) (*RecordShape, error) {
 	decl := fv.types[name]
 	if decl == nil {
 		return nil, fmt.Errorf("unknown type %%%s", name)
+	}
+	if decl.Opaque {
+		return nil, fmt.Errorf("%%%s is opaque, so it has no fields to reach", name)
 	}
 	if decl.Record == nil {
 		return nil, fmt.Errorf("%%%s is an enum, not a record", name)
@@ -696,6 +740,9 @@ func (fv *funcVerifier) enumShape(name string) (*EnumShape, error) {
 	decl := fv.types[name]
 	if decl == nil {
 		return nil, fmt.Errorf("unknown type %%%s", name)
+	}
+	if decl.Opaque {
+		return nil, fmt.Errorf("%%%s is opaque, so it has no variants", name)
 	}
 	if decl.Enum == nil {
 		return nil, fmt.Errorf("%%%s is a record, not an enum", name)

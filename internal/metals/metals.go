@@ -382,11 +382,28 @@ type ImportedFunc struct {
 	Sig  *FnType
 }
 
-// TypeDecl is a module-local record or enum. Exactly one shape is set.
+// TypeDecl is a module-local record, enum or opaque name. Exactly one of
+// the three is set.
 type TypeDecl struct {
 	Name   string
 	Record *RecordShape
 	Enum   *EnumShape
+
+	// Opaque is a name with no shape: a type the module knows exists and
+	// knows nothing else about. It has no size, no alignment and no
+	// fields, so the only place it may appear is as a `ptr<T>`'s target —
+	// every instruction that would need its layout refuses it, and so
+	// does every other position a type can be written in.
+	//
+	// That is C's incomplete type, which a library header uses to hand
+	// out an `SDL_Window *` without publishing what an SDL_Window is.
+	// Erasing one to `anyptr` instead would compile and would throw away
+	// the thing the header was written to keep: an `SDL_Window *` and an
+	// `SDL_Renderer *` are different types, and a verified IR should be
+	// able to say so about types it cannot see inside. A pointer that
+	// forgot and a pointer to something unknown are two different
+	// admissions, and only the second one is still checkable.
+	Opaque bool
 }
 
 type RecordShape struct {

@@ -623,7 +623,9 @@ Closed since this list was written: `Map<K, V>` (ordinary Gyro over
 and exit codes (`os`), clocks and sleep (`time`); string literals,
 file-scope and braced initializers, `static` locals, `switch`,
 `sizeof(char *)` answering 8, function pointers, a program made of as
-many `.c` files as it takes, `void *`, and varargs.
+many `.c` files as it takes, `void *`, varargs, and pointers to
+incomplete types (`type %Name = opaque`, the way a library header hands
+out a handle).
 
 **Safety holes:**
 

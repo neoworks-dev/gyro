@@ -262,6 +262,10 @@ func (l *Layout) namedSize(name string) int {
 		return size
 	}
 	decl := l.declOf(name)
+	if decl.Opaque {
+		l.fail("type %%%s is opaque, so it has no size", name)
+		return 0
+	}
 	if l.building[name] {
 		l.fail("type %%%s contains itself", name)
 	}
@@ -284,6 +288,10 @@ func (l *Layout) namedAlign(name string) int {
 		return align
 	}
 	decl := l.declOf(name)
+	if decl.Opaque {
+		l.fail("type %%%s is opaque, so it has no alignment", name)
+		return 1
+	}
 	align := Word
 	if decl.Record != nil {
 		_, align = l.members(fieldTypes(decl.Record))

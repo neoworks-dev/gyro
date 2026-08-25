@@ -67,6 +67,7 @@ a `u32`, and the corpus would then be measuring which one guessed.
 | record | C's | widest field's | fields in declared order, padded like a C struct |
 | enum | 8 + widest variant, rounded | 8 | `{ i64 tag, payload }`; payload at 8, its fields padded like a C struct |
 | `array<T, N>` | N · sizeof(T) | align T | elements in order, no padding between them |
+| opaque `%Name` | — | — | no size and no alignment; only a `ptr<T>` may target one, and that pointer is a word like any other |
 
 Nothing is aligned more than a word, which is what keeps an enum's
 payload at a fixed offset and lets a frame hand out word-aligned cells.

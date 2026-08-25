@@ -546,14 +546,17 @@ shortcuts and one routing choice, and closing them is the roadmap:
    all three tiers. Since then: string literals and file-scope
    initializers, `switch`, `static` locals, function pointers, a program
    made of as many `.c` files as it takes, `void *` with the casts that
-   go with it, and varargs. "Any existing C program" is still the bar and
-   is still a way off — the front end owes unions and bitfields, most of
-   C11, VLAs, `_Generic`, and the relooper for irreducible `goto`, the
-   piece `internal/wasm/clang.go` names as the hardest and currently
-   outsources. See "The C front end emits types, the bridge emits bytes",
-   "Pointer arithmetic is three instructions, and unchecked", "A callable
-   is one word or two", "A C program is several files", "A `void *` is a
-   pointer that forgot", and "Varargs are an array a caller builds".
+   go with it, varargs, and pointers to incomplete types — the way every
+   library header hands out a handle. "Any existing C program" is still
+   the bar and is still a way off — the front end owes unions and
+   bitfields, most of C11, VLAs, `_Generic`, and the relooper for
+   irreducible `goto`, the piece `internal/wasm/clang.go` names as the
+   hardest and currently outsources. See "The C front end emits types,
+   the bridge emits bytes", "Pointer arithmetic is three instructions,
+   and unchecked", "A callable is one word or two", "A C program is
+   several files", "A `void *` is a pointer that forgot", "Varargs are an
+   array a caller builds", and "An incomplete type is a name with no
+   shape".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2398,6 +2401,50 @@ of a boundary could check one, and a C library is not written for this
 importer. One unspellable helper should not make the other forty
 unimportable. Naming a skipped export is still an error, reported where
 it is imported, which is where it means something.
+
+### An incomplete type is a name with no shape, not an erased pointer *(new)*
+
+**Status: decided.** METALS grew `type %Name = opaque`: a name the module
+knows exists and knows nothing else about. It has no size, no alignment
+and no fields, so the only position it may be written in is a `ptr<T>`'s
+target. C's incomplete type is that, and a `struct SDL_Window *` is a
+`ptr<%SDL_Window>`.
+
+**Rejected: erasing it to `anyptr`.** It was already there, it already
+supports exactly the right operations, and it would have cost nothing to
+implement — which is why it is worth saying why not. A header that writes
+`struct SDL_Window;` and then `SDL_Window *` everywhere is not hiding the
+type; it is hiding the *shape* and keeping the type, and the type is the
+entire thing the caller gets in exchange for being told nothing. Erased
+to `anyptr`, a window and a renderer become one address-shaped thing and
+the header's only guarantee evaporates. **A pointer that forgot and a
+pointer to something unknown are two different admissions, and only the
+second one is still checkable.**
+
+**The declaration is safe for the same reason `anyptr` is: it supports
+almost nothing.** `load`, `store`, `ptr.offset`, `ptr.diff` and
+`field.ptr` each refuse it and name the layout as the reason, and every
+other position — a value, a member, an element, a parameter, a result, a
+slot — is refused by the type checker before an instruction sees it. What
+is left is a pointer that can be held, passed, stored, compared and cast.
+That is exactly what C already permits on a pointer to an incomplete
+type, so the front end loses nothing it had.
+
+Two consequences fell out. **A member of an incomplete type is refused
+where it is written**, which is C's own rule and also what rules out
+`struct node { struct node self; }` without the layout table having to
+notice a cycle — a better error, earlier, from a rule that had to exist
+anyway. And **a conversion between pointers to two different types now
+needs a cast**, which is C's constraint and which most C compilers only
+warn about; through `void *` nothing is written in either direction,
+which is C's own exception and the reason that type exists. Without it,
+two opaque handles would assign to each other freely and the distinction
+this whole entry is about would be decorative.
+
+**Rejected: letting the tag stay an error.** Before this, a tag no file
+completed failed the module — which is right for a program that needs the
+size and wrong for every library header ever written, since the whole
+technique is to never provide one.
 
 ## Native backend
 

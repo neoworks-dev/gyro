@@ -438,8 +438,10 @@ func (p *parser) typeDecl(m *Module) error {
 		if err := p.enumShape(decl); err != nil {
 			return err
 		}
+	case "opaque":
+		decl.Opaque = true
 	default:
-		return p.errf("a type is a record or an enum, not %q", kind.text)
+		return p.errf("a type is a record, an enum or opaque, not %q", kind.text)
 	}
 	m.Types = append(m.Types, decl)
 	return p.endOfLine()

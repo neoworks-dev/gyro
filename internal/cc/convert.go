@@ -16,7 +16,25 @@ import "github.com/gyro-lang/gyro/internal/metals"
 // when the value is outside the target's range, which is where C stops
 // defining anything at all.
 
+// convert is an implicit conversion: what an assignment, an argument, a
+// return and an initializer apply on their own.
 func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
+	return f.convertTo(v, to, pos, false)
+}
+
+// cast is the conversion a program wrote, which is C's way of taking
+// responsibility for one. The only place the two differ is pointers:
+// assigning one object pointer to a pointer of another type is a
+// constraint violation in C, and letting it through here would quietly
+// undo the thing an opaque handle exists to keep — that a session and a
+// ticket are two types. Through `void *` nothing is written in either
+// direction, which is C's own exception and the reason the type is
+// there.
+func (f *funcLowerer) cast(v value, to *ctype, pos position) value {
+	return f.convertTo(v, to, pos, true)
+}
+
+func (f *funcLowerer) convertTo(v value, to *ctype, pos position, written bool) value {
 	if v.typ.equals(to) {
 		return v
 	}
@@ -24,6 +42,9 @@ func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
 	if to.isPointer() {
 		if !v.typ.isPointer() {
 			fail(pos, "cannot convert a %s to a %s; this front end has no integer-to-pointer conversion", v.typ, to)
+		}
+		if !written && !to.isVoidPointer() && !v.typ.isVoidPointer() {
+			fail(pos, "cannot convert a %s to a %s without a cast; they point at different types", v.typ, to)
 		}
 		return f.convertPointer(v, to, pos)
 	}
@@ -56,7 +77,7 @@ func (f *funcLowerer) convert(v value, to *ctype, pos position) value {
 		// way it is in C, so it becomes one the same way a comparison
 		// does.
 		widened := f.fromBool(v.reg)
-		return f.convert(widened, to, pos)
+		return f.convertTo(widened, to, pos, written)
 	}
 
 	if v.typ.isFloat() || to.isFloat() {

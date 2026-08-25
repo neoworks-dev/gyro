@@ -1,0 +1,146 @@
+; An opaque type on the three METALS tiers.
+;
+; `type %Session = opaque` is a name with no shape: a type the module
+; knows exists and knows nothing else about. It has no size, no
+; alignment and no fields, so the only position it may be written in is
+; a `ptr<T>`'s target — and the only things that pointer can do are be
+; held, be compared, and have another type claimed onto it.
+;
+; That is C's incomplete type, which every library header is written
+; with. Erasing it to `anyptr` would run just as well and would throw
+; away the point: a session and a ticket are two types over one address,
+; and staying two is the whole of what a caller is given in exchange for
+; not being told anything. A pointer that forgot and a pointer to
+; something unknown are two different admissions, and only the second is
+; still checkable.
+;
+; The verifier refuses a load, a store, a field, an offset, a difference
+; and a value of one — the same six C refuses, for the same reason.
+
+module "metals:opaque"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Session = opaque
+type %Ticket = opaque
+
+; What a handle really addresses. The module never says a %Session is
+; one of these; it says nothing about a %Session at all, and the join
+; between the two is a `ptr.cast` and nothing else.
+type %Guts = record { seed: i64, calls: i64 }
+
+; A signature may name the type, because a pointer to it is an ordinary
+; one-word value. Nothing in here can look at what it addresses.
+fn @relabel(%s: opt<ptr<%Session>>) -> opt<ptr<%Ticket>> {
+  %e = ptr.erase %s
+  %t = ptr.cast %e -> opt<ptr<%Ticket>>
+  return %t
+}
+
+export fn @main() {
+  %g = slot %Guts
+  %seed = const.i64 10
+  %calls = const.i64 0
+  %rec = record %Guts(%seed, %calls)
+  store %g, %rec
+
+  ; Handing the address out: the type it has comes off, and a name
+  ; nothing defines goes on.
+  %eg = ptr.erase %g
+  %h = ptr.cast %eg -> ptr<%Session>
+
+  ; Reading through it means claiming the type back, which is the
+  ; producer's assertion and not the format's.
+  %bg = ptr.erase %h
+  %real = ptr.cast %bg -> ptr<%Guts>
+  %sf = field.ptr %real, 0
+  %s0 = load %sf
+  call @"println<i64>"(%s0)
+
+  ; Identity is what is left when nothing else is known. Erasing and
+  ; restoring move nothing, so the address that comes back is the one
+  ; that left.
+  %again = ptr.cast %eg -> ptr<%Session>
+  %same = eq %h, %again
+  call @"println<bool>"(%same)
+
+  %g2 = slot %Guts
+  %other = ptr.erase %g2
+  %h2 = ptr.cast %other -> ptr<%Session>
+  %differs = ne %h, %h2
+  call @"println<bool>"(%differs)
+
+  ; The absent handle. Under the niche an `opt<ptr<%Session>>` is one
+  ; word with the null address as absent, which is what makes a zeroed
+  ; slot read back as no handle at all.
+  %none = const.null opt<ptr<%Session>>
+  %held = opt.wrap %h
+  %present = ne %held, %none
+  call @"println<bool>"(%present)
+
+  ; The same address under the other opaque name, and back again. Two
+  ; opaque types are two types, so neither reaches the other without a
+  ; cast saying so.
+  %tick = call @relabel(%held)
+  %backe = ptr.erase %tick
+  %backs = ptr.cast %backe -> opt<ptr<%Session>>
+  %matches = eq %backs, %held
+  call @"println<bool>"(%matches)
+
+  ; An array of handles, walked and tested against the absent one, which
+  ; is everything a program can do with addresses it knows nothing about.
+  %arr = slot array<opt<ptr<%Session>>, 3>
+  %base = elem.ptr %arr
+  store %base, %held
+  %one = const.i64 1
+  %at1 = ptr.offset %base, %one
+  store %at1, %none
+  %two = const.i64 2
+  %at2 = ptr.offset %base, %two
+  %held2 = opt.wrap %h2
+  store %at2, %held2
+
+  %open = slot i64
+  %zero = const.i64 0
+  store %open, %zero
+  %i = slot i64
+  store %i, %zero
+  %three = const.i64 3
+
+  block $done {
+    loop $next {
+      %at = load %i
+      %more = lt %at, %three
+      %stop = not %more
+      br_if %stop, $done
+      %cell = ptr.offset %base, %at
+      %handle = load %cell
+      %filled = ne %handle, %none
+      if %filled {
+        %n = load %open
+        %inc = iadd %n, %one
+        store %open, %inc
+      }
+      %step = iadd %at, %one
+      store %i, %step
+      br $next
+    }
+  }
+  %count = load %open
+  call @"println<i64>"(%count)
+
+  ; The object was there the whole time: writing through the restored
+  ; type and reading it back proves the handle never stopped addressing
+  ; it.
+  %cf = field.ptr %real, 1
+  %seven = const.i64 7
+  store %cf, %seven
+  %again2 = ptr.cast %eg -> ptr<%Guts>
+  %cf2 = field.ptr %again2, 1
+  %got = load %cf2
+  call @"println<i64>"(%got)
+  return
+}

@@ -399,7 +399,7 @@ func TestRefusesBadPrograms(t *testing.T) {
 	refused(t, `struct P { int x; }; int result(void) { struct P p; return p.y; }`, "no field y")
 	refused(t, `int result(void) { break; }`, "break is not inside a loop")
 	refused(t, `int f(int a); int result(void) { return f(1, 2); }`, "takes 1 argument")
-	refused(t, `struct P; int result(void) { struct P p; return 0; }`, "never defined")
+	refused(t, `struct P; int result(void) { struct P p; return 0; }`, "has no size here")
 }
 
 func TestModuleNameCarriesTheScheme(t *testing.T) {

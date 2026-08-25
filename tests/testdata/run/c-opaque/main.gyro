@@ -1,0 +1,57 @@
+// A Gyro program driving a C library built on an opaque handle.
+//
+// `struct session` is declared in session.h and defined nowhere in the
+// program. In METALS that is an opaque type declaration — a name with
+// no shape — and a `struct session *` is a `ptr<%session>`. The
+// verifier lets a pointer address it and refuses everything that would
+// need its layout: a load, a store, a field, an offset, a difference, a
+// slot, a value of it anywhere at all.
+//
+// That is the same list C refuses on a pointer to an incomplete type,
+// so a header written the way library headers are written compiles as
+// written, and the caller keeps the one thing it was given: a type.
+
+import { println } from "stdlib"
+import {
+  session_open, session_next, session_total, session_same,
+  session_absent, session_handle_size, session_round_trip,
+  ticket_issue, ticket_matches, session_open_count, session_close,
+} from "./session.c"
+
+fn main() {
+  // Not knowing what is at an address does not change what the address
+  // costs.
+  println(session_handle_size())
+
+  // Two sessions, filed under the slots they answer with.
+  println(session_open(10))
+  println(session_open(20))
+
+  // Reading through a handle: the implementation puts back the type it
+  // took off, and the object it addresses was there the whole time.
+  println(session_next(0))
+  println(session_next(0))
+  println(session_next(1))
+  println(session_total(0))
+
+  // Identity, which is all a program can ask about an address it knows
+  // nothing else about.
+  println(session_same(0, 0))
+  println(session_same(0, 1))
+
+  // A slot nothing was filed under, and one that something was.
+  println(session_absent(3))
+  println(session_absent(1))
+
+  // Out through a `void *` and back: two erasures, no movement.
+  println(session_round_trip(1))
+
+  // The same address under the other opaque name, and back again.
+  println(ticket_issue(0))
+  println(ticket_matches(0))
+
+  // Walking the array and testing each handle against the absent one.
+  println(session_open_count())
+  session_close(0)
+  println(session_open_count())
+}

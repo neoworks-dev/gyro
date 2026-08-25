@@ -93,6 +93,7 @@ func Link(modules []*Module) (*Module, error) {
 				Name:   l.typeName(decl.Name),
 				Record: l.record(decl.Record),
 				Enum:   l.enum(decl.Enum),
+				Opaque: decl.Opaque,
 			})
 		}
 		// Each module keeps its own linear memory: two C modules linked

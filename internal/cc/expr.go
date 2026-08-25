@@ -60,7 +60,7 @@ func (f *funcLowerer) expr(e expr) value {
 		return f.increment(e)
 
 	case *castExpr:
-		return f.convert(f.exprAs(e.x, e.typ), e.typ, e.pos)
+		return f.cast(f.exprAs(e.x, e.typ), e.typ, e.pos)
 
 	case *callExpr:
 		return f.call(e)
@@ -253,6 +253,10 @@ func (f *funcLowerer) lvalue(e expr) value {
 		if operand.typ.isVoidPointer() {
 			fail(e.pos, "cannot dereference a void *; cast it to a pointer to the type it addresses first")
 		}
+		if operand.typ.isOpaquePointer() {
+			fail(e.pos, "cannot dereference a %s; struct %s is never defined, so there is no object to read",
+				operand.typ, operand.typ.elem.tag)
+		}
 		return value{reg: f.deref(operand), typ: operand.typ.elem}
 
 	case *memberExpr:
@@ -296,6 +300,10 @@ func (f *funcLowerer) member(e *memberExpr) value {
 			fail(e.pos, ". needs a struct, not a %s", base.typ)
 		}
 		record = base.typ
+	}
+
+	if record.fields == nil {
+		fail(e.pos, "struct %s is never defined, so it has no field %s", record.tag, e.name)
 	}
 
 	index := -1
@@ -524,6 +532,10 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 		if a.typ.isVoidPointer() {
 			fail(pos, "a void * has no element size, so two of them have no difference in elements")
 		}
+		if a.typ.isOpaquePointer() {
+			fail(pos, "struct %s is never defined, so two %s have no difference in elements",
+				a.typ.elem.tag, a.typ)
+		}
 		// The difference is in elements, which is what ptr.diff counts,
 		// and its type is ptrdiff_t — long on this target.
 		reg := f.temp()
@@ -556,6 +568,10 @@ func (f *funcLowerer) pointerOp(op string, a, b value, pos position) value {
 		if a.typ.isVoidPointer() {
 			fail(pos, "ordering two void * would count elements neither of them has")
 		}
+		if a.typ.isOpaquePointer() {
+			fail(pos, "ordering two %s would count elements neither of them has; struct %s is never defined",
+				a.typ, a.typ.elem.tag)
+		}
 		// Ordering pointers is only defined inside one object, and inside
 		// one object the order is the order of the element counts — so
 		// the comparison is on the difference, and METALS needs no
@@ -578,6 +594,10 @@ func (f *funcLowerer) step(p, n value, back bool, pos position) value {
 	// as C would silently change what an index means.
 	if p.typ.isVoidPointer() {
 		fail(pos, "a void * has no element size to step by; cast it to a pointer to the type it addresses first")
+	}
+	if p.typ.isOpaquePointer() {
+		fail(pos, "a %s has no element size to step by; struct %s is never defined",
+			p.typ, p.typ.elem.tag)
 	}
 	count := f.convert(n, typeLong, pos)
 	if back {
