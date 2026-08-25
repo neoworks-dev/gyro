@@ -16,9 +16,10 @@ func (f *funcLowerer) stmt(s stmt) {
 	switch s := s.(type) {
 	case *blockStmt:
 		f.pushScope()
-		for _, inner := range s.stmts {
-			f.stmt(inner)
-		}
+		// A statement list is where a label lives, so this is where the
+		// wrappers a goto branches to are put. Without labels it is the
+		// same loop over the statements it always was.
+		f.segments(s.stmts)
 		f.popScope()
 
 	case *emptyStmt:
@@ -49,6 +50,16 @@ func (f *funcLowerer) stmt(s stmt) {
 
 	case *switchStmt:
 		f.switchStmt(s)
+
+	case *gotoStmt:
+		f.gotoStmt(s)
+
+	case *labelStmt:
+		// segments consumes every label in an ordinary statement list,
+		// so reaching one here means it is inside a switch body — a
+		// list of case labels, which is a multiway branch into a linear
+		// run rather than something a branch can leave.
+		fail(s.pos, "label %s is inside a switch body, where the labels are the case labels", s.name)
 
 	case *caseStmt:
 		fail(s.pos, "a case label is not inside a switch")
@@ -81,7 +92,7 @@ func (f *funcLowerer) declare(s *declStmt) {
 		}
 
 		cell := f.reserve(v.name)
-		f.emit(&metals.Slot{Dst: cell, Type: v.typ.metalsType()})
+		f.reserveStorage(cell, v.typ.metalsType())
 
 		// A local's storage is a fresh slot, which the native backends
 		// zero and the evaluator deliberately leaves unwritten. What an

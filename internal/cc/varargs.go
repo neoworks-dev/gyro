@@ -151,7 +151,7 @@ func (f *funcLowerer) varargPack(extra []expr, pos position) (slots, count strin
 			v = f.convert(v, defaultPromote(v.typ), pos)
 		}
 		cell := f.temp()
-		f.emit(&metals.Slot{Dst: cell, Type: v.typ.metalsType()})
+		f.reserveStorage(cell, v.typ.metalsType())
 		f.emit(&metals.Store{Ptr: cell, Val: v.reg})
 		erased := f.temp()
 		f.emit(&metals.PtrErase{Dst: erased, X: cell})
@@ -169,7 +169,7 @@ func (f *funcLowerer) varargPack(extra []expr, pos position) (slots, count strin
 
 	slotType := vaSlotsType().elem
 	array := f.temp()
-	f.emit(&metals.Slot{Dst: array, Type: arrayOf(slotType, int64(len(extra))).metalsType()})
+	f.reserveStorage(array, arrayOf(slotType, int64(len(extra))).metalsType())
 	first := f.temp()
 	f.emit(&metals.ElemPtr{Dst: first, Ptr: array})
 	for i, address := range addresses {

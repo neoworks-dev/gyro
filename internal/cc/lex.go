@@ -77,7 +77,7 @@ var keywords = map[string]bool{
 	"static": true, "extern": true,
 	"const": true, "volatile": true, "register": true, "auto": true,
 	"if": true, "else": true, "while": true, "for": true, "do": true,
-	"return": true, "break": true, "continue": true,
+	"return": true, "break": true, "continue": true, "goto": true,
 	"switch": true, "case": true, "default": true,
 }
 

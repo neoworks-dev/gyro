@@ -143,6 +143,18 @@ type (
 		pos position
 	}
 
+	// labelStmt names a point in a statement list, and gotoStmt jumps to
+	// one. A label's scope is the whole function, which is why the two
+	// are resolved by a pass over the body rather than by the parser.
+	labelStmt struct {
+		name string
+		pos  position
+	}
+	gotoStmt struct {
+		name string
+		pos  position
+	}
+
 	breakStmt    struct{ pos position }
 	continueStmt struct{ pos position }
 	emptyStmt    struct{}
@@ -159,6 +171,8 @@ func (*switchStmt) isStmt()   {}
 func (*caseStmt) isStmt()     {}
 func (*defaultStmt) isStmt()  {}
 func (*returnStmt) isStmt()   {}
+func (*labelStmt) isStmt()    {}
+func (*gotoStmt) isStmt()     {}
 func (*breakStmt) isStmt()    {}
 func (*continueStmt) isStmt() {}
 func (*emptyStmt) isStmt()    {}

@@ -872,6 +872,22 @@ func (p *parser) stmt() stmt {
 		p.expect(";")
 		return &continueStmt{pos: tok.pos}
 
+	case p.at("goto"):
+		p.next()
+		name := p.expectIdent()
+		p.expect(";")
+		return &gotoStmt{name: name.text, pos: tok.pos}
+
+	// A name followed by a colon is a label. Nothing else in C's
+	// statement grammar begins that way — the conditional operator's
+	// colon needs a `?` in front of it — so one token of lookahead
+	// settles it, and a typedef name is a label here rather than a
+	// declaration for the same reason.
+	case tok.kind == tokIdent && p.ahead().is(":"):
+		p.next()
+		p.next()
+		return &labelStmt{name: tok.text, pos: tok.pos}
+
 	case p.startsDecl():
 		out := p.decl()
 		p.expect(";")

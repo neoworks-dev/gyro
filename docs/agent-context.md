@@ -586,9 +586,14 @@ Kept honest in `docs/language.md` ("Still to come") and
 **Open in the C front end** (`internal/cc`, see
 [`metals.md`](metals.md), "The C front end"):
 
-- **`goto`** — needs the relooper LLVM does for the bridge. `switch` is
-  done; it is a multiway branch into a linear body, which nested blocks
-  express and arbitrary jumps do not.
+- **Two `goto` shapes** — a jump *into* a block (a label in a statement
+  list the goto is not inside), and a backward jump reaching past a later
+  forward label, where the loop would have to cross out of the block.
+  Both need the relooper LLVM does for the bridge. Everything else works:
+  a label jumped to from earlier gets a `block` around what precedes it,
+  one jumped to from later gets a `loop` around what follows, and C's
+  labels nest because C's statements do. A label inside a switch body is
+  refused too — the body is a list of case labels.
 - **Type punning runs on two tiers**, and so does reading across two
   union members that share no initial sequence, and reading a struct's
   storage as bytes — which is how a bit-field's placement is checked, in
@@ -629,9 +634,10 @@ file-scope and braced initializers, `static` locals, `switch`,
 many `.c` files as it takes, `void *`, varargs, pointers to incomplete
 types (`type %Name = opaque`, the way a library header hands out a
 handle), unions (`type %Name = union { ... }`, with the common initial
-sequence answered on every tier), and bit-fields (a run packed into one
+sequence answered on every tier), bit-fields (a run packed into one
 member of bytes, with `record align N` carrying the alignment their
-declared types ask of the struct).
+declared types ask of the struct), and `goto` in the shapes C is
+actually written in.
 
 **Safety holes:**
 

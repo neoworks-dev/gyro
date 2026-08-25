@@ -498,6 +498,20 @@ type funcLowerer struct {
 	scopes []map[string]*binding
 	loops  []loop
 
+	// labels and forward are what a goto needs: where each label is and
+	// which side each jump to it comes from. Both are empty for a
+	// function that has none, which is nearly all of them.
+	labels  map[string]*labelUse
+	forward map[*gotoStmt]bool
+	// prologue collects the `slot` instructions when the function has
+	// labels. A `block` wrapper hides everything assigned inside it from
+	// the code after it, and the register holding a local's address must
+	// not be one of those things — so in that one case the storage is
+	// reserved at the top, where nothing can branch past it. It is nil
+	// otherwise, and a slot stays where it was written.
+	prologue []metals.Instr
+	hoisting bool
+
 	names map[string]bool
 	n     int
 }
@@ -511,6 +525,10 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 	}
 	f.blocks = [][]metals.Instr{nil}
 	f.scopes = []map[string]*binding{{}}
+
+	pass := scanLabels(fn)
+	f.labels, f.forward = pass.byName, pass.where
+	f.hoisting = len(pass.byName) > 0
 
 	if !fn.result.isVoid() {
 		if !fn.result.isComplete() {
@@ -533,7 +551,7 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 		incoming := f.reserve(p.name + ".in")
 		f.out.Params = append(f.out.Params, metals.Param{Name: incoming, Type: p.typ.metalsType()})
 		cell := f.reserve(p.name)
-		f.emit(&metals.Slot{Dst: cell, Type: p.typ.metalsType()})
+		f.reserveStorage(cell, p.typ.metalsType())
 		f.emit(&metals.Store{Ptr: cell, Val: incoming})
 		f.scopes[0][p.name] = &binding{ptr: cell, typ: p.typ}
 	}
@@ -549,8 +567,18 @@ func (l *lowerer) function(fn *funcDecl) *metals.Func {
 		f.emit(&metals.Abort{Message: "control reached the end of " + fn.name + " without a return"})
 	}
 
-	f.out.Body = f.blocks[0]
+	f.out.Body = append(f.prologue, f.blocks[0]...)
 	return f.out
+}
+
+// reserveStorage emits a `slot`, at the top of the function when it has
+// labels. See funcLowerer.prologue.
+func (f *funcLowerer) reserveStorage(dst string, typ metals.Type) {
+	if f.hoisting {
+		f.prologue = append(f.prologue, &metals.Slot{Dst: dst, Type: typ})
+		return
+	}
+	f.emit(&metals.Slot{Dst: dst, Type: typ})
 }
 
 // ---------------------------------------------------------------------------

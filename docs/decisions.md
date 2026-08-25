@@ -547,16 +547,18 @@ shortcuts and one routing choice, and closing them is the roadmap:
    initializers, `switch`, `static` locals, function pointers, a program
    made of as many `.c` files as it takes, `void *` with the casts that
    go with it, varargs, pointers to incomplete types — the way every
-   library header hands out a handle — unions, and bit-fields. "Any
-   existing C program" is still the bar and is still a way off — the
-   front end owes most of C11, VLAs, `_Generic`, and the relooper for
-   irreducible `goto`, the piece `internal/wasm/clang.go` names as the
-   hardest and currently outsources. See "The C front end emits types,
-   the bridge emits bytes", "Pointer arithmetic is three instructions,
-   and unchecked", "A callable is one word or two", "A C program is
-   several files", "A `void *` is a pointer that forgot", "Varargs are an
-   array a caller builds", "An incomplete type is a name with no shape",
-   "A union is a shape", and "A bit-field is bytes plus an offset".
+   library header hands out a handle — unions, bit-fields, and `goto`.
+   "Any existing C program" is still the bar and is still a way off — the
+   front end owes most of C11, VLAs, `_Generic`, and the relooper for the
+   two `goto` shapes that need a control-flow graph, the piece
+   `internal/wasm/clang.go` names as the hardest and currently
+   outsources. See "The C front end emits types, the bridge emits
+   bytes", "Pointer arithmetic is three instructions, and unchecked", "A
+   callable is one word or two", "A C program is several files", "A
+   `void *` is a pointer that forgot", "Varargs are an array a caller
+   builds", "An incomplete type is a name with no shape", "A union is a
+   shape", "A bit-field is bytes plus an offset", and "A goto is a branch
+   out of a block".
 
    The IR rule that stood in the way is settled: a boundary is between
    runtimes and not between languages, so a `cc:` module and a `gyro:`
@@ -2550,6 +2552,52 @@ Where the bits actually land is checked by
 and is therefore skipped on the evaluator: reading a struct's bytes is
 type punning, and the evaluator has values rather than bytes. The values
 themselves are checked on all three tiers in `c-bitfield`.
+
+### A goto is a branch out of a block, and C's labels already nest *(new)*
+
+**Status: decided.** A label jumped to from earlier gets a `block`
+around everything before it in its statement list; one jumped to from
+later gets a `loop` around everything from it onwards; one jumped to from
+both gets both. METALS gained nothing.
+
+**Rejected: the relooper.** It is what LLVM does for the wasm bridge and
+what Emscripten wrote fifteen hundred lines for, and it is the right
+answer for an arbitrary control-flow graph. But a C `goto` is not
+arbitrary: what it is written for is a forward jump to a cleanup label, a
+backward jump that is a loop, and breaking out of nested loops, and all
+three are a label in the goto's own statement list or an enclosing one.
+**C's labels nest because C's statements do**, and the two directions
+each want one wrapper.
+
+**Rejected: a dispatch loop** — every basic block a case of a `switch`
+inside a `loop`, with a state variable. It is correct for any CFG
+including irreducible ones, and it destroys the structure of every
+function that contains a single `goto cleanup;`. A perf cliff on the
+commonest use of the feature is worse than refusing the rarest.
+
+**The peeling order is the whole design.** Wrappers come off one label at
+a time, outermost first, and a forward one always goes outside a backward
+one in the same region. That is what makes `again: ... goto out; ...
+goto again; out:` work: the loop for `again` ends where the block for
+`out` does, so falling off the loop leaves the block, which lands at
+`out` — exactly what falling past the label did. A loop clipped by an
+enclosing block is still the right loop.
+
+**A function with labels reserves its storage at the top.** The verifier
+discards everything assigned inside a `block`, because a branch can leave
+from anywhere in it — so a local declared before a label would stop
+being definite after it, and `int rc = 0; ... goto done; ... done: return
+rc;` is the pattern the feature exists for. Hoisting the `slot`
+instructions is what every compiler does with allocas, and it costs
+nothing: it happens only in functions that have labels.
+
+Two shapes are refused by name, and both are where a control-flow graph
+would genuinely be needed: a **jump into a block**, where the label is in
+a statement list the goto is not inside, and a **backward jump reaching
+past a later forward label**, where the loop would have to cross out of
+the block. A label inside a switch body is refused too — that body is a
+list of case labels, a multiway branch into a linear run rather than
+something a branch can leave.
 
 ## Native backend
 

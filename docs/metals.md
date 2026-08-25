@@ -882,9 +882,34 @@ The mapping, where it is not obvious:
   running off the end of a group lands where the next one begins — so
   fallthrough is what happens when a group does not branch, which is
   exactly C's rule, and a `default` in the middle is just a group the
-  default arm branches to. This needs no relooper, which is why `switch`
-  is here and `goto` is not: C's switch is a multiway branch into a
-  linear body, and C's goto is not.
+  default arm branches to. This needs no relooper: C's switch is a
+  multiway branch into a linear body, which nested blocks express.
+
+- **A `goto` is a branch out of a block or back to the top of a loop.**
+  C's labels already nest, and the two directions want two different
+  wrappers: a label jumped to from *earlier* gets a `block` around
+  everything before it in its statement list, so branching out of that
+  block lands where the label is; one jumped to from *later* gets a
+  `loop` around everything from it onwards, so branching to that loop
+  restarts it — landing in the same place — and running off the end
+  falls out. A label jumped to from both sides gets both.
+
+  The wrappers are peeled one label at a time, outermost first, with a
+  forward one always outside a backward one in the same region. That is
+  what makes `again: ... goto out; ... goto again; out:` work: the loop
+  ends where the block does, and falling off it leaves the block, which
+  lands at `out`. A function with any label reserves its storage at the
+  top rather than where it is written, because branching out of a block
+  discards everything assigned inside it and the register holding a
+  local's address must not be one of those things.
+
+  Two shapes are refused by name rather than mistranslated, and both are
+  where a control-flow graph would be needed: a **jump into a block** — a
+  label in one statement list reached from another — and a **backward
+  jump reaching past a later forward label**, where the loop would have
+  to cross out of the block. What is left covers what `goto` is actually
+  written for in C: a forward jump to a cleanup label, a backward jump
+  that is a loop, and breaking out of nested loops.
 - **A `static` local is module storage under a qualified name.** The
   name is block-scoped and the storage is not, so the initializer is a
   global's rather than a statement — which is also why C only lets it be
@@ -930,12 +955,12 @@ The mapping, where it is not obvious:
   the abstract `int (*)(int)` in a cast all parse. An abstract declarator
   is the same declarator with the identifier left out.
 
-What it does not do yet, refused by name rather than mistranslated:
-**`goto`**, which is where the relooper LLVM does for the bridge will
-have to be written. **Type punning** compiles and is a program
-only two tiers can run: reading one object's bytes as another type is
-undefined in C, `char *` aliasing included, and the evaluator holds a
-producer to it. A C struct cannot cross into Gyro yet either: the generated
+What it does not do yet, refused by name rather than mistranslated: the
+two `goto` shapes above, which is where the relooper LLVM does for the
+bridge would have to be written. **Type punning** compiles and is a
+program only two tiers can run: reading one object's bytes as another
+type is undefined in C, `char *` aliasing included, and the evaluator
+holds a producer to it. A C struct cannot cross into Gyro yet either: the generated
 header has no way to redeclare a `%Named`, which is the same gap the
 linker's structural matching is. A callback does not cross into Gyro at
 all, because a code pointer is an address in this program and what may

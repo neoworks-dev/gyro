@@ -24,8 +24,9 @@
 // module is.
 //
 // What it does not do yet is listed in docs/metals.md rather than
-// apologized for here. The largest is goto, where the relooper the
-// bridge outsources to LLVM will have to be written.
+// apologized for here. What is left of goto — a jump into a block, and a
+// backward jump reaching past a later forward label — is where the
+// relooper the bridge outsources to LLVM would have to be written.
 package cc
 
 import (
