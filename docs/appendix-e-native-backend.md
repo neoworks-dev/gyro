@@ -1,33 +1,24 @@
-# Appendix E. The native backends
+# Appendix E. The native backend
 
-This appendix is the specification of the two native backends and of the
-data layout every tier shares. [Chapter 17.2](ch17-02-the-pipeline.md) is
-the shorter account.
+This appendix is the specification of the native backend and of the data
+layout it shares with C. [Chapter 17.2](ch17-02-the-pipeline.md) is the
+shorter account.
 
-There are two backends, and they are siblings. The assembler backend compiles a
-verified METALS module to x86-64 NASM assembly, assembles it, and links
-it with a small C runtime into a Linux executable; the C backend emits
-one C translation unit instead and hands it to `cc` with the same
-runtime:
+The backend compiles a verified METALS module to x86-64 NASM assembly,
+assembles it, and links it with a small C runtime into a Linux
+executable:
 
 ```sh
-gyro build examples/hello.gyro -o hello              # nasm + cc
-gyro build examples/hello.gyro --backend c -o hello  # cc alone
+gyro build examples/hello.gyro -o hello
 ./hello
 ```
 
-The Go code lives in `internal/nasm` and `internal/cgen`; the runtime is
+The Go code lives in `internal/nasm`; the runtime is
 `internal/crt/src/rt.c`, embedded into the compiler and handed to `cc` at
-link time by both. Correctness is defined by the corpus, not by another
-tier: for every case, a native binary's stdout, stderr and exit code must
-match the golden the case declares, and the METALS evaluator must match
-the same golden. Neither backend is held against the evaluator's output —
-both are held against what the case says the program prints.
-
-Everything below — the value layout, the semantics the codegen must
-preserve, the runtime contract — belongs to both backends. Only the
-"Frames and the ABI" section is the assembler's alone; the C backend's
-own section, at the end, says what it does instead.
+link time. Correctness is defined by the corpus: for every case, the
+binary's stdout, stderr and exit code must match the golden the case
+declares, and the golden is written by hand before the program is run
+([chapter 17.1](ch17-01-the-backend.md)).
 
 The four decisions that shape the backend — C runtime on libc, System V
 ABI, callee-saved-only register allocation, OS-thread concurrency — are
@@ -79,11 +70,10 @@ Nothing is aligned more than a word, which is what keeps an enum's
 payload at a fixed offset and lets a frame hand out word-aligned cells.
 
 Aggregates live inline: in a register's stack slot, in a record's field,
-in an enum's payload. A `copy` is a `memcpy` of the static size, which
-reproduces the evaluator's deep-copy semantics exactly, because
-everything a value shares intentionally (slice backings, channels,
-handles, pointers, string bytes) sits behind a pointer and everything it
-owns sits inline.
+in an enum's payload. A `copy` is a `memcpy` of the static size, which is
+the whole of Gyro's value semantics, because everything a value shares
+intentionally (slice backings, channels, handles, pointers, string bytes)
+sits behind a pointer and everything it owns sits inline.
 
 `slice.of` borrows the array register's stack slot. A slice that
 outlives the frame of the array it borrows dangles — the same
@@ -115,9 +105,6 @@ is the one exception: nothing outside a backend sees it, so it holds
 registers.
 
 ## Frames and the ABI
-
-This section is the assembler backend's alone; the C backend leaves
-frames and calling conventions to the C compiler.
 
 Every METALS register gets one frame slot — a word for a scalar, the
 storage size for an aggregate, rounded up to a whole word so that a cell
@@ -195,8 +182,8 @@ Two things sit beside the allocation:
 - **Checked arithmetic.** `iadd`/`isub`/`imul` abort on overflow
   (`jo` at 64/32 bits, a range check at narrower widths, carry checks
   unsigned), `idiv`/`irem` abort on zero and on MIN/−1. Wrapping ops
-  mask and re-extend to their width. Abort messages match the evaluator
-  byte for byte: `integer overflow`, `division by zero`.
+  mask and re-extend to their width. The abort messages are
+  `integer overflow` and `division by zero`.
 - **Go shift semantics.** A shift count ≥ 64 (or negative) does not get
   masked the x86 way: `shl`/unsigned `shr` produce 0, signed `shr`
   produces the sign fill. Counts below 64 shift the full qword and then
@@ -211,19 +198,14 @@ Two things sit beside the allocation:
   layout — and that one compares each member at its own width, since
   reading a word out of a narrow field would compare the padding beside
   it, or the field next door.
-- **Bounds and null checks.** `index.get`/`index.set` abort with the
-  evaluator's formatted message; `opt.unwrap` aborts with
+- **Bounds and null checks.** `index.get`/`index.set` abort with
+  `index N out of range for length M`; `opt.unwrap` aborts with
   `unwrap of a null value`.
-- **Module storage.** A global with no byte image is zeroed storage —
-  `.bss` in the asm backend, a file-scope object in the C one, both of
-  which are zero for free. One that carries an image is real bytes in
-  `.data`; the C backend has no way to spell an object of an arbitrary
-  type as bytes, so it emits a union whose first member is the image and
-  whose second is the object, which is a static initializer and not a
-  copy at startup.
+- **Module storage.** A global with no byte image is zeroed storage in
+  `.bss`, which is zero for free. One that carries an image is real bytes
+  in `.data`.
 - **Aborts.** `abort` prints `panic: <message>` to stderr. On the main
-  thread the process exits 1; on a spawned thread only that thread dies,
-  exactly like the evaluator's goroutine recovery.
+  thread the process exits 1; on a spawned thread only that thread dies.
 
 ## The runtime contract
 
@@ -234,14 +216,15 @@ against an array that recorded its element size at `Array<T>::new`.
 
 Obligations beyond the obvious:
 
-- **Formatting matches Go.** The evaluator prints through Go's `strconv`,
-  so the runtime reproduces it: shortest round-trip float formatting
-  with Go's exponent thresholds (`12.56636`, `12`, `1e+21`, `1e-05`),
-  `%q`-style quoting where repr quotes, Go's error strings for OS
-  errors (`stat gyro.toml: no such file or directory`) and the
-  runtime's own messages (`"x" is not an i32`, even
-  `this runtime has no network`).
-- **Hashing matches the evaluator bit for bit.** `hash<T>` covers the
+- **Formatting matches Go.** The chosen reference is Go's `strconv`:
+  shortest round-trip float formatting with Go's exponent thresholds
+  (`12.56636`, `12`, `1e+21`, `1e-05`), `%q`-style quoting where repr
+  quotes, Go's error strings for OS errors
+  (`stat gyro.toml: no such file or directory`) and the runtime's own
+  messages (`"x" is not an i32`, even `this runtime has no network`).
+  It is a reference because it is written down, not because Go runs
+  anywhere in the toolchain any more.
+- **Hashing is pinned.** `hash<T>` covers the
   scalars only — splitmix64 over an integer's word or a float's bits,
   FNV-1a over a string's bytes, `-0.0` folded into `0.0`. The
   composites never reach C: the lowering synthesizes one function per
@@ -251,9 +234,10 @@ Obligations beyond the obvious:
   `recv` fills a `(element, open)` tuple; a closed channel yields
   zeroed memory with `open` false. `send` on a closed channel aborts.
 - **`select` polls.** Each arm gets a try-operation; no arm ready and
-  no default means sleep briefly and retry. Deterministic in-order
-  polling, where the evaluator randomizes — recorded as an accepted
-  divergence for programs that race arms.
+  no default means sleep briefly and retry. In-order polling is
+  deterministic and legal, because the language does not say which ready
+  arm runs — it can also starve an arm behind a busy one, which is
+  recorded as open.
 - **Async is eager.** Calling an async function starts a pthread
   running a codegen-emitted thunk (unpack argument buffer, call, store
   result) and returns a future — a one-shot mutex/condvar cell.
@@ -264,20 +248,20 @@ Obligations beyond the obvious:
   magic makes `free` detect double frees. Nothing else is ever freed:
   strings, closure environments and futures leak by design in v1
   (recorded as open). Use-after-free and read-of-uninitialized are
-  *not* detected natively — the evaluator's poisoned cells have no
-  cheap equivalent — so programs that would abort there diverge
-  instead of matching.
+  *not* detected: the runtime frees for real and libc reuses the bytes,
+  and poisoning storage on the hot path has no cheap equivalent
+  ([appendix G](appendix-g-known-gaps.md)).
 
 ## Foreign calls
 
 A program that calls a C function ([chapter 15](ch15-00-c-interop.md))
-adds two pieces to a build, both shared by the backends rather than
-written twice.
+adds two pieces to a build, and both live in `internal/crt` rather than
+in the backend, because neither is codegen.
 
 **A generated shim, one wrapper per foreign symbol.** `internal/crt`'s
 `Shim` renders it from the module's `c:`-scheme imports; it is compiled
-beside `rt.c` and the program, and both backends call the wrapper rather
-than the library. The wrapper takes and returns the uniform shape — every
+beside `rt.c` and the program, and generated code calls the wrapper
+rather than the library. The wrapper takes and returns the uniform shape — every
 scalar one qword, `double` for a float, `void *` for a handle, a struct
 or an address, and a generic function pointer for a `code(..)` — and
 calls the real function with its declared C widths, which is what keeps a
@@ -288,11 +272,11 @@ label, so the declaration never collides with a system header the runtime
 already included.
 
 **A struct by value crosses in the wrapper.** A record reaches the shim
-as a pointer to the caller's copy — the aggregate convention both
-backends already have — and the wrapper dereferences it into the by-value
-argument C's ABI wants; a struct result comes back through a hidden out
-pointer. Neither backend implements System V's struct classification,
-because `cc` implements it already. The shim declares the struct with its
+as a pointer to the caller's copy — the aggregate convention the backend
+already has — and the wrapper dereferences it into the by-value argument
+C's ABI wants; a struct result comes back through a hidden out pointer.
+The backend does not implement System V's struct classification, because
+`cc` implements it already. The shim declares the struct with its
 real C members and a `_Static_assert` per field offset against the layout
 above, so the claim that the two languages agree on the bytes is checked
 on every build rather than argued for. A union crossing is declared as a
@@ -308,7 +292,7 @@ something else that also compiles, which is why the shim builds a real
 declarator rather than concatenating.
 
 The libraries come from the same imports and become `-l` flags. Nothing
-in either backend knows what SDL is.
+in the backend knows what SDL is.
 
 **Marshalling as ordinary runtime calls.** `internal/lower` wraps a
 foreign call in `ffi.cstr`, `ffi.data` and `ffi.release`, so what reaches
@@ -328,97 +312,32 @@ module storage holding rt.c's `gy_memory` — `{ bytes, size, max }` — and
 nothing else. Both backends declare one per memory, call `gy_mem_init`
 before `main` runs, and call `gy_mem_data` once per data segment.
 
-The split between the two is the same one the rest of the runtime uses,
-drawn where it saves an implementation rather than where it is tidiest:
+The split between the backend and the runtime is the same one the rest of
+the runtime uses, drawn where it saves an implementation rather than
+where it is tidiest:
 
 - **Allocation, growth, the bulk operations and the abort text are
   rt.c's.** `gy_mem_init`, `gy_mem_grow`, `gy_mem_copy`, `gy_mem_fill`
-  and `gy_mem_data` are ordinary calls from both backends. Each is one
-  `memmove`, `memset` or `realloc`, so a call is not in the way of
-  anything, and one implementation is one abort message.
-- **The scalar access is inlined by both.** A bounds-checked load is five
+  and `gy_mem_data` are ordinary calls. Each is one `memmove`, `memset`
+  or `realloc`, so a call is not in the way of anything, and one
+  implementation is one abort message.
+- **The scalar access is inlined.** A bounds-checked load is five
   instructions and a call would cost more than that by itself, and this
-  is the hot path of every program a C front end will produce. `cgen`
-  emits `gy_mem_read`/`gy_mem_write` from its prelude, whose width is a
-  literal at every call site, so `cc` folds the `memcpy` into a single
-  load. `nasm` emits the check and the sized `mov` directly, choosing
-  `movsx`/`movzx` by the access type's own signedness.
+  is the hot path of every program a producer with a flat memory model
+  will emit. `nasm` emits the check and the sized `mov` directly,
+  choosing `movsx`/`movzx` by the access type's own signedness.
 
-Both compute `addr + width` in 64 bits before comparing against the size,
-so an address near the top of the `u32` range cannot wrap into a valid
-one. An `f32` in memory is four IEEE-754 bytes while an `f32` register is
-the double it widens to, so a load converts on the way in and a store on
-the way out — the same asymmetry `conv` already has.
+The backend computes `addr + width` in 64 bits before comparing against
+the size, so an address near the top of the `u32` range cannot wrap into
+a valid one. An `f32` in memory is four IEEE-754 bytes while an `f32`
+register is the double it widens to, so a load converts on the way in and
+a store on the way out — the same asymmetry `conv` already has.
 
-`trunc` and `bitcast` are the same two steps in both backends: get the
-value's byte pattern, then read it back as the target type. For an
-integer that is one extension instruction; for a float it goes through
-`cvtsd2ss`/`movd`, because the pattern of an `f32` is the single's, not
-the double's the register holds.
-
-## The C backend
-
-`internal/cgen` emits one self-contained C file per program and compiles
-it with `cc -O1 -fno-strict-aliasing program.c rt.c -lpthread -lm`. It
-exists for two reasons, neither of them replacing the assembler: it
-checks the METALS lowering without the assembler-level bug surface — a
-disagreement between the two native tiers on the same module is a codegen
-bug, and the C one is far easier to read — and it gives us a second
-binary from the same IR to benchmark the assembler's output against.
-`gyro cgen file.gyro` prints the C the way `gyro nasm` prints the asm.
-
-What it does the same way:
-
-- **The layout table above, exactly.** Every member is declared with its
-  real C type, so C's natural layout *is* the documented one and needs no
-  packing attributes — that is what makes the table C's rather than a
-  reimplementation of it. Each typedef carries a `_Static_assert` on its
-  size and one per member offset, which turns any drift into a build
-  error rather than a wrong answer at the runtime boundary. A size
-  assert alone would pass on two structs that pad differently and total
-  the same, which is why the offsets are asserted too.
-- **The runtime.** The same `rt.c`, the same `gy_*` symbols, the same
-  monomorphized-import table (`Array<Point>::push` becomes
-  `gy_array_push(handle, &value, 32)`), the same abort messages.
-- **Structured control flow.** `block`/`loop`/`br`/`br_if` become C
-  labels and `goto`; a `br` only ever targets an enclosing label, so
-  every jump is a legal one. `if` and `switch` map straight across.
-  Nothing inside a case body emits a C loop or switch of its own, so no
-  `break` can be captured by the wrong construct.
-- **The semantics C would otherwise get wrong.** Checked arithmetic,
-  Go's shift semantics, `idiv`'s zero and MIN/−1 tests, and the checked
-  conversions are a block of `static inline` helpers at the top of the
-  file. The tests come *before* the operation, because C's signed
-  overflow, division by zero and shift counts past the width are
-  undefined rather than trapping.
-
-What it does differently:
-
-- **Registers are C locals.** A METALS register is not SSA but its type
-  is fixed at the first assignment, which is exactly what a C local
-  wants. `slot` gets a second, addressable local that the instruction
-  re-zeroes, so a slot inside a loop is a fresh cell each pass;
-  `slice.of` borrows it with `&`, the same borrow the asm makes of a
-  stack slot.
-- **Aggregates pass and return by value.** There is no sret and no
-  argument-pointer convention between generated functions: C's own
-  struct passing already does that job, and the runtime boundary is
-  untouched because `rt.c` only ever sees scalars and pointers. The
-  entry point is the one exception — `rt.c` calls
-  `gy_user_main(void *args)` with a pointer to the command-line slice,
-  so a small wrapper dereferences it.
-- **Register allocation is the C compiler's.** The asm backend colours
-  five callee-saved registers and leaves the rest in frame slots;
-  `cc -O1` allocates the whole file, and inlines across it. The gap
-  between the two on `tests/bench` is the measurement of what the
-  assembler still leaves on the table.
-
-The C compiler must accept two GNU extensions: a zero-length array
-member, which is what keeps `array<T, 0>` at size 0, and casting between
-`void *` and a function pointer. `-fno-strict-aliasing` is not optional:
-aggregates move through `void *` all over the generated code — array
-elements, channel payloads, future cells — and type-based aliasing would
-let the optimizer assume those accesses cannot touch the same storage.
+`trunc` and `bitcast` are the same two steps: get the value's byte
+pattern, then read it back as the target type. For an integer that is one
+extension instruction; for a float it goes through `cvtsd2ss`/`movd`,
+because the pattern of an `f32` is the single's, not the double's the
+register holds.
 
 ## v1 limitations
 
@@ -430,6 +349,4 @@ All recorded in `decisions.md` as still open:
 - Implicit allocations leak; there is no GC and no ownership pass.
 - `select` is polled and deterministic, not fair.
 - Use-after-free and uninitialized reads are undetected.
-- A foreign call cannot take a callback or an out-parameter, and these
-  are the only two tiers that can make one at all.
 - Linux x86-64 only.

@@ -182,18 +182,12 @@ it too.
 
 ### Reading across members that do not
 
-Everything else is what C leaves undefined, and the three tiers do two
-different things about it — which is deliberate and is the one place they
-are allowed to differ:
-
-- the **native backends** have C's own union under them, so they
-  reinterpret the bytes, exactly as C does;
-- the **METALS evaluator** has no bytes to reinterpret. What it has is the
-  member that was written, so it **says so** and aborts, naming both
-  members.
-
-The tiers agree on every defined program, and the evaluator is the tier
-that can see an undefined one ([chapter 17.1](ch17-01-three-tiers.md)).
+Everything else is what C leaves undefined, and Gyro leaves it undefined
+for the same reason: a union is one storage with several names for it, and
+nothing records which of them is live. The compiled program has C's own
+union under it, so it reinterprets the bytes, exactly as C does. Nothing
+diagnoses it — the information needed to catch it was never stored
+([appendix G](appendix-g-known-gaps.md)).
 
 ### When not to use one
 

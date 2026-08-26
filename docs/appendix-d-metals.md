@@ -6,36 +6,30 @@ account of where it sits in the pipeline; this is the format itself.
 
 METALS is the shared intermediate representation that Gyro compiles into,
 and that other language front ends (JavaScript, Python, ...) will compile
-into, so that `import` can reach across languages. One format, many
-producers, several consumers: the verifier, the evaluator
-(`internal/meval`, the oracle the lowering is diff-tested against), and
-the two native backends (`internal/nasm`, x86-64 via NASM, and
-`internal/cgen`, generated C — see
-[appendix E](appendix-e-native-backends.md)). `internal/lower` is the first producer and
-`internal/lisp` — a statically typed Scheme — is the second, which is
-what keeps the format honest: anything the IR assumes about its input
-that only holds because Gyro's lowering happens to produce it shows up
-there as a wrong answer or a verifier complaint.
+into, so that `import` can reach across languages. One format, more than
+one producer, two consumers: the verifier, and `internal/nasm`, which
+emits x86-64 through NASM and links against a C runtime — see
+[appendix E](appendix-e-native-backend.md).
 
-`internal/wasm` is the third, and the one that stopped the format being
-polite. It reads a wasm32 module — which is what `clang` makes of C — and
-that is a language whose memory model METALS had no way to hold. Linear
-memory, `trunc` and `bitcast` are what it needed, and each is a thing the
-IR arguably should always have had for a producer that is not Gyro.
+`internal/lower` is the first producer. `internal/cc` is the second, and
+it is what keeps the format honest: anything the IR assumes about its
+input that holds only because Gyro's lowering happens to produce it shows
+up there as a wrong answer or a verifier complaint. It is a C front end
+that reads C itself and emits METALS' own types, so that a
+`struct Point *` arrives as a `ptr<%Point>` and not as an offset into a
+flat region. It shares Gyro's heap, which is allowed because a boundary
+is between runtimes and the two are one; see
+[Boundary rules](#boundary-rules). A C pointer is an `opt<ptr<T>>`, since
+C's is nullable and METALS' is not, which is what turns a null
+dereference from undefined into an abort that names itself.
 
-`internal/cc` is the fourth, and it is what the third was reconnaissance
-for: a C front end that reads C itself and emits METALS' own types, so
-that a `struct Point *` arrives as a `ptr<%Point>` rather than as the
-`u32` it has become by the time clang is done. That is the difference
-between C that *runs* on these tiers and C a Gyro program can `import`.
-It shares Gyro's heap, which is allowed because a boundary is between
-runtimes and the two are one; see [Boundary rules](#boundary-rules).
-A C pointer is an `opt<ptr<T>>`, since C's is nullable and METALS' is
-not, which is what turns a null dereference from undefined into an abort
-that names itself.
+Linear memory, `trunc` and `bitcast` came in for a bridge that read what
+clang made of C as wasm32, and they outlived it. That producer is gone;
+what it established is that a producer whose memory model is a flat
+region has one, and the instructions are exercised by METALS written by
+hand in the corpus rather than by anything that compiles today.
 
 `gyro metals file.gyro` prints a whole program as one module,
-`gyro lisp file.lisp` prints what the Lisp front end produces,
 `gyro cc file.c` prints what C becomes,
 `gyro run a.metals b.metals` links modules and runs them — the same verb
 that runs a `.gyro`, because both become one module before anything
@@ -161,7 +155,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   one before any function runs, which is a global's byte image one level
   down.
 - Module names carry the producing language as a scheme prefix
-  (`gyro:`, `lisp:`, `cc:`, `wasm:`, `js:`, `py:`); `metals:` names a module
+  (`gyro:`, `cc:`, `js:`, `py:`); `metals:` names a module
   written as IR directly, with no source language above it. Runtime
   intrinsics are imports from runtime modules such as `gyro:rt`, not IR
   constructs.
@@ -202,7 +196,7 @@ in memory is C's answer — `sizeof`, C's alignment, C's padding — and
 `metals.Layout` computes it once for every consumer, so that two backends
 cannot pad a record differently. A register is a separate question and a
 separate representation: one machine word per scalar, an `f32` carried as
-the double it widens to. [Appendix E](appendix-e-native-backends.md#value-layout) has the
+the double it widens to. [Appendix E](appendix-e-native-backend.md#value-layout) has the
 table and the conversions between the two.
 
 Named types are module-local: linking qualifies each with its module's
@@ -236,13 +230,10 @@ An enum's payload is not this. An enum knows which variant it holds and
 the format checks the tag; a union is C's, where nothing records which
 member is live and the program is expected to know. So reading across
 members is the language's rule and not the format's — defined for a
-common initial sequence, undefined otherwise — and the tiers differ
-there on purpose. The natives have C's own union under them and read
-whatever the bytes were, which is what C leaves undefined; the evaluator
-has no bytes to reinterpret, so it records the live member instead and
-answers the defined reads while reporting the rest. That is the same
-asymmetry `ptr.cast` has, and `tests/testdata/run/union-punning.metals`
-is the case that says so.
+common initial sequence, undefined otherwise. A consumer has C's own
+union under it and reads whatever the bytes were, which is what C leaves
+undefined; nothing diagnoses it, because the information needed to
+diagnose it was never stored.
 
 A union does not compare and does not cross a runtime boundary, both for
 the same reason: nothing records which member the storage means, so
@@ -315,9 +306,9 @@ the IR either.
 
 `fsqrt`, `fabs`, `fceil`, `ffloor`, `ftrunc`, `fnearest`, `fmin`, `fmax`
 and `fcopysign` are instructions rather than runtime imports. Each is one
-machine instruction or a handful on both native backends, and a producer
-that has them as *opcodes* — wasm does, so C does — would otherwise have
-to call out of the sandbox to round a number.
+machine instruction or a handful, and a producer that has them as
+*opcodes* — C does, and so does anything compiled the way C is — would
+otherwise have to call out of the sandbox to round a number.
 
 They operate at their operand's width and return it: `f32` in, `f32`
 back, rounded through single precision.
@@ -366,9 +357,10 @@ three:
 
 `bitcast` is what makes a signedness-per-operation source language
 expressible without a second set of instructions. A wasm `i32` has no
-signedness of its own — `i32.div_s` and `i32.div_u` carry it — so a
-producer holds the value in an `i32` register and reads it through `u32`
-for the unsigned operations. Nothing is copied and nothing is checked.
+signedness of its own — `i32.div_s` and `i32.div_u` carry it — and a
+producer for such a language holds the value in an `i32` register and
+reads it through `u32` for the unsigned operations. Nothing is copied and
+nothing is checked.
 
 ### Memory
 
@@ -407,12 +399,10 @@ its type — a producer reaching an element should use `index.ptr`, which
 checks. Unchecked arithmetic is for the case where nothing could check,
 not the default way to reach an element.
 
-The evaluator holds a producer to that — it knows which object a pointer
-belongs to and aborts on a load through one that has left it — while the
-native backends compute the address. That is a deliberate asymmetry, and
-it is the same one `uninitVal` already has: the tiers agree on every
-defined program, and the evaluator is the tier that can *see* an
-undefined one.
+Nothing holds a producer to that. The backend computes the address and
+the program reads whatever is there, exactly as C does — the rule is a
+rule about what a producer may emit, not a check the consumer performs
+([appendix G](appendix-g-known-gaps.md)).
 
 `ptr.erase` and `ptr.cast` are the two halves of an erased pointer.
 Erasing takes the target's type off and cannot fail; casting puts one
@@ -431,12 +421,11 @@ no `ptr.diff`, because none of them has an answer without the target's
 type — which is C's rule for `void *` already, so a C front end loses
 nothing it had. `sizeof(void *)` still answers 8.
 
-The claim is checked the way `ptr.offset`'s is. The native backends move
-a register; the evaluator still knows what is really in the cell and
-aborts when a cast names something else. Reading one object's bytes as
-another type is undefined in C too, `char *` aliasing included — the
-evaluator is the tier that can see it happening, and a cast it waves
-through is one whose mistake it could not observe.
+The claim is checked the way `ptr.offset`'s is, which is to say not at
+all: the backend moves a register. Reading one object's bytes as another
+type is undefined in C too, `char *` aliasing included, and a producer
+that casts wrongly has written an undefined program rather than one that
+will be caught.
 
 This is not a second addressing model. Linear memory is still the flat,
 bounds-checked, `u32`-addressed region it was, and a `memory` and a
@@ -713,9 +702,8 @@ ordinary call — no descriptor, no box, no test.
 ## Boundary rules
 
 **A boundary is between two runtimes, not between two languages.** The
-schemes that name producers compiling *into* METALS — `gyro:`, `lisp:`,
-`cc:`, `wasm:`, `metals:` — are one runtime, because they literally
-become one:
+schemes that name producers compiling *into* METALS — `gyro:`, `cc:`,
+`metals:` — are one runtime, because they literally become one:
 the linker makes them a single module, the verifier has checked all of
 it, and it runs on one heap with one allocator. A call between two of
 them is an ordinary call and may carry anything an ordinary call carries,
@@ -830,10 +818,11 @@ order, the root last, and returns that module.
 ## The C front end
 
 `internal/cc` reads C and emits METALS directly. It is what a Gyro
-program reaches when it imports a `.c` file; `internal/wasm` still owns a
-`.c` that *is* the program, because that is where the bundled libc is
-needed and where a sandbox is the point. The same file through both
-routes must agree on what it computes.
+program reaches when it imports a `.c` file, and it is a front end for
+libraries: what it produces is the module an importer links against. A
+`.c` that *is* the program has no route in, because C's entry is an
+`int main` whose result is the process exit code and a METALS entry has
+nowhere to put that.
 
 It has its own preprocessor — Prosser's algorithm, with hidesets on the
 tokens — because a header is how C says what a library's types are, and
@@ -845,7 +834,7 @@ The mapping, where it is not obvious:
 
 - `int` is `i32`, `long` and `long long` are `i64`, `char` is `i8` and
   `unsigned char` is `u8` — LP64's widths, which is what Linux x86-64
-  means by C and what the runtime under all three tiers is built as.
+  means by C and what the runtime is built as.
 - **A pointer is `opt<ptr<T>>`.** C's is nullable and METALS' is not, so
   every dereference is an `opt.unwrap` and a null one aborts where C
   leaves it undefined. It costs nothing in storage: `opt<ptr<T>>` is laid
@@ -862,10 +851,10 @@ The mapping, where it is not obvious:
   parse — a local of the same name shadows one, and only the scope
   chain knows that.
 - **Every local is a `slot`.** A C local's address may be taken, and
-  which ones escape is an analysis the backends are better placed to do.
+  which ones escape is an analysis the backend is better placed to do.
 - **Arithmetic wraps**: `wadd` and not `iadd`. Signed overflow is
-  undefined in C, so either reading would do — and the wasm bridge
-  already translates the same program to the wrapping mnemonics.
+  undefined in C, so either reading would do, and wrapping is what the
+  hardware does and what every C compiler on this target emits.
 - A C cast that narrows is `trunc`, one that widens is `conv`, and
   widening a signed value into a wider unsigned type is `conv` then
   `trunc`, which is C's sign-extend-then-reinterpret written out.
@@ -959,11 +948,9 @@ The mapping, where it is not obvious:
   struct's alignment takes in every bit-field's declared type — which is
   what `record align N` carries. In a union every member begins where
   the union does, so its bit-fields all start at bit zero and share one
-  run rather than packing. A local holding one anywhere is zeroed before
-  its first write, because writing a bit-field reads the bytes it shares
-  and there is no partial store; the native backends zero a slot anyway,
-  so this is what makes the evaluator agree rather than refuse a program
-  C allows.
+  run rather than packing. A local holding one is zeroed before its first
+  write, because writing a bit-field reads the bytes it shares and there
+  is no partial store, so the read has to find something defined.
 
 - **A `switch` is nested blocks**, one per group of case labels, in
   source order and innermost first, with the dispatch `switch` at the
@@ -1045,11 +1032,11 @@ The mapping, where it is not obvious:
   is the same declarator with the identifier left out.
 
 What it does not do yet, refused by name rather than mistranslated: the
-two `goto` shapes above, which is where the relooper LLVM does for the
-bridge would have to be written. **Type punning** compiles and is a
-program only two tiers can run: reading one object's bytes as another
-type is undefined in C, `char *` aliasing included, and the evaluator
-holds a producer to it. A variadic function does not cross into Gyro
+two `goto` shapes above, which is where a relooper would have to be
+written. **Type punning** compiles and runs, reinterpreting the bytes:
+reading one object's bytes as another type is undefined in C, `char *`
+aliasing included, and nothing here holds a producer to it. A variadic
+function does not cross into Gyro
 yet, because a `...` says nothing about what a call passes and there is
 nothing for the far side to check.
 A `union` does not cross either — Gyro has no declaration for one. An
@@ -1088,11 +1075,10 @@ and not look inside.
   belong in METALS signatures is undecided.
 - `syntaxfn`, the METALS-facing parser-extension feature from the book.
 - Whether two modules may ever *share* a linear memory. Linking gives
-  each its own today, which is right for a sandbox and wrong for two C
-  translation units that expect one heap. The wasm bridge does not have
-  to answer this, because wasm-ld has already linked before anything
-  arrives, and `internal/cc` does not either — it uses `ptr<T>` and the
-  ordinary heap, which is the whole reason it exists.
+  each its own today, which is right for a sandbox and wrong for two
+  translation units that expect one heap. No producer has to answer this
+  yet: `internal/cc` uses `ptr<T>` and the ordinary heap, which is the
+  whole reason it exists, and nothing else emits a memory at all.
 - Whether any other optional deserves a niche. `opt<ptr<T>>` has one and
   nothing else does: a `handle` and a `chan` are the runtime's values,
   and what they may hold is the runtime's business rather than the
@@ -1104,4 +1090,5 @@ and not look inside.
   header now — and what is left is linkage: an `extern` declaration
   resolved against another `cc:` module rather than refused.
 - A memory declared by one module and imported by another, which is how
-  wasm spells the above and which the bridge refuses rather than guesses.
+  wasm spells the above and how a future sandboxed producer would want
+  it.

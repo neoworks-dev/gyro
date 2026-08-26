@@ -1,13 +1,10 @@
 // Where a bit-field's bits land, read out as bytes.
 //
-//gyro:skip metals reading a struct's storage as bytes is type punning, which the evaluator has values rather than bytes for
-//
-// The values every tier agrees on are in c-bitfield/. This is the other
-// half: that the bytes are the ones a C compiler would have written, in
-// the places it would have written them. Only reading the storage as
-// bytes can say that, and reading a struct's storage as bytes is type
-// punning — which the two native tiers do because they have bytes, and
-// the evaluator refuses because its objects are values.
+// The values are in c-bitfield/. This is the other half: that the bytes
+// are the ones a C compiler would have written, in the places it would
+// have written them. Only reading the storage as bytes can say that, and
+// reading a struct's storage as bytes is type punning — which the native
+// backend does because it has bytes.
 //
 // Every number here was taken from a C compiler on this target before it
 // was written down.

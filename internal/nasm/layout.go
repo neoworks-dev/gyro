@@ -4,7 +4,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
-// Layout rules, from docs/appendix-e-native-backends.md: storage is C's — natural widths,
+// Layout rules, from docs/appendix-e-native-backend.md: storage is C's — natural widths,
 // natural alignment, padding where C pads — and a register is one qword,
 // with an f32 carried as the double it widens to. The arithmetic is
 // metals.Layout's, so that this backend and the C one cannot disagree

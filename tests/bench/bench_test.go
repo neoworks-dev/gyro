@@ -1,7 +1,7 @@
-// Package bench compares the two native backends — and, where the case
-// is a port, the C original — on the same programs.
+// Package bench measures the native backend against the C a case was
+// ported from, on the same programs.
 //
-// The corpus in tests/ says the tiers agree; this says what they cost.
+// The corpus in tests/ says a program is right; this says what it costs.
 // Each program isolates one codegen decision — call sequences, bounds
 // checks, checked arithmetic, aggregate copies, allocation — so the
 // column that matters is the spread between the cases, not the average.
@@ -10,11 +10,11 @@
 //
 // A case named NAME may carry a C reference beside it as NAME.c: the
 // program the Gyro was ported from, doing the same work over the same
-// input, compiled with the flags the C backend itself uses. That turns
-// the ratio into the number that actually matters — what the language
-// costs against the C it replaces — and the three binaries must agree on
-// stdout, so the comparison is only ever between programs that computed
-// the same thing.
+// input, compiled at -O1. That is the number that actually matters — what
+// the language costs against the C it replaces — and both binaries must
+// agree on stdout, so the comparison is only ever between programs that
+// computed the same thing. A case with no reference is a codegen probe
+// with nothing to port from, and reports its own time alone.
 //
 // The suite is off by default because it takes seconds per case:
 //
@@ -41,7 +41,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gyro-lang/gyro/internal/cgen"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
@@ -56,22 +55,13 @@ var (
 	filter  = flag.String("gyro.bench.filter", "", "only run cases whose name contains this")
 )
 
-// referenceName is the column the C original occupies. It is not a
-// backend: nothing lowers into it, and only the cases with a NAME.c
-// beside them have one.
-const referenceName = "cc"
-
-// backends are the two things always compared. The order here is the
-// column order in the report, and the first one is the numerator of the
-// ratio: >1 means nasm is behind.
-var backends = []struct {
-	name  string
-	build func(*metals.Module, string) error
-	check func() error
-}{
-	{"nasm", nasm.Build, nasm.Toolchain},
-	{"cgen", cgen.Build, cgen.Toolchain},
-}
+// backendName is the column every case has, and referenceName the one
+// only a port has. The reference is not a backend: nothing lowers into
+// it, and it is there to be lost to.
+const (
+	backendName   = "nasm"
+	referenceName = "cc"
+)
 
 // measurement is what one backend produced for one program.
 type measurement struct {
@@ -85,10 +75,8 @@ func TestBench(t *testing.T) {
 	if !*enabled {
 		t.Skip("codegen benchmarks are off; run `make bench` or pass -gyro.bench=true")
 	}
-	for _, backend := range backends {
-		if err := backend.check(); err != nil {
-			t.Skipf("%s backend unavailable: %v", backend.name, err)
-		}
+	if err := nasm.Toolchain(); err != nil {
+		t.Skipf("the backend is unavailable: %v", err)
 	}
 
 	programs := findPrograms(t)
@@ -146,10 +134,10 @@ func isDirectory(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// runCase lowers one program once and measures it under every backend,
-// and under the C original when the case has one. The binaries are built
-// up front and then run interleaved, so a machine that slows down halfway
-// through penalizes all of them equally.
+// runCase lowers one program once and measures it, and the C original
+// when the case has one. The binaries are built up front and then run
+// interleaved, so a machine that slows down halfway through penalizes
+// both of them equally.
 func runCase(t *testing.T, name string) map[string]measurement {
 	t.Helper()
 	module := lowerProgram(t, programPath(name))
@@ -157,17 +145,16 @@ func runCase(t *testing.T, name string) map[string]measurement {
 	workDir := t.TempDir()
 	measured := map[string]measurement{}
 	binaries := map[string]string{}
-	var columns []string
-	for _, backend := range backends {
-		binary := filepath.Join(workDir, name+"."+backend.name)
-		start := time.Now()
-		if err := backend.build(module, binary); err != nil {
-			t.Fatalf("%s: %s build: %v", name, backend.name, err)
-		}
-		binaries[backend.name] = binary
-		measured[backend.name] = measurement{build: time.Since(start)}
-		columns = append(columns, backend.name)
+	columns := []string{backendName}
+
+	binary := filepath.Join(workDir, name+"."+backendName)
+	start := time.Now()
+	if err := nasm.Build(module, binary); err != nil {
+		t.Fatalf("%s: %s build: %v", name, backendName, err)
 	}
+	binaries[backendName] = binary
+	measured[backendName] = measurement{build: time.Since(start)}
+
 	if sources := referenceSources(t, name); len(sources) > 0 {
 		binary := filepath.Join(workDir, name+"."+referenceName)
 		start := time.Now()
@@ -234,9 +221,10 @@ func referenceSources(t *testing.T, name string) []string {
 	return sources
 }
 
-// buildReference compiles the C original with the flags the C backend
-// uses on its own output, so the column is a compiler comparison and not
-// an optimization-level one.
+// buildReference compiles the C original at -O1 with strict aliasing
+// off. The flags are pinned rather than tuned: a reference rebuilt at a
+// different level would turn every ratio in the table into a comparison
+// of optimization settings.
 func buildReference(sources []string, binary string) error {
 	args := append([]string{"-O1", "-fno-strict-aliasing"}, sources...)
 	args = append(args, "-o", binary, "-lpthread", "-lm")
@@ -331,45 +319,39 @@ func report(programs []string, results []map[string]measurement) {
 		}
 	}
 
-	first, second := backends[0].name, backends[1].name
 	fmt.Printf("\ncodegen benchmarks — hot region, best of %d runs\n\n", *repeats)
-	fmt.Printf("%-*s %10s %10s %10s", width, "benchmark", first, second, first+"/"+second)
+	fmt.Printf("%-*s %10s", width, "benchmark", backendName)
 	if ported {
-		fmt.Printf(" %10s %10s %10s", referenceName,
-			first+"/"+referenceName, second+"/"+referenceName)
+		fmt.Printf(" %10s %10s", referenceName, backendName+"/"+referenceName)
 	}
 	fmt.Println()
 	for i, name := range programs {
-		a := results[i][first]
-		b := results[i][second]
-		fmt.Printf("%-*s %10s %10s %10s", width, name,
-			showDuration(a.hot), showDuration(b.hot), showRatio(a.hot, b.hot))
+		a := results[i][backendName]
+		fmt.Printf("%-*s %10s", width, name, showDuration(a.hot))
 		if ported {
 			c, ok := results[i][referenceName]
 			if !ok {
-				fmt.Printf(" %10s %10s %10s", "—", "—", "—")
+				fmt.Printf(" %10s %10s", "—", "—")
 			} else {
-				fmt.Printf(" %10s %10s %10s", showDuration(c.hot),
-					showRatio(a.hot, c.hot), showRatio(b.hot, c.hot))
+				fmt.Printf(" %10s %10s", showDuration(c.hot), showRatio(a.hot, c.hot))
 			}
 		}
 		fmt.Println()
 	}
 
 	fmt.Printf("\nprocess wall time and build time, best of %d runs\n\n", *repeats)
-	fmt.Printf("%-*s %10s %10s %10s %10s %10s\n", width, "benchmark",
-		"wall "+first, "wall "+second, "ratio",
-		"build "+first, "build "+second)
+	fmt.Printf("%-*s %10s %10s\n", width, "benchmark", "wall", "build")
 	for i, name := range programs {
-		a := results[i][first]
-		b := results[i][second]
-		fmt.Printf("%-*s %10s %10s %10s %10s %10s\n", width, name,
-			showDuration(a.wall), showDuration(b.wall), showRatio(a.wall, b.wall),
-			showDuration(a.build), showDuration(b.build))
+		a := results[i][backendName]
+		fmt.Printf("%-*s %10s %10s\n", width, name,
+			showDuration(a.wall), showDuration(a.build))
 	}
-	fmt.Printf("\na ratio is the left column over the right: above 1.00x means the\n"+
-		"left one is slower. %s is the C the case was ported from, built with\n"+
-		"the flags the C backend uses on its own output.\n\n", referenceName)
+	if ported {
+		fmt.Printf("\na ratio is the left column over the right: above 1.00x means the\n"+
+			"left one is slower. %s is the C the case was ported from, built at\n"+
+			"-O1 with strict aliasing off.\n", referenceName)
+	}
+	fmt.Println()
 }
 
 func showDuration(d time.Duration) string {

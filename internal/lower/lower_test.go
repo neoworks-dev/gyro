@@ -3,24 +3,23 @@ package lower_test
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/lower"
 	"github.com/gyro-lang/gyro/internal/metals"
-	"github.com/gyro-lang/gyro/internal/meval"
+	"github.com/gyro-lang/gyro/internal/nasm"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/stdlib"
 )
 
 // What a lowered program computes is checked by the corpus in tests/,
-// which runs every case through the interpreter, the evaluator and a
-// native binary and demands they agree. What is left here is the shape of
-// the module itself: the naming and the record layout a program's output
-// would not reveal.
+// which builds every case and holds it to a golden written by hand. What
+// is left here is the shape of the module itself: the naming and the
+// record layout a program's output would not reveal.
 
 func compile(t *testing.T, rootPath string) (*loader.Program, *sema.Info) {
 	t.Helper()
@@ -169,9 +168,24 @@ fn main() {
 		t.Errorf("the bundled function lost its module tag:\n%s", printed)
 	}
 
+	// The point of the assertion is that a bundled module is ordinary
+	// Gyro all the way down, so it is worth actually running.
+	if err := nasm.Toolchain(); err != nil {
+		t.Skipf("skipping the run: %v", err)
+	}
+	linked, err := metals.Link([]*metals.Module{module})
+	if err != nil {
+		t.Fatalf("link: %v\n%s", err, printed)
+	}
+	binary := filepath.Join(dir, "program")
+	if err := nasm.Build(linked, binary); err != nil {
+		t.Fatalf("build: %v\n%s", err, printed)
+	}
 	var out bytes.Buffer
-	if err := meval.Run(module, []string{"program"}, strings.NewReader(""), &out, &out); err != nil {
-		t.Fatalf("meval: %v\n%s", err, printed)
+	command := exec.Command(binary)
+	command.Stdout, command.Stderr = &out, &out
+	if err := command.Run(); err != nil {
+		t.Fatalf("run: %v\n%s", err, out.String())
 	}
 	if out.String() != "1\n42\n" {
 		t.Errorf("unexpected output %q", out.String())

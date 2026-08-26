@@ -62,7 +62,7 @@ alignment, padded where C pads. That is not an implementation detail that
 happens to be true today — it is a commitment, and it is what makes a Gyro
 struct and a C struct of the same fields *the same bytes*, with nothing
 converted at the boundary ([chapter 15](ch15-00-c-interop.md),
-[appendix E](appendix-e-native-backends.md)).
+[appendix E](appendix-e-native-backend.md)).
 
 The price is the one C pays: a pointer is a machine word with no extent
 attached, so nothing at run time knows how big the object behind it is.

@@ -5,6 +5,49 @@ entry here that left something behind says where it went. The reasoning
 that outlived the work is in `docs/decisions.md` — this is the record of
 when, not the record of why.
 
+Entries below are kept as they were written. Several describe things that
+have since been deleted; where that is so, a later entry says it, and
+`docs/decisions.md` carries the reversal.
+
+## Four packages are gone — landed 2026-08-26
+
+`internal/meval`, `internal/cgen`, `internal/lisp` and `internal/wasm`
+are deleted, and `internal/clibc` with the bridge it existed for. What is
+left is one consumer of METALS — `internal/nasm` over `internal/crt` —
+and two producers, `internal/lower` and `internal/cc`.
+
+**The three-tier cross-check is gone, and that is the cost.** Three tiers
+held to one hand-written golden caught a wrong answer that looked
+plausible; one tier does not. What survives is the part that was always
+doing the work: the golden is written before the program runs, and there
+is still no flag that regenerates it.
+
+- **`gyro run` builds and executes.** It compiles into a temporary
+  directory, runs the binary and forwards the exit code, so it is a
+  spelling of `gyro build` rather than a second way to execute a program.
+  `gyro lisp` and `gyro cgen` are gone; `gyro build --backend` is gone;
+  `gyro cc file.c` now prints what the direct C front end makes of a file.
+- **A `.c` is not a root.** The front end produces a library, and C's
+  `int main` returns an exit code a METALS entry has nowhere to put —
+  routing one through anyway returned 0 whatever `main` said, which is a
+  wrong answer rather than a missing feature.
+- **What stopped being detected**, recorded rather than dropped:
+  use-after-free, read-of-uninitialized, type punning across union
+  members with no common initial sequence, and a `ptr.offset`/`ptr.cast`
+  that has left its object. The evaluator caught all four; nothing does
+  now. The corpus cases that only ever passed there — `panic-use-after-
+  free`, `panic-uninitialized-{local,field}`, `panic-union-punning`,
+  `union-punning.metals` — were deleted rather than kept as programs
+  nothing runs. `//gyro:skip` loses its tier argument.
+- **Linear memory stays, with no producer.** `memory`, `trunc` and
+  `bitcast` are what the bridge left in the format, and a flat
+  `u32`-addressed region is what a producer with C's memory model needs.
+  `linear-memory.metals` and `panic-linear-memory-bounds.metals` are what
+  exercise them now.
+- **`internal/cc`'s tests build and run** instead of evaluating, which is
+  what took that package from cached-instant to ~29s in `go test ./...`.
+  The `.lisp` and bridge `.c` corpus roots went with their producers.
+
 ## C compiles into Gyro — landed 2026-08-26
 
 `import { parse } from "./cJSON.c"` reads the C itself. `internal/cc` is
@@ -137,7 +180,7 @@ Fixtures: `check/union.gyro`, `check/narrowing.gyro`, and the `extern`,
 A value in memory is now what `sizeof` would say in C: natural widths,
 natural alignment, padding where C pads. A METALS register still carries
 a scalar widened to a qword and an `f32` as a double, so a load widens
-and a store narrows; `docs/appendix-e-native-backends.md` has the table
+and a store narrows; `docs/appendix-e-native-backend.md` has the table
 and the conversions, and `docs/decisions.md` has why there is one layout
 rather than two.
 
@@ -421,7 +464,7 @@ Decided in one pass, and all of them implemented and recorded in
   instead of `rep movsq`, which costs tens of cycles before it moves
   a byte; and an operation whose destination has a home computes in
   it rather than through `rax`. Recorded in `docs/decisions.md` and
-  `docs/appendix-e-native-backends.md`. Best of 5:
+  `docs/appendix-e-native-backend.md`. Best of 5:
 
   | case            |    nasm |    cgen | was       | now       |
   | --------------- | ------- | ------- | --------- | --------- |

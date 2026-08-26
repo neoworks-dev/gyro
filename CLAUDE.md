@@ -1,8 +1,8 @@
 # CLAUDE.md — Gyro
 
-Gyro is a programming language with a compiler written in Go. Everything the compiler can read becomes METALS, and the language runs through three execution tiers over that IR: the METALS evaluator (`internal/meval`) and two native backends over the same C runtime — x86-64 assembly via `internal/nasm` and generated C via `internal/cgen`.
+Gyro is a programming language with a compiler written in Go. Everything the compiler can read becomes METALS, and one thing consumes it: `internal/nasm`, which emits x86-64 assembly and links it against the C runtime in `internal/crt`.
 
-**No tier is the specification.** The book in `docs/` is. A golden file is written by hand and says what a program prints; a tier that disagrees with the golden is wrong, and so is a tier that disagrees with another tier. There is no flag that regenerates a golden from what some tier happened to do — that is what stops a backend from redefining the language it implements. If tiers disagree, fix the divergence; never redefine behavior independently in a backend. Implement semantics once, at the highest shared layer possible: prefer synthesizing behavior during lowering over duplicating it in the evaluator and the native backend.
+**The implementation is not the specification.** The book in `docs/` is. A golden file is written by hand and says what a program prints; a compiler that disagrees with the golden is wrong. There is no flag that regenerates a golden from what the compiler happened to do — that is what stops the backend from redefining the language it implements, and since there is no second tier to disagree with it, the hand-written golden is the only check there is. Implement semantics once, at the highest shared layer possible: prefer synthesizing behavior during lowering over writing it into the backend and its runtime.
 
 Gyro has no users. There are no migration paths, compatibility shims, deprecated aliases, tombstone comments, numbering placeholders, or diagnostics explaining obsolete or never-supported syntax. Replaced behavior is deleted outright — git keeps the history.
 
@@ -14,7 +14,7 @@ Read the relevant docs before non-trivial changes:
 - `docs/ch*.md` — syntax and semantics (source of truth), chapter by chapter
 - `docs/decisions.md` — settled and rejected design decisions, with reasoning
 - `docs/appendix-d-metals.md` — METALS IR specification
-- `docs/appendix-e-native-backends.md` — native backends and data-layout rules
+- `docs/appendix-e-native-backend.md` — the native backend and data-layout rules
 - `docs/appendix-c-stdlib.md` — built-in method surface and standard library
 - `docs/appendix-f-diagnostics.md` — diagnostic shape, notes and code ranges
 - `docs/appendix-g-known-gaps.md` — what is not built yet
@@ -23,7 +23,7 @@ Read the relevant docs before non-trivial changes:
 
 `README.md` may be stale; verify its claims against the docs and the implementation.
 
-When instructions conflict, the precedence is: explicit user request → the book's chapters → `decisions.md` → subsystem appendices (METALS, native backends) → existing implementation and tests → this file. When the docs don't answer a question, don't invent syntax or semantics — ask.
+When instructions conflict, the precedence is: explicit user request → the book's chapters → `decisions.md` → subsystem appendices (METALS, the native backend) → existing implementation and tests → this file. When the docs don't answer a question, don't invent syntax or semantics — ask.
 
 ## Repository layout
 
@@ -39,15 +39,10 @@ internal/sema/       name/type checking and safety analyses
 internal/types/      type representation
 internal/stdlib/     bundled Gyro standard-library sources
 internal/metals/     METALS IR format, parser/printer, verifier, linker
-internal/lisp/       a statically typed Scheme; METALS' second producer
-internal/wasm/       wasm32 -> METALS; METALS' third producer, C's sandboxed route in
-internal/clibc/      the C standard library the wasm bridge compiles in
-internal/cc/         C -> METALS directly; what a Gyro program imports a .c through
-internal/lower/      Gyro -> METALS lowering
-internal/meval/      METALS evaluator
-internal/nasm/       METALS -> x86-64 NASM
-internal/cgen/       METALS -> C, the sibling backend
-internal/crt/        the C runtime both native backends link
+internal/lower/      Gyro -> METALS lowering; METALS' first producer
+internal/cc/         C -> METALS; the second producer, and what a .c import goes through
+internal/nasm/       METALS -> x86-64 NASM, the one consumer
+internal/crt/        the C runtime the backend links
 internal/lsp/        language server
 tree-sitter-gyro/    Gyro tree-sitter grammar and queries
 tree-sitter-metals/  METALS tree-sitter grammar
@@ -69,15 +64,15 @@ When syntax, spelling, or semantics change:
 
 Prefer the Gyro corpora over new Go tests whenever a corpus can express the behavior.
 
-**Execution corpus** (`tests/testdata/run/`). A single-file case is `NAME.gyro` + `NAME.out`; a multi-module case is a `NAME/` directory with `main.gyro` and `expected.out`. Every case runs through all three tiers (`metals`, `native`, `cnative`). Supported directives: `//gyro:panic <fragment>`, `//gyro:unordered`, `//gyro:skip <tier> <why>`, `//gyro:args a b c`, `//gyro:stdin <line>`, `//gyro:exit <code>`. A known tier gap belongs in the corpus as a `//gyro:skip` with a reason, not only in prose. **Write the golden by hand.** Deciding what a program should print is the work; there is no `-update`, and pasting in a tier's output defeats the point of running three of them. `//gyro:panic` is checked against every tier, so a message the tiers word differently is a divergence to fix, not a fragment to loosen.
+**Execution corpus** (`tests/testdata/run/`). A single-file case is `NAME.gyro` + `NAME.out`; a multi-module case is a `NAME/` directory with `main.gyro` and `expected.out`. Every case is built and run. Supported directives: `//gyro:panic <fragment>`, `//gyro:unordered`, `//gyro:skip <why>`, `//gyro:args a b c`, `//gyro:stdin <line>`, `//gyro:exit <code>`. A known gap belongs in the corpus as a `//gyro:skip` with a reason, not only in prose. **Write the golden by hand.** Deciding what a program should print is the work; there is no `-update`, and pasting in what the compiler produced turns the corpus into a check that the compiler is deterministic.
 
-A root may also be `NAME.metals`, `NAME.lisp` or `NAME.c` — IR written by hand, the Lisp front end, or C through the wasm bridge. Every root runs on the same three tiers, because every root becomes the same thing; only the producer in front differs, and directives are spelled `;gyro:` where `//` is not the comment syntax. A `.c` case skips itself when clang is not installed.
+A root may also be `NAME.metals` — IR written by hand, which is how the corpus reaches an instruction no lowering emits, linear memory among them. Directives there are spelled `;gyro:`, since `//` is not METALS' comment syntax.
 
 **Diagnostics corpus** (`internal/sema/testdata/check/`). Every emitted diagnostic must be claimed by a fixture marker and every marker must match: `//~ E0301 does not fit u8` (`//~^` refers to the preceding line, one caret per line). Markers may match diagnostic codes and may claim `help:` or `note:` output. Unexpected diagnostics must fail tests; don't weaken fixtures to broad substring checks.
 
 **Go tests** cover what corpora can't express cleanly: lexer/parser structure and recovery, parser progress, AST shape and precedence, loader graph behavior, METALS parsing/printing/verification, LSP protocol behavior, diagnostic rendering and catalogue, backend `Info`, source-position details, and focused helpers such as `editDistance`.
 
-**Benchmark suite** (`tests/bench/`). Gyro programs that each isolate one codegen decision, built by both native backends from the same lowered module. A case is `NAME.gyro` or a `NAME/` directory with `main.gyro`; a directory case may add `reference.c` — a driver mirroring `main.gyro` — plus the upstream C files copied in unmodified, which the harness builds with cgen's own flags and reports as a `cc` column. Ported cases import their library out of `tests/testdata/run/`, so each port exists once. Each program times its own hot region and prints `gyro:bench <nanoseconds>` on stderr; every binary in a case must agree on the stdout checksum. It is off during `go test ./...` — `make bench` runs it (`BENCH=<substring>`, `REPEAT=<n>`). It measures backends, not correctness: a performance claim about codegen needs a case here, and the spread between cases is what says where a backend loses.
+**Benchmark suite** (`tests/bench/`). Gyro programs that each isolate one codegen decision, measured against the C the case was ported from. A case is `NAME.gyro` or a `NAME/` directory with `main.gyro`; a directory case may add `reference.c` — a driver mirroring `main.gyro` — plus the upstream C files copied in unmodified, which the harness builds at `cc -O1 -fno-strict-aliasing` and reports as a `cc` column. Those flags are pinned rather than tuned: rebuilding the reference at another level turns every ratio into a comparison of optimization settings. Ported cases import their library out of `tests/testdata/run/`, so each port exists once. Each program times its own hot region and prints `gyro:bench <nanoseconds>` on stderr; both binaries in a case must agree on the stdout checksum. It is off during `go test ./...` — `make bench` runs it (`BENCH=<substring>`, `REPEAT=<n>`). It measures codegen, not correctness: a performance claim about codegen needs a case here, and the spread between cases is what says where the backend loses.
 
 Before considering a change complete, run `go test ./...`, `make check`, and `make vet`. Run `make grammar` whenever a tree-sitter grammar or the scanner changes. Don't claim tests passed unless they were run.
 
@@ -99,17 +94,19 @@ Borrow analysis tracks provenance, not lifetime. Its invariants: structs carry t
 
 ## Standard library
 
-Bundled sources live under `internal/stdlib/src/`. A declaration without a body is a runtime intrinsic; one with a body is ordinary Gyro. Implement functionality in Gyro when it doesn't require runtime support — an intrinsic must behave consistently across all three tiers. Extension methods are module-scope names, imported and exported like functions; they are not globally attached to a type, and must never become universe-scope behavior.
+Bundled sources live under `internal/stdlib/src/`. A declaration without a body is a runtime intrinsic; one with a body is ordinary Gyro. Implement functionality in Gyro when it doesn't require runtime support — something with no interesting runtime requirement written into `rt.c` instead is a second language to maintain it in, for nothing. Extension methods are module-scope names, imported and exported like functions; they are not globally attached to a type, and must never become universe-scope behavior.
 
 ## METALS and the native backend
 
 METALS is a whole-program IR (see `docs/appendix-d-metals.md`). The critical native layout rule: **storage is C's — a value in memory is exactly what `sizeof` says in C, at C's alignment, padded where C pads — while a register carries a scalar widened to a qword, and an `f32` as a double.** Loading a narrow scalar widens it, storing one narrows it, and what the runtime holds it holds in storage representation, so a narrow scalar reaches it through a staging cell rather than as the address of its register. The layout arithmetic is `metals.Layout`'s and belongs to no backend. When lowering stores a value in a mutable METALS register, the register name is not an immutable snapshot — deferred or delayed operations may need the captured value rather than the register's later contents.
 
-METALS has more than one producer. `internal/lower` is Gyro's; `internal/lisp` is a statically typed Scheme, and `internal/wasm` reads what clang makes of C. They exist to catch what the format only appears to guarantee because Gyro's lowering happens to satisfy it. Don't relax a verifier rule to make a producer compile — the closure-environment rule was tightened, not loosened, when the second producer broke it, and the third got linear memory added rather than `ptr<T>` weakened. Several modules link into one via `metals.Link` before any consumer sees them; that is also the only pass that compares an importer's declared signature against the exporter's actual one.
+METALS has two producers. `internal/lower` is Gyro's; `internal/cc` reads C directly and is what an `import` of a `.c` goes through. The second one exists to catch what the format only appears to guarantee because Gyro's lowering happens to satisfy it. Don't relax a verifier rule to make a producer compile — when a producer has broken a rule, the rule was tightened, not loosened. Several modules link into one via `metals.Link` before any consumer sees them; that is also the only pass that compares an importer's declared signature against the exporter's actual one.
 
-**Linear memory is not a second pointer.** A `memory` is a flat, bounds-checked byte region, and its addresses are `u32` integers — never `ptr<T>`. That is what keeps the boundary rules intact and the sandbox real; a producer uses one model or the other, and no instruction takes both. `conv` (checked), `trunc` (wrapping) and `bitcast` (reinterpreting) are three different questions — don't answer one by weakening another.
+The verifier is now the only thing that reads a module before the backend does, so a producer bug it doesn't catch reaches generated code. Tighten it rather than working around it downstream.
 
-**The C floor is scalars.** `internal/clibc` reaches the outside through `write_byte`, `read_byte` and `exit`, and nothing else. A bulk import taking an address and a length would make a linear address a pointer at the boundary, which is the one thing the rule above forbids — if per-byte i/o ever costs too much, the answer is a bulk *instruction* between a memory and an `Array<u8>` handle, checked on both sides. Don't add the import.
+**Linear memory is not a second pointer.** A `memory` is a flat, bounds-checked byte region, and its addresses are `u32` integers — never `ptr<T>`. That is what keeps the boundary rules intact and a future sandbox real; a producer uses one model or the other, and no instruction takes both. `conv` (checked), `trunc` (wrapping) and `bitcast` (reinterpreting) are three different questions — don't answer one by weakening another. No producer emits a memory today: the wasm bridge that needed one is gone, and the corpus exercises the instructions from hand-written METALS. Keep it that way rather than deleting it — the model is what a C-shaped producer needs, and it is why the boundary rules exist.
+
+**The floor of a sandboxed memory is scalars.** The bundled libc reached the outside through `write_byte`, `read_byte` and `exit`, and nothing else. A bulk import taking an address and a length would make a linear address a pointer at the boundary, which is the one thing the rule above forbids — if per-byte i/o ever costs too much, the answer is a bulk *instruction* between a memory and an `Array<u8>` handle, checked on both sides. Don't add the import.
 
 **Float results round to their width.** An `f32` register holds a double, so every operation producing one has to round back through single precision or an `f32` multiply that should overflow to `+Inf` stays finite. `fnearest` is ties-to-even (not C's `round`) and `fmin`/`fmax` propagate NaN (not C's `fmin`/`fmax`) — don't "fix" either to match the C library.
 

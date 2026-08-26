@@ -59,7 +59,7 @@ fn main() {
 
 **[The Gyro Book](docs/SUMMARY.md)** is the language documentation and the
 specification: syntax and semantics chapter by chapter, the toolchain, and
-appendices for the IR, the native backends, the standard library and the
+appendices for the IR, the native backend, the standard library and the
 diagnostics.
 
 - [`docs/decisions.md`](docs/decisions.md) — what was decided, what was
@@ -82,9 +82,9 @@ warnings.
 The longer-term bet is **METALS**: a shared intermediate representation that
 several source languages compile into, so a project can import them and have
 them compiled together rather than glued together at run time. That is no
-longer a sketch — METALS is specified, verified and linked, and it has four
-producers today: Gyro, a statically typed Scheme, a wasm32 reader, and a C
-front end that a Gyro program reaches when it imports a `.c` file.
+longer a sketch — METALS is specified, verified and linked, and it has two
+producers today: Gyro, and a C front end that a Gyro program reaches when it
+imports a `.c` file.
 
 The related work lives in a separate repository: **meta**, a META-II style
 compiler-compiler.
@@ -135,7 +135,7 @@ make build
 
 ```sh
 ./bin/gyro check examples/structs.gyro       # type-check, report diagnostics
-./bin/gyro run examples/structs.gyro         # run it on the METALS evaluator
+./bin/gyro run examples/structs.gyro         # build it somewhere temporary, run it
 ./bin/gyro build examples/hello.gyro -o hi   # native binary
 ./bin/gyro explain E0401                     # what a diagnostic code means
 ```
@@ -188,17 +188,16 @@ source
   → internal/sema       name + type checking, all the safety analyses
   → internal/lower      Gyro → METALS IR
   → internal/metals     IR format, printer, parser, verifier, linker
-  ├─→ internal/meval    METALS evaluator
-  ├─→ internal/nasm     METALS → x86-64 NASM
-  └─→ internal/cgen     METALS → C
-                        both link internal/crt, the shared C runtime
+  → internal/nasm       METALS → x86-64 NASM
+                        linked against internal/crt, the C runtime
 ```
 
 Everything the compiler can read becomes METALS, and everything that runs,
-runs from METALS. METALS' other producers are `internal/lisp` (a statically
-typed Scheme), `internal/wasm` (wasm32, which is what clang makes of C) and
-`internal/cc` (C read directly). Editor support lives here too:
-`tree-sitter-gyro/`, `tree-sitter-metals/` and `internal/lsp`.
+runs from METALS. The other producer is `internal/cc`, which reads C
+directly and keeps its declared types, so an imported `struct Point *`
+arrives as a pointer to a record rather than as a number. Editor support
+lives here too: `tree-sitter-gyro/`, `tree-sitter-metals/` and
+`internal/lsp`.
 
 The parser is hand-written recursive descent with a precedence-climbing loop
 for expressions. It buffers the whole token stream, which makes the bounded
@@ -215,16 +214,18 @@ index. Three ambiguities shaped the design:
 
 ## Testing
 
-**No tier is the specification.** Every program in the execution corpus runs
-three ways — the evaluator and both native backends — and all three are held
-to the same golden file, which is **written by hand**. There is no flag that
-regenerates a golden from what a tier happened to do.
+**The implementation is not the specification.** Every program in the
+execution corpus is built, run, and held to a golden file that is **written
+by hand**. There is no flag that regenerates a golden from what the compiler
+happened to do — deciding what a program should print is the work, and a
+harness that copied the answer out of the compiler would be checking only
+that the compiler is deterministic.
 
 ```sh
 make test      # go test ./...
 make check     # type-check every example
 make vet
-make bench     # both native backends over tests/bench
+make bench     # the backend against the C, over tests/bench
 make grammar   # regenerate and test both tree-sitter grammars
 ```
 

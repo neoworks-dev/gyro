@@ -112,6 +112,6 @@ places to diverge ([chapter 7](ch07-00-modules.md)).
 Numbers print identically on every tier, down to the float formatting:
 shortest round-trip, with Go's exponent thresholds (`12.56636`, `12`,
 `1e+21`, `1e-05`). The evaluator gets that from Go's `strconv`, and the C
-runtime reproduces it deliberately ([appendix E](appendix-e-native-backends.md)).
+runtime reproduces it deliberately ([appendix E](appendix-e-native-backend.md)).
 It is not a coincidence you may rely on by accident — it is a requirement
 the corpus checks.

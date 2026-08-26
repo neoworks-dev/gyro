@@ -1,14 +1,14 @@
 // Package cc compiles C into METALS directly, without going through a
 // sandbox.
 //
-// It is the destination `internal/wasm` was the reconnaissance for. The
-// bridge asks clang for wasm32 and translates that, which proves METALS
-// can receive a C-shaped program but loses the thing the program was
-// written with: by the time a struct reaches wasm it is an offset into a
-// flat region, and a `Point *` is a `u32`. Nothing about that can be
-// imported into Gyro as the type it started as.
+// A bridge came first, asking clang for wasm32 and translating that. It
+// proved METALS can receive a C-shaped program, and it lost the thing the
+// program was written with: by the time a struct reaches wasm it is an
+// offset into a flat region, and a `Point *` is a `u32`. Nothing about
+// that can be imported into Gyro as the type it started as, so the bridge
+// was reconnaissance for this and is deleted.
 //
-// So this front end reads C itself and emits METALS' own types. A C
+// This front end reads C itself and emits METALS' own types. A C
 // struct becomes a record, a `T *` becomes `ptr<T>`, a tag nothing
 // defines becomes an opaque declaration, and the storage under all of
 // them is C's already — that is the layout rule the native backends have
@@ -25,8 +25,8 @@
 //
 // What it does not do yet is listed in docs/appendix-d-metals.md rather than
 // apologized for here. What is left of goto — a jump into a block, and a
-// backward jump reaching past a later forward label — is where the
-// relooper the bridge outsources to LLVM would have to be written.
+// backward jump reaching past a later forward label — is where a relooper
+// would have to be written; the bridge got that from LLVM for free.
 package cc
 
 import (

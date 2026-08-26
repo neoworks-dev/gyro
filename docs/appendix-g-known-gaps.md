@@ -14,7 +14,7 @@ attached — a skip is a program that will fail the day the gap closes
   nothing frees it. Strings, closure environments and futures leak by design
   in v1. Fine for a program that exits; fatal for a server.
 - **No sorting** anywhere in the standard library.
-- **Linux x86-64 only** for both native backends.
+- **Linux x86-64 only**, which is the one thing the backend emits.
 
 ## Language features that are typed but not finished
 
@@ -30,13 +30,22 @@ attached — a skip is a program that will fail the day the gap closes
 ## Safety holes
 
 - **Mutation rules are unchecked.**
-- **Native use-after-free and uninitialized reads are undetected.** The
-  evaluator poisons freed and unwritten storage and aborts; the C runtime
-  frees for real and leaves storage as the allocator returned it. *The tier
-  you ship is the one that does not check.* It cannot even name a double
-  free reliably: the freeing routine writes its poison and then hands the
-  block to libc, which reuses those bytes, so both tiers report `free of
-  memory that is not allocated`.
+- **Use-after-free and uninitialized reads are undetected.** The runtime
+  frees for real and leaves storage as the allocator returned it. A METALS
+  evaluator used to poison freed and unwritten cells and abort on a read;
+  it is gone, and with it the only thing that caught either. It cannot
+  name a double free reliably either: the freeing routine writes its
+  poison and then hands the block to libc, which reuses those bytes, so
+  what is reported is `free of memory that is not allocated`.
+- **Type punning is not diagnosed.** Reading across two union members that
+  share no common initial sequence, or reading a struct's storage as
+  bytes, reinterprets whatever is there. It is undefined in C too, `char *`
+  aliasing included, and the information needed to catch it — which member
+  was written — is not stored anywhere.
+- **A pointer that has left its object is not caught.** `ptr.offset` past
+  an object's extent, and a `ptr.cast` naming a type the storage is not,
+  are both a producer's claim and nothing verifies either
+  ([appendix D](appendix-d-metals.md)).
 - **A slice can outlive the memory behind it**, and nothing detects that
   ([chapter 4.4](ch04-04-slices-and-views.md)).
 - **Views through a pointer are untraceable** by the borrow analysis.
@@ -59,8 +68,6 @@ is C's own arrangement and the reason `import "./x.c"` is the stronger
 route: there, the linker compares the declaration against the C the front
 end read.
 
-A program that calls a foreign function runs on the native tiers only.
-
 ## The C front end
 
 Refused by name rather than mistranslated:
@@ -82,35 +89,39 @@ Refused by name rather than mistranslated:
   spelling is not one word, since `*u8[8]` reparses as a pointer to an
   array.
 
-Runs, but on two tiers only:
-
-- **Type punning**, reading across two union members that share no common
-  initial sequence, and reading a struct's storage as bytes. All of it is
-  undefined in C too, `char *` aliasing included. The natives reinterpret
-  the bytes; the evaluator knows what is really there and says so. Round
-  trips and the common initial sequence every tagged union is built on are
-  fine on all three.
+- **A `.c` cannot be a whole program.** The front end produces a library:
+  what a Gyro program imports from a `.c` is its declared types and
+  functions. C's entry is an `int main` whose result is the process exit
+  code, and a METALS entry has nowhere to put that.
 
 Known costs:
 
 - **A local aggregate initializer writes zeros member by member**, so
-  `char buf[4096] = "hi"` is 4096 stores. Correct, because a partial
-  initializer must not depend on the tier; the cheap fix is a bulk zero
-  instruction, not a weaker evaluator.
+  `char buf[4096] = "hi"` is 4096 stores. The cheap fix is a bulk zero
+  instruction.
 - **Structural matching across a runtime boundary** is unchecked: within one
   runtime the linker compares declarations, and across a boundary the value
   is copied and nothing checks that two same-named records agree.
 
-## The wasm bridge
+## Linear memory
 
-- **Multi-value** blocks, results and calls; **SIMD**; **reference types**;
-  **atomics**; **passive data segments**. Each is refused with its own
-  message rather than skipped.
-- **An imported memory** — how wasm spells two modules sharing one heap.
-  Linking gives each module its own, which is right for a sandbox and is the
-  thing a real C front end will have to revisit.
-- **No libc.** The bridge links freestanding; a program reaches the outside
-  through an import it declares itself.
+METALS has linear memory, `trunc` and `bitcast` — a flat, bounds-checked
+byte region whose addresses are `u32` integers, which is what a producer
+whose source language has that memory model needs
+([appendix D](appendix-d-metals.md)). **No producer emits one today.** It
+came in for a bridge that read what clang made of C as wasm32; that bridge
+is gone, and what exercises the instructions now is METALS written by hand
+in the execution corpus.
+
+Left undecided with it:
+
+- **A memory declared by one module and imported by another**, which is how
+  two translation units would share one heap. Linking gives each its own.
+- **A bulk instruction between a memory and an `Array<u8>` handle.** The
+  boundary between a memory and the outside is per-byte on purpose — an
+  import taking an address and a length would make a linear address a
+  pointer, which is the one thing the model forbids — so if per-byte i/o
+  ever costs too much, the answer is an instruction checked on both sides.
 
 ## METALS
 
@@ -123,19 +134,21 @@ Open questions in the format itself ([appendix D](appendix-d-metals.md)):
   process is a runtime problem the IR only gestures at via `any` and
   `handle`
 - whether effect rows belong in METALS signatures at all
-- whether two modules may ever *share* a linear memory
 - whether any optional other than `opt<ptr<T>>`, `opt<code(..)>` and
   `opt<anyptr>` deserves a niche
 
-## The native backends
+## The native backend
 
 - `select` is polled and deterministic, not fair — which is why the language
   leaves the choice among ready arms unspecified
   ([chapter 13.2](ch13-02-channels.md)).
 - No green threads: `spawn` and `async` are OS threads.
-- Register allocation exists in the assembler backend but leaves work on the
-  table; `make bench` is what measures it
+- Register allocation exists but leaves work on the table; `make bench` is
+  what measures it, against the C each case was ported from
   ([chapter 17.3](ch17-03-testing.md)).
+- **There is no second implementation to disagree with.** A wrong answer
+  that is plausible is now caught only by a golden someone wrote by hand
+  ([chapter 17.1](ch17-01-the-backend.md)).
 
 ## Open design questions
 

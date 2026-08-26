@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/cc"
-	"github.com/gyro-lang/gyro/internal/lisp"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/token"
 )
@@ -24,35 +23,21 @@ import (
 // foreignProducer names the compiler for a path's extension, or "" when
 // the path is ordinary Gyro.
 func foreignProducer(path string) string {
-	switch filepath.Ext(path) {
-	case ".lisp", ".scm":
-		return "lisp"
-	case ".c":
+	if filepath.Ext(path) == ".c" {
 		return "cc"
 	}
 	return ""
 }
 
-// compileForeign runs the producer for a path and returns its module.
-//
-// A `.c` reaches internal/cc here and internal/wasm when it is the whole
-// program: an imported C file is a library whose declared types are what
-// Gyro imports, and only the direct front end still has them — by the
-// time clang has made wasm of it, a `struct Point *` is a `u32`. The
-// bridge keeps the root, where a C program wants the bundled libc that
-// the direct front end has no preprocessor to include.
+// compileForeign runs the producer for a path and returns its module. An
+// imported C file is a library whose declared types are what Gyro
+// imports, so it reaches internal/cc, which keeps them: a `struct Point *`
+// arrives as a pointer to the record it names.
 func compileForeign(path, source string) (*metals.Module, error) {
-	var module *metals.Module
-	var err error
-
-	switch foreignProducer(path) {
-	case "lisp":
-		module, err = lisp.Compile(path, source)
-	case "cc":
-		module, err = cc.Compile(path, source, nil)
-	default:
+	if foreignProducer(path) != "cc" {
 		return nil, fmt.Errorf("%s: no compiler for this kind of module", path)
 	}
+	module, err := cc.Compile(path, source, nil)
 	if err != nil {
 		return nil, err
 	}

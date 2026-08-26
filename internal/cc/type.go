@@ -13,7 +13,7 @@ import (
 // The mapping is a table and not a translation, which is the whole point
 // of a direct front end: an `int` is an `i32` and a `struct Point *` is a
 // `ptr<%Point>`, and what those occupy in memory is C's answer already,
-// because METALS' layout rule *is* C's (docs/appendix-e-native-backends.md). Nothing is
+// because METALS' layout rule *is* C's (docs/appendix-e-native-backend.md). Nothing is
 // flattened into a byte region on the way in and nothing has to be
 // reconstructed on the way out.
 //

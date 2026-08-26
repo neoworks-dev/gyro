@@ -43,11 +43,11 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
-// A single-file case is a .gyro program, or a module another producer
-// wrote: .metals for hand-written IR, .lisp for the Lisp front end, and
-// .c for the wasm bridge. Every root runs on the same three tiers,
-// because every root becomes the same thing — a METALS module.
-var rootSuffixes = []string{".gyro", ".metals", ".lisp", ".c"}
+// A single-file case is a .gyro program, or .metals written by hand,
+// which is how the corpus reaches an instruction no lowering happens to
+// emit. Both are built the same way, because both become the same thing —
+// a METALS module.
+var rootSuffixes = []string{".gyro", ".metals"}
 
 func corpusCase(dir, name string, isDir bool) (root, golden string, ok bool) {
 	if isDir {

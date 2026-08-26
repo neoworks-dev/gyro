@@ -2,8 +2,6 @@
 // `@extern` as itself: an out-parameter is the pointer C declared, and a
 // callback is the one word C has room for. Nothing is copied, because
 // there is no second heap to copy into.
-//
-//gyro:skip metals the evaluator is Go and cannot call a C function
 
 import { println } from "stdlib"
 

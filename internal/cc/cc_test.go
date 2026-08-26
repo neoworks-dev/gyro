@@ -1,20 +1,25 @@
 package cc
 
 import (
-	"io"
+	"bytes"
+	"errors"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gyro-lang/gyro/internal/metals"
-	"github.com/gyro-lang/gyro/internal/meval"
+	"github.com/gyro-lang/gyro/internal/nasm"
 )
 
 // What a C program computes is checked by running it, not by reading the
-// METALS it became: the evaluator is the tier closest to what the
-// lowering emitted, so a wrong answer here is a lowering bug and not a
-// backend's. Each case defines `int result(void)` and the harness
+// METALS it became. Each case defines `int result(void)` and the harness
 // synthesizes the @main that calls it, because a C main is the program's
 // entry and these are not programs.
+//
+// Running means building, since the backend is what executes a program.
+// A machine without the assembler skips the case rather than failing it,
+// the same courtesy the execution corpus extends.
 
 func compiled(t *testing.T, source string) *metals.Module {
 	t.Helper()
@@ -28,10 +33,38 @@ func compiled(t *testing.T, source string) *metals.Module {
 	return module
 }
 
+// run builds a linked module and runs it, answering whatever it wrote to
+// stderr and the error a non-zero exit is. It skips the test when there
+// is no assembler to build with.
+func run(t *testing.T, module *metals.Module) (string, error) {
+	t.Helper()
+	if err := nasm.Toolchain(); err != nil {
+		t.Skipf("skipping: %v", err)
+	}
+	linked, err := metals.Link([]*metals.Module{module})
+	if err != nil {
+		t.Fatalf("link: %v\n%s", err, metals.Print(module))
+	}
+	binary := filepath.Join(t.TempDir(), "case")
+	if err := nasm.Build(linked, binary); err != nil {
+		t.Fatalf("build: %v\n%s", err, metals.Print(linked))
+	}
+
+	command := exec.Command(binary)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	err = command.Run()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		t.Fatalf("run: %v", err)
+	}
+	return stderr.String(), err
+}
+
 // answers runs `result()` and fails unless it produced want. The
-// comparison is inside the module, so a mismatch arrives as the abort
-// the evaluator raises rather than as a value the harness has to reach
-// in and read.
+// comparison is inside the module, so a mismatch arrives as the abort the
+// program raises rather than as a value the harness has to reach in and
+// read.
 func answers(t *testing.T, source string, want int64) {
 	t.Helper()
 	answersOpt(t, nil, source, want)
@@ -79,15 +112,10 @@ func answersOpt(t *testing.T, opt *Options, source string, want int64) {
 		t.Fatalf("the harness module does not verify: %v\n%s", err, metals.Print(module))
 	}
 
-	// Linking is what turns the module's init into the call at the top of
-	// main, so a case with file-scope initializers runs them.
-	module, err = metals.Link([]*metals.Module{module})
-	if err != nil {
-		t.Fatalf("link: %v", err)
-	}
-
-	if err := meval.Run(module, nil, strings.NewReader(""), io.Discard, io.Discard); err != nil {
-		t.Fatalf("%v\n%s", err, metals.Print(module))
+	// Linking, inside run, is what turns the module's init into the call
+	// at the top of main, so a case with file-scope initializers runs them.
+	if message, err := run(t, module); err != nil {
+		t.Fatalf("%v\n%s", err, message)
 	}
 }
 
@@ -355,12 +383,12 @@ int result(void) { return deref(0); }
 			&metals.Return{},
 		},
 	})
-	err := meval.Run(module, nil, strings.NewReader(""), io.Discard, io.Discard)
+	message, err := run(t, module)
 	if err == nil {
 		t.Fatal("dereferencing a null pointer answered instead of aborting")
 	}
-	if !strings.Contains(err.Error(), "null") {
-		t.Fatalf("expected an abort naming the null, got %v", err)
+	if !strings.Contains(message, "null") {
+		t.Fatalf("expected an abort naming the null, got %q", message)
 	}
 }
 

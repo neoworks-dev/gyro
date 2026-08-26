@@ -129,7 +129,7 @@ An `Array<T>` records its element size when it is created, and stores
 elements at C's stride for `T` — so `Array<u8>` is byte-strided and
 `Array<Point>` holds the same bytes a C array of that struct would. That is
 what makes `slice()` a borrow of the array's own storage rather than a copy
-([appendix E](appendix-e-native-backends.md)).
+([appendix E](appendix-e-native-backend.md)).
 
 ## Sorting
 

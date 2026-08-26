@@ -8,10 +8,8 @@ source
   → internal/sema       name + type checking, all the safety analyses
   → internal/lower      Gyro → METALS IR
   → internal/metals     IR format, printer, parser, verifier
-  ├─→ internal/meval    METALS evaluator
-  ├─→ internal/nasm     METALS → x86-64 NASM
-  └─→ internal/cgen     METALS → C
-                        both link internal/crt, the shared C runtime
+  → internal/nasm       METALS → x86-64 NASM
+                        linked against internal/crt, the C runtime
 ```
 
 **Everything the compiler can read becomes METALS, and everything that runs,
@@ -49,12 +47,12 @@ module**:
 - stdlib natives as `gyro:rt` imports
 - module-level `const` as a synthesized getter; module-level `var` as METALS
   storage, zero-initialized, with initializers run before main's own body
-- derived printing synthesized here — one function per composite type, which
-  every tier reaches as an ordinary call
+- derived printing synthesized here — one function per composite type,
+  reached as an ordinary call
 
 That last bullet is the pattern to imitate: implement a semantic once during
-lowering rather than three times downstream
-([chapter 17.1](ch17-01-three-tiers.md)).
+lowering rather than downstream in the backend and its runtime
+([chapter 17.1](ch17-01-the-backend.md)).
 
 `gyro metals file.gyro` prints the result.
 
@@ -70,61 +68,57 @@ Two properties matter from the language side:
 
 - **The verifier is real.** It type-checks every register and instruction,
   checks that every register is assigned before it is read on every path,
-  and enforces the boundary rules. It does not trust its producers, because
-  Gyro is not the only one.
+  and enforces the boundary rules. It does not trust its producers,
+  including the ones in this repository.
 - **Several modules link into one** before any consumer sees them, and that
   link step is the only pass that compares an importer's declared signature
   against the exporter's actual one.
 
 ## More than one producer
 
-METALS has four producers, and the extra ones exist to keep the format
-honest — anything the IR assumes about its input that only holds because
-Gyro's lowering happens to satisfy it shows up elsewhere as a wrong answer
-or a verifier complaint.
+METALS has two producers:
 
 | producer | what it reads |
 | --- | --- |
 | `internal/lower` | Gyro |
-| `internal/lisp` | a statically typed Scheme |
-| `internal/wasm` | wasm32, which is what clang makes of C |
 | `internal/cc` | C directly, emitting METALS' own types |
 
-The wasm bridge is what stopped the format being polite: C's memory model
-needed linear memory, `trunc` and `bitcast`, and each is a thing the IR
-arguably should always have had for a producer that is not Gyro. When a
-producer broke a rule, the rule was **tightened**, not loosened — the
-closure-environment rule got stricter when the Lisp front end broke it, and
-the third producer got linear memory added rather than `ptr<T>` weakened.
-
 `internal/cc` is what a Gyro program reaches when it imports a `.c` file
-([chapter 15](ch15-00-c-interop.md)).
+([chapter 15](ch15-00-c-interop.md)). It is not only a convenience: it is
+the reason a rule in the format is a rule rather than a description of what
+Gyro's lowering happens to do. Anything the IR assumes about its input that
+holds only because `internal/lower` satisfies it shows up here as a wrong
+answer or a verifier complaint.
 
-## The back ends
+When a producer has broken a rule, the rule was **tightened**, not
+loosened. That is the standing instruction: a producer that cannot be
+compiled is a producer to fix, or a rule to make stricter, never a verifier
+check to relax.
 
-Two native backends, siblings over the same runtime:
+## The back end
 
 ```sh
-gyro build app.gyro -o app              # nasm + cc
-gyro build app.gyro --backend c -o app  # cc alone
+gyro build app.gyro -o app    # nasm, then the system linker
 ```
 
-The C backend exists for two reasons, neither of them replacing the
-assembler: a disagreement between the two native tiers on the same module is
-a codegen bug and the C one is far easier to read, and it gives a second
-binary from the same IR to benchmark the assembler's output against.
+`internal/nasm` emits x86-64 assembly and links it against
+`internal/crt`, one file of C holding what has to exist at runtime:
+formatting, strings, arrays, hashing, channels, mutexes and futures behind
+a plain C ABI. The runtime is C rather than assembly because none of it is
+codegen, and reading it should not require reading assembly.
 
-The rule that governs both: **storage is C's** — a value in memory is what
-`sizeof` says in C, at C's alignment, padded where C pads — while **a
-register is one word**, carrying a scalar widened to a qword and an `f32` as
-a double. [Appendix E](appendix-e-native-backends.md) has the layout table
-and the conversions.
+The rule that governs the boundary between them: **storage is C's** — a
+value in memory is what `sizeof` says in C, at C's alignment, padded where
+C pads — while **a register is one word**, carrying a scalar widened to a
+qword and an `f32` as a double.
+[Appendix E](appendix-e-native-backend.md) has the layout table and the
+conversions.
 
 ## Where a bug tends to be
 
-The evaluator is the tier closest to what the lowering emitted, so a
-lowering bug shows up there first. A representation mismatch in a backend
-produces *correct evaluator output* and native garbage, which reads like a
-backend bug and often is not one — when anything crosses the Go/C boundary
-carrying a slice or an element, the stride and the width are the first
-things to check.
+A wrong answer is usually a representation mismatch rather than a wrong
+instruction: when anything crosses between generated code and the C
+runtime carrying a slice or an element, the stride and the width are the
+first things to check. `gyro metals file.gyro` prints what lowering
+produced, and `gyro nasm file.gyro` prints what the backend made of it —
+reading the METALS first says which of the two is wrong.

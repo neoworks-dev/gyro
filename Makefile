@@ -13,8 +13,9 @@ build:
 test:
 	$(GO) test ./...
 
-# Compare the two native backends on the same programs. BENCH filters by
-# case name, REPEAT says how many runs each binary gets (fastest counts).
+# Measure the backend against the C each case was ported from. BENCH
+# filters by case name, REPEAT says how many runs each binary gets
+# (fastest counts).
 BENCH  ?=
 REPEAT ?= 5
 

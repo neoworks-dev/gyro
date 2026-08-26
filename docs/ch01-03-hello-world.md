@@ -67,10 +67,10 @@ rule, including how to break a long expression across lines.
 ```
 
 All three start the same way, because everything the compiler can read
-becomes METALS and everything that runs, runs from METALS. `run` hands the
-module to the evaluator; `build` hands it to a native backend. The two must
-agree, and [chapter 17.1](ch17-01-three-tiers.md) is about what enforces
-that.
+becomes METALS and everything that runs, runs from METALS. `run` is `build`
+into a temporary directory followed by the binary, so there is one thing
+that decides what a program does — and
+[chapter 17.1](ch17-01-the-backend.md) is about what keeps it honest.
 
 ## A slightly bigger hello
 

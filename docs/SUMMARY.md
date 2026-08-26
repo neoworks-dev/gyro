@@ -4,12 +4,11 @@ This is Gyro's documentation: the language, the toolchain, and the machinery
 underneath it. It reads front to back — each chapter assumes the ones before
 it — but every chapter is also reachable on its own from the list below.
 
-**These chapters are the specification.** No execution tier defines Gyro's
-behaviour: not the METALS evaluator, not the assembler backend, not the C
-backend. A program's output is what this book says it is, a test's golden
-file is written by hand to match, and a tier that disagrees is the thing
-that is wrong. [Chapter 17](ch17-01-three-tiers.md) explains why that
-arrangement exists.
+**These chapters are the specification.** The compiler does not define
+Gyro's behaviour. A program's output is what this book says it is, a test's
+golden file is written by hand to match, and an implementation that
+disagrees is the thing that is wrong.
+[Chapter 17](ch17-01-the-backend.md) explains why that arrangement exists.
 
 Two companion files sit beside the chapters:
 
@@ -82,7 +81,7 @@ Two companion files sit beside the chapters:
 
 - [16.1. The `gyro` command](ch16-01-the-gyro-command.md)
 - [16.2. Editors](ch16-02-editors.md)
-- [17.1. Three tiers, no oracle](ch17-01-three-tiers.md)
+- [17.1. One backend, no oracle](ch17-01-the-backend.md)
 - [17.2. How a program is compiled](ch17-02-the-pipeline.md)
 - [17.3. Testing](ch17-03-testing.md)
 
@@ -92,6 +91,6 @@ Two companion files sit beside the chapters:
 - [B. Operators](appendix-b-operators.md)
 - [C. The built-in method surface and the standard library](appendix-c-stdlib.md)
 - [D. METALS](appendix-d-metals.md)
-- [E. The native backends](appendix-e-native-backends.md)
+- [E. The native backend](appendix-e-native-backend.md)
 - [F. Diagnostics](appendix-f-diagnostics.md)
 - [G. What is not built yet](appendix-g-known-gaps.md)

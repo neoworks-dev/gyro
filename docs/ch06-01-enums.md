@@ -21,7 +21,7 @@ over the same parts ([chapter 3.2](ch03-02-data-types.md)). Printing is
 derived unless the type declares `to_string`.
 
 An enum is one word of tag plus its widest variant's payload, laid out like
-a C struct ([appendix E](appendix-e-native-backends.md)).
+a C struct ([appendix E](appendix-e-native-backend.md)).
 
 ## Matching is exhaustive
 

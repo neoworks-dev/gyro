@@ -7,35 +7,45 @@ the bottom.
 
 ## Codegen and performance
 
+**`nasm` now carries the whole bill.** With the C emitter deleted there is
+no tier where the host compiler does the optimizing, so every ratio in
+`make bench` is this backend against the C the case was ported from, and
+it is the only ratio there is. Measured 2026-08-26, best of 3:
+
+| case | nasm/cc |
+| --- | --- |
+| `regex` | 6.59x |
+| `perft` | 11.91x |
+| `cjson` | 13.81x |
+| `jsmn` | 16.64x |
+| `sha256` | 16.98x |
+| `md4c` | 28.95x |
+
+Every one of these is worse than the figure that used to be quoted, and
+the reason is arithmetic rather than regression: the old numbers were the
+C emitter's, where the host compiler inlined and allocated registers.
+This is what the assembler actually costs, and it always did.
+
 - [ ] **Inlining in nasm** — the top codegen item. The register allocator
-      closed the pressure problem; what is left in the three worst
-      `nasm/cgen` cases is call overhead, and all three are
-      call-dominated: `regex` 4.86x (`byte_at` per input byte), `perft`
-      3.56x (recursion, no hot leaf), `md4c` 3.42x (~90 functions,
-      `Ctx::ch()` per byte examined). Everything not call-dominated sits
-      between 1.00x and 2.10x.
+      closed the pressure problem; what is left is call overhead. `md4c`
+      (~90 functions, `Ctx::ch()` per byte examined) and `regex`
+      (`byte_at` per input byte) are the two most obviously
+      call-dominated, though the per-case attribution was previously read
+      off a backend-to-backend comparison that no longer exists — a
+      profile, not an inference, should pick the first target.
 - [ ] **The runtime element access is what the ports pay against C.**
-      After the `index.ptr` landing the spread on cgen is `perft` 4.10x,
-      `sha256` 5.66x, `md4c` 8.24x, `jsmn` 8.86x, `cjson` 9.99x, with
-      `regex` at 1.36x (measured before that change and not moved by it).
-      The common factor in the slow ones is an element access that is not
-      `T[N]` behind a pointer: a `gy_array_get`/`gy_array_set` call plus a
-      bounds check where C does a `mov`. Two things to try, in order:
-      inline the access for a statically known element type instead of
-      calling the runtime, and hoist the bounds check out of a loop whose
-      index is provably in range. Both are cgen-side and both would show
-      in `tests/bench/` first.
-- [ ] **The METALS evaluator is pathological on call-heavy recursion.**
-      On the `perft` corpus case it ran 6.55s against the deleted
-      tree-walking interpreter's 2.66s, and it was faster on every other
-      case. The comparison tier is gone, so the number cannot be
-      reproduced — but the shape of it is worth profiling before it
-      becomes the reason a corpus case has to shrink.
+      The common factor in the slow cases is an element access that is
+      not `T[N]` behind a pointer: a `gy_array_get`/`gy_array_set` call
+      plus a bounds check where C does a `mov`. Two things to try, in
+      order: inline the access for a statically known element type
+      instead of calling the runtime, and hoist the bounds check out of a
+      loop whose index is provably in range. Both would show in
+      `tests/bench/` first.
 - [ ] **A fair `select` in the native runtime.** The choice among ready
       arms is unspecified, so in-order polling is legal — but it can
       starve an arm behind a busy one. The fix is an arm-descriptor table
-      the runtime chooses from, instead of the straight-line polls both
-      backends emit today; that also gives the runtime somewhere to
+      the runtime chooses from, instead of the straight-line polls the
+      backend emits today; that also gives the runtime somewhere to
       randomize.
 
 ## The C front end
@@ -45,16 +55,10 @@ the C front end" is the maintained list; the load-bearing entries:
 
 - [ ] **Two `goto` shapes need the relooper** — a jump *into* a block,
       and a backward jump reaching past a later forward label. Both are
-      what LLVM does for the wasm bridge and what a direct front end has
-      to write itself (Ramsey's ICFP 2022 algorithm is the reference).
-      A label inside a switch body is refused for the same reason.
-- [ ] **Type punning runs on two tiers.** Reading across two union
-      members that share no initial sequence, and reading a struct's
-      storage as bytes, are undefined in C too — but the natives
-      reinterpret the bytes while the evaluator knows what is really
-      there and says so. Closing it needs a byte-addressable object model
-      in the evaluator. Carried as skips in `c-bitfield-bytes` and
-      `union-punning.metals`.
+      what LLVM did for the deleted wasm bridge and what a direct front
+      end has to write itself (Ramsey's ICFP 2022 algorithm is the
+      reference). A label inside a switch body is refused for the same
+      reason.
 - [ ] **A variadic function and a C `enum` cannot cross into Gyro.** A
       `...` says nothing about what a call passes, and Gyro's enum is a
       tagged sum. `headerGen` skips what it cannot spell, so one such
@@ -65,33 +69,28 @@ the C front end" is the maintained list; the load-bearing entries:
       checks that two same-named records agree.
 - [ ] **A local aggregate initializer writes zeros member by member**, so
       `char buf[4096] = "hi"` is 4096 stores. The cheap fix is a bulk
-      zero instruction, not a weaker evaluator.
-- [ ] **A shared memory between wasm-bridge modules.** Linking gives each
-      its own, which is right for a sandbox and wrong for two C
-      translation units that expect one heap. The bridge never sees this
-      because wasm-ld has already linked; only the bridge route is
-      affected, since `internal/cc` uses `ptr<T>` and one heap.
+      zero instruction.
 
-## `clibc` and the sandboxed route
+## Linear memory, which has no producer
 
-- [ ] **printf's `%f`/`%e`/`%g` are exact only below 2^53.** Half-to-even
-      and glibc-identical while `|v| * 10^precision` fits a double's
-      integer range, which covers everything printed to be read; above it
-      the last digit can differ by one. `tests/testdata/run/cjson/
-      dtoa.gyro` is the exact algorithm already written in this
-      repository — porting it into `internal/clibc/src/stdio.c` closes
-      this, and porting it into `internal/stdlib/src/fmt.gyro` closes the
-      identical gap on Gyro's side. One algorithm, two callers.
-- [ ] **Per-byte i/o at the floor.** Correct and slow: one runtime call
-      per byte written. The fix is not a bulk import — that would make a
-      linear address a pointer at the boundary — but a bulk *instruction*
-      copying between a linear memory and an `Array<u8>` handle, checked
-      on both sides. Worth doing when a benchmark shows it, not before.
-- [ ] **No `FILE`, no `fopen`.** The floor has three descriptors and no
-      way to name a fourth. Real file i/o needs a capability design, not
-      another import.
-- [ ] **`clibc` has no `setjmp`, `time`, `locale` or wide characters.**
-      Each is a decision rather than an omission to fill in silently.
+`memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived
+it. They stay in the format — a flat, bounds-checked, `u32`-addressed
+region is what a producer with C's memory model needs, and every managed
+guest in `METALS_NEXT.md` assumes one — but nothing compiles to them
+today, and the corpus exercises them from hand-written METALS
+(`linear-memory.metals`, `panic-linear-memory-bounds.metals`).
+
+- [ ] **A memory declared by one module and imported by another.**
+      Linking gives each its own, which is right for a sandbox and wrong
+      for two translation units that expect one heap. Undecided rather
+      than unimplemented.
+- [ ] **Per-byte i/o at the floor, when there is a floor again.** The
+      bundled libc reached the outside through `write_byte`, `read_byte`
+      and `exit`: correct and slow, one call per byte. The fix is not a
+      bulk import — that would make a linear address a pointer at the
+      boundary — but a bulk *instruction* copying between a linear memory
+      and an `Array<u8>` handle, checked on both sides. Worth doing when
+      a benchmark shows it, not before.
 
 ## Standard library
 
@@ -105,9 +104,9 @@ the C front end" is the maintained list; the load-bearing entries:
       places is not expressible in Gyro today. `tests/testdata/run/cjson/
       dtoa.gyro` is the implementation the stdlib wants; the decision is
       whether it moves into `internal/stdlib/src/fmt.gyro` as ordinary
-      Gyro or whether the conversion becomes an intrinsic the three tiers
-      each provide. Ordinary Gyro is the default answer under the stdlib
-      rule, and the port proves it is possible; the intrinsic is only
+      Gyro or whether the conversion becomes a runtime intrinsic.
+      Ordinary Gyro is the default answer under the stdlib rule, and the
+      port proves it is possible; the intrinsic is only
       worth it if the cost shows. Related and smaller: `to_f64` drops the
       value on a range error where `strtod` answers ±Inf.
 - [ ] **Memory reclamation.** Every `#{}`, `split` and `text()` allocates
@@ -119,18 +118,30 @@ the C front end" is the maintained list; the load-bearing entries:
 ## Safety analyses
 
 - [ ] **Use-after-free and uninitialized-read detection in the C
-      runtime** (`internal/crt/src/rt.c`). The evaluator poisons freed
-      and unwritten storage and aborts; the C runtime frees for real and
-      leaves memory as the allocator returned it, so **the tier you ship
-      is the one that does not check**. It cannot even name a double
-      free: `gy_free` writes its poison and then hands the block to libc,
-      which reuses those bytes, so both native tiers say the weaker `free
-      of memory that is not allocated`. Closing this removes the three
-      corpus skips (`panic-use-after-free`,
-      `panic-uninitialized-{field,local}`). Sketch: `gy_free` poisons the
-      payload behind the header magic instead of releasing, and `new`
-      returns poison-filled cells that `load` checks — needs a cheap
-      check that does not wreck the benchmark story.
+      runtime** (`internal/crt/src/rt.c`). **This got worse, not better.**
+      The METALS evaluator poisoned freed and unwritten storage and
+      aborted on a read; it is deleted, so nothing checks either any more,
+      and the corpus cases that proved it worked went with it
+      (`panic-use-after-free`, `panic-uninitialized-{field,local}` — they
+      only ever passed on that tier). It cannot even name a double free:
+      `gy_free` writes its poison and then hands the block to libc, which
+      reuses those bytes, so what comes out is the weaker `free of memory
+      that is not allocated`. Sketch: `gy_free` poisons the payload behind
+      the header magic instead of releasing, and `new` returns
+      poison-filled cells that `load` checks — needs a cheap check that
+      does not wreck the benchmark story. Whatever lands, write the
+      corpus cases back.
+- [ ] **Type punning is not diagnosed anywhere.** Reading across two
+      union members that share no initial sequence, and reading a
+      struct's storage as bytes, are undefined in C too — and the
+      evaluator was the only thing that recorded which member was live
+      and could say so. Nothing does now. `c-bitfield-bytes` relies on
+      the reinterpretation being C's, which is fine; what is gone is the
+      diagnosis of the cases where it is a mistake.
+- [ ] **A pointer that has left its object is not caught.** `ptr.offset`
+      past an extent and a `ptr.cast` naming the wrong type are a
+      producer's claim, and the verifier does not check either. Same
+      cause, same deletion.
 - [ ] **Leak analysis has two holes that cancel each other out.** An
       allocation stored into a field reached *through a pointer*
       (`p.child = n`) is not settled, although the same store in a struct
@@ -264,13 +275,3 @@ Language questions nobody has answered yet, kept short:
 - [ ] `docs/agent-context.md` §"Blocking real applications" still says
       `@extern` has no callback and no out-parameter. Both landed
       2026-08-26 (`tests/testdata/run/extern-pointers.gyro`).
-- [ ] `METALS_NEXT.md` §10 is measured against a tree that has moved:
-      Gyro can import a `.c` now (`internal/loader/foreign.go` knows the
-      extension), and a C program through `internal/cc` is as many files
-      as it takes (`c-multifile`). What survives is the bridge route —
-      two `.c` roots on one command line still link as two modules with
-      one linear memory each — and the libc breadth list. Re-verify the
-      section or fold what is left into this file.
-- [ ] Decide whether `gyro build` defaults to the C backend eventually
-      (nasm as opt-in) — flagged when cgen landed, still `--backend nasm`
-      by default.

@@ -15,15 +15,12 @@
 // same u32 tag, and `SDL_PollEvent` fills one through a pointer — so the
 // window's close button ends the run, instead of a fixed time doing it.
 //
-// It is the one example no tier runs in the suite. The Go tiers cannot
-// call C at all, and the two that can would open a window on a machine
-// that may have no display and report a frame count that is different
-// every time. `gyro build examples/triangle.gyro -o triangle` is how to
-// see it.
+// It is the one example the suite does not run: it would open a window on
+// a machine that may have no display, and report a frame count that is
+// different every time. `gyro build examples/triangle.gyro -o triangle`
+// is how to see it.
 //
-//gyro:skip metals the evaluator is Go and cannot call a C function
-//gyro:skip native it opens a window and reports a frame rate, neither of which a golden can hold
-//gyro:skip cnative it opens a window and reports a frame rate, neither of which a golden can hold
+//gyro:skip it opens a window and reports a frame rate, neither of which a golden can hold
 
 import { println, eprintln, Array } from "stdlib"
 

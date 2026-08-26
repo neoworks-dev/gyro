@@ -671,7 +671,7 @@ is four, a struct of `{ u8; u32 }` is eight with the `u32` at four, and
 `array<u8, 3>` is three bytes. A METALS *register* still carries a scalar
 widened to a qword, and an `f32` as the double it widens to; the move
 between the two representations widens on a load and narrows on a store.
-[Appendix E](appendix-e-native-backends.md) has the table and the rule.
+[Appendix E](appendix-e-native-backend.md) has the table and the rule.
 
 This replaces v1's "every scalar occupies one qword, nothing is packed",
 which was a shortcut, and it is what makes the commitment above real: a
@@ -1764,10 +1764,16 @@ for having one.
 
 ### The second producer is a statically typed Scheme *(new)*
 
-**Status: decided.** `internal/lisp` compiles a Scheme into METALS, and a
-Gyro program imports one by path: `import { fib } from "./fib.lisp"`.
+**Status: reversed — see "One tier, one backend, two producers".**
+`internal/lisp` is deleted; `internal/cc` is the second producer now, and
+it is one people use rather than one kept only to break rules. The
+closure-environment rule the Lisp found is still tighter for having been
+found, which is why this entry stays.
 
-It exists to keep the format honest. METALS is a cross-language IR with
+`internal/lisp` compiled a Scheme into METALS, and a
+Gyro program imported one by path: `import { fib } from "./fib.lisp"`.
+
+It existed to keep the format honest. METALS is a cross-language IR with
 one producer, which means every assumption Gyro's lowering happens to
 satisfy is an assumption nobody has tested. The closure-environment rule
 above was found within an hour of the Lisp emitting its first closure.
@@ -2031,15 +2037,27 @@ type declaration behind every optional).
 
 ### The METALS evaluator is the lowering oracle *(new)*
 
-**Status: decided.** A tree-walking evaluator for verified METALS lands
-with the lowering pass, so a lowering bug surfaces at the level the
+**Status: reversed twice — see "The interpreter is removed, and no tier
+is the oracle", then "One tier, one backend, two producers".** It stopped
+being the oracle when the goldens became hand-written, and
+`internal/meval` is now deleted outright.
+
+A tree-walking evaluator for verified METALS landed
+with the lowering pass, so a lowering bug surfaced at the level the
 lowering wrote rather than through generated assembly. Rejected
 verifier+golden-text only, for exactly that reason.
 
 ### C gets a libc, bundled, over a three-import floor *(new)*
 
-**Status: done.** `internal/clibc` is a C standard library compiled in
-beside every program the wasm bridge builds: string.h, the malloc family
+**Status: reversed — see "One tier, one backend, two producers".**
+`internal/clibc` is deleted with the bridge it was built for. The
+three-import floor — `write_byte`, `read_byte`, `exit` and nothing else —
+is the part worth keeping in mind: it is what stopped a linear address
+from becoming a pointer at the boundary, and it is the shape any future
+sandboxed producer should copy.
+
+`internal/clibc` was a C standard library compiled in
+beside every program the wasm bridge built: string.h, the malloc family
 over `memory.grow`, stdio with a full printf, the numeric parsers,
 qsort/bsearch, ctype, and the math.h names that are METALS instructions
 underneath. Before it, the bridge linked freestanding, so a C program
@@ -2191,11 +2209,16 @@ result: it doubles a table of instructions to avoid one that is free.
 
 ### The wasm bridge is a producer, and a temporary one *(new)*
 
-**Status: decided.** `internal/wasm` reads a linked wasm32 module and
-translates it to METALS. `gyro cc file.c` runs clang's wasm32 target and
-then the bridge, so C compiles and runs on all three METALS tiers.
+**Status: done, and now removed as planned.** `internal/wasm` is deleted;
+`internal/cc` is the destination it was reconnaissance for. Linear
+memory, `trunc` and `bitcast` are what it left behind in the format, and
+they stay ([appendix D](appendix-d-metals.md)).
 
-It exists to answer a question about the IR before a C front end is
+`internal/wasm` read a linked wasm32 module and
+translated it to METALS. `gyro cc file.c` ran clang's wasm32 target and
+then the bridge, so C compiled and ran on all three METALS tiers.
+
+It existed to answer a question about the IR before a C front end was
 written to depend on the answer. wasm32 and METALS have the same
 structured control flow — `block`, `loop`, `br` to an enclosing label,
 and nothing else — so LLVM's relooper has already solved the hardest
@@ -2982,7 +3005,7 @@ it did not have.
 
 ## Native backend
 
-Design in [appendix E](appendix-e-native-backends.md).
+Design in [appendix E](appendix-e-native-backend.md).
 
 ### The runtime is C on libc *(new)*
 
@@ -3096,7 +3119,13 @@ examples untested.
 
 ### A C emitter sits beside the assembler, sharing one runtime *(new)*
 
-**Status: decided.** `internal/cgen` compiles the same verified METALS
+**Status: reversed — see "One tier, one backend, two producers".**
+`internal/cgen` is deleted. The reasoning below is kept because the
+reversal is itself a decision, and because the runtime split it forced —
+`rt.c` living in `internal/crt` rather than inside a backend — outlived
+it and is still right.
+
+`internal/cgen` compiled the same verified METALS
 module to one C translation unit and links it against the same
 `rt.c`, and the execution corpus runs it as a fourth tier, `cnative`.
 It is a sibling of `internal/nasm`, not a replacement.
@@ -3306,7 +3335,7 @@ and `error` is a duck-typed contract rather than a type.
 `u8[]` can be a view, so neither carries a borrow row.
 
 The reason is the v1 native layout: every scalar occupies a full word
-([appendix E](appendix-e-native-backends.md)), so a `u8[]` slice is word-strided, while a
+([appendix E](appendix-e-native-backend.md)), so a `u8[]` slice is word-strided, while a
 string's bytes are packed UTF-8. The two representations cannot alias.
 The first attempt returned the string's own storage as a slice, which the
 interpreter read correctly and a native binary read as garbage.
@@ -3392,9 +3421,11 @@ than inventing its own.
 
 ### One execution corpus, run by every tier *(new)*
 
-**Status: decided.** A test program is a file in `tests/testdata/run`
-beside the output it must produce, and it runs through the METALS
-evaluator and both native backends, all held to the same golden.
+**Status: decided; the corpus stayed, the tiers did not.** A test program
+is a file in `tests/testdata/run` beside the output it must produce.
+There is one tier left to run it on — see "One tier, one backend, two
+producers" — but the corpus itself is unchanged, and the reason it exists
+is the reason it still does.
 
 Before this, each tier kept its own programs as Go string literals, so a
 case was only cross-checked if someone remembered to paste it into all
@@ -3405,9 +3436,9 @@ were evaluated at exit rather than at registration, printing a tuple
 needed the same synthesized repr as a struct, and the native runtime
 detected neither use after free nor an uninitialized read.
 
-A known gap is a case carrying `//gyro:skip <tier> <reason>` — a gap with
-a program attached and a test that will fail the day it closes, rather
-than a line in a table.
+A known gap is a case carrying `//gyro:skip <reason>` — a gap with a
+program attached and a test that will fail the day it closes, rather than
+a line in a table.
 
 ### The interpreter is removed, and no tier is the oracle *(new)*
 
@@ -3466,6 +3497,62 @@ a mistake with, since all three read the same IR. Rejected: **deleting
 `gyro run`** and making people lower explicitly; the shortest path to
 running a program is worth a verb.
 
+### One tier, one backend, two producers *(new)*
+
+**Status: decided.** `internal/meval`, `internal/cgen`, `internal/lisp`
+and `internal/wasm` are deleted, and `internal/clibc` with the bridge it
+existed for. What is left is one consumer of METALS — `internal/nasm`
+over `internal/crt` — and two producers, `internal/lower` and
+`internal/cc`. The corpus runs each case once. `gyro run` builds into a
+temporary directory and executes the binary, so it is a spelling of
+`gyro build` and not a second way to execute a program; `gyro lisp` and
+`gyro cgen` are gone, `gyro build --backend` is gone, and `gyro cc` now
+prints what the direct C front end makes of a file.
+
+**This gives up the cross-check, and that is the whole cost.** Three
+tiers held to one golden caught a wrong answer that looked plausible;
+one tier does not. What survives is the part that was always doing the
+work: the golden is written by hand, before the program runs, and there
+is still no flag that regenerates it. The tiers were a way of noticing
+when that discipline had been skipped, not a substitute for it.
+
+What is gone with the evaluator, recorded rather than quietly dropped:
+use-after-free and read-of-uninitialized detection (it poisoned cells and
+the C runtime frees for real), the abort on type punning across union
+members with no common initial sequence, and the abort on a `ptr.offset`
+or `ptr.cast` that has left its object. Each of those is now undefined
+behaviour that runs. The corpus cases that only ever passed on the
+evaluator — `panic-use-after-free`, `panic-uninitialized-local`,
+`panic-uninitialized-field`, `panic-union-punning`, `union-punning.metals`
+— were deleted rather than kept as programs nothing runs.
+`//gyro:skip` loses its tier argument, since there is no tier to name.
+
+The C bridge took the whole-program `.c` route with it. `internal/cc`
+is a front end for libraries: what a Gyro program imports from a `.c` is
+its declared types and functions, and C's `int main` returns a process
+exit code that a METALS entry has nowhere to put. A `.c` root is refused
+rather than run with its exit code silently dropped. Linear memory,
+`trunc` and `bitcast` stay in the format — a flat `u32`-addressed region
+is what a producer with C's memory model needs, and that model is not
+going away — but no producer emits one today, and what exercises the
+instructions is METALS written by hand in the corpus.
+
+Rejected: **keeping `cgen` as the only backend and deleting `nasm`.**
+That makes the compiler a source-to-source translator and forfeits both
+the code generation and the ability to answer for what the binary does —
+the same argument that put the assembler first when the C emitter was
+added. Rejected: **keeping `meval` as a non-oracle checking tier.** It
+is a second implementation of every runtime rule, and the reason to want
+it back is a reason to want a sanitizer instead: what it caught was
+memory misuse, and a poisoning allocator in `rt.c` catches that without
+a second implementation of the language. Rejected: **keeping the Lisp
+front end as the honesty check on the format.** `internal/cc` is a
+second producer, it is not Gyro, and it is one people actually use;
+a Scheme kept only to break rules is a Scheme nobody reads. Rejected:
+**routing a whole-program `.c` through `internal/cc` anyway.** It
+compiles, and it returns 0 no matter what `main` returns, which is a
+wrong answer rather than a missing feature.
+
 ### A diagnostics fixture claims its own diagnostics *(new)*
 
 **Status: decided.** A checker test is Gyro in
@@ -3491,7 +3578,8 @@ and bound imports opaquely; it is deleted.
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
-| METALS remainder | the format is implemented end to end (spec, verifier, Gyro lowering, evaluator); still open: what the name expands to, the linking/loading model, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
+| METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
+| linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |
 | module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use; `@comptime` folding will subsume this. Module-level `var` does have identity and lowers to METALS storage |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
@@ -3505,6 +3593,8 @@ and bound imports opaquely; it is deleted.
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
 | memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
-| native use-after-free and uninitialized reads | the evaluator poisons freed cells and unwritten storage and aborts on a read; the C runtime frees for real and leaves storage as the allocator returned it, so a native binary silently reads garbage where the evaluator panics. It cannot even name a double free, since `gy_free` hands the block back to libc before a second free could read the poison |
+| use-after-free and uninitialized reads | the runtime frees for real and leaves storage as the allocator returned it, so a binary silently reads garbage. The evaluator poisoned freed cells and unwritten storage and aborted on a read; it is deleted, and a poisoning allocator in `rt.c` is the replacement worth building. It cannot even name a double free today, since `gy_free` hands the block back to libc before a second free could read the poison |
+| type punning is not diagnosed | reading across union members with no common initial sequence, or a struct's storage as bytes, reinterprets whatever is there; catching it needs something that records which member was written |
+| a pointer that has left its object | `ptr.offset` past an extent and a `ptr.cast` naming the wrong type are a producer's claim and nothing verifies either |
 | green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
 | a fair `select` in the native runtime | the choice among ready arms is unspecified, so in-order polling conforms — but it can starve an arm behind a busy one, and fixing that means arms become a descriptor table the runtime chooses from |

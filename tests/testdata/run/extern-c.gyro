@@ -1,7 +1,5 @@
 // @extern reaching into libc and libm: every kind of value the boundary
-// carries in v1, on the two tiers that can call C at all.
-//
-//gyro:skip metals the evaluator is Go and cannot call a C function
+// carries in v1.
 
 import { println } from "stdlib"
 

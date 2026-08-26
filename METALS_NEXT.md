@@ -1,11 +1,20 @@
 # METALS_NEXT — many languages, one substrate
 
 **Almost nothing in this document is implemented** — the exception is the
-first two steps of §9, marked there. It records a design direction and
+first three steps of §9, marked there. It records a design direction and
 the reasoning behind it, so the next decision does not have to re-derive
 the argument. `docs/appendix-d-metals.md` and `docs/decisions.md` remain the source
 of truth for what METALS *is*; this is what it could become and what each
 step would cost.
+
+**Two premises this was written on are gone.** There is no C emitter, so
+"the host compiler optimizes on the cgen tier" is not an escape hatch any
+more — `nasm` is the only backend and the optimizer bill lands there in
+full. And there is no wasm bridge, so the sandboxed route in is not a
+thing that exists to be preferred or fallen back to; §6's argument was
+won, and `internal/cc` is the direct target it argued for. Passages
+below that lean on either are marked where it changes the conclusion, and
+left standing where the reasoning is still the reasoning.
 
 **One decision is now settled** (2026-08-25, recorded in
 `docs/decisions.md` under "Gyro's memory model is C's, and stays C's"):
@@ -171,8 +180,8 @@ for, because none of these is worth building for one guest.
 
 Closer than it looks. METALS declares record shapes, and `any` already
 interns a static descriptor per type carrying field names, byte offsets
-and per-field descriptor pointers (`internal/cgen/any.go:85`). That is a
-GC type map under another name.
+and per-field descriptor pointers. That is a GC type map under another
+name.
 
 Start non-moving and precise. Moving comes later, behind handle
 indirection for the boundary and root maps at safepoints for the interior.
@@ -218,10 +227,13 @@ dynamic one.
 *Needed by: `eval`, `exec`, `define_method`, `new Function`, Lua `load`.*
 
 METALS is whole-program; `metals.Link` runs before anything does.
-Supporting `eval` means loading METALS at runtime — and the three-tier
-architecture already contains the answer: **AOT code runs on nasm or
-cgen, `eval`'d code runs on meval.** The evaluator stops being only the
-oracle and becomes the fallback execution mode.
+Supporting `eval` means loading METALS at runtime, and the answer this
+was written against is gone: **AOT code on a native backend, `eval`'d
+code on the METALS evaluator** stopped being available when the evaluator
+was deleted. What is left is JIT-assembling into the running process, or
+bringing an evaluator back *as* the runtime-loading mechanism rather than
+as a second implementation of the language. The second is cheaper and is
+the one to cost first.
 
 ### 4.5 Optional refcounting over the tracer
 
@@ -261,16 +273,20 @@ memory-model swap.** Recorded plainly:
   rule, so Gyro can read a Rust or Zig struct in place.
 
 Net: Gyro becomes a managed language that can still talk to unmanaged
-ones. `docs/decisions.md` would need a large entry, and `docs/appendix-e-native-backends.md`'s
+ones. `docs/decisions.md` would need a large entry, and `docs/appendix-e-native-backend.md`'s
 layout table would grow a second row set.
 
 ---
 
 ## 6. Direct targeting instead of the wasm bridge
 
-The bridge exists because clang already produces a C-shaped program and
-the relooper has already run (`internal/wasm/clang.go:14-21`). Making
-METALS a *direct* target for C, Rust, Zig and Go changes the trade.
+*Settled for C: `internal/cc` is the direct target, and the bridge is
+deleted. The argument below is kept because it applies unchanged to Rust,
+Zig and Go, which is where it has not been acted on.*
+
+The bridge existed because clang already produces a C-shaped program and
+the relooper has already run. Making METALS a *direct* target for C,
+Rust, Zig and Go changes the trade.
 
 **What it fixes.** The lossy round-trip through wasm — where types,
 structs and the original control flow are destroyed and reconstructed
@@ -283,12 +299,13 @@ that code.
 **What it costs.** Two things, both large.
 
 *The optimizer.* LLVM is twenty years of inlining, SROA, GVN, LICM, alias
-analysis, vectorization, scheduling and register allocation. There is one
-escape hatch already built: **cgen emits C, so the host compiler
-optimizes** — `internal/cgen/build.go:52` passes `-O1
--fno-strict-aliasing` today, and that is raisable. On that tier LLVM's
-optimizer is kept for free while we own the IR above it. `nasm` is where
-the bill lands.
+analysis, vectorization, scheduling and register allocation. There used to
+be an escape hatch: a C emitter beside the assembler, so the host compiler
+optimized on one tier while we owned the IR above it. That backend is
+deleted, so the hatch is closed and the whole bill lands on `nasm`.
+Reopening it would mean bringing the C emitter back, which is a real
+option and a large one — and it would be for the optimizer, which is not
+the reason it existed the first time.
 
 *The relooper.* C's `goto` can produce genuinely irreducible control flow,
 and turning it into `block`/`loop`/`br` requires node duplication or a
@@ -324,7 +341,7 @@ Honest, and the two halves have opposite answers.
 
 | | vs. its best existing implementation | why |
 | --- | --- | --- |
-| C, C++, Zig, Rust | ~1.0–1.3× via direct target; parity plausible on cgen, worse on nasm until it grows an optimizer | bounds checks where the sandbox is kept; otherwise the host compiler still optimizes |
+| C, C++, Zig, Rust | ~1.0–1.3× via direct target, but only once `nasm` grows an optimizer; today `tests/bench` puts the ports at 6.6×–29× against their C | bounds checks on every element access are most of the gap |
 | Go | 1.2–3× slower than the `gc` toolchain | competing with a mature AOT compiler, GC and escape analysis |
 | Lua | ~2–5× **faster** than PUC-Rio; 5–20× slower than LuaJIT | beat a bytecode interpreter, lose to a trace compiler |
 | Python | ~1.5–4× **faster** than CPython; slower than PyPy | same shape |
@@ -404,10 +421,11 @@ no longer step one and the C-compatibility work moves to the front.
 2. **FFI growth.** Structs by value is **done** — a record crosses as
    the same bytes, with the generated shim asserting the layout against
    `cc` — leaving callbacks and out-parameters.
-3. **Direct C → METALS front end** (§6), emitting `ptr<T>` into Gyro's
-   own memory, with the loader learning `.c`. The bar: any existing C
-   program imports unmodified. The wasm bridge stays as the sandboxed
-   reference answer for the corpus.
+3. ~~**Direct C → METALS front end** (§6), emitting `ptr<T>` into Gyro's
+   own memory, with the loader learning `.c`~~ — **done**, and the wasm
+   bridge is deleted rather than kept as a sandboxed reference. The bar —
+   any existing C program imports unmodified — is not fully met: see
+   `docs/appendix-g-known-gaps.md` for what is refused by name.
 4. **Reclamation, solved unmanaged.** Arenas, a quarantining allocator,
    or stronger static analysis — the gap still gates long-running
    programs, and a collector is no longer the answer for Gyro.
@@ -423,24 +441,29 @@ the heap is for the guests; Gyro does not move onto it.
 These are measured against the tree, not reasoned about, and they gate
 everything above.
 
-- **One `.c` is one module is one memory.** `gyro run cJSON.c reference.c`
-  fails with `the module exports no main`, because `wasm.CompileC` takes a
-  single path. Cheapest correct fix: one `wasm-ld` invocation over all
-  objects, translating the single module that comes out — which is how
-  these languages already link, and it sidesteps imported memory entirely.
-- **Gyro cannot import a C or wasm module.**
-  `internal/loader/foreign.go:24` knows `.lisp` and `.scm` only, so
-  `import { add } from "./lib.c"` is handed to the Gyro parser and fails
-  with `E0202: expected a declaration, found identifier __attribute__`.
-  The mechanism — `Module.Foreign`, `addForeign`, verify-then-synthesize —
-  is already built.
-- **`argc`/`argv` are zeroed** (`internal/wasm/translate.go:297-306`), so
-  `//gyro:args` is inert for `.c` cases.
-- **libc breadth.** No transcendental math (`sin`, `pow`, `exp`, `log`),
-  no `scanf` family, no `fgets`/`fread`, no `FILE` beyond the three
-  standard streams, no `time.h`, and no `inttypes.h`, `setjmp.h`,
-  `locale.h` or `stdatomic.h`. Upstream jsmn runs unmodified except its
-  `clock_gettime` timer; cJSON is blocked on `sscanf`.
+Everything this section used to list is closed or moot. A program is as
+many `.c` files as it takes, found rather than declared (`c-multifile`);
+`import { add } from "./lib.c"` works, through `internal/cc` and the
+`Module.Foreign` mechanism that was already built; and the libc-breadth
+and `argc`/`argv` entries went with the bridge they described — an
+imported `.c` gets its declarations from a header and its i/o from the
+program that imported it.
+
+What replaces them:
+
+- **`nasm` carries the whole optimizer bill.** With no C emitter there is
+  no tier where the host compiler does the work, and `tests/bench` is
+  where that shows: the `cc` column is the only comparison left, and it
+  is the one that was always the point.
+- **Nothing cross-checks a wrong answer any more.** Three tiers held to
+  one golden caught the plausible-but-wrong result; the hand-written
+  golden is now the entire check
+  ([chapter 17.1](docs/ch17-01-the-backend.md)).
+- **Linear memory has no producer.** `memory`, `trunc` and `bitcast` stay
+  in the format because a flat `u32`-addressed region is what a
+  C-shaped producer needs, and a future sandboxed guest — every managed
+  track above assumes one — would emit it. Today only hand-written METALS
+  in the corpus does.
 
 ---
 

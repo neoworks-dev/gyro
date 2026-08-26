@@ -170,14 +170,13 @@ neighbouring programs that do not compile:
 - `words += 1` overflowing an `i32` — that panics rather than wrapping, and
   wrapping is spelled `+%` ([chapter 3.3](ch03-03-operators-and-arithmetic.md)).
 
-## Run it three ways
+## Run it
 
 ```sh
-./bin/gyro run words.gyro                          # the METALS evaluator
-./bin/gyro build words.gyro -o words               # x86-64 assembly
-./bin/gyro build words.gyro --backend c -o words   # generated C
+./bin/gyro run words.gyro              # build into a temp dir, then run it
+./bin/gyro build words.gyro -o words   # keep the binary
 ```
 
-All three must print exactly the same thing. If they do not, one of them has
-a bug — and which one is not decided by majority vote but by what this book
-says the program means ([chapter 17.1](ch17-01-three-tiers.md)).
+What it prints is what this book says it prints. If the two disagree, the
+compiler is the thing that is wrong — that is not a figure of speech, it is
+how the tests are written ([chapter 17.1](ch17-01-the-backend.md)).

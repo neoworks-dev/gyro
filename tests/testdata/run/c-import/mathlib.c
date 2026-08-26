@@ -7,11 +7,6 @@
 // which is why divmod below can write its answers through one. That is
 // the difference between this and @extern: a C library reached through
 // the FFI cannot take an out-parameter at all.
-//
-// It is also the difference between this and internal/wasm. The same
-// file through the bridge arrives with every one of these signatures
-// erased to i32 and every struct flattened into a byte region, which
-// runs correctly and cannot be imported as anything.
 
 int add(int a, int b) { return a + b; }
 

@@ -1,7 +1,8 @@
 # 1.2. Installation
 
 The compiler is one Go binary with no dependencies. Building it needs Go
-1.24 or newer; running a program on the evaluator needs nothing else.
+1.24 or newer; running a Gyro program needs the assembler and linker below,
+because running a program means building it.
 
 ```sh
 git clone https://github.com/gyro-lang/gyro
@@ -16,22 +17,20 @@ assume `./bin/gyro`.
 
 | you want to | you also need |
 | --- | --- |
-| `gyro run`, `gyro check` | nothing |
-| `gyro build` (default backend) | `nasm` and a C compiler, on Linux x86-64 |
-| `gyro build --backend c` | a C compiler, on Linux x86-64 |
+| `gyro check`, `gyro metals`, `gyro cc` | nothing |
+| `gyro build`, `gyro run` | `nasm` and a C compiler, on Linux x86-64 |
 | a program that imports a `.c` file | a C compiler for the link step |
-| `gyro cc` on a `.c` through the wasm bridge | `clang` with a wasm32 target |
 | regenerating a tree-sitter grammar | `npm`, once per grammar directory |
 
-Both native backends emit Linux x86-64 and link a small C runtime; that is
-the only target today ([appendix E](appendix-e-native-backends.md)).
+The backend emits Linux x86-64 and links a small C runtime; that is the
+only target today ([appendix E](appendix-e-native-backend.md)).
 
 ## Checking the install
 
 ```sh
 ./bin/gyro version
 ./bin/gyro check examples/structs.gyro    # type-check, report diagnostics
-./bin/gyro run examples/hello.gyro        # check, lower, evaluate
+./bin/gyro run examples/hello.gyro        # check, lower, build, run
 ./bin/gyro build examples/hello.gyro -o hello && ./hello
 ```
 
@@ -57,7 +56,7 @@ They are the shortest route to seeing real syntax:
 make test      # go test ./...
 make check     # type-check every example
 make vet
-make bench     # both native backends over tests/bench
+make bench     # the backend against the C, over tests/bench
 make grammar   # regenerate and test both tree-sitter grammars
 ```
 

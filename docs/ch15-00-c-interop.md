@@ -134,7 +134,7 @@ field's type rather than the struct's.
 
 The claim that the two languages agree on the bytes is checked on every
 build: the generated shim declares the struct with its real C members and a
-`_Static_assert` per field offset ([appendix E](appendix-e-native-backends.md)).
+`_Static_assert` per field offset ([appendix E](appendix-e-native-backend.md)).
 
 ### Opaque handles
 

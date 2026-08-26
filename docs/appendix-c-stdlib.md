@@ -248,6 +248,6 @@ instructions.
 Ordinary Gyro: `String` and its UTF-8 encoder, every text method,
 `Map<K, V>`, `Array<T>::is_empty`, and all of `fmt`.
 
-**Prefer Gyro.** Two native implementations of something with no interesting
-runtime requirement are two places to diverge
-([chapter 17.1](ch17-01-three-tiers.md)).
+**Prefer Gyro.** Something with no interesting runtime requirement written
+into the C runtime instead is a second language to maintain it in, for
+nothing ([chapter 17.1](ch17-01-the-backend.md)).

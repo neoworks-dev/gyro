@@ -2,10 +2,10 @@
 // surface: Go-compatible formatting, strings, arrays, hashing, channels,
 // mutexes and futures behind a plain C ABI.
 //
-// Both native backends link against this one file — internal/nasm, which
-// emits x86-64 assembly, and internal/cgen, which emits C — so the
-// runtime lives here rather than inside either of them. Its contract
-// (layouts, message texts, formatting rules) is docs/appendix-e-native-backends.md.
+// internal/nasm links against this one file rather than emitting the
+// runtime itself, so what a program does at runtime is written in C once
+// and read as C. Its contract (layouts, message texts, formatting rules)
+// is docs/appendix-e-native-backend.md.
 package crt
 
 import _ "embed"
