@@ -415,10 +415,19 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{defs: []string{i.Dst}, uses: i.Args}
 	case *metals.Slice:
 		return roles{defs: []string{i.Dst}, uses: []string{i.X}, mem: []string{i.X}}
+	case *metals.SliceSub:
+		// A slice is two words, so neither operand nor result is a
+		// candidate for a machine register in the first place; only the
+		// bounds are ordinary values.
+		return roles{defs: []string{i.Dst}, uses: []string{i.X, i.Lo, i.Hi}}
 	case *metals.IndexGet:
 		return roles{defs: []string{i.Dst}, uses: []string{i.X, i.Index}}
 	case *metals.IndexSet:
 		return roles{uses: []string{i.X, i.Index, i.Val}}
+	case *metals.IndexPtr:
+		// The base is read for its value, not its address: the array is
+		// where the pointer says it is, so a home is fine for it.
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Index}}
 	case *metals.Len:
 		return roles{defs: []string{i.Dst}, uses: []string{i.X}}
 	case *metals.StrConcat:

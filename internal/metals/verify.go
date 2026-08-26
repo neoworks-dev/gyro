@@ -68,6 +68,7 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 
 	for _, imp := range m.Imports {
 		foreign := !SameRuntime(m.Name, imp.Module)
+		native := NativeLibrary(imp.Module)
 		for _, fn := range imp.Funcs {
 			if _, dup := v.callables[fn.Name]; dup {
 				return nil, fmt.Errorf("@%s is declared twice", fn.Name)
@@ -77,7 +78,7 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 				return nil, err
 			}
 			if foreign {
-				if err := checkBoundary(fn.Name, fn.Sig, v.types); err != nil {
+				if err := checkBoundary(fn.Name, fn.Sig, v.types, native); err != nil {
 					return nil, err
 				}
 			}
@@ -452,22 +453,28 @@ func (v *verifier) checkSigTypes(name string, sig *FnType) error {
 	return nil
 }
 
-// checkBoundary enforces the copy rule on a signature crossing between
-// two runtimes: no pointers, channels or futures anywhere in it. The
-// types are the declaring module's, since a %Named resolves there and
-// nowhere else.
+// checkBoundary enforces the copy rule on a signature crossing out of
+// this runtime. The types are the declaring module's, since a %Named
+// resolves there and nowhere else.
+//
+// `native` says the far side is a linked C library rather than another
+// runtime — same process, same address space, same allocator — which is
+// what decides whether an address may cross. See NativeLibrary. A
+// channel and a future are refused either way: those are Gyro runtime
+// objects with no C representation, which is a different reason than the
+// heap.
 //
 // The verifier calls this on an import out of another runtime and the
 // linker on the export it resolves to; both of them are the side that
 // can see two runtimes at once.
-func checkBoundary(name string, sig *FnType, types map[string]*TypeDecl) error {
+func checkBoundary(name string, sig *FnType, types map[string]*TypeDecl, native bool) error {
 	for _, param := range sig.Params {
-		if bad := boundaryOffender(param, types, map[string]bool{}); bad != "" {
+		if bad := boundaryOffender(param, types, map[string]bool{}, native); bad != "" {
 			return fmt.Errorf("@%s crosses a runtime boundary; %s cannot: values copy at the boundary", name, bad)
 		}
 	}
 	if sig.Result != nil {
-		if bad := boundaryOffender(sig.Result, types, map[string]bool{}); bad != "" {
+		if bad := boundaryOffender(sig.Result, types, map[string]bool{}, native); bad != "" {
 			return fmt.Errorf("@%s crosses a runtime boundary; %s cannot: values copy at the boundary", name, bad)
 		}
 	}
@@ -477,15 +484,26 @@ func checkBoundary(name string, sig *FnType, types map[string]*TypeDecl) error {
 // boundaryOffender names the part of a type that cannot cross, or "". A
 // record is walked rather than waved through: a struct crossing by value
 // is its fields crossing by value, and one of them holding a pointer is
-// the same shared mutable state a bare pointer would be.
-func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) string {
+// the same shared mutable state a bare pointer would be — across a
+// runtime boundary, where the far side has a heap of its own.
+func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool, native bool) string {
 	switch t := t.(type) {
 	case *Ptr:
+		if native {
+			// A linked library dereferences this address on this thread,
+			// in this address space. Nothing is copied because there is
+			// no second heap to copy into.
+			return boundaryOffender(t.Elem, types, seen, native)
+		}
 		return t.String()
 	case *AnyPtr:
 		// Erasing the target's type does not make an address portable.
-		// It is still this program's address space, and forgetting what
-		// lives there makes it less crossable rather than more.
+		// It is still this program's address space — which is exactly why
+		// it crosses to a library sharing that address space and to
+		// nothing else.
+		if native {
+			return ""
+		}
 		return t.String()
 	case *ChanOf:
 		return t.String()
@@ -493,29 +511,40 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) 
 		return t.String()
 	case *CodeType:
 		// An address of code means what a pointer means: something in
-		// this program's address space. The other side of a runtime
-		// boundary does not share one.
+		// this program's address space. A linked library can call one; a
+		// runtime with its own heap has no such address to call.
+		if native {
+			for _, param := range t.Params {
+				if bad := boundaryOffender(param, types, seen, native); bad != "" {
+					return bad
+				}
+			}
+			if t.Result != nil {
+				return boundaryOffender(t.Result, types, seen, native)
+			}
+			return ""
+		}
 		return t.String()
 	case *Opt:
-		return boundaryOffender(t.Elem, types, seen)
+		return boundaryOffender(t.Elem, types, seen, native)
 	case *SliceOf:
-		return boundaryOffender(t.Elem, types, seen)
+		return boundaryOffender(t.Elem, types, seen, native)
 	case *ArrayOf:
-		return boundaryOffender(t.Elem, types, seen)
+		return boundaryOffender(t.Elem, types, seen, native)
 	case *TupleOf:
 		for _, elem := range t.Elems {
-			if bad := boundaryOffender(elem, types, seen); bad != "" {
+			if bad := boundaryOffender(elem, types, seen, native); bad != "" {
 				return bad
 			}
 		}
 	case *FnType:
 		for _, param := range t.Params {
-			if bad := boundaryOffender(param, types, seen); bad != "" {
+			if bad := boundaryOffender(param, types, seen, native); bad != "" {
 				return bad
 			}
 		}
 		if t.Result != nil {
-			return boundaryOffender(t.Result, types, seen)
+			return boundaryOffender(t.Result, types, seen, native)
 		}
 	case *Named:
 		decl := types[t.Name]
@@ -527,12 +556,16 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) 
 			// A union is storage with nothing recording which member is
 			// live. Copying it across a boundary would hand the far side
 			// a shape it has no way to read, so the copy rule refuses it
-			// rather than making one up.
+			// rather than making one up. A native library is not copied
+			// to, and reads the member C's own way.
+			if native {
+				return ""
+			}
 			return "%" + t.Name + ", a union"
 		}
 		if decl.Record != nil {
 			for _, field := range decl.Record.Fields {
-				if bad := boundaryOffender(field.Type, types, seen); bad != "" {
+				if bad := boundaryOffender(field.Type, types, seen, native); bad != "" {
 					return bad
 				}
 			}
@@ -540,7 +573,7 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool) 
 		}
 		for _, variant := range decl.Enum.Variants {
 			for _, payload := range variant.Payload {
-				if bad := boundaryOffender(payload, types, seen); bad != "" {
+				if bad := boundaryOffender(payload, types, seen, native); bad != "" {
 					return bad
 				}
 			}

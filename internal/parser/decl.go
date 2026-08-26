@@ -165,6 +165,10 @@ func (p *Parser) parseDecl() ast.Decl {
 		decl := p.parseStructDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
+	case token.Union:
+		decl := p.parseUnionDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
 	case token.Enum:
 		decl := p.parseEnumDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
@@ -444,6 +448,36 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 		decl.Fields = append(decl.Fields, field)
 
 		// Fields are newline separated; a comma is accepted as well.
+		p.accept(token.Comma)
+		p.skipTerminators()
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// parseUnionDecl parses `union Name { member: T ... }`.
+//
+// It takes no type parameters. A union is one storage the widest member
+// fits in, and a parameter would make that size depend on an argument —
+// which is expressible, but a union exists to be C's, and C has no
+// generic ones for it to be.
+func (p *Parser) parseUnionDecl() *ast.UnionDecl {
+	decl := &ast.UnionDecl{Offset: p.offset()}
+	p.expect(token.Union)
+	decl.Name, _ = p.expectIdent()
+
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		member := ast.Field{Offset: p.offset()}
+		member.Exported = p.accept(token.Export)
+		member.Name, _ = p.expectIdent()
+		p.expect(token.Colon)
+		member.Type = p.parseType()
+		decl.Members = append(decl.Members, member)
+
 		p.accept(token.Comma)
 		p.skipTerminators()
 	}

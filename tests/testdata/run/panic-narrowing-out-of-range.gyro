@@ -1,0 +1,16 @@
+// Narrowing past the end aborts where the window is made, not where it
+// is later read. The message names both bounds and the length, because
+// there are two ways to be wrong and one of them is not obvious from the
+// other.
+
+//gyro:panic slice 2..9 out of range for length 5
+
+import { println } from "stdlib"
+
+fn main() {
+  var xs = [10, 20, 30, 40, 50]
+  println("before")
+  var at: usize = 9
+  var window = xs[2..at]
+  println(window.len())
+}

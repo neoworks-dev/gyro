@@ -352,7 +352,17 @@ func (c *checker) assignTarget(lhs ast.Expr) types.Type {
 			return types.Unknown
 		}
 		return sym.typ
-	case *ast.SelectorExpr, *ast.IndexExpr, *ast.TupleIndexExpr:
+	case *ast.IndexExpr:
+		if _, narrowing := lhs.Index.(*ast.RangeExpr); narrowing {
+			// A narrowing names a window, and a window is a value rather
+			// than a place: the elements it views are assignable one at a
+			// time, and the view itself has no storage of its own.
+			c.errorf(lhs.Offset, "cannot assign to a narrowing; assign its elements, or the slice variable")
+			c.expr(lhs)
+			return types.Unknown
+		}
+		return c.expr(lhs)
+	case *ast.SelectorExpr, *ast.TupleIndexExpr:
 		return c.expr(lhs)
 	case *ast.UnaryExpr:
 		if lhs.Op == token.Star {

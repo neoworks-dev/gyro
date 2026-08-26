@@ -282,6 +282,40 @@ type Struct struct {
 	Extern string
 }
 
+// Union is one storage with several names for it. Every member begins
+// where the union does, so the size is the widest member's and writing
+// one unwrites the others.
+//
+// It is its own type rather than a Struct carrying a flag, and the
+// reason is what falls out of it: nothing that switches on *Struct
+// treats a union as a record by accident. Equality, printing, hashing,
+// `any` and a runtime boundary all refuse it, and they refuse it by not
+// having a case rather than by remembering to ask — because nothing
+// records which member the storage means, so none of them has a question
+// to answer.
+//
+// Not generic: a union is one storage the widest member fits in, and C,
+// which is what a union exists to be, has no generic ones.
+type Union struct {
+	Name string
+	// Module identifies the defining module, for member visibility.
+	Module  string
+	Members []Field
+	Methods map[string]*Method
+}
+
+func (u *Union) String() string { return u.Name }
+
+// MemberNamed finds a member by name, or nil.
+func (u *Union) MemberNamed(name string) *Field {
+	for i := range u.Members {
+		if u.Members[i].Name == name {
+			return &u.Members[i]
+		}
+	}
+	return nil
+}
+
 // Extern is what `@extern("SDL2", symbol = "SDL_Delay")` says about a
 // declaration: the library it is linked from, spelled as the linker wants
 // it without the `lib` prefix, and the C symbol it names — the

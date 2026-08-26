@@ -121,6 +121,17 @@ func (p *printer) node(node Node) {
 		}
 		p.indent--
 
+	case *UnionDecl:
+		p.line("Union %s%s", exportMark(n.Exported), n.Name)
+		p.indent++
+		p.decorators(n.Decorators)
+		for _, member := range n.Members {
+			p.group("Member "+exportMark(member.Exported)+member.Name, func() {
+				p.node(member.Type)
+			})
+		}
+		p.indent--
+
 	case *EnumDecl:
 		p.line("Enum %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
 		p.indent++
@@ -316,8 +327,18 @@ func (p *printer) node(node Node) {
 	case *RangeExpr:
 		p.line("Range")
 		p.indent++
-		p.node(n.Lo)
-		p.node(n.Hi)
+		// An end a narrowing left off is the container's own bound, and
+		// printing it as a missing node would read as a parse failure.
+		if n.Lo == nil {
+			p.line("from the start")
+		} else {
+			p.node(n.Lo)
+		}
+		if n.Hi == nil {
+			p.line("to the end")
+		} else {
+			p.node(n.Hi)
+		}
 		p.indent--
 
 	case *TupleLit:

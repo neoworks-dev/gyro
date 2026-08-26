@@ -26,6 +26,7 @@ var codes = map[string]diag.Code{
 	"expected a tuple index after '.'":                                 diag.ETupleIndexForm,
 	"decorators cannot be attached to an export list":                  diag.EDecoratorPlace,
 	"expected an assignment after a comma-separated target list":       diag.EAssignmentForm,
+	"a range needs at least one end; xs[..] is the slice xs already is": diag.ERangeForm,
 
 	// These abort a speculative parse rather than reaching the user: inside
 	// a trial, errorf panics before it reports. They have no code because

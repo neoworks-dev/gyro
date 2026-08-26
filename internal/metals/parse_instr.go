@@ -344,7 +344,7 @@ func (p *parser) dstInstr() (Instr, error) {
 		args, err := p.regList()
 		return p.line(&MakeArray{Dst: dst, Elem: elem, Args: args}, err)
 
-	case "index.get":
+	case "index.get", "index.ptr":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -353,7 +353,28 @@ func (p *parser) dstInstr() (Instr, error) {
 			return nil, err
 		}
 		index, err := p.reg()
+		if op.text == "index.ptr" {
+			return p.line(&IndexPtr{Dst: dst, Ptr: x, Index: index}, err)
+		}
 		return p.line(&IndexGet{Dst: dst, X: x, Index: index}, err)
+
+	case "slice.sub":
+		x, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		lo, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		hi, err := p.reg()
+		return p.line(&SliceSub{Dst: dst, X: x, Lo: lo, Hi: hi}, err)
 
 	case "str.concat":
 		a, err := p.reg()

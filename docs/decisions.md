@@ -1,8 +1,8 @@
 # Design decisions
 
-A record of what was decided and why. `language.md` describes what Gyro *is*;
-this file records why it is that and what was rejected, so settled questions
-are not relitigated from scratch.
+A record of what was decided and why. The book ([`SUMMARY.md`](SUMMARY.md))
+describes what Gyro *is*; this file records why it is that and what was
+rejected, so settled questions are not relitigated from scratch.
 
 Status column: **done** means the parser implements it, **sema** means the
 syntax exists but no stage checks it, **planned** means neither.
@@ -167,6 +167,92 @@ C-style `for` header.
 Rejected inclusive-by-default (an off-by-one trap against zero-based
 indexing) and a second `..=` operator (two range spellings for marginal
 gain).
+
+**One end may be left off in an index position**, and only there: see
+"A slice narrows; a string does not" below.
+
+### An index is a place, on every container *(new)*
+
+**Status: decided.** `xs[i]` works on an `Array<T>` as well as on a slice
+and a fixed-size array, and on all three it is a *place*: `xs[i] = v`
+assigns into the container and `&xs[i]` is the element's own address.
+
+**The point is `get` returning a copy.** `Array<T>::get` answers with a
+value, so `xs.get(0).x = 9` mutates a copy and nothing else — it compiles
+clean and does nothing, which the md4c port called out as genuinely
+error-prone where it held two handles into one table and mutated through
+both. `xs[i]` lowers through a new `Array<T>::at(self, index): *T`
+instead, so an index reaches the element where it lies.
+
+`get` stays. A copy is what you want often enough, and it is the only one
+of the two that is safe to hold across a `push` — which reallocates, and
+therefore invalidates an element address exactly as `push_back`
+invalidates `&vec[i]` in C. Nothing detects that, which is the hazard the
+slice already has.
+
+**It is also cheaper**, which was not the reason but is worth recording:
+`gy_array_get` bounds-checks and then memcpys into a staging cell for the
+caller to read; `gy_array_at` bounds-checks and returns the address,
+after which the load is an ordinary load. One call either way, one copy
+fewer.
+
+**`index.ptr` grew a slice operand** to go with it, which is what makes
+`&xs[i]` work on a slice too. That is one question — the checked address
+of element `i` — with two places its bound comes from, the `N` in an
+array's type or the length word a slice carries. It is deliberately not
+the thing "An element behind a pointer is reached, not copied" rejected:
+that was widening `index.get` to a second *storage model* while leaving
+the write-back it exists to remove. This widens the extent's source, and
+the alternative is `ptr.offset`, which cannot check at all.
+
+### A slice narrows; a string does not *(new)*
+
+**Status: decided.** `xs[lo..hi]` is a window onto storage `xs` already
+views — half-open, bounds-checked, and free. Either end may be left off;
+`xs[..]` is refused. A fixed-size array narrows to a `T[]`, and so does
+an `Array<T>`, through the view it already hands out. A `string` does not
+narrow at all.
+
+This closes the gap md4c named as "the first thing a callback-driven
+library asks for": a C API shaped `(pointer, size)` had to become a
+`(base, beg, end)` triple threaded through every signature, with real
+copies where md4c points into the document without copying.
+
+**It is narrowing and not pointer arithmetic, and that is the whole
+point.** A slice already carries its length, so a window is a bounds
+computation on a thing that knows its own extent — checked, where
+`ptr.offset` cannot be. The two are not competing answers to one
+question: pointer arithmetic is how C's arrays work and slices are how
+Gyro's do, and "Pointer arithmetic is three instructions, and unchecked"
+already recorded why the second cannot borrow the first.
+
+**A window is a value, not a place.** `xs[0..2] = ys` and `&xs[0..2]` are
+both errors: the view is built at the expression and has no storage of
+its own. Its *elements* are places, as they always were.
+
+**`string` is left out on purpose.** Its length is in bytes and its
+content is UTF-8, so `s[0..2]` could cut a code point in half and answer
+with a `string` that is not text. Rejected **narrowing by bytes anyway**,
+which makes the type system stop meaning what it says; rejected
+**narrowing by runes**, which is O(n) in an operation that is O(1)
+everywhere else and would make `s[a..b]` and `xs[a..b]` cost differently
+for no visible reason. The question is recorded under "Still open".
+
+**Both bounds are checked together, and the abort names all three
+numbers.** `xs[2..1]` has both ends inside the length and is still wrong,
+which is a case "index out of range" has nothing to say about — so the
+message is `slice 2..1 out of range for length 3`.
+
+`slice.of` grew a second operand form as a consequence: it takes the
+*address* of an array as well as an array. Narrowing an addressable
+fixed-size array through the value form would have loaded it first, and a
+window onto that copy is storage nothing else can see. Same argument as
+`index.ptr`, and the extent is static either way.
+
+**The parser reads an index specially** rather than letting the binary
+loop do it, because `xs[lo..]` has no right operand for `..` to take.
+That is contained to the bracket: `for x in a..` still does not parse,
+since a bare end there names no sequence.
 
 ### Integer division truncates toward zero *(new)*
 
@@ -585,7 +671,7 @@ is four, a struct of `{ u8; u32 }` is eight with the `u32` at four, and
 `array<u8, 3>` is three bytes. A METALS *register* still carries a scalar
 widened to a qword, and an `f32` as the double it widens to; the move
 between the two representations widens on a load and narrows on a store.
-`docs/native.md` has the table and the rule.
+[Appendix E](appendix-e-native-backends.md) has the table and the rule.
 
 This replaces v1's "every scalar occupies one qword, nothing is packed",
 which was a shortcut, and it is what makes the commitment above real: a
@@ -772,6 +858,73 @@ parser needs bounded backtracking to tell `f<T>(x)` from `a < b`, resolved
 by a speculative parse that commits only when the brackets close and a call
 follows. Type arguments live on path segments, since `Array<i32>::new`
 parameterizes a non-final segment.
+
+### Gyro declares unions, and they are C's *(new)*
+
+**Status: decided.** `union Name { member: T ... }` is one storage with
+several names for it: every member at offset zero, the size the widest
+member's, and nothing recording which is live. METALS has had the shape
+since the C front end needed it ("A union is a shape, not a record whose
+fields coincide"); this is the surface, and it is what makes a C `union`
+importable as a type rather than only reachable through accessors written
+for the purpose.
+
+**It is a separate declaration and a separate `types.Union`, not a
+`struct` with a flag.** The same rejection the IR made, for the same
+reason plus one: in the type layer a distinct type means every switch
+that does not mention it refuses by *not having a case*. Equality,
+hashing, printing, `any` and the runtime boundary all fall out that way,
+which is the safe direction — a struct-with-a-flag permits by default and
+has to remember to ask.
+
+**What it does not derive, and why that is one reason.** Nothing records
+which member the storage means, so `==` has no question to answer,
+`hash` has nothing to hash, an `any` could not give the concrete value
+back, and printing would have to guess. Printing therefore prints the
+word `union` — decided in the lowering so all three tiers say it, the
+same arrangement `anyptr` and `code` already have. A struct holding a
+union inherits every refusal, because field-wise derivation has nothing
+to derive from the part.
+
+**A member is bytes.** Reading a member that was never written
+reinterprets what is there — C's own rule — but a Gyro value whose
+meaning the runtime keeps *beside* the bytes turns that into the runtime
+following a number as if it were its own object. So a `string` (a
+pointer to Gyro's header), a slice (a pointer and a length it trusts), an
+`Array<T>` (a runtime handle), an enum (a tag that must name a variant),
+a nullable (a flag that must match its payload), a channel, a future, a
+`fn` and a tuple are all refused, each with its reason. A **raw pointer
+is a member**, deliberately: `union { i: i64, p: *Node }` is what half of
+C's tagged unions are, Gyro's pointers are unmanaged, and nothing about a
+`*T` is kept anywhere but in the bytes.
+
+**A literal names exactly one member**, which is C's rule for a braced
+initializer and not the struct literal's "every field exactly once". The
+positional form is refused outright: position does not say which member,
+and one storage has room for one.
+
+**Not generic.** The size is the widest member's, and a type parameter
+would make that depend on an argument. C, which is what a union exists to
+be, has no generic ones.
+
+**Always storage, never a register.** Reaching a member is `field.ptr`,
+which needs an address, so a union local is a slot and a literal is a
+cell written through and read back. There could not be a "make a union
+from a member" instruction: which member a value holds is not something
+the value carries.
+
+**The case against unions got weaker, and this is narrower than it was.**
+cJSON's union became an enum with payloads and read better than the
+original — so the chapter says to use an enum, and names the two cases
+that an enum cannot cover: C's layout, and the tagged-union idiom where
+the discriminant lives *inside* the storage. `SDL_Event` is the second,
+and it is why `@extern` carries a union too.
+
+Falling out of it, and worth its own line: **a fixed-size array member
+now has a Gyro spelling in a generated header**, so `struct { char
+name[16]; }` crosses. Only when the element spells as one word — Gyro
+reads `*u8[8]` as a pointer to an array, so an array of pointers is left
+unspelled rather than written down wrong.
 
 ### A struct literal requires every field to be visible
 
@@ -1357,7 +1510,7 @@ No shift is an overflow.
 
 This resolves a divergence in which the interpreter panicked and the
 other three tiers wrapped. The interpreter was the outlier, and it was
-the outlier against the written spec too: `language.md`'s operator table
+the outlier against the written spec too: the book's operator table
 puts `<< >>` under *bitwise* and only says the *arithmetic* row panics.
 
 The reasoning, beyond just picking the majority:
@@ -1511,7 +1664,7 @@ language's and still hold on every tier.
 
 ## METALS
 
-The cross-language IR is sketched in [`metals.md`](metals.md); the format
+The cross-language IR is specified in [appendix D](appendix-d-metals.md); the format
 lives in `internal/metals`. Eight decisions from the design review:
 
 ### METALS is a typed module IR *(new)*
@@ -1674,11 +1827,14 @@ memory model is C's, and stays C's").
 
 So the schemes that produce METALS — `gyro:`, `lisp:`, `wasm:`,
 `metals:`, and `cc:` when it arrives — are one runtime, and a call among
-them is an ordinary call. `c:` is deliberately not one: a native library
-is exactly the case the rule exists for, since nothing has verified what
-it does with an address it is handed, and that is the same line
-"Linear memory is a capability" draws between compiling a language in and
-linking it. An unrecognized scheme is read as foreign.
+them is an ordinary call. `c:` is deliberately not one: nothing has
+verified a native library, and that is the same line "Linear memory is a
+capability" draws between compiling a language in and linking it. An
+unrecognized scheme is read as foreign.
+
+**Revised: `c:` is a boundary, but not the kind this rule was written
+about.** See "A native boundary is representation, not memory" below —
+a linked library has no heap of its own, so a pointer crosses it.
 
 **The export side moved to the linker.** `Verify` checked every exported
 signature unconditionally, which is what actually blocked this: a C
@@ -1738,8 +1894,10 @@ next library. `@extern` is the same work done once.
 
 **What crosses.** Primitives by value; `string` as a NUL-terminated copy;
 `T[]` as a pointer to its own elements; a struct whose fields all cross,
-by value; a fieldless `@extern` struct as `void *`. Callbacks,
-out-parameters and `any` are still out.
+by value; a fieldless `@extern` struct as `void *`; and — see "A native
+boundary is representation, not memory" below — `*T`, `anyptr` and
+`code(...)`, which is what makes out-parameters and callbacks work. `any`
+is still out.
 
 v1 also repacked `T[]` and refused structs by value, both because the
 layout rule then gave every scalar its own qword. Storage is C's now (see
@@ -1759,6 +1917,70 @@ skips `interp`, because the tree-walker has no syntax to walk. Rejected a
 headless fallback where the Go tiers emulate the library, which keeps all
 four tiers running while making them do different things, which is the one
 thing the four-tier oracle exists to prevent.
+
+### A native boundary is representation, not memory *(new)*
+
+**Status: decided.** `*T`, `anyptr` and `code(...)` cross `@extern`. So
+does a `union`. `chan`, `future`, `fn` and `any` still do not, at any
+depth. Out-parameters and callbacks work, which puts `qsort`,
+`SDL_PollEvent` and every C API built on either within reach of a linked
+`.so`.
+
+**The rule that changed is which question a boundary asks.** "Values copy
+at runtime boundaries" banned `ptr` because the far side has a heap of
+its own — its own lifetimes, its own collector, very likely one that
+moves things — so an address means nothing there. That is true of a `js:`
+or `py:` runtime embedded in the process. It is not true of a linked C
+library, which runs on this thread, in this address space, over the same
+libc allocator `gy_alloc` already wraps. There is no second heap to copy
+into, and `@extern` never copied one: what the generated shim does is
+convert *widths*, C's real ones against a qword register. So a native
+boundary is a boundary of representation, and an address is the one thing
+representation has nothing to say about.
+
+Two of the three that stay refused stay refused for a different reason
+than the heap, and stating it separately is the point: a `chan` and a
+`future` are Gyro runtime objects and C has no representation for one at
+any width. `any` is refused because it may cross *any* boundary, so what
+may go into one is what the strictest boundary carries — which is also
+why `any.wrap` asks the non-native question.
+
+**`fn` is refused where `code` is accepted, and the sizes are the
+argument.** A `fn` is code and the environment it captured, which is two
+words; a C function pointer has room for one. Accepting a `fn` and then
+refusing every value that captured something would be a type saying one
+thing while the checker says another — the same reasoning that made
+`code` its own type. The diagnostic names `&f`.
+
+**A pointer is walked through rather than waved through.** `ptr<chan<i32>>`
+is refused: it is the runtime object the rule exists for, with an address
+in front of it. A `ptr<str>` is refused too, because Gyro's string is a
+length-prefixed header and C reading through that pointer reads Gyro's
+own bookkeeping.
+
+**Rejected: keeping the ban and telling people to import the `.c`.** It
+is the honest answer when you have the source and no answer at all when
+you do not, which is the case `@extern` exists for — SDL2 is a `.so`.
+Rejected **a decorator opting one declaration into unchecked pointers**,
+which prices the general rule as an exception and leaves two spellings
+for one boundary. Rejected **marshalling a `*T` into a copy C writes back
+after the call**, which is what a real runtime boundary would have to do:
+it is wrong for aliasing (two out-parameters into one object stop being
+one object), wrong for lifetime (`SDL_CreateWindow` keeps what it is
+given), and it would make the shim allocate on a call that currently
+does not.
+
+**What it costs, stated plainly.** Nothing checks what a library does
+with an address, so a handed-out pointer can be kept past the call, freed
+by the far side, or written through after the storage is gone. That is
+C's own arrangement and this is the route whose whole premise is that the
+library is not yours. The checked route is `import "./x.c"`, where the
+linker compares the declaration against the C the front end read.
+
+The C side of it lives in `internal/crt/shim.go`, which grew a real C
+declarator emitter — `int (*)[4]` and `int (*)(const void *, const void
+*)` are not a base type with a `*` glued on, and a wrapper that spelled
+them wrong would compile to something else that also compiles.
 
 ### Concurrency is hybrid, matching the language *(new)*
 
@@ -2121,6 +2343,48 @@ has, and it is why the evaluator earns its keep.
 Consequence: `internal/meval`'s pointer stopped being one Go cell and
 became a cell run plus an index — the object is the extent, which is
 exactly what C says arithmetic stays inside.
+
+### An element behind a pointer is reached, not copied *(new)*
+
+**Status: decided.** METALS grew a fourth pointer-shaped instruction,
+`%q = index.ptr %p, %i`: `ptr<array<T, N>>` and a `usize` to the `ptr<T>`
+of element `i`, bounds-checked against `N`.
+
+`index.get` and `index.set` take their container **as a value**. For a
+slice that costs nothing — it is two words carrying its own data pointer.
+For a fixed-size array behind a pointer it costs everything: the array
+has to be loaded first, so reading one byte of a `u8[64]` field copied
+all 64, and writing one copied them out and back again. `md5::transform`
+moved ~320 bytes per iteration to produce four, and that was most of the
+gap between the C backend and the C the case was ported from — 9.62x on
+`sha256`, which `index.ptr` took to 5.66x.
+
+**It is a separate instruction rather than a wider `index.get` because
+the checked and the unchecked question are different questions**, the
+same reason `conv`, `trunc` and `bitcast` are three. `ptr.offset` cannot
+check: a pointer does not carry the extent of what it points into.
+`index.ptr`'s operand does — `N` is in the type — so the check is a
+compare against a constant, and the abort is the one `index.get` already
+had, which is what keeps the panic text identical across the tiers.
+
+It also removed the write-back. `index.set` mutates a register, so an
+array reached through a place had to be stored back afterwards, and the
+lowering wrote `%m = copy %m` when the register was already its own
+storage — a copy of every element to change nothing. Storing through an
+element pointer needs no such thing.
+
+Rejected **widening `index.get`/`index.set` to accept a
+`ptr<array<T, N>>`**: smaller, but it overloads one operand with two
+storage models and leaves the write-back untouched, since a `store` is
+what removes it and `index.set` is not one. Rejected **emitting the
+bounds test in the lowering** over `elem.ptr` and `ptr.offset`: those are
+unchecked, so the lowering would have had to raise the abort itself, and
+`metals.Abort` carries a static message where `gy_abort_bounds` formats
+the index and the length. That is a panic whose text the tiers would have
+had to agree on by hand, for no gain over an instruction.
+
+Rejected **reaching slices this way too.** A slice already carries a data
+pointer, so there is nothing to save and the extent is not static.
 
 ### Module storage is bytes, or it is a function *(new)*
 
@@ -2488,10 +2752,16 @@ way: the tiers agree on every defined program, and the evaluator is the
 tier that can see an undefined one. `union-punning.metals` is that case
 in the corpus, skipped on the two natives with the reason written down.
 
-A union does not compare and does not cross a runtime boundary, both
+A union does not compare and does not cross a *runtime* boundary, both
 because nothing records which member the storage means: equality has no
 question to answer, and a copy has nothing the far side could read. A
-record holding one inherits both refusals.
+record holding one inherits both refusals. It does cross a **native**
+one — a linked C library reads it C's own way, and there is no copy to
+have nothing in it (see "A native boundary is representation, not
+memory").
+
+Gyro declares one of its own now, with the same rules; see "Gyro
+declares unions, and they are C's".
 
 On the C side a tag names a struct or a union in one namespace, so
 `struct P` beside `union P` is an error rather than two types — which is
@@ -2712,7 +2982,7 @@ it did not have.
 
 ## Native backend
 
-Design in [`native.md`](native.md).
+Design in [appendix E](appendix-e-native-backends.md).
 
 ### The runtime is C on libc *(new)*
 
@@ -2730,7 +3000,7 @@ offsetting benefit).
 **Status: decided.** Every generated function uses the standard Linux
 ABI, so a runtime call is a plain `call` and GDB, perf and valgrind
 understand the frames. One deliberate deviation, documented in
-`native.md`: aggregate arguments between generated functions pass by
+appendix E: aggregate arguments between generated functions pass by
 pointer to a caller-owned value rather than by SysV classification —
 the C boundary only ever sees scalars and pointers, so it stays exactly
 ABI-correct where it matters. Rejected a custom internal convention:
@@ -2870,7 +3140,7 @@ paths and one command. Rejected separate repositories and a standalone
 binary: the publishing convenience buys nothing while there is exactly
 one user, and coordinated changes (new syntax, new grammar, new
 highlighting) would need three synchronized commits. See
-[`tooling.md`](tooling.md).
+[chapter 16.2](ch16-02-editors.md).
 
 ### The LSP layer is hand-rolled, zero dependencies *(new)*
 
@@ -3036,7 +3306,7 @@ and `error` is a duck-typed contract rather than a type.
 `u8[]` can be a view, so neither carries a borrow row.
 
 The reason is the v1 native layout: every scalar occupies a full word
-([`native.md`](native.md)), so a `u8[]` slice is word-strided, while a
+([appendix E](appendix-e-native-backends.md)), so a `u8[]` slice is word-strided, while a
 string's bytes are packed UTF-8. The two representations cannot alias.
 The first attempt returned the string's own storage as a slice, which the
 interpreter read correctly and a native binary read as garbage.
@@ -3167,7 +3437,8 @@ the specification the moment someone ran it, and the other three tiers
 were then held to that bug. A corpus is supposed to be the place a
 divergence surfaces; making one tier definitionally correct removes it
 from the set of things the corpus can catch. Removing the oracle makes
-`docs/language.md` the only specification, which it always claimed to be.
+the book the only specification, which the documentation always claimed to
+be.
 
 The cost, accepted: writing a case now means deciding what it should
 print, rather than running it and keeping the answer. That is slower and
@@ -3224,7 +3495,7 @@ and bound imports opaquely; it is deleted.
 | module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use; `@comptime` folding will subsume this. Module-level `var` does have identity and lowers to METALS storage |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
-| narrowing a slice | there is no `xs[a..b]`, so a C API shaped `(pointer, size)` forces either a copy or a `(base, beg, end)` triple through every signature; distinct from pointer arithmetic, and the first thing a callback-driven library asks for |
+| narrowing text | `xs[a..b]` narrows a slice, and a `string` is deliberately not among them: its length is in bytes and its content is UTF-8, so a byte range can cut a code point in half. Whether a text window counts bytes, runes or something else is undecided |
 | formatting a float to a precision | `fmt` has no `%e`/`%f`/`%g` and nothing can read a double's bits, so no Gyro program can print a float to a fixed number of digits; the cJSON port needed 358 lines of exact decimal conversion to do what `printf("%.15g")` does |
 | a `const` in a match pattern binds | a bare name is a binding, so `match piece { WQ: "q"  WR: "r" }` matches the first arm for every value — it compiles clean and answers wrong. Either warn when a binding shadows a module-scope `const`, or let a path pattern mean equality |
 | what a match *expression* takes its type from | the first arm decides, so `Value::Text(s): s` beside `_: null` is E0516; a statement `match` writing into a pre-declared local is the workaround |

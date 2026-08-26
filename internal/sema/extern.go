@@ -152,14 +152,20 @@ func literalString(e ast.Expr) (string, bool) {
 	return lit.Value, true
 }
 
-// checkCrossing rejects a type that cannot travel to C. The list is
-// short on purpose: what crosses is what can be copied into C's own
-// representation at the call and copied back, and nothing here is allowed
-// to be a view onto storage the other side keeps.
+// checkCrossing rejects a type that cannot travel to C. What crosses is
+// what C has a representation for: scalars, addresses, and aggregates
+// laid out the way C lays them out. What does not is a Gyro runtime
+// object, which C has no spelling for at all.
+//
+// A linked library is not a second heap — it runs on this thread over
+// this allocator — so an address crosses as itself and an out-parameter
+// is the pointer C declared. That is a narrower boundary than a runtime
+// with a collector, and METALS draws the same line
+// ([appendix D](appendix-d-metals.md)).
 func (c *checker) checkCrossing(offset int, t types.Type, what string) {
 	if bad := crossingOffender(t); bad != "" {
 		c.errorHintf(offset, []string{
-			"values copy at a foreign boundary: primitives, string, a slice, a struct of fields that themselves cross, and an @extern struct as an opaque pointer",
+			"a foreign boundary carries what C can represent: primitives, string, a slice, a pointer, anyptr, a code pointer, a struct of members that themselves cross, and an @extern struct as an opaque pointer",
 		}, "%s cannot cross to C: %s", what, bad)
 	}
 }
@@ -188,10 +194,10 @@ func offenderIn(t types.Type, seen map[*types.Struct]bool, inStruct bool) string
 		case types.AnyKind:
 			return "any carries a Gyro type tag C cannot read"
 		case types.AnyPtrKind:
-			// Forgetting the target's type does not make an address
-			// portable: it is still this program's address space, and
-			// less crossable rather than more.
-			return "an anyptr would be shared mutable memory, which the boundary does not have"
+			// It is still this program's address space — which is exactly
+			// what a linked library shares, and `void *` is what half of
+			// C's interfaces are written over.
+			return ""
 		case types.StringKind:
 			if inStruct {
 				return "a string field is a pointer to Gyro's own header, which C cannot read"
@@ -241,15 +247,29 @@ func offenderIn(t types.Type, seen map[*types.Struct]bool, inStruct bool) string
 		}
 		return ""
 	case *types.Pointer:
-		return "a pointer would be shared mutable memory, which the boundary does not have"
+		// A linked library dereferences this address on this thread, in
+		// this address space, over the allocator the runtime itself
+		// calls. There is no second heap to copy into, so an
+		// out-parameter is the pointer C declared and nothing else.
+		return offenderIn(t.Elem, seen, true)
 	case *types.Chan:
 		return "a channel is a Gyro runtime object"
 	case *types.Future:
 		return "a future is a Gyro runtime object"
 	case *types.Func:
-		return "a callback is not in the first version of @extern"
+		return "a fn is code and a captured environment, and a C callback has one word for the two; pass &f, which is a code pointer"
 	case *types.Code:
-		return "a code pointer is an address in this program, which the boundary does not share"
+		// A code pointer is the address of a function this program
+		// emitted, which is the same kind of address a `*T` is.
+		for _, param := range t.Params {
+			if bad := offenderIn(param, seen, false); bad != "" {
+				return bad
+			}
+		}
+		if t.Result != nil {
+			return offenderIn(t.Result, seen, false)
+		}
+		return ""
 	case *types.Tuple:
 		return "a tuple is a Gyro layout; return one value or take an out-parameter"
 	case *types.Array:

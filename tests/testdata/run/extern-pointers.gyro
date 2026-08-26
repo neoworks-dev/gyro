@@ -1,0 +1,76 @@
+// A linked C library shares this address space, so an address crosses
+// `@extern` as itself: an out-parameter is the pointer C declared, and a
+// callback is the one word C has room for. Nothing is copied, because
+// there is no second heap to copy into.
+//
+//gyro:skip metals the evaluator is Go and cannot call a C function
+
+import { println } from "stdlib"
+
+// An out-parameter. frexp answers the fraction and writes the exponent
+// through the caller's `int *`.
+@extern("m")
+fn frexp(value: f64, exponent: *i32): f64 !{}
+
+// A callback, and `void *` at both ends of it. qsort is the API that
+// motivated every part of this: it takes the base as an address, the
+// stride as a byte count, and a comparator it calls per pair.
+@extern("c")
+fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
+
+@extern("c")
+fn memcpy(to: anyptr, from: anyptr, size: usize): anyptr !{}
+
+// C calls this one, on C's terms: two addresses into the array it was
+// handed, and a sign for the answer.
+fn ascending(a: anyptr, b: anyptr): i32 {
+  var left = a as *i32
+  var right = b as *i32
+  if *left < *right {
+    return 0 - 1
+  }
+  if *left > *right {
+    return 1
+  }
+  return 0
+}
+
+fn descending(a: anyptr, b: anyptr): i32 {
+  return 0 - ascending(a, b)
+}
+
+fn show(xs: i32[]) {
+  var i: usize = 0
+  while i < xs.len() {
+    println(xs[i])
+    i += 1
+  }
+}
+
+fn main() {
+  // The library writes through the address; the caller reads it back.
+  var exponent: i32 = 0
+  var fraction = frexp(1024.0, &exponent)
+  println(fraction)
+  println(exponent)
+
+  // 0.75 * 2^-3 is 0.09375, so frexp answers the pair back.
+  var small = frexp(0.09375, &exponent)
+  println(small)
+  println(exponent)
+
+  // C's loop, this program's decision about order. An i32 is four bytes
+  // of storage, so the stride C walks is the one Gyro laid out.
+  var xs = [5, 3, 9, 1, 7]
+  qsort(&xs[0] as anyptr, 5, 4, &ascending)
+  show(xs)
+
+  qsort(&xs[0] as anyptr, 5, 4, &descending)
+  show(xs)
+
+  // A `void *` at both ends, and a returned one that is the destination.
+  var copy = [0, 0, 0, 0, 0]
+  var into = memcpy(&copy[0] as anyptr, &xs[0] as anyptr, 20)
+  show(copy)
+  println(into == (&copy[0] as anyptr))
+}

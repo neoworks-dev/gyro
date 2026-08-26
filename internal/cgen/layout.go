@@ -7,7 +7,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/metals"
 )
 
-// The layout rules are docs/native.md's: storage is C's, and a register
+// The layout rules are docs/appendix-e-native-backends.md's: storage is C's, and a register
 // is one machine word. That split is what this file spells in C — a
 // register is a local of its widest type, a member is a local of its
 // real one — and C's own implicit conversions are the narrowing and the

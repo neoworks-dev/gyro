@@ -36,6 +36,7 @@ type Info struct {
 	Locals map[ast.Node]map[string]types.Type
 	// Structs and Enums map declarations to their built types.
 	Structs map[*ast.StructDecl]*types.Struct
+	Unions  map[*ast.UnionDecl]*types.Union
 	Enums   map[*ast.EnumDecl]*types.Enum
 	// Instances lists every concrete instantiation of each generic
 	// function, keyed by InstanceKey.
@@ -105,6 +106,7 @@ func newInfo() *Info {
 		Consts:    map[ast.Expr]*big.Int{},
 		Locals:    map[ast.Node]map[string]types.Type{},
 		Structs:   map[*ast.StructDecl]*types.Struct{},
+		Unions:    map[*ast.UnionDecl]*types.Union{},
 		Enums:     map[*ast.EnumDecl]*types.Enum{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
 		Externs:   map[*ast.FuncDecl]types.Extern{},

@@ -469,6 +469,12 @@ func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
 		if decl := c.namedFunc(e.X); decl != nil {
 			return c.codePointer(e.Offset, decl, operand)
 		}
+		if index, ok := e.X.(*ast.IndexExpr); ok {
+			if _, narrowing := index.Index.(*ast.RangeExpr); narrowing {
+				c.errorf(e.Offset, "a narrowing has no address; it is a view built here, not storage")
+				return types.Unknown
+			}
+		}
 		c.killFactsFor(e.X)
 		return &types.Pointer{Elem: types.Default(operand)}
 
@@ -775,7 +781,10 @@ func isNullType(t types.Type) bool {
 // enums and structs, and between T? and its element.
 func (c *checker) comparable(left, right types.Type) bool {
 	if types.Identical(left, right) {
-		return !isFunc(left) && !isChanType(left)
+		// A union has no equality to derive: nothing records which member
+		// the storage means, so there is no question for `==` to answer.
+		// A struct holding one inherits the refusal.
+		return !isFunc(left) && !isChanType(left) && !holdsUnion(left, map[*types.Struct]bool{})
 	}
 	if optional, ok := left.(*types.Optional); ok {
 		return c.comparable(optional.Elem, right)
@@ -915,6 +924,10 @@ func (c *checker) tupleIndexExpr(e *ast.TupleIndexExpr) types.Type {
 }
 
 func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
+	if narrowing, ok := e.Index.(*ast.RangeExpr); ok {
+		return c.sliceNarrowing(e, narrowing)
+	}
+
 	base := c.expr(e.X)
 	index := c.expr(e.Index)
 
@@ -931,6 +944,13 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		return base.Elem
 	case *types.Array:
 		return base.Elem
+	case *types.Struct:
+		// `xs[i]` on an Array<T> is `xs.at(i)` read or written through,
+		// so an element is a place: assigning to one assigns into the
+		// array, where `get` hands back a copy of it.
+		if elem := arrayElem(base); elem != nil {
+			return elem
+		}
 	case *types.Optional:
 		c.errorf(e.Offset, "this value is %s and may be null; check it against null before indexing", base)
 		return types.Unknown
@@ -939,6 +959,81 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		return types.Unknown
 	}
 	c.errorf(e.Offset, "%s cannot be indexed", base)
+	return types.Unknown
+}
+
+// arrayElem is the element type of an `Array<T>`, or nil for anything
+// else. The Array is the runtime's own handle, so it is recognized by
+// being that declaration rather than by shape.
+func arrayElem(t *types.Struct) types.Type {
+	origin := t
+	if t.Origin != nil {
+		origin = t.Origin
+	}
+	if origin.Name != "Array" || !stdlib.IsBundled(origin.Module) || len(t.Args) != 1 {
+		return nil
+	}
+	return t.Args[0]
+}
+
+// sliceNarrowing types `xs[lo..hi]`. The result is always a slice, even
+// of a fixed-size array, because a window onto storage is a borrow and
+// `T[]` is the type that says so — the length is no longer static, which
+// is the whole point.
+//
+// It is not a copy and it does not allocate: the same elements, seen
+// through a shorter view. That is why `string` is left out. A `string`
+// is UTF-8 and its length is in bytes, so a byte range could cut a code
+// point in half and hand back a `string` that is not text; narrowing
+// text needs to say which unit it counts in, and that is a separate
+// decision.
+func (c *checker) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) types.Type {
+	base := c.expr(e.X)
+
+	for _, bound := range []ast.Expr{r.Lo, r.Hi} {
+		if bound == nil {
+			// The container's own bound: zero, or its length.
+			continue
+		}
+		got := c.expr(bound)
+		if flexible(got) {
+			continue
+		}
+		if isUntypedInt(got) {
+			c.adaptUntyped(bound, got, types.USize)
+			continue
+		}
+		if !types.Identical(got, types.USize) {
+			c.errorf(bound.Pos(), "range bounds are usize, not %s; lengths and indexes never mix with signed arithmetic implicitly", got)
+		}
+	}
+
+	switch base := base.(type) {
+	case *types.Slice:
+		return base
+	case *types.Array:
+		return &types.Slice{Elem: base.Elem}
+	case *types.Struct:
+		// An Array<T> narrows through the view it already hands out, so
+		// `xs[a..b]` is `xs.slice()[a..b]` and borrows the same buffer.
+		if elem := arrayElem(base); elem != nil {
+			return &types.Slice{Elem: elem}
+		}
+	case *types.Optional:
+		c.errorf(e.Offset, "this value is %s and may be null; check it against null before narrowing it", base)
+		return types.Unknown
+	case *types.Basic:
+		if base.Kind == types.StringKind {
+			c.errorHintf(e.Offset, []string{
+				"a string is UTF-8 and its length is in bytes, so a byte range can cut a code point in half",
+			}, "a string cannot be narrowed")
+			return types.Unknown
+		}
+	}
+	if flexible(base) {
+		return types.Unknown
+	}
+	c.errorf(e.Offset, "%s cannot be narrowed; a slice, a fixed-size array and an Array<T> are what have a window to take", base)
 	return types.Unknown
 }
 
@@ -973,6 +1068,15 @@ func (c *checker) selectField(offset int, base types.Type, name string, bareMeth
 		}
 	}
 
+	if union, ok := t.(*types.Union); ok {
+		if member := union.MemberNamed(name); member != nil {
+			if !member.Exported && union.Module != c.modulePath {
+				c.errorf(offset, "%s.%s is private to its module", union.Name, member.Name)
+			}
+			return member.Type
+		}
+	}
+
 	if method, _ := c.lookupMethod(t, name); method != nil {
 		if bareMethod {
 			c.errorf(offset, "%s is a method; call it: .%s(...)", name, name)
@@ -998,6 +1102,10 @@ func (c *checker) structLit(e *ast.StructLit) types.Type {
 	}
 
 	resolved := c.structLitType(e.Type)
+
+	if union, ok := resolved.(*types.Union); ok {
+		return c.unionLit(e, union)
+	}
 
 	strct, ok := resolved.(*types.Struct)
 	if !ok {
@@ -1260,7 +1368,12 @@ func anyPayload(t types.Type) bool {
 		}
 		return true
 	case *types.Struct:
-		return !isRuntimeHandle(t)
+		return !isRuntimeHandle(t) && !holdsUnion(t, map[*types.Struct]bool{})
+	case *types.Union:
+		// An any promises the concrete value comes back out, and a union
+		// does not record which member it holds — so what came out would
+		// be storage rather than a value.
+		return false
 	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam:
 		return false
 	case *types.Pointer:

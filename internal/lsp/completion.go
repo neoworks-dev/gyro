@@ -14,7 +14,7 @@ import (
 // whole reason completion is being asked for — rarely parses.
 
 var keywordCompletions = []string{
-	"var", "const", "fn", "struct", "enum", "return", "if", "elif", "else",
+	"var", "const", "fn", "struct", "union", "enum", "return", "if", "elif", "else",
 	"while", "for", "in", "match", "break", "continue", "defer", "async",
 	"await", "chan", "select", "import", "from", "as", "export", "self",
 	"true", "false", "null",
@@ -190,6 +190,10 @@ func fieldType(typ types.Type, name string) types.Type {
 				return field.Type
 			}
 		}
+	case *types.Union:
+		if member := t.MemberNamed(name); member != nil {
+			return member.Type
+		}
 	}
 	return nil
 }
@@ -217,6 +221,13 @@ func memberItems(typ types.Type) []completionItem {
 		for _, field := range t.Fields {
 			items = append(items, completionItem{
 				Label: field.Name, Kind: completionKindField, Detail: field.Type.String(),
+			})
+		}
+		items = append(items, methodItems(t.Methods)...)
+	case *types.Union:
+		for _, member := range t.Members {
+			items = append(items, completionItem{
+				Label: member.Name, Kind: completionKindField, Detail: member.Type.String(),
 			})
 		}
 		items = append(items, methodItems(t.Methods)...)

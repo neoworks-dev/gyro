@@ -627,6 +627,11 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 		if method, ok := origin.Methods[name]; ok {
 			return method, origin.TypeParams, t.Args
 		}
+	case *types.Union:
+		// No parameters and no instances: a union is one storage.
+		if method, ok := t.Methods[name]; ok {
+			return method, nil, nil
+		}
 	}
 
 	// The compiler's own surface wins: len and runes are part of the type,

@@ -75,6 +75,16 @@ _Noreturn void gy_abort_bounds(int64_t index, int64_t length) {
     gy_abort_c(buf);
 }
 
+/* Narrowing a slice fails differently from indexing one: there are two
+ * bounds and they may be wrong with respect to each other as well as to
+ * the length, so the message names all three. */
+_Noreturn void gy_abort_slice(int64_t lo, int64_t hi, int64_t length) {
+    char buf[128];
+    snprintf(buf, sizeof buf, "slice %" PRId64 "..%" PRId64 " out of range for length %" PRId64,
+             lo, hi, length);
+    gy_abort_c(buf);
+}
+
 /* ------------------------------------------------------------------ */
 /* Linear memory: the flat, bounds-checked byte region a producer with */
 /* C's memory model compiles into. Both backends share this, and both  */
@@ -1005,6 +1015,17 @@ void gy_array_set(gy_array *a, int64_t index, const void *elem, int64_t elemSize
         gy_abort_bounds(index, a->count);
     }
     memcpy(a->data + index * elemSize, elem, (size_t)elemSize);
+}
+
+/* The element's own address rather than a copy of it. Bounds-checked
+ * the way get and set are, and the reason an index costs one call: the
+ * caller loads or stores through the address where the element lies. */
+void *gy_array_at(gy_array *a, int64_t index, int64_t elemSize) {
+    gy_array_check(a);
+    if (index < 0 || index >= a->count) {
+        gy_abort_bounds(index, a->count);
+    }
+    return a->data + index * elemSize;
 }
 
 int64_t gy_array_len(gy_array *a) {

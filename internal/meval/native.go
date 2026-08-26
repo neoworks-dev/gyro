@@ -341,6 +341,11 @@ func (m *machine) arrayNative(method string, arg func(int) value) value {
 		index := m.index(arg(1), len(array.elems))
 		array.elems[index] = copyValue(arg(2))
 		return nil
+	case "at":
+		// The element's own cell, which is what makes `xs[i] = v` a
+		// store into the array rather than into a copy of an element.
+		index := m.index(arg(1), len(array.elems))
+		return ptrVal{cells: array.elems, index: index}
 	case "len":
 		return uintVal{v: uint64(len(array.elems)), kind: metals.Usize}
 	case "slice":

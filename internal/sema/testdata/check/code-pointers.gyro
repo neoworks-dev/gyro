@@ -83,9 +83,14 @@ fn notAFn() {
   var f: fn(i32, i32): i32 = &add  //~ cannot use code(i32, i32): i32 as fn(i32, i32): i32 in the declaration of f
 }
 
-// An address in this program is not something a foreign boundary shares.
+// A linked library shares this address space, so a callback is the one
+// word C has room for and crosses as itself. Its own signature is held
+// to the same rule.
 @extern("c")
-fn qsort_like(cmp: code(i32, i32): i32) !{}  //~ a code pointer is an address in this program
+fn qsort_like(cmp: code(i32, i32): i32) !{}
+
+@extern("c")
+fn tagged(cmp: code(any): i32) !{}  //~ any carries a Gyro type tag C cannot read
 
 // An any promises the concrete type comes back out.
 fn notInAnAny(f: code(i32, i32): i32) {

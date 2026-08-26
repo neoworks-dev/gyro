@@ -220,6 +220,8 @@ func (c *checker) selfTypeFor(decl *ast.FuncDecl) types.Type {
 			return t
 		}
 		return c.instantiateEnum(t, args)
+	case *types.Union:
+		return t
 	}
 	return types.Unknown
 }

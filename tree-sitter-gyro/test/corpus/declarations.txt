@@ -777,3 +777,34 @@ fn code(n: i32): i32 { return n }
     (block
       (return_statement
         (identifier)))))
+
+==================
+union declaration
+==================
+
+export union Value {
+  export i: i64
+  export f: f64
+  bytes: u8[8]
+}
+
+---
+
+(source_file
+  (union_declaration
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (array_type
+          (named_type
+            (type_identifier))
+          (int_literal))))))

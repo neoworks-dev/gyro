@@ -58,6 +58,8 @@ func synthesizedRepr(t types.Type) bool {
 	switch t := t.(type) {
 	case *types.Struct:
 		return !isOpaqueHandle(t)
+	case *types.Union:
+		return true
 	case *types.Enum, *types.Tuple, *types.Slice, *types.Array, *types.Pointer:
 		return true
 	case *types.Optional:
@@ -104,6 +106,12 @@ func (l *lowerer) buildRepr(name string, t types.Type) {
 		// And a code pointer, for the same reason: what is at the far
 		// end is instructions.
 		b.emit(&metals.Return{Val: b.text("code")})
+	case *types.Union:
+		// A union prints the word too, and for the sharpest version of
+		// the reason: nothing records which member the storage means, so
+		// there is no value here to render. Printing the first member
+		// would be a guess, and a guess that reads as an answer.
+		b.emit(&metals.Return{Val: b.text("union")})
 	}
 
 	l.module.Funcs = append(l.module.Funcs, b.fn)

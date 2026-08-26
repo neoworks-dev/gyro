@@ -1,7 +1,7 @@
 /**
  * Tree-sitter grammar for Gyro.
  *
- * The source of truth for the syntax is docs/language.md in the gyro repo;
+ * The source of truth for the syntax is the book in docs/ in the gyro repo;
  * the reference implementation is internal/parser. Two things need context
  * the LR lexer cannot see, so they live in the external scanner
  * (src/scanner.c):
@@ -138,6 +138,7 @@ module.exports = grammar({
     _declaration: $ => choice(
       $.function_declaration,
       $.struct_declaration,
+      $.union_declaration,
       $.enum_declaration,
       $.variable_declaration,
       $.export_declaration,
@@ -222,6 +223,17 @@ module.exports = grammar({
       'struct',
       field('name', alias($.identifier, $.type_identifier)),
       optional(field('type_parameters', $.type_parameters)),
+      field('body', $.field_declaration_list),
+    ),
+
+    // One storage with several names for it. No type parameters: a union
+    // is the size of its widest member, and a parameter would make that
+    // depend on an argument.
+    union_declaration: $ => seq(
+      repeat($.decorator),
+      optional('export'),
+      'union',
+      field('name', alias($.identifier, $.type_identifier)),
       field('body', $.field_declaration_list),
     ),
 
@@ -632,9 +644,18 @@ module.exports = grammar({
     index_expression: $ => prec(PREC.postfix, seq(
       field('operand', $._expression),
       '[',
-      field('index', $._expression),
+      field('index', choice($._expression, $.open_range)),
       ']',
     )),
+
+    // Narrowing a slice may leave one end off — `xs[lo..]` runs to the
+    // length, `xs[..hi]` starts at zero — which only the bracket allows,
+    // since a `for` header over a bare end names no sequence. Both ends
+    // present is an ordinary range_expression.
+    open_range: $ => choice(
+      seq(field('start', $._expression), '..'),
+      seq('..', field('end', $._expression)),
+    ),
 
     match_expression: $ => seq(
       'match',

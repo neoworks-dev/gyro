@@ -23,7 +23,7 @@
 // C99: string.h, the malloc family over `memory.grow`, the integer and
 // string parts of printf, the numeric parsers, qsort/bsearch, ctype and
 // the math.h names that are METALS instructions underneath. What is not
-// here is listed in the package's README section of docs/metals.md, and
+// here is listed in the package's README section of docs/appendix-d-metals.md, and
 // the largest single gap is printf's floating-point conversions.
 package clibc
 

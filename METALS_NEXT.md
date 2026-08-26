@@ -3,7 +3,7 @@
 **Almost nothing in this document is implemented** — the exception is the
 first two steps of §9, marked there. It records a design direction and
 the reasoning behind it, so the next decision does not have to re-derive
-the argument. `docs/metals.md` and `docs/decisions.md` remain the source
+the argument. `docs/appendix-d-metals.md` and `docs/decisions.md` remain the source
 of truth for what METALS *is*; this is what it could become and what each
 step would cost.
 
@@ -261,7 +261,7 @@ memory-model swap.** Recorded plainly:
   rule, so Gyro can read a Rust or Zig struct in place.
 
 Net: Gyro becomes a managed language that can still talk to unmanaged
-ones. `docs/decisions.md` would need a large entry, and `docs/native.md`'s
+ones. `docs/decisions.md` would need a large entry, and `docs/appendix-e-native-backends.md`'s
 layout table would grow a second row set.
 
 ---
@@ -454,7 +454,7 @@ everything above.
 - **Atomics and a memory ordering.** Still the addition that commits the
   format to a memory model all three tiers must reproduce identically.
   Required by Rust's `std::sync`, C++ `<atomic>`, and any threaded guest.
-- **Imported memory** (`docs/metals.md:523`) is only needed for
+- **Imported memory** (`docs/appendix-d-metals.md:523`) is only needed for
   separately-shipped modules sharing a heap. A single link step avoids it.
   Do not add it to solve multi-file C.
 

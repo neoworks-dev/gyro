@@ -1,0 +1,124 @@
+; `slice.sub`, on the three METALS tiers.
+;
+; A slice is a data pointer and a length. Narrowing one moves the pointer
+; forward and shortens the length; it does not copy, so the elements a
+; narrowed slice sees are the elements the original sees, and a write
+; through either is visible through the other.
+;
+; It is an instruction rather than arithmetic in a front end because the
+; extent is a run-time value — `slice.of` on an `array<T, N>` knows `N`
+; statically, but a slice that has already been narrowed does not — so
+; the check has to be made where the length is, and the abort text is one
+; message every tier has to word identically.
+
+module "metals:slice-sub"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+; total sums whatever window it is handed, which is how the narrowing
+; shows up as an answer rather than as a length.
+fn @total(%s: slice<i32>) -> i64 {
+  %sum = const.i64 0
+  %i = const.usize 0
+  %n = len %s
+  block $done {
+    loop $next {
+      %more = lt %i, %n
+      %stop = not %more
+      br_if %stop, $done
+      %v = index.get %s, %i
+      %w = conv %v -> i64
+      %sum = iadd %sum, %w
+      %one = const.usize 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+  return %sum
+}
+
+export fn @main() {
+  %zero = const.usize 0
+  %one = const.usize 1
+  %two = const.usize 2
+  %three = const.usize 3
+  %four = const.usize 4
+  %five = const.usize 5
+
+  %v10 = const.i32 10
+  %v20 = const.i32 20
+  %v30 = const.i32 30
+  %v40 = const.i32 40
+  %v50 = const.i32 50
+  %a = array<i32>(%v10, %v20, %v30, %v40, %v50)
+
+  %whole = slice.of %a
+  %all = call @total(%whole)
+  call @"println<i64>"(%all)
+
+  ; --- the middle three ---
+  %mid = slice.sub %whole, %one, %four
+  %midlen = len %mid
+  %midlenw = conv %midlen -> i64
+  call @"println<i64>"(%midlenw)
+  %midsum = call @total(%mid)
+  call @"println<i64>"(%midsum)
+
+  ; The narrowed slice starts where the offset says: element 0 of the
+  ; window is element 1 of the original.
+  %first = index.get %mid, %zero
+  %firstw = conv %first -> i64
+  call @"println<i64>"(%firstw)
+
+  ; --- both ends are half-open and both may be empty ---
+  %head = slice.sub %whole, %zero, %two
+  %headsum = call @total(%head)
+  call @"println<i64>"(%headsum)
+
+  %tail = slice.sub %whole, %three, %five
+  %tailsum = call @total(%tail)
+  call @"println<i64>"(%tailsum)
+
+  %empty = slice.sub %whole, %two, %two
+  %emptylen = len %empty
+  %emptylenw = conv %emptylen -> i64
+  call @"println<i64>"(%emptylenw)
+
+  ; The whole length is in range: hi may equal len.
+  %same = slice.sub %whole, %zero, %five
+  %samesum = call @total(%same)
+  call @"println<i64>"(%samesum)
+
+  ; --- narrowing a narrowed slice ---
+  ; The bounds are the window's, not the original's, so this is elements
+  ; 2 and 3 of the array.
+  %inner = slice.sub %mid, %one, %three
+  %innersum = call @total(%inner)
+  call @"println<i64>"(%innersum)
+
+  ; --- it borrows rather than copies ---
+  ; A write through the window is what the original reads back.
+  %seven = const.i32 7
+  index.set %mid, %zero, %seven
+  %back = index.get %whole, %one
+  %backw = conv %back -> i64
+  call @"println<i64>"(%backw)
+
+  ; And a write through the original is what the window reads back.
+  %ninety = const.i32 90
+  index.set %whole, %two, %ninety
+  %fromWindow = index.get %mid, %one
+  %fromWindoww = conv %fromWindow -> i64
+  call @"println<i64>"(%fromWindoww)
+
+  ; The elements the array itself holds are the same ones: `slice.of`
+  ; borrowed this array's storage and every narrowing since has been a
+  ; window onto it.
+  %viaArray = index.get %a, %one
+  %viaArrayw = conv %viaArray -> i64
+  call @"println<i64>"(%viaArrayw)
+  return
+}

@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strconv"
+
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
@@ -87,6 +89,51 @@ func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.Fu
 		args = append(args, f.lowerExpr(decl.Params[i].Default, sig.Params[i]))
 	}
 	return args
+}
+
+// varargPack builds what a C variadic callee is handed: a pointer to the
+// addresses of the arguments after the last named one, and how many
+// there are. It is the same pair internal/cc builds at a C call site,
+// because it is the same convention — METALS has no variadic call, and a
+// callee that can only walk its extra arguments in order asking for one
+// type at a time needs nothing more than addresses.
+//
+// The addresses are the caller's: what a `...anyptr` parameter takes is
+// `&x as anyptr`, so the storage read through is a local of this
+// function and outlives the call by construction. That is the part C
+// leaves to the programmer.
+func (f *funcLowerer) varargPack(call *ast.CallExpr, at int) []string {
+	rest := call.Args[min(at, len(call.Args)):]
+
+	count := f.newReg("va.count")
+	f.emit(&metals.Const{Dst: count, Type: metals.TInt64, Value: strconv.Itoa(len(rest))})
+
+	elem := &metals.Opt{Elem: &metals.AnyPtr{}}
+	if len(rest) == 0 {
+		none := f.newReg("va.slots")
+		f.emit(&metals.Const{Dst: none, Type: varargSlotsType(), Null: true})
+		return []string{none, count}
+	}
+
+	cells := make([]string, len(rest))
+	for i, arg := range rest {
+		address := f.lowerExpr(arg.Value, types.AnyPtr)
+		held := f.newReg("va.addr")
+		f.emit(&metals.OptWrap{Dst: held, X: address})
+		cells[i] = held
+	}
+
+	value := f.newReg("va.args")
+	f.emit(&metals.MakeArray{Dst: value, Elem: elem, Args: cells})
+	storage := f.newReg("va.cells")
+	f.emit(&metals.Slot{Dst: storage, Type: &metals.ArrayOf{Elem: elem, Len: int64(len(cells))}})
+	f.emit(&metals.Store{Ptr: storage, Val: value})
+
+	first := f.newReg("va.first")
+	f.emit(&metals.ElemPtr{Dst: first, Ptr: storage})
+	slots := f.newReg("va.slots")
+	f.emit(&metals.OptWrap{Dst: slots, X: first})
+	return []string{slots, count}
 }
 
 // packIndex is the position of a signature's variadic parameter, or -1.
@@ -207,7 +254,16 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	// the linker resolves the name.
 	if module != nil && module.Foreign != nil {
 		f.l.ensureForeignImport(module.Foreign.Name, decl.Name, resolved.Sig)
-		args := f.callArgs(call, resolved.Sig, decl)
+		var args []string
+		if resolved.Sig.Variadic {
+			named := resolved.Sig.Params[:len(resolved.Sig.Params)-1]
+			for i, param := range named {
+				args = append(args, f.lowerExpr(call.Args[i].Value, param))
+			}
+			args = append(args, f.varargPack(call, len(named))...)
+		} else {
+			args = f.callArgs(call, resolved.Sig, decl)
+		}
 		return f.emitCall(decl.Name, args, resolved.Sig.Result, resolved.Sig.Async)
 	}
 

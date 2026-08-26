@@ -75,8 +75,8 @@ func (f *funcLowerer) vaStart(e *vaStartExpr) value {
 	}
 	list := f.vaListPointer(e.ap, e.pos, "va_start")
 
-	slots := f.lookup(vaSlotsName)
-	count := f.lookup(vaCountName)
+	slots := f.lookup(VaSlotsName)
+	count := f.lookup(VaCountName)
 	f.emit(&metals.Store{Ptr: f.field(list, vaCursorField), Val: f.load(value{reg: slots.ptr, typ: slots.typ}).reg})
 	f.emit(&metals.Store{Ptr: f.field(list, vaLeftField), Val: f.load(value{reg: count.ptr, typ: count.typ}).reg})
 	return value{typ: typeVoid}

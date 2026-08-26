@@ -1,0 +1,142 @@
+// A union is one storage with several names for it, and nothing records
+// which of them is live. That single fact decides what may be a member,
+// what a literal may say, and which derived operations exist at all.
+
+import { Array } from "stdlib"
+
+struct Pair {
+  x: i32
+  y: i32
+}
+
+struct Named {
+  label: string
+}
+
+enum Shape {
+  Circle(f64)
+  Square(f64)
+}
+
+// The shapes that work, so the errors below are about what changed.
+union Value {
+  i: i64
+  f: f64
+  bytes: u8[8]
+  pair: Pair
+  address: *Pair
+  opaque: anyptr
+  callback: code(i32): i32
+}
+
+union Nested {
+  inner: Value
+  whole: u64
+}
+
+fn Value::as_int(self): i64 {
+  return self.i
+}
+
+fn shapes() {
+  var v = Value{ i: 1 }
+  var read = v.i
+  v.f = 2.5
+  var method = v.as_int()
+
+  var n = Nested{ whole: 3 }
+  var through = n.inner.i
+}
+
+// ---------------------------------------------------------------------
+// The declaration
+
+union Empty {}                  //~ E0527 union Empty declares no members; a union is storage, and there would be none
+
+union Twice {
+  a: i32
+  a: i64                        //~ E0527 the member a is declared twice
+}
+
+@extern("SDL2")
+union Opaque {                  //~^ E0527 @extern union Opaque: @extern marks an opaque pointer, and a union is declared to be read into
+  i: i32
+}
+
+// ---------------------------------------------------------------------
+// What may be a member
+
+union Text {
+  s: string                     //~ E0528 string cannot be a union member: a string is a pointer to Gyro's own header
+                                //~^ help: a union member is bytes: nothing records which member is live, so a value the runtime tracks beside its bytes cannot be one
+}
+
+union Viewing {
+  xs: i32[]                     //~ E0528 i32[] cannot be a union member: a slice is a pointer and a length the runtime trusts
+}
+
+union Owning {
+  xs: Array<i32>                //~ E0528 Array<i32> cannot be a union member: Array is a handle to an object the runtime owns
+}
+
+union Absent {
+  maybe: i32?                   //~ E0528 i32? cannot be a union member: a nullable is a flag beside a payload, and the flag would be bytes from another member
+}
+
+union Tagged {
+  shape: Shape                  //~ E0528 Shape cannot be a union member: Shape is an enum, and its tag would be bytes from another member
+}
+
+union Deep {
+  named: Named                  //~ E0528 Named cannot be a union member: a string is a pointer to Gyro's own header
+}
+
+union Piped {
+  ch: chan<i32>                 //~ E0528 chan<i32> cannot be a union member: a channel is a Gyro runtime object
+}
+
+union Closing {
+  step: fn(i32)                 //~ E0528 fn(i32) cannot be a union member: a fn is code and a captured environment; a code pointer is the one that is bytes
+}
+
+union Grouped {
+  pair: (i32, i32)              //~ E0528 (i32, i32) cannot be a union member: a tuple is a Gyro layout rather than storage C would lay out
+}
+
+// ---------------------------------------------------------------------
+// The literal
+
+fn literals() {
+  var none = Value{}            //~ E0508 a union literal sets exactly one member, not 0
+                                //~^ help: the members share one storage, so writing one is writing all of it
+
+  var both = Value{ i: 1, f: 2.5 }  //~ E0508 a union literal sets exactly one member, not 2
+
+  var positional = Value{ 1 }   //~ E0508 a union literal names the member it sets; position would not say which
+                                //~^ help: name the member: Value{ i: ... }
+
+  var wrong = Value{ nope: 1 }  //~ E0405 Value has no member nope
+}
+
+// ---------------------------------------------------------------------
+// What a union does not derive
+
+fn derived(a: Value, b: Value) {
+  var same = a == b             //~ E0511 cannot compare Value with Value
+  var boxed = a as any          //~ E0509 an any cannot hold Value
+}
+
+// A struct holding one inherits both refusals: field-wise derivation has
+// nothing to derive from the member set.
+struct Holder {
+  value: Value
+}
+
+fn inherited(a: Holder, b: Holder) {
+  var same = a == b             //~ E0511 cannot compare Holder with Holder
+  var boxed = a as any          //~ E0509 an any cannot hold Holder
+}
+
+fn missing(v: Value) {
+  var gone = v.nope             //~ E0405 Value has no field or method nope
+}

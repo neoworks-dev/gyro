@@ -3,7 +3,7 @@
 // flow. Gyro lowers into it; other language front ends will too, which is
 // why the package trusts no producer — see Verify.
 //
-// docs/metals.md is the format's specification; this package is its
+// docs/appendix-d-metals.md is the format's specification; this package is its
 // implementation. The text format (Print/Parse) is canonical for now, the
 // binary encoding comes later.
 package metals
@@ -614,6 +614,26 @@ func ExternLibrary(moduleName string) string {
 		return ""
 	}
 	return moduleName[len(externScheme)+1:]
+}
+
+// NativeLibrary reports whether a module is a native library linked into
+// this process rather than a runtime of its own.
+//
+// The distinction matters because a boundary can be one of two things,
+// and only one of them is about memory. A `js:` or `py:` runtime has its
+// own heap, its own lifetimes and in all likelihood a collector that
+// moves things, so an address means nothing on the far side. A linked
+// `.so` has none of that: it runs on this thread, in this address space,
+// over the same libc allocator the runtime itself calls. What separates
+// it from a producer scheme is *representation* — C has real widths
+// where a METALS register is a qword — and that is what the generated
+// shim converts.
+//
+// So an address crosses a native boundary as itself, while a channel and
+// a future do not cross either kind: those are Gyro runtime objects with
+// no C spelling at all, which is a different reason than the heap.
+func NativeLibrary(moduleName string) bool {
+	return Scheme(moduleName) == externScheme
 }
 
 // QuoteName renders a name for printing after its @, % or $ sigil: bare

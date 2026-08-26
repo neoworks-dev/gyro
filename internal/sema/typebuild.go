@@ -17,6 +17,8 @@ func (c *checker) buildTypes(tree *ast.File) {
 		switch d := decl.(type) {
 		case *ast.StructDecl:
 			c.buildStruct(d)
+		case *ast.UnionDecl:
+			c.buildUnion(d)
 		case *ast.EnumDecl:
 			c.buildEnum(d)
 		}
@@ -47,6 +49,17 @@ func (c *checker) buildStruct(decl *ast.StructDecl) {
 			})
 		}
 	})
+}
+
+func (c *checker) buildUnion(decl *ast.UnionDecl) {
+	shell := c.unionTypes[decl]
+	for _, member := range decl.Members {
+		shell.Members = append(shell.Members, types.Field{
+			Name:     member.Name,
+			Type:     c.resolveType(member.Type),
+			Exported: member.Exported,
+		})
+	}
 }
 
 func (c *checker) buildEnum(decl *ast.EnumDecl) {
@@ -234,6 +247,8 @@ func (c *checker) attachMethod(decl *ast.FuncDecl, method *types.Method) {
 		methods = owner.Methods
 	case *types.Enum:
 		methods = owner.Methods
+	case *types.Union:
+		methods = owner.Methods
 	default:
 		return
 	}
@@ -391,6 +406,15 @@ func (c *checker) applyTypeArgs(named types.Type, offset int, args []types.Type)
 			return t
 		}
 		return c.instantiateEnum(t, args)
+	case *types.Union:
+		// A union is one storage the widest member fits in, so it takes
+		// no parameters: a size that depends on an argument is not what
+		// a union is for.
+		if len(args) > 0 {
+			c.typeArgArityError(offset, t.Name, 0, len(args))
+			return types.Unknown
+		}
+		return t
 	case nil:
 		return types.Unknown
 	}

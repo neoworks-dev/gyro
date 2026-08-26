@@ -578,6 +578,15 @@ func (g *generator) arrayPlan(name, method string, sig *metals.FnType) nativePla
 			args:   []planArg{{index: 0}, {index: 1}, pointerTo(2)},
 			extras: []int64{int64(g.sizeOf(sig.Params[2]))},
 		}
+	case "at":
+		// The element's own address, bounds-checked. It is what `xs[i]`
+		// lowers through, so an index costs one call and no staging
+		// cell — and it is what makes an element assignable in place
+		// where `get` hands back a copy.
+		return nativePlan{
+			symbol: "gy_array_at", args: values(0, 1),
+			extras: []int64{int64(g.sizeOf(sig.Result.(*metals.Ptr).Elem))},
+		}
 	case "len":
 		return nativePlan{symbol: "gy_array_len", args: values(0)}
 	case "slice":

@@ -259,13 +259,30 @@ func (f *frame) instr(instr metals.Instr) {
 		f.emitMakeArray(i)
 
 	case *metals.Slice:
-		array, ok := f.typeOf(i.X).(*metals.ArrayOf)
-		if !ok {
-			g.fail("@%s: slice.of a non-array", f.fn.Name)
+		switch t := f.typeOf(i.X).(type) {
+		case *metals.ArrayOf:
+			// The borrow is of the array register's own storage, exactly
+			// the stack slot the asm backend hands out.
+			f.assign(i.Dst, fmt.Sprintf("(gy_slice){ (void *)%s.v, %d }", f.reg(i.X), t.Len))
+		case *metals.Ptr:
+			array, ok := t.Elem.(*metals.ArrayOf)
+			if !ok {
+				g.fail("@%s: slice.of through a pointer to %s", f.fn.Name, t.Elem)
+			}
+			// The storage is where the pointer says, so there is nothing
+			// to take the address of: the register already is one.
+			f.assign(i.Dst, fmt.Sprintf("(gy_slice){ (void *)%s, %d }", f.reg(i.X), array.Len))
+		default:
+			g.fail("@%s: slice.of a %s", f.fn.Name, t)
 		}
-		// The borrow is of the array register's own storage, exactly the
-		// stack slot the asm backend hands out.
-		f.assign(i.Dst, fmt.Sprintf("(gy_slice){ (void *)%s.v, %d }", f.reg(i.X), array.Len))
+
+	case *metals.SliceSub:
+		slice, ok := f.typeOf(i.X).(*metals.SliceOf)
+		if !ok {
+			g.fail("@%s: slice.sub of a non-slice", f.fn.Name)
+		}
+		f.assign(i.Dst, fmt.Sprintf("gy_subslice(%s.data, %s.len, (int64_t)%s, (int64_t)%s, %d)",
+			f.reg(i.X), f.reg(i.X), f.reg(i.Lo), f.reg(i.Hi), g.sizeOf(slice.Elem)))
 
 	case *metals.IndexGet:
 		element := f.element(i.X, i.Index)
@@ -274,6 +291,12 @@ func (f *frame) instr(instr metals.Instr) {
 	case *metals.IndexSet:
 		element := f.element(i.X, i.Index)
 		f.line("*(%s *)%s = %s;", g.memberType(f.typeOf(i.Val)), element, f.reg(i.Val))
+
+	case *metals.IndexPtr:
+		// The same check and the same address gy_elem already computes;
+		// what differs is that the address is the result rather than a
+		// place to load from.
+		f.assign(i.Dst, f.element(i.Ptr, i.Index))
 
 	case *metals.Len:
 		f.emitLen(i)
@@ -503,6 +526,16 @@ func (f *frame) element(x, index string) string {
 	case *metals.ArrayOf:
 		return fmt.Sprintf("gy_elem((void *)%s.v, (int64_t)%s, %d, %d)",
 			f.reg(x), f.reg(index), t.Len, g.sizeOf(t.Elem))
+	case *metals.Ptr:
+		// index.ptr's base: the array is where the pointer says, so the
+		// storage is the register's value rather than its own cell, and
+		// the extent is the static one the pointee type carries.
+		array, ok := t.Elem.(*metals.ArrayOf)
+		if !ok {
+			g.fail("@%s: indexing through a pointer to %s", f.fn.Name, t.Elem)
+		}
+		return fmt.Sprintf("gy_elem((void *)%s, (int64_t)%s, %d, %d)",
+			f.reg(x), f.reg(index), array.Len, g.sizeOf(array.Elem))
 	default:
 		g.fail("@%s: indexing a %s", f.fn.Name, t)
 	}
@@ -589,7 +622,7 @@ func (f *frame) emitSwitch(i *metals.Switch) {
 
 // emitSelect polls the arms in order, exactly as the native backend does,
 // and sleeps briefly when none is ready and there is no default. The
-// evaluator randomizes the order; docs/native.md records that as an
+// evaluator randomizes the order; docs/appendix-e-native-backends.md records that as an
 // accepted divergence.
 func (f *frame) emitSelect(i *metals.Select) {
 	g := f.g

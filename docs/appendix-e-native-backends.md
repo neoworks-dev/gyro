@@ -1,6 +1,10 @@
-# The native backends
+# Appendix E. The native backends
 
-There are two, and they are siblings. The assembler backend compiles a
+This appendix is the specification of the two native backends and of the
+data layout every tier shares. [Chapter 17.2](ch17-02-the-pipeline.md) is
+the shorter account.
+
+There are two backends, and they are siblings. The assembler backend compiles a
 verified METALS module to x86-64 NASM assembly, assembles it, and links
 it with a small C runtime into a Linux executable; the C backend emits
 one C translation unit instead and hands it to `cc` with the same
@@ -266,7 +270,7 @@ Obligations beyond the obvious:
 
 ## Foreign calls
 
-A program that calls a C function ([`language.md`](language.md#foreign-functions))
+A program that calls a C function ([chapter 15](ch15-00-c-interop.md))
 adds two pieces to a build, both shared by the backends rather than
 written twice.
 
@@ -274,10 +278,11 @@ written twice.
 `Shim` renders it from the module's `c:`-scheme imports; it is compiled
 beside `rt.c` and the program, and both backends call the wrapper rather
 than the library. The wrapper takes and returns the uniform shape — every
-scalar one qword, `double` for a float, `void *` for a handle or a
-struct — and calls the real function with its declared C widths, which is
-what keeps a `float` parameter or an `int` result from being read as
-eight bytes of whatever the callee left behind. The real function is
+scalar one qword, `double` for a float, `void *` for a handle, a struct
+or an address, and a generic function pointer for a `code(..)` — and
+calls the real function with its declared C widths, which is what keeps a
+`float` parameter or an `int` result from being read as eight bytes of
+whatever the callee left behind. The real function is
 declared under a private name bound to its symbol with an `__asm__`
 label, so the declaration never collides with a system header the runtime
 already included.
@@ -290,7 +295,17 @@ pointer. Neither backend implements System V's struct classification,
 because `cc` implements it already. The shim declares the struct with its
 real C members and a `_Static_assert` per field offset against the layout
 above, so the claim that the two languages agree on the bytes is checked
-on every build rather than argued for.
+on every build rather than argued for. A union crossing is declared as a
+union and asserted the same way: its size, and every member at offset
+zero.
+
+**A pointer type is a declarator, not a base type with a `*` on it.**
+Now that addresses cross, the shim has to write C's own inside-out
+declarations — `int (*)[4]` is a pointer to an array where `int *[4]` is
+an array of pointers, and `int (*)(const void *, const void *)` is
+qsort's comparator. Writing either the other way round compiles to
+something else that also compiles, which is why the shim builds a real
+declarator rather than concatenating.
 
 The libraries come from the same imports and become `-l` flags. Nothing
 in either backend knows what SDL is.
@@ -308,7 +323,7 @@ the slice's, keeps a dangling one.
 
 ## Linear memory
 
-A METALS `memory` ([`metals.md`](metals.md#linear-memory)) is 24 bytes of
+A METALS `memory` ([appendix D](appendix-d-metals.md#linear-memory)) is 24 bytes of
 module storage holding rt.c's `gy_memory` — `{ bytes, size, max }` — and
 nothing else. Both backends declare one per memory, call `gy_mem_init`
 before `main` runs, and call `gy_mem_data` once per data segment.

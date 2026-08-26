@@ -488,11 +488,47 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
+		// An array's *address* borrows the storage that address names,
+		// which is the only way to view an array a pointer reaches: the
+		// value form would have to load it first, and a slice of a copy
+		// is a view of storage nothing else can see. Same reasoning as
+		// index.ptr, and the extent is static either way.
+		if pointer, ok := typ.(*Ptr); ok {
+			array, ok := pointer.Elem.(*ArrayOf)
+			if !ok {
+				return fmt.Errorf("slice.of wants a pointer to an array, not %s", typ)
+			}
+			return fv.def(state, i.Dst, &SliceOf{Elem: array.Elem})
+		}
 		array, ok := typ.(*ArrayOf)
 		if !ok {
-			return fmt.Errorf("slice.of wants an array, not %s", typ)
+			return fmt.Errorf("slice.of wants an array or a pointer to one, not %s", typ)
 		}
 		return fv.def(state, i.Dst, &SliceOf{Elem: array.Elem})
+
+	case *SliceSub:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		slice, ok := typ.(*SliceOf)
+		if !ok {
+			// An array is sliced with slice.of first. A slice is what
+			// carries the run-time extent this instruction narrows, and
+			// widening the operand would give one instruction two
+			// storage models for no gain.
+			return fmt.Errorf("slice.sub wants a slice, not %s", typ)
+		}
+		for _, bound := range []string{i.Lo, i.Hi} {
+			boundType, err := fv.use(state, bound)
+			if err != nil {
+				return err
+			}
+			if !isUsize(boundType) {
+				return fmt.Errorf("slice.sub bounds are usize, not %s", boundType)
+			}
+		}
+		return fv.def(state, i.Dst, &SliceOf{Elem: slice.Elem})
 
 	case *IndexGet:
 		elem, err := fv.checkIndex(state, i.X, i.Index)
@@ -514,6 +550,37 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			return fmt.Errorf("index.set of %s into elements of %s", valType, elem)
 		}
 		return nil
+
+	case *IndexPtr:
+		typ, err := fv.use(state, i.Ptr)
+		if err != nil {
+			return err
+		}
+		// One question — the checked address of element i — with two
+		// places the extent can come from: the `N` in an array's type,
+		// or the length word a slice carries. Both are checks; what
+		// `ptr.offset` cannot do is check at all.
+		var elem Type
+		switch operand := typ.(type) {
+		case *Ptr:
+			array, ok := operand.Elem.(*ArrayOf)
+			if !ok {
+				return fmt.Errorf("index.ptr wants a pointer to an array, not %s", typ)
+			}
+			elem = array.Elem
+		case *SliceOf:
+			elem = operand.Elem
+		default:
+			return fmt.Errorf("index.ptr wants a pointer to an array or a slice, not %s", typ)
+		}
+		indexType, err := fv.use(state, i.Index)
+		if err != nil {
+			return err
+		}
+		if !isUsize(indexType) {
+			return fmt.Errorf("indexes are usize, not %s", indexType)
+		}
+		return fv.def(state, i.Dst, &Ptr{Elem: elem})
 
 	case *Len:
 		typ, err := fv.use(state, i.X)
@@ -823,7 +890,11 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		if bad := boundaryOffender(typ, fv.types, map[string]bool{}); bad != "" {
+		// Never native: an `any` may cross *any* boundary, so what may go
+		// into one is what the strictest boundary carries. A pointer that
+		// a linked library could be handed is not a value a collector on
+		// the far side of some other boundary could ever hold.
+		if bad := boundaryOffender(typ, fv.types, map[string]bool{}, false); bad != "" {
 			return fmt.Errorf("any.wrap of %s: %s cannot become any; any values may cross boundaries", typ, bad)
 		}
 		return fv.def(state, i.Dst, &Any{})
@@ -832,7 +903,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err := fv.useAny(state, i.X, "any.unwrap"); err != nil {
 			return err
 		}
-		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}); bad != "" {
+		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}, false); bad != "" {
 			return fmt.Errorf("any.unwrap to %s: %s cannot come out of an any", i.To, bad)
 		}
 		return fv.def(state, i.Dst, i.To)
@@ -841,7 +912,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err := fv.useAny(state, i.X, "any.is"); err != nil {
 			return err
 		}
-		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}); bad != "" {
+		if bad := boundaryOffender(i.To, fv.types, map[string]bool{}, false); bad != "" {
 			return fmt.Errorf("any.is %s: %s never goes into an any, so the test can never hold", i.To, bad)
 		}
 		return fv.def(state, i.Dst, TBool)

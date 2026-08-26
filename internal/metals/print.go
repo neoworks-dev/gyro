@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Print renders a module in the canonical text form docs/metals.md
+// Print renders a module in the canonical text form docs/appendix-d-metals.md
 // specifies. Parse reads it back; the round trip is exact.
 func Print(m *Module) string {
 	p := &printer{}
@@ -276,10 +276,14 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = array<%s>(%s)", reg(i.Dst), i.Elem, regs(i.Args))
 	case *Slice:
 		p.printf("%s = slice.of %s", reg(i.Dst), reg(i.X))
+	case *SliceSub:
+		p.printf("%s = slice.sub %s, %s, %s", reg(i.Dst), reg(i.X), reg(i.Lo), reg(i.Hi))
 	case *IndexGet:
 		p.printf("%s = index.get %s, %s", reg(i.Dst), reg(i.X), reg(i.Index))
 	case *IndexSet:
 		p.printf("index.set %s, %s, %s", reg(i.X), reg(i.Index), reg(i.Val))
+	case *IndexPtr:
+		p.printf("%s = index.ptr %s, %s", reg(i.Dst), reg(i.Ptr), reg(i.Index))
 	case *Len:
 		p.printf("%s = len %s", reg(i.Dst), reg(i.X))
 	case *StrConcat:

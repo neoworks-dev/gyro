@@ -97,10 +97,10 @@ func TestHeaderSkipsWhatItCannotDeclare(t *testing.T) {
 	text := generated(t, `
 module "cc:mixed"
 
-type %Bits = union { whole: i32, half: u16 }
+type %Tagged = enum { None, Some(i32) }
 type %Point = record { x: i32 }
 
-export fn @punned(%b: %Bits) -> i32 {
+export fn @sum(%e: %Tagged) -> i32 {
   %n = const.i32 0
   return %n
 }
@@ -111,8 +111,8 @@ export fn @plain(%p: %Point) -> i32 {
 }
 `)
 	wants(t, text, "export struct Point {", "export fn plain(a0: Point): i32")
-	if strings.Contains(text, "punned") || strings.Contains(text, "Bits") {
-		t.Errorf("a union reached the header:\n%s", text)
+	if strings.Contains(text, "sum") || strings.Contains(text, "Tagged") {
+		t.Errorf("an enum reached the header:\n%s", text)
 	}
 }
 
@@ -122,8 +122,8 @@ func TestHeaderPropagatesUnspellability(t *testing.T) {
 	text := generated(t, `
 module "cc:mixed"
 
-type %Bits = union { whole: i32, half: u16 }
-type %Holder = record { bits: %Bits }
+type %Tagged = enum { None, Some(i32) }
+type %Holder = record { tag: %Tagged }
 type %Outer = record { held: %Holder }
 
 export fn @outer(%o: %Outer) -> i32 {
@@ -132,7 +132,65 @@ export fn @outer(%o: %Outer) -> i32 {
 }
 `)
 	if strings.Contains(text, "Outer") || strings.Contains(text, "Holder") {
-		t.Errorf("a type holding a union reached the header:\n%s", text)
+		t.Errorf("a type holding an enum reached the header:\n%s", text)
+	}
+}
+
+// A union has a Gyro spelling now, and it is the reason `union` is in
+// the language: a C library handing one out was previously unimportable
+// as a type, so every member had to be read through a function written
+// for the purpose.
+func TestHeaderDeclaresAUnion(t *testing.T) {
+	text := generated(t, `
+module "cc:mixed"
+
+type %Bits = union { whole: i32, half: u16 }
+type %Holder = record { bits: %Bits }
+
+export fn @punned(%b: %Bits) -> i32 {
+  %n = const.i32 0
+  return %n
+}
+
+export fn @held(%h: %Holder) -> i32 {
+  %n = const.i32 0
+  return %n
+}
+`)
+	wants(t, text,
+		"export union Bits {",
+		"  export whole: i32",
+		"  export half: u16",
+		"export struct Holder {",
+		"  export bits: Bits",
+		"export fn punned(a0: Bits): i32",
+	)
+}
+
+// A fixed-size member is C's own `T v[N]`, and Gyro spells one the same
+// way round. An array of something whose spelling is not one word is
+// left out rather than written down wrong: Gyro reads `*u8[8]` as a
+// pointer to an array, which is not an array of pointers.
+func TestHeaderDeclaresAFixedArrayMember(t *testing.T) {
+	text := generated(t, `
+module "cc:buf"
+
+type %Buf = record { name: array<u8, 16>, tail: ptr<i32> }
+type %Pointers = record { table: array<ptr<i32>, 4> }
+
+export fn @named(%b: %Buf) -> i32 {
+  %n = const.i32 0
+  return %n
+}
+
+export fn @tabled(%p: %Pointers) -> i32 {
+  %n = const.i32 0
+  return %n
+}
+`)
+	wants(t, text, "export struct Buf {", "  export name: u8[16]", "  export tail: *i32")
+	if strings.Contains(text, "Pointers") || strings.Contains(text, "tabled") {
+		t.Errorf("an array of pointers reached the header:\n%s", text)
 	}
 }
 

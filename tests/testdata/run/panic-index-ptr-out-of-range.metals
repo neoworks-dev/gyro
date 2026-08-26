@@ -1,0 +1,34 @@
+; `index.ptr` checks, and that is the whole reason it exists rather than
+; `elem.ptr` followed by `ptr.offset`. Those two are unchecked because a
+; pointer does not carry the extent of what it points into; `index.ptr`'s
+; operand is a `ptr<array<T, N>>`, so the extent is in the type and the
+; check is a compare against a constant.
+;
+; Forming the address is what aborts. Nothing is loaded through it here,
+; because there is nothing to load — an unchecked offset would have
+; handed back an address one past the end and read whatever lies there.
+;
+; The message is `index.get`'s, since the check is `index.get`'s.
+
+;gyro:panic index 4 out of range for length 4
+
+module "metals:index-ptr-out-of-range"
+
+import "gyro:rt" {
+  fn @"println<string>"(str)
+}
+
+export fn @main() {
+  %start = const.str "before"
+  call @"println<string>"(%start)
+
+  %a = slot array<i32, 4>
+
+  ; 3 is the last element; 4 is the first address past the array.
+  %past = const.usize 4
+  %at = index.ptr %a, %past
+
+  %never = const.str "unreachable"
+  call @"println<string>"(%never)
+  return
+}

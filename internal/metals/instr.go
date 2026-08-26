@@ -228,10 +228,34 @@ type (
 		Args []string
 	}
 	// Slice is `%s = slice.of %a`: borrow the whole array.
-	Slice    struct{ Dst, X string }
+	Slice struct{ Dst, X string }
+	// SliceSub is `%s = slice.sub %x, %lo, %hi`: the half-open range of
+	// a slice, sharing the same storage. Checked as `lo <= hi <= len`,
+	// aborting otherwise.
+	//
+	// It is an instruction rather than arithmetic in a front end because
+	// a slice's extent is a run-time value, so the check has to be made
+	// where the length is — and because the abort text is one message
+	// every tier has to word identically.
+	SliceSub struct{ Dst, X, Lo, Hi string }
 	IndexGet struct{ Dst, X, Index string }
 	IndexSet struct{ X, Index, Val string }
 	Len      struct{ Dst, X string }
+
+	// IndexPtr is `%q = index.ptr %p, %i`: ptr<array<T, N>> to the ptr<T>
+	// of element i, bounds-checked against N and aborting out of range
+	// exactly as index.get does.
+	//
+	// It is the checked counterpart of elem.ptr composed with ptr.offset,
+	// and it exists because those two are unchecked: reaching an element
+	// through the array's address is the one case where the extent *is*
+	// known statically, so the check costs a compare against a constant
+	// rather than the run-time extent a pointer does not carry.
+	//
+	// It is what lets an element be read or written where it lies. Without
+	// it, indexing an array a pointer reaches has to load the whole
+	// aggregate into a register, index that copy, and store it back.
+	IndexPtr struct{ Dst, Ptr, Index string }
 
 	StrConcat struct{ Dst, A, B string }
 
@@ -368,8 +392,10 @@ func (*MakeTuple) isInstr()    {}
 func (*TupleGet) isInstr()     {}
 func (*MakeArray) isInstr()    {}
 func (*Slice) isInstr()        {}
+func (*SliceSub) isInstr()     {}
 func (*IndexGet) isInstr()     {}
 func (*IndexSet) isInstr()     {}
+func (*IndexPtr) isInstr()     {}
 func (*Len) isInstr()          {}
 func (*StrConcat) isInstr()    {}
 func (*Call) isInstr()         {}

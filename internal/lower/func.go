@@ -191,10 +191,31 @@ func markAddressTaken(node ast.Node, out map[string]bool) {
 		if !ok || unary.Op != token.Amp {
 			return
 		}
-		if ident, ok := unary.X.(*ast.Ident); ok {
-			out[ident.Name] = true
+		if name := placeRoot(unary.X); name != "" {
+			out[name] = true
 		}
 	})
+}
+
+// placeRoot names the local a place expression is rooted at, so that
+// `&xs[i]` and `&s.field.inner` spill `xs` and `s` the way `&xs` does.
+// A chain that reaches a pointer stops there: the address is the
+// pointer's own and no local has to move.
+func placeRoot(e ast.Expr) string {
+	for {
+		switch x := e.(type) {
+		case *ast.Ident:
+			return x.Name
+		case *ast.SelectorExpr:
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.TupleIndexExpr:
+			e = x.X
+		default:
+			return ""
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +365,11 @@ func (f *funcLowerer) needsSlot(name string, typ types.Type) bool {
 }
 
 func isUserRecord(t types.Type) bool {
+	// A union is always storage: reaching a member is `field.ptr`, which
+	// needs an address, and there is no register form to fall back to.
+	if _, isUnion := t.(*types.Union); isUnion {
+		return true
+	}
 	strct, ok := t.(*types.Struct)
 	if !ok {
 		return false
@@ -944,10 +970,18 @@ func (f *funcLowerer) localPlace(entry *local) *place {
 		return f.pointerPlace(entry.reg, entry.typ)
 	}
 	return &place{
-		typ:   entry.typ,
-		load:  func() string { return entry.reg },
-		store: func(value string) { f.emit(&metals.Copy{Dst: entry.reg, X: value}) },
-		addr:  noAddr,
+		typ:  entry.typ,
+		load: func() string { return entry.reg },
+		store: func(value string) {
+			// Writing a register back onto itself is what an array
+			// mutated in its own register asks for, and it is a copy of
+			// every element to change nothing.
+			if value == entry.reg {
+				return
+			}
+			f.emit(&metals.Copy{Dst: entry.reg, X: value})
+		},
+		addr: noAddr,
 	}
 }
 
@@ -966,12 +1000,31 @@ func (f *funcLowerer) selectorPlace(e *ast.SelectorExpr) *place {
 
 	// Through a pointer the field has a stable address.
 	if pointer, ok := baseType.(*types.Pointer); ok {
+		if union, isUnion := pointer.Elem.(*types.Union); isUnion {
+			base := f.lowerExpr(e.X, nil)
+			return f.unionMemberPlace(base, union, e.Name)
+		}
 		strct := f.structOf(pointer.Elem)
 		index := fieldIndex(strct, e.Name)
 		base := f.lowerExpr(e.X, nil)
 		ptr := f.newReg(e.Name + ".p")
 		f.emit(&metals.FieldPtr{Dst: ptr, Ptr: base, Index: index})
 		return f.pointerPlace(ptr, strct.Fields[index].Type)
+	}
+
+	// A union is only ever reached through its storage: writing one
+	// member is writing all of it, so there is no register form of the
+	// operation to fall back to.
+	if union, isUnion := baseType.(*types.Union); isUnion {
+		basePlace := f.placeOfAddressable(e.X)
+		if basePlace == nil {
+			f.l.fail("@%s: a union member of a value with no storage", f.fn.Name)
+		}
+		base := basePlace.addr()
+		if base == "" {
+			f.l.fail("@%s: a union member of a value with no address", f.fn.Name)
+		}
+		return f.unionMemberPlace(base, union, e.Name)
 	}
 
 	strct := f.structOf(baseType)
@@ -1001,6 +1054,28 @@ func (f *funcLowerer) selectorPlace(e *ast.SelectorExpr) *place {
 	}
 }
 
+// unionMemberPlace reaches one member through the union's address. Every
+// member begins where the union does, so this is the same `field.ptr` a
+// record's field uses and the offset it answers is zero.
+func (f *funcLowerer) unionMemberPlace(base string, union *types.Union, name string) *place {
+	index := unionMemberIndex(union, name)
+	if index < 0 {
+		f.l.fail("@%s: %s has no member %s", f.fn.Name, union.Name, name)
+	}
+	ptr := f.newReg(name + ".p")
+	f.emit(&metals.FieldPtr{Dst: ptr, Ptr: base, Index: index})
+	return f.pointerPlace(ptr, union.Members[index].Type)
+}
+
+func unionMemberIndex(union *types.Union, name string) int {
+	for i := range union.Members {
+		if union.Members[i].Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // placeOfAddressable is placeOf for bases that may not be assignable
 // expressions at all; it returns nil instead of failing.
 func (f *funcLowerer) placeOfAddressable(e ast.Expr) *place {
@@ -1018,6 +1093,10 @@ func (f *funcLowerer) placeOfAddressable(e ast.Expr) *place {
 		}
 	case *ast.SelectorExpr:
 		return f.selectorPlace(e)
+	case *ast.IndexExpr:
+		// An element of an addressable fixed-size array has an address of
+		// its own; indexPlace answers noAddr for every other container.
+		return f.indexPlace(e)
 	case *ast.UnaryExpr:
 		if e.Op == token.Star {
 			if pointer, ok := f.typeOf(e.X).(*types.Pointer); ok {
@@ -1031,8 +1110,46 @@ func (f *funcLowerer) placeOfAddressable(e ast.Expr) *place {
 
 func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 	baseType := f.typeOf(e.X)
+
+	// An Array<T> is a runtime handle, so its elements are reached by
+	// asking the runtime for one's address. `at` rather than `get` is
+	// what makes an index a place: `get` answers with a copy, and
+	// assigning into a copy assigns into nothing.
+	if strct, isStruct := baseType.(*types.Struct); isStruct {
+		if elemType := arrayElemOf(strct); elemType != nil {
+			return f.arrayElementPlace(e, elemType)
+		}
+	}
+
 	elem := elemOf(baseType, f)
 	basePlace := f.placeOfAddressable(e.X)
+
+	// A fixed-size array with an address is reached through it. Loading
+	// the array first would copy every element to read or write one, and
+	// writing one back would copy them all again; `self.data[j]` on a
+	// `u8[64]` field is 64 bytes moved per byte examined.
+	if _, isArray := baseType.(*types.Array); isArray && basePlace != nil {
+		if base := basePlace.addr(); base != "" {
+			elementPtr := func() string {
+				index := f.lowerExpr(e.Index, types.USize)
+				ptr := f.newReg("elem.p")
+				f.emit(&metals.IndexPtr{Dst: ptr, Ptr: base, Index: index})
+				return ptr
+			}
+			return &place{
+				typ: elem,
+				load: func() string {
+					out := f.newReg("elem")
+					f.emit(&metals.Load{Dst: out, Ptr: elementPtr()})
+					return out
+				},
+				store: func(value string) {
+					f.emit(&metals.Store{Ptr: elementPtr(), Val: value})
+				},
+				addr: elementPtr,
+			}
+		}
+	}
 
 	loadBase := func() string {
 		if basePlace != nil {
@@ -1040,6 +1157,22 @@ func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 		}
 		return f.lowerExpr(e.X, nil)
 	}
+
+	// A slice already carries a data pointer and a length, so an element
+	// of one has an address without anything having to be loaded. It is
+	// the same checked instruction a fixed-size array uses; only where
+	// the extent comes from differs.
+	elementAddr := noAddr
+	if _, isSlice := baseType.(*types.Slice); isSlice {
+		elementAddr = func() string {
+			base := loadBase()
+			index := f.lowerExpr(e.Index, types.USize)
+			ptr := f.newReg("elem.p")
+			f.emit(&metals.IndexPtr{Dst: ptr, Ptr: base, Index: index})
+			return ptr
+		}
+	}
+
 	return &place{
 		typ: elem,
 		load: func() string {
@@ -1058,8 +1191,115 @@ func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 				basePlace.store(base)
 			}
 		},
-		addr: noAddr,
+		addr: elementAddr,
 	}
+}
+
+// arrayElementPlace reaches one element of an Array<T> through the
+// address the runtime hands back. The name it calls is the one an
+// explicit `xs.at(i)` lowers to, so the two share an import.
+func (f *funcLowerer) arrayElementPlace(e *ast.IndexExpr, elemType types.Type) *place {
+	name := "Array<" + elemType.String() + ">::at"
+	f.l.ensureImport(name, &metals.FnType{
+		Params: []metals.Type{&metals.Handle{}, metals.TUsize},
+		Result: &metals.Ptr{Elem: f.l.metalsType(elemType)},
+	})
+
+	elementPtr := func() string {
+		handle := f.nativeReceiver(e.X)
+		index := f.lowerExpr(e.Index, types.USize)
+		ptr := f.newReg("elem.p")
+		f.emit(&metals.Call{Dst: ptr, Callee: name, Args: []string{handle, index}})
+		return ptr
+	}
+	return f.pointerPlace(elementPtr(), elemType)
+}
+
+// arrayView calls Array<T>::slice, which is the borrow the runtime
+// already offers. The name is the one an explicit `xs.slice()` lowers
+// to, so the two share an import.
+func (f *funcLowerer) arrayView(x ast.Expr, elemType types.Type) string {
+	name := "Array<" + elemType.String() + ">::slice"
+	f.l.ensureImport(name, &metals.FnType{
+		Params: []metals.Type{&metals.Handle{}},
+		Result: &metals.SliceOf{Elem: f.l.metalsType(elemType)},
+	})
+	view := f.newReg("view")
+	f.emit(&metals.Call{Dst: view, Callee: name, Args: []string{f.nativeReceiver(x)}})
+	return view
+}
+
+// arrayElemOf is the element type of an `Array<T>`, or nil. The Array is
+// the runtime's own handle, so it is recognized by being that
+// declaration rather than by shape.
+func arrayElemOf(t *types.Struct) types.Type {
+	origin := t
+	if t.Origin != nil {
+		origin = t.Origin
+	}
+	if origin.Name != "Array" || !stdlib.IsBundled(origin.Module) || len(t.Args) != 1 {
+		return nil
+	}
+	return t.Args[0]
+}
+
+// sliceNarrowing lowers `xs[lo..hi]` to a window onto the storage xs
+// already views. Nothing is copied and nothing is allocated.
+//
+// A fixed-size array is viewed through its *address* where it has one.
+// Loading it first would put a copy in a register and borrow that, so a
+// write through the window would reach storage nothing else can see —
+// the same reason `index.ptr` exists.
+func (f *funcLowerer) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) string {
+	baseType := f.typeOf(e.X)
+	base := f.narrowingBase(e.X, baseType)
+
+	lo := ""
+	if r.Lo == nil {
+		lo = f.newReg("from")
+		f.emit(&metals.Const{Dst: lo, Type: metals.TUsize, Value: "0"})
+	} else {
+		lo = f.lowerExpr(r.Lo, types.USize)
+	}
+
+	hi := ""
+	if r.Hi == nil {
+		hi = f.newReg("to")
+		f.emit(&metals.Len{Dst: hi, X: base})
+	} else {
+		hi = f.lowerExpr(r.Hi, types.USize)
+	}
+
+	out := f.newReg("window")
+	f.emit(&metals.SliceSub{Dst: out, X: base, Lo: lo, Hi: hi})
+	return out
+}
+
+// narrowingBase produces the slice a narrowing starts from.
+func (f *funcLowerer) narrowingBase(x ast.Expr, baseType types.Type) string {
+	// An Array<T> narrows through the view it already hands out, which
+	// borrows its buffer rather than copying it.
+	if strct, isStruct := baseType.(*types.Struct); isStruct {
+		if elemType := arrayElemOf(strct); elemType != nil {
+			return f.arrayView(x, elemType)
+		}
+	}
+	if _, isArray := baseType.(*types.Array); !isArray {
+		return f.lowerExpr(x, nil)
+	}
+	if place := f.placeOfAddressable(x); place != nil {
+		if addr := place.addr(); addr != "" {
+			view := f.newReg("view")
+			f.emit(&metals.Slice{Dst: view, X: addr})
+			return view
+		}
+	}
+	// An array with no address — a literal, or a call's result — is its
+	// own register, and slice.of borrows that register's storage.
+	value := f.lowerExpr(x, nil)
+	view := f.newReg("view")
+	f.emit(&metals.Slice{Dst: view, X: value})
+	return view
 }
 
 func (f *funcLowerer) tupleElemPlace(e *ast.TupleIndexExpr) *place {

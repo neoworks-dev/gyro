@@ -13,7 +13,7 @@ import (
 // The mapping is a table and not a translation, which is the whole point
 // of a direct front end: an `int` is an `i32` and a `struct Point *` is a
 // `ptr<%Point>`, and what those occupy in memory is C's answer already,
-// because METALS' layout rule *is* C's (docs/native.md). Nothing is
+// because METALS' layout rule *is* C's (docs/appendix-e-native-backends.md). Nothing is
 // flattened into a byte region on the way in and nothing has to be
 // reconstructed on the way out.
 //
@@ -192,13 +192,20 @@ func (t *ctype) isOpaquePointer() bool {
 func vaSlotsType() *ctype { return pointerTo(pointerTo(typeVoid)) }
 func vaCountType() *ctype { return typeLong }
 
-// vaSlotsName and vaCountName are the parameters' names. Neither is in
+// VaSlotsName and VaCountName are the parameters' names. Neither is in
 // C's identifier space, so nothing a translation unit declares can
 // collide with one, and no C expression can name them: `va_start` is how
 // a program reaches them.
+//
+// They are exported because they are how a module says a function is
+// variadic. METALS has no variadic call and should not grow a flag for
+// one — the machinery is a front end's — so what is left is the
+// convention, and an importer reading the two names off the end of a
+// parameter list is reading the convention rather than guessing at a
+// shape two ordinary parameters could also have.
 const (
-	vaSlotsName = "va$slots"
-	vaCountName = "va$count"
+	VaSlotsName = "va$slots"
+	VaCountName = "va$count"
 )
 
 // signature is the parameter list as METALS sees it, which for a
@@ -211,8 +218,8 @@ func (t *ctype) signature() []param {
 	out := make([]param, 0, len(t.params)+2)
 	out = append(out, t.params...)
 	return append(out,
-		param{name: vaSlotsName, typ: vaSlotsType()},
-		param{name: vaCountName, typ: vaCountType()})
+		param{name: VaSlotsName, typ: vaSlotsType()},
+		param{name: VaCountName, typ: vaCountType()})
 }
 
 func (t *ctype) isFloat() bool { return t.kind == kFloat || t.kind == kDouble }

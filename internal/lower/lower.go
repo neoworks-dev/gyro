@@ -338,6 +338,8 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 		return &metals.FutureOf{Result: l.metalsType(t.Result)}
 	case *types.Struct:
 		return l.metalsStruct(t)
+	case *types.Union:
+		return l.metalsUnion(t)
 	case *types.Enum:
 		return l.metalsEnum(t)
 	}
@@ -397,6 +399,28 @@ func (l *lowerer) metalsFnType(t *types.Func) *metals.FnType {
 		out.Result = l.metalsType(t.Result)
 	}
 	return out
+}
+
+// metalsUnion lowers a union to METALS' own, which is the same idea with
+// the same rules: every member at offset zero, the size the widest
+// member's, and nothing recording which one is live.
+func (l *lowerer) metalsUnion(t *types.Union) metals.Type {
+	if foreign := l.foreignOf[t.Module]; foreign != nil {
+		return l.importType(foreign, t.Name)
+	}
+	name := l.typeName(t.Name, t.Module, nil)
+	if l.declared[name] == nil {
+		decl := &metals.TypeDecl{Name: name, Union: &metals.UnionShape{}}
+		l.declared[name] = decl
+		l.module.Types = append(l.module.Types, decl)
+		for _, member := range t.Members {
+			decl.Union.Members = append(decl.Union.Members, metals.FieldDecl{
+				Name: member.Name,
+				Type: l.metalsType(member.Type),
+			})
+		}
+	}
+	return &metals.Named{Name: name}
 }
 
 // metalsStruct lowers a struct type: runtime-owned handles (Array, Mutex,
@@ -577,9 +601,40 @@ func (l *lowerer) ensureForeignImport(module, name string, sig *types.Func) {
 	if l.imports[name] != nil {
 		return
 	}
-	l.imports[name] = l.metalsFnType(sig)
+	if sig.Variadic {
+		l.imports[name] = l.variadicFnType(sig)
+	} else {
+		l.imports[name] = l.metalsFnType(sig)
+	}
 	l.importFrom[name] = module
 }
+
+// variadicFnType is a C variadic function's real signature: the declared
+// parameters, then the addresses of what came after them and how many
+// there are. The `...anyptr` the generated header writes is a spelling
+// for those two — METALS has no variadic call, and the pack is built at
+// the call site. See docs/decisions.md, "Varargs are an array a caller
+// builds".
+func (l *lowerer) variadicFnType(sig *types.Func) *metals.FnType {
+	out := &metals.FnType{Async: sig.Async}
+	for _, param := range sig.Params[:len(sig.Params)-1] {
+		out.Params = append(out.Params, l.metalsType(param))
+	}
+	out.Params = append(out.Params, varargSlotsType(), varargCountType())
+	if !isVoid(sig.Result) {
+		out.Result = l.metalsType(sig.Result)
+	}
+	return out
+}
+
+// The two types the pack is passed as: a pointer to the first erased
+// address, and a count. Both are what internal/cc's `void **` and `long`
+// become, because they are the same two parameters.
+func varargSlotsType() metals.Type {
+	return &metals.Opt{Elem: &metals.Ptr{Elem: &metals.Opt{Elem: &metals.AnyPtr{}}}}
+}
+
+func varargCountType() metals.Type { return metals.TInt64 }
 
 // importType registers a type another producer's module declares and
 // returns the reference to it. Everything the shape names comes along:

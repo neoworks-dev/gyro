@@ -104,9 +104,15 @@ func header(module *metals.Module) (string, error) {
 		// unimportable. Naming a skipped export is still an error,
 		// reported where it is imported, which is where it means
 		// something.
-		params := make([]string, len(fn.Params))
+		declared := fn.Params
+		variadic := isVariadic(fn)
+		if variadic {
+			declared = declared[:len(declared)-2]
+		}
+
+		params := make([]string, len(declared))
 		spellable := true
-		for i, param := range fn.Params {
+		for i, param := range declared {
 			spelling, err := h.spell(param.Type)
 			if err != nil {
 				spellable = false
@@ -116,6 +122,14 @@ func header(module *metals.Module) (string, error) {
 		}
 		if !spellable {
 			continue
+		}
+		if variadic {
+			// C's `...` is spelled here as what the callee actually
+			// gets: the addresses of the arguments after the last named
+			// one. C hides that and reads through them anyway, so a
+			// caller that writes the addresses is writing what happens —
+			// and, unlike C, has somewhere the values demonstrably live.
+			params = append(params, fmt.Sprintf("a%d: ...anyptr", len(declared)))
 		}
 
 		result := ""
@@ -144,6 +158,18 @@ func header(module *metals.Module) (string, error) {
 	}
 	out.WriteString(decls.String())
 	return out.String(), nil
+}
+
+// isVariadic reports whether an export is a C variadic function. METALS
+// has no variadic call and deliberately no flag for one, so what says so
+// is the front end's own convention: the two parameters it appends,
+// under names no C program can write. See cc.VaSlotsName.
+func isVariadic(fn *metals.Func) bool {
+	if len(fn.Params) < 2 {
+		return false
+	}
+	last := fn.Params[len(fn.Params)-2:]
+	return last[0].Name == cc.VaSlotsName && last[1].Name == cc.VaCountName
 }
 
 // headerGen decides which of a module's named types Gyro can be shown,
@@ -194,17 +220,17 @@ func (h *headerGen) declarable(decl *metals.TypeDecl) bool {
 	if decl.Opaque {
 		return true
 	}
-	// A union has no Gyro spelling and an enum's is not this one: Gyro's
-	// enum is a tagged sum, and a producer's %enum carries payloads that
-	// a struct declaration cannot say.
-	if decl.Record == nil {
+	// An enum has no spelling here: Gyro's is a tagged sum, and a
+	// producer's %enum carries payloads a declaration of this shape
+	// cannot say. A record and a union both do.
+	if decl.Record == nil && decl.Union == nil {
 		return false
 	}
-	for _, field := range decl.Record.Fields {
-		if !isGyroName(field.Name) {
+	for _, member := range decl.Members() {
+		if !isGyroName(member.Name) {
 			return false
 		}
-		if _, err := h.spell(field.Type); err != nil {
+		if _, err := h.spell(member.Type); err != nil {
 			return false
 		}
 	}
@@ -218,10 +244,14 @@ func (h *headerGen) declare(decl *metals.TypeDecl) string {
 		// not look inside.
 		return fmt.Sprintf("export struct %s {}\n", decl.Name)
 	}
+	keyword := "struct"
+	if decl.Union != nil {
+		keyword = "union"
+	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "export struct %s {\n", decl.Name)
-	for _, field := range decl.Record.Fields {
-		spelling, err := h.spell(field.Type)
+	fmt.Fprintf(&out, "export %s %s {\n", keyword, decl.Name)
+	for _, member := range decl.Members() {
+		spelling, err := h.spell(member.Type)
 		if err != nil {
 			// Unreachable: nothing is wanted that resolve did not first
 			// find spellable, member by member. Left as a member Gyro
@@ -232,7 +262,7 @@ func (h *headerGen) declare(decl *metals.TypeDecl) string {
 		// Every member is exported. A C struct has no private members,
 		// and a producer that wants one keeps the type out of its
 		// exports rather than hiding a field of it.
-		fmt.Fprintf(&out, "  export %s: %s\n", field.Name, spelling)
+		fmt.Fprintf(&out, "  export %s: %s\n", member.Name, spelling)
 	}
 	out.WriteString("}\n")
 	return out.String()
@@ -281,6 +311,20 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 			return "", err
 		}
 		return "*" + elem, nil
+	case *metals.ArrayOf:
+		// `T[N]` puts the length after the element, so the element's own
+		// spelling has to be one that ends where it ends. A `*T` does
+		// not: Gyro reads `*u8[8]` as a pointer to an array, which is
+		// C's `unsigned char (*)[8]` and not its `unsigned char *[8]`.
+		// A member Gyro cannot spell exactly is left unspelled.
+		if !isBareSpelling(t.Elem) {
+			return "", fmt.Errorf("%s has no Gyro spelling: an array of %s would reparse as something else", t, t.Elem)
+		}
+		elem, err := h.spell(t.Elem)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s[%d]", elem, t.Len), nil
 	case *metals.TupleOf:
 		parts := make([]string, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -317,6 +361,16 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 		return t.Name, nil
 	}
 	return "", fmt.Errorf("%s has no Gyro spelling", t)
+}
+
+// isBareSpelling reports whether a type spells as one word, with nothing
+// before or after it that another suffix could attach to.
+func isBareSpelling(t metals.Type) bool {
+	switch t.(type) {
+	case *metals.Prim, *metals.Named, *metals.AnyPtr, *metals.Any:
+		return true
+	}
+	return false
 }
 
 // endsInAType reports whether a Gyro spelling finishes with a nested

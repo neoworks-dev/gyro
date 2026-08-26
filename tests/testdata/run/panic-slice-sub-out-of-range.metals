@@ -1,0 +1,28 @@
+; Narrowing past the end aborts, and the message names both bounds and
+; the length: there are two ways to be wrong here, and which bound is at
+; fault is not obvious from one of them.
+
+;gyro:panic slice 2..9 out of range for length 5
+
+module "metals:panic-slice-sub-out-of-range"
+
+import "gyro:rt" {
+  fn @"println<str>"(str)
+}
+
+export fn @main() {
+  %v = const.i32 1
+  %a = array<i32>(%v, %v, %v, %v, %v)
+  %s = slice.of %a
+
+  %before = const.str "before"
+  call @"println<str>"(%before)
+
+  %two = const.usize 2
+  %nine = const.usize 9
+  %bad = slice.sub %s, %two, %nine
+
+  %after = const.str "unreachable"
+  call @"println<str>"(%after)
+  return
+}

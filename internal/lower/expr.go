@@ -126,6 +126,9 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.SelectorExpr:
 		return f.selectorPlace(e).load()
 	case *ast.IndexExpr:
+		if narrowing, ok := e.Index.(*ast.RangeExpr); ok {
+			return f.sliceNarrowing(e, narrowing)
+		}
 		return f.indexPlace(e).load()
 	case *ast.TupleIndexExpr:
 		return f.tupleElemPlace(e).load()
@@ -404,6 +407,9 @@ func (f *funcLowerer) evalTupleLit(e *ast.TupleLit, want types.Type) string {
 }
 
 func (f *funcLowerer) evalStructLit(e *ast.StructLit) string {
+	if union, isUnion := f.typeOf(e).(*types.Union); isUnion {
+		return f.evalUnionLit(e, union)
+	}
 	strct, ok := f.typeOf(e).(*types.Struct)
 	if !ok {
 		f.l.fail("@%s: a struct literal without a struct type", f.fn.Name)
@@ -433,6 +439,31 @@ func (f *funcLowerer) evalStructLit(e *ast.StructLit) string {
 	}
 	out := f.newReg("lit")
 	f.emit(&metals.MakeRecord{Dst: out, TypeName: named.Name, Args: args})
+	return out
+}
+
+// evalUnionLit builds `Value{ i: 42 }`. There is no instruction that
+// makes a union out of a member, and there could not be one: a union is
+// storage, and which member a value holds is not something the value
+// carries. So the literal *is* a cell, written through, and read back.
+func (f *funcLowerer) evalUnionLit(e *ast.StructLit, union *types.Union) string {
+	if len(e.Fields) != 1 {
+		f.l.fail("@%s: a union literal sets one member", f.fn.Name)
+	}
+	field := e.Fields[0]
+	index := unionMemberIndex(union, field.Name)
+	if index < 0 {
+		f.l.fail("@%s: %s has no member %s", f.fn.Name, union.Name, field.Name)
+	}
+
+	cell := f.newReg("lit")
+	f.emit(&metals.Slot{Dst: cell, Type: f.l.metalsType(union)})
+	ptr := f.newReg(field.Name + ".p")
+	f.emit(&metals.FieldPtr{Dst: ptr, Ptr: cell, Index: index})
+	f.emit(&metals.Store{Ptr: ptr, Val: f.lowerExpr(field.Value, union.Members[index].Type)})
+
+	out := f.newReg("u")
+	f.emit(&metals.Load{Dst: out, Ptr: cell})
 	return out
 }
 

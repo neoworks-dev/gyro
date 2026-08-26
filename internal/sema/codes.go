@@ -28,6 +28,14 @@ var codes = map[string]diag.Code{
 	"@extern's second argument is symbol = \"the_c_name\"":                                       diag.EExternDeclaration,
 	"%s cannot cross to C: %s":                                                                   diag.EExternSignature,
 
+	// Unions. One storage with several names for it, and nothing records
+	// which is live — which is what decides both what may be a member and
+	// what a literal may say.
+	"union %s declares no members; a union is storage, and there would be none":                  diag.EUnionDeclaration,
+	"the member %s is declared twice":                                                            diag.EUnionDeclaration,
+	"@extern union %s: @extern marks an opaque pointer, and a union is declared to be read into": diag.EUnionDeclaration,
+	"%s cannot be a union member: %s":                                                            diag.EUnionMember,
+
 	// A name that resolves to the wrong kind of thing
 	"%s is a type, not a value":                                                             diag.EWrongKind,
 	"%s is a type, not a function":                                                          diag.EWrongKind,
@@ -60,8 +68,10 @@ var codes = map[string]diag.Code{
 	"%s has no associated function %s":             diag.ENoSuchMember,
 	"%s has no element %d":                         diag.ENoSuchMember,
 	"%s has no members; only structs and enums do": diag.ENoSuchMember,
-	"%s has no message(): string method, so an error can never hold one": diag.ENoSuchMember,
-	"%s.%s is private to its module":                                     diag.EPrivateField,
+	"%s has no member %s":                          diag.ENoSuchMember,
+	"%s has no message(): string method, so an error can never hold one":                                                    diag.ENoSuchMember,
+	"a literal of %s is not allowed here: the member %s is private to its module; construct it with an associated function": diag.EPrivateField,
+	"%s.%s is private to its module": diag.EPrivateField,
 	"a literal of %s is not allowed here: the field %s is private to its module; construct it with an associated function": diag.EPrivateField,
 
 	// Modules
@@ -123,29 +133,36 @@ var codes = map[string]diag.Code{
 	"generic instantiation of %s is too deep; the type keeps growing":       diag.EInstantiationDepth,
 
 	// Composites
-	"%s cannot be indexed":                                                                       diag.ENotIndexable,
-	"cannot dereference %s; it is not a pointer":                                                 diag.ENotIndexable,
-	"positional access needs a tuple, not %s":                                                    diag.ENotIndexable,
-	"%s has %d elements, the assignment has %d targets":                                          diag.ETupleArity,
-	"%s has %d elements, the declaration binds %d names":                                         diag.ETupleArity,
-	"destructuring %d names needs a tuple, not %s":                                               diag.ETupleArity,
-	"destructuring %d targets needs a tuple, not %s":                                             diag.ETupleArity,
-	"%s has %d fields, the literal provides %d; a literal sets every field":                      diag.EStructLiteral,
-	"the literal misses the field %s; there are no zero values, so a literal sets every field":   diag.EStructLiteral,
-	"the field %s is set twice":                                                                  diag.EStructLiteral,
-	"as converts between numeric types and rune; %s as %s does not":                              diag.EInvalidConversion,
-	"an any cannot hold %s":                                                                      diag.EInvalidConversion,
-	"an any cannot hold %s, so it cannot be unwrapped to one":                                    diag.EInvalidConversion,
-	"indexes are usize, not %s; lengths and indexes never mix with signed arithmetic implicitly": diag.EIndexNotUsize,
+	"%s cannot be indexed":                                                                              diag.ENotIndexable,
+	"cannot dereference %s; it is not a pointer":                                                        diag.ENotIndexable,
+	"positional access needs a tuple, not %s":                                                           diag.ENotIndexable,
+	"%s has %d elements, the assignment has %d targets":                                                 diag.ETupleArity,
+	"%s has %d elements, the declaration binds %d names":                                                diag.ETupleArity,
+	"destructuring %d names needs a tuple, not %s":                                                      diag.ETupleArity,
+	"destructuring %d targets needs a tuple, not %s":                                                    diag.ETupleArity,
+	"%s has %d fields, the literal provides %d; a literal sets every field":                             diag.EStructLiteral,
+	"the literal misses the field %s; there are no zero values, so a literal sets every field":          diag.EStructLiteral,
+	"the field %s is set twice":                                                                         diag.EStructLiteral,
+	"a union literal sets exactly one member, not %d":                                                   diag.EStructLiteral,
+	"a union literal names the member it sets; position would not say which":                            diag.EStructLiteral,
+	"as converts between numeric types and rune; %s as %s does not":                                     diag.EInvalidConversion,
+	"an any cannot hold %s":                                                                             diag.EInvalidConversion,
+	"an any cannot hold %s, so it cannot be unwrapped to one":                                           diag.EInvalidConversion,
+	"indexes are usize, not %s; lengths and indexes never mix with signed arithmetic implicitly":        diag.EIndexNotUsize,
+	"range bounds are usize, not %s; lengths and indexes never mix with signed arithmetic implicitly":   diag.EIndexNotUsize,
+	"a string cannot be narrowed":                                                                       diag.ENotIndexable,
+	"%s cannot be narrowed; a slice, a fixed-size array and an Array<T> are what have a window to take": diag.ENotIndexable,
 
 	// The address of a declared function
 	"%s is async, and what runs it is this program's scheduler rather than a caller": diag.ENoAddress,
 	"%s is variadic, and a code pointer carries no argument pack":                    diag.ENoAddress,
+	"a narrowing has no address; it is a view built here, not storage":               diag.ENoAddress,
 
 	// Nullability
 	"this value is %s and may be null; check it against null before using it":      diag.ENullableUnchecked,
 	"this value is %s and may be null; check it against null before dereferencing": diag.ENullableUnchecked,
 	"this value is %s and may be null; check it against null before indexing":      diag.ENullableUnchecked,
+	"this value is %s and may be null; check it against null before narrowing it":  diag.ENullableUnchecked,
 	"this value is %s and may be null; check it against null before iterating":     diag.ENullableUnchecked,
 	"%s can never be null": diag.ENullableUnchecked,
 
@@ -178,6 +195,7 @@ var codes = map[string]diag.Code{
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
 	"cannot assign to this expression":                                                     diag.ENotAssignable,
+	"cannot assign to a narrowing; assign its elements, or the slice variable":             diag.ENotAssignable,
 	"_ discards a value; there is nothing to update":                                       diag.ENotAssignable,
 	"a compound assignment takes one target":                                               diag.EAssignmentForm,
 	"a declaration needs a type or a value":                                                diag.EBindingNeedsType,

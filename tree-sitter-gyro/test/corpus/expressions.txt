@@ -384,6 +384,49 @@ fn main() {
                 (identifier)))))))))
 
 ==================
+slice narrowing
+==================
+
+fn main() {
+  var a = xs[1..4]
+  var b = xs[1..]
+  var c = xs[..4]
+  var d = xs[1]
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (index_expression
+          (identifier)
+          (range_expression
+            (int_literal)
+            (int_literal))))
+      (variable_declaration
+        (identifier)
+        (index_expression
+          (identifier)
+          (open_range
+            (int_literal))))
+      (variable_declaration
+        (identifier)
+        (index_expression
+          (identifier)
+          (open_range
+            (int_literal))))
+      (variable_declaration
+        (identifier)
+        (index_expression
+          (identifier)
+          (int_literal))))))
+
+==================
 closures
 ==================
 

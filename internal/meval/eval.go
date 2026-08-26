@@ -409,7 +409,35 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 		regs[i.Dst] = arrayVal{elems: elems}
 
 	case *metals.Slice:
-		regs[i.Dst] = sliceVal{elems: m.get(regs, i.X).(arrayVal).elems}
+		switch base := m.get(regs, i.X).(type) {
+		case arrayVal:
+			regs[i.Dst] = sliceVal{elems: base.elems}
+		case ptrVal:
+			// The array's address: the view is of the cells that address
+			// names, not of a copy loaded out of them.
+			m.claimMember(base)
+			cell := m.deref(base, "slice.of")
+			array, ok := (*cell).(arrayVal)
+			if !ok {
+				if _, freed := (*cell).(freedVal); freed {
+					m.throw("use after free")
+				}
+				m.throw("slice.of a cell that is not an array")
+			}
+			regs[i.Dst] = sliceVal{elems: array.elems}
+		default:
+			m.throw("slice.of a value that is not an array")
+		}
+
+	case *metals.SliceSub:
+		// The Go slice shares its backing array, which is what a narrowed
+		// slice is: the same storage, seen through a shorter window.
+		elems := m.get(regs, i.X).(sliceVal).elems
+		lo, hi := m.intOf(m.get(regs, i.Lo)), m.intOf(m.get(regs, i.Hi))
+		if lo < 0 || hi < lo || hi > int64(len(elems)) {
+			m.throw("slice %d..%d out of range for length %d", lo, hi, len(elems))
+		}
+		regs[i.Dst] = sliceVal{elems: elems[lo:hi:hi]}
 
 	case *metals.IndexGet:
 		elems := m.indexable(m.get(regs, i.X))
@@ -420,6 +448,33 @@ func (m *machine) step(instr metals.Instr, regs map[string]value) signal {
 		elems := m.indexable(m.get(regs, i.X))
 		index := m.index(m.get(regs, i.Index), len(elems))
 		elems[index] = copyValue(m.get(regs, i.Val))
+
+	case *metals.IndexPtr:
+		// elem.ptr's reach with index.get's check: the cells are the
+		// container's own, so a load or store through the result touches
+		// the element where it lies rather than a copy of the whole
+		// thing.
+		var elems []value
+		switch base := m.get(regs, i.Ptr).(type) {
+		case sliceVal:
+			// A slice carries the cells already; the extent is its own.
+			elems = base.elems
+		case ptrVal:
+			m.claimMember(base)
+			cell := m.deref(base, "index.ptr")
+			array, ok := (*cell).(arrayVal)
+			if !ok {
+				if _, freed := (*cell).(freedVal); freed {
+					m.throw("use after free")
+				}
+				m.throw("index.ptr into a cell that is not an array")
+			}
+			elems = array.elems
+		default:
+			m.throw("index.ptr into a value that is not an array or a slice")
+		}
+		index := m.index(m.get(regs, i.Index), len(elems))
+		regs[i.Dst] = ptrVal{cells: elems, index: index}
 
 	case *metals.Len:
 		switch v := m.get(regs, i.X).(type) {
@@ -923,7 +978,7 @@ func (m *machine) freshValue(t metals.Type) value {
 }
 
 // zeroCell allocates module storage. A global is zero-initialized before
-// main runs — that is docs/metals.md's rule, not a backend's kindness —
+// main runs — that is docs/appendix-d-metals.md's rule, not a backend's kindness —
 // and for C it is the language: a file-scope `int *table[4]` is four
 // null pointers, and a program may read them and find out.
 func (m *machine) zeroCell(t metals.Type) ptrVal {

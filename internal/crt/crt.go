@@ -5,7 +5,7 @@
 // Both native backends link against this one file — internal/nasm, which
 // emits x86-64 assembly, and internal/cgen, which emits C — so the
 // runtime lives here rather than inside either of them. Its contract
-// (layouts, message texts, formatting rules) is docs/native.md.
+// (layouts, message texts, formatting rules) is docs/appendix-e-native-backends.md.
 package crt
 
 import _ "embed"

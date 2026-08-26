@@ -233,7 +233,26 @@ type StructDecl struct {
 func (s *StructDecl) Pos() int  { return s.Offset }
 func (s *StructDecl) declNode() {}
 
-// Field is one struct field.
+// UnionDecl declares one storage with several names for it. Every member
+// begins where the union does, so writing one unwrites the others, and
+// nothing records which of them is live — that is C's union, and it is
+// what Gyro declares one for.
+//
+// It is a separate node rather than a flag on StructDecl because the
+// difference is not where the members sit but what a read means, and a
+// pass handed a StructDecl would have no reason to ask.
+type UnionDecl struct {
+	Offset     int
+	Decorators []*Decorator
+	Exported   bool
+	Name       string
+	Members    []Field
+}
+
+func (u *UnionDecl) Pos() int  { return u.Offset }
+func (u *UnionDecl) declNode() {}
+
+// Field is one struct field, or one union member.
 type Field struct {
 	Offset   int
 	Exported bool
@@ -616,7 +635,15 @@ type IndexExpr struct {
 func (i *IndexExpr) Pos() int  { return i.Offset }
 func (i *IndexExpr) exprNode() {}
 
-// RangeExpr is the half-open `lo..hi`, used by `for x in 0..10`.
+// RangeExpr is the half-open `lo..hi`, used by `for x in 0..10` and by
+// slice narrowing, `xs[lo..hi]`.
+//
+// **Only in an index position may an end be absent**, and only one of
+// them: `xs[lo..]` runs to the length and `xs[..hi]` starts at zero, so
+// the missing end is a bound the container already knows. A `for` header
+// always has both, because a bare `..` there names no sequence — which
+// is why a nil here is not a general hole in the node but a shape the
+// index parser is the only producer of.
 type RangeExpr struct {
 	Offset int
 	Lo, Hi Expr

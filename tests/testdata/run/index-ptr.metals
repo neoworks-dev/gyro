@@ -1,0 +1,139 @@
+; `index.ptr`, on the three METALS tiers.
+;
+; `index.get` and `index.set` take their container as a value, so an
+; array a pointer reaches has to be loaded before either can touch it —
+; every element copied to read or write one. `index.ptr` is the way not
+; to: the array's address in, the element's address out, checked against
+; the `N` its type carries.
+;
+; That check is the whole reason it is not `elem.ptr` followed by
+; `ptr.offset`. Those two are unchecked because a pointer does not carry
+; the extent of what it points into; here the extent is in the type.
+;
+; What this case pins is that the address it hands back is the array's
+; own storage and not a copy of it: a store through one element pointer
+; is visible through another, through `elem.ptr`, and through the array
+; the record holds.
+
+module "metals:index-ptr"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Ctx = record { tag: i64, data: array<i32, 4> }
+
+; fill writes i*i into every element through the array's address, which
+; is the loop `index.ptr` exists for: no element is loaded to write one.
+fn @fill(%p: ptr<array<i32, 4>>) {
+  %i = const.usize 0
+  block $done {
+    loop $next {
+      %four = const.usize 4
+      %more = lt %i, %four
+      %stop = not %more
+      br_if %stop, $done
+      %at = index.ptr %p, %i
+      %wide = conv %i -> i64
+      %square = imul %wide, %wide
+      %narrow = trunc %square -> i32
+      store %at, %narrow
+      %one = const.usize 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+  return
+}
+
+; sum reads them back the same way.
+fn @sum(%p: ptr<array<i32, 4>>) -> i64 {
+  %total = const.i64 0
+  %i = const.usize 0
+  block $done {
+    loop $next {
+      %four = const.usize 4
+      %more = lt %i, %four
+      %stop = not %more
+      br_if %stop, $done
+      %at = index.ptr %p, %i
+      %v = load %at
+      %w = conv %v -> i64
+      %total = iadd %total, %w
+      %one = const.usize 1
+      %i = iadd %i, %one
+      br $next
+    }
+  }
+  return %total
+}
+
+export fn @main() {
+  ; --- an array in a slot, written and read through its address ---
+  %a = slot array<i32, 4>
+  call @fill(%a)
+
+  ; 0 + 1 + 4 + 9
+  %total = call @sum(%a)
+  call @"println<i64>"(%total)
+
+  ; --- the address is the array's own storage ---
+  ; A store through one element pointer is what the next load through a
+  ; freshly computed one sees. If `index.ptr` handed back a copy, this
+  ; would print the old value.
+  %two = const.usize 2
+  %at2 = index.ptr %a, %two
+  %hundred = const.i32 100
+  store %at2, %hundred
+  %again = index.ptr %a, %two
+  %read = load %again
+  %readw = conv %read -> i64
+  call @"println<i64>"(%readw)
+
+  ; --- and it is the same storage `elem.ptr` decays to ---
+  %base = elem.ptr %a
+  %shifted = const.i64 2
+  %viaOffset = ptr.offset %base, %shifted
+  %same = eq %viaOffset, %at2
+  call @"println<bool>"(%same)
+
+  ; The first element is where the array begins, which is what makes the
+  ; decay and a zero index the same address.
+  %zero = const.usize 0
+  %at0 = index.ptr %a, %zero
+  %atBase = eq %at0, %base
+  call @"println<bool>"(%atBase)
+
+  ; --- the last index is in range; N is the first that is not ---
+  %three = const.usize 3
+  %last = index.ptr %a, %three
+  %nine = load %last
+  %ninew = conv %nine -> i64
+  call @"println<i64>"(%ninew)
+
+  ; --- an array inside a record: field.ptr then index.ptr ---
+  ; This is the shape Gyro lowers `self.data[i]` to, and the one that
+  ; used to load the whole field per element.
+  %c = slot %Ctx
+  %tagp = field.ptr %c, 0
+  %seven = const.i64 7
+  store %tagp, %seven
+
+  %datap = field.ptr %c, 1
+  call @fill(%datap)
+  %inner = call @sum(%datap)
+  call @"println<i64>"(%inner)
+
+  ; Writing an element leaves the field beside it alone — the element
+  ; pointer reaches one element, not the record.
+  %at1 = index.ptr %datap, %zero
+  %fifty = const.i32 50
+  store %at1, %fifty
+  %tag = load %tagp
+  call @"println<i64>"(%tag)
+
+  %after = call @sum(%datap)
+  call @"println<i64>"(%after)
+  return
+}

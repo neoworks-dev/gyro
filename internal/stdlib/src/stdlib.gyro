@@ -20,6 +20,11 @@ export fn Array<T>::push(*self, value: T) !{ alloc }
 export fn Array<T>::pop(*self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
 export fn Array<T>::set(*self, index: usize, value: T) !{}
+// The element's own address, bounds-checked. `xs[i]` lowers through it,
+// which is what makes an index a place rather than a copy — `get` hands
+// back a value and mutating that mutates nothing. The address is into
+// the array's buffer, so `push` may move it, exactly as in C.
+export fn Array<T>::at(self, index: usize): *T !{}
 export fn Array<T>::len(self): usize !{}
 export fn Array<T>::slice(self): T[] !{ &self }
 export fn Array<T>::free(*self) !{}

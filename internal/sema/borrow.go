@@ -291,7 +291,7 @@ func (c *checker) noteOrigin(sym *symbol, value ast.Expr, typ types.Type) {
 	}
 	// A fixed-size array is storage in this frame rather than a view, and a
 	// slice of it points into the frame. `var xs = [1, 2, 3]` is the case
-	// language.md calls out: the literal lives in the enclosing scope.
+	// the book calls out: the literal lives in the enclosing scope.
 	if _, ok := typ.(*types.Array); ok {
 		sym.origin = borrowOrigin{local: true}
 		return

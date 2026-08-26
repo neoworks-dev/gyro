@@ -37,6 +37,7 @@ const (
 	ETupleIndexForm   Code = "E0214"
 	EDecoratorPlace   Code = "E0215"
 	EAssignmentForm   Code = "E0216"
+	ERangeForm        Code = "E0217"
 
 	// Modules and imports
 	EModuleNotFound   Code = "E0301"
@@ -83,6 +84,8 @@ const (
 	EVariadicParam       Code = "E0524"
 	EBadSpread           Code = "E0525"
 	ENoAddress           Code = "E0526"
+	EUnionDeclaration    Code = "E0527"
+	EUnionMember         Code = "E0528"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -159,6 +162,8 @@ var explanations = map[Code]explanation{
 		"Decorators attach to a declaration, not to an export list."},
 	EAssignmentForm: {"malformed assignment",
 		"A comma-separated target list is a destructuring assignment and needs\none value to destructure."},
+	ERangeForm: {"malformed range",
+		"A range is half-open, lo..hi. Narrowing a slice may leave one end off\n— xs[lo..] runs to the length, xs[..hi] starts at zero — but not both,\nsince xs[..] names the value it is applied to."},
 
 	EModuleNotFound: {"module not found",
 		"The import specifier resolved to nothing: a relative path that is not\nthere, or a bare name, which needs the Stack package manager."},
@@ -219,6 +224,10 @@ var explanations = map[Code]explanation{
 		"== is derived for types whose fields all derive it; ordering is\nnumeric, and everything else spells it a.compare(b)."},
 	EPatternNeverMatches: {"pattern can never match",
 		"The pattern's type is not the subject's, so the arm is dead."},
+	EUnionDeclaration: {"malformed union declaration",
+		"A union is one storage with several names for it, so it declares at\nleast one member and never the same name twice."},
+	EUnionMember: {"value cannot be a union member",
+		"A union member is bytes. Nothing records which member is live, so\nreading one that was never written reinterprets whatever is there — and\na value the runtime tracks beside its bytes (a string, a slice, an\nArray, an enum's tag, a nullable's flag) does not survive that."},
 	EIndexNotUsize: {"index is not usize",
 		"Lengths and indexes are usize and never mix with signed arithmetic\nimplicitly."},
 	EConditionNotBool: {"condition is not bool",

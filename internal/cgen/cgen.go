@@ -6,7 +6,7 @@
 // checks that the METALS lowering says what it means, without the
 // assembler-level bug surface of hand-written codegen, and it produces
 // binaries to benchmark the nasm backend's output against. The layout,
-// the runtime contract and every abort message are docs/native.md's,
+// the runtime contract and every abort message are docs/appendix-e-native-backends.md's,
 // unchanged — only the way instructions are spelled differs.
 package cgen
 

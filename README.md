@@ -1,98 +1,131 @@
 # Gyro
 
-A systems language with explicit control over memory, concurrency and
-compile-time execution — and the front end for a longer-term experiment in
-compiling several languages into one shared intermediate representation.
+A systems language with manual memory, explicit effects, and a compiler that
+refuses more programs than it has to — and the front end for a longer-term
+experiment in compiling several languages into one shared intermediate
+representation.
 
-> **Status: early. The compiler front end works; there is no code generation
-> yet.** `gyro ast` and `gyro check` parse real programs and report real
-> diagnostics. Nothing runs. See [Roadmap](#roadmap) for what is and is not
-> built.
+> **Status: early, but real.** Programs parse, type-check, run, lower to the
+> METALS IR, verify, evaluate, and compile to native Linux x86-64 binaries.
+> Gyro is usable for CLI tools today and unusable for anything long-running,
+> because nothing reclaims memory yet. See
+> [what is not built](docs/appendix-g-known-gaps.md).
 
 ```gyro
-import { println } from "stdlib"
+import { println, Array } from "stdlib"
 
 export struct Stack {
   export capacity: i32
-  top: i32
+  items: Array<i32>
 }
 
-impl Stack {
-  export fn new(capacity: i32): Stack {
-    return Stack{ capacity: capacity, top: 0 }
-  }
+export fn Stack::new(capacity: i32): Stack {
+  return Stack{ capacity: capacity, items: Array<i32>::new() }
+}
 
-  fn is_empty(self): bool {
-    return self.top == 0
+export fn Stack::push(*self, value: i32) {
+  self.items.push(value)
+}
+
+// A slice borrows, so the row names where the view came from. Without
+// `&self` this does not compile.
+export fn Stack::view(self): i32[] !{ &self } {
+  return self.items.slice()
+}
+
+export fn Stack::free(*self) {
+  self.items.free()
+}
+
+fn total(values: i32[]): i32 {
+  var sum = 0
+  for value in values {
+    sum += value
   }
+  return sum
 }
 
 fn main() {
   var stack = Stack::new(16)
-  println("empty: #{stack.is_empty()}")
+  defer stack.free()
+
+  stack.push(2)
+  stack.push(40)
+  println("total: #{total(stack.view())}")
 }
 ```
 
+## Documentation
+
+**[The Gyro Book](docs/SUMMARY.md)** is the language documentation and the
+specification: syntax and semantics chapter by chapter, the toolchain, and
+appendices for the IR, the native backends, the standard library and the
+diagnostics.
+
+- [`docs/decisions.md`](docs/decisions.md) — what was decided, what was
+  rejected, and why
+- [`docs/agent-context.md`](docs/agent-context.md) — orientation for working
+  on the compiler itself
+
 ## Why
 
-Gyro is the ground floor of a larger idea. The eventual target is **METALS**,
-a shared intermediate language that several source languages compile into, so
-that a single project can import Python, JavaScript and Gyro and have them
-compiled together rather than glued together at runtime.
+**The goal that drives every design decision:** Gyro should be explicit about
+side effects and unwanted control flow, and safe enough that a machine can
+generate code in it and be caught when it is wrong. Not "safe" as marketing —
+safe as in the compiler refuses the program.
 
-That is a hard problem and it is not what this repository is trying to solve
-yet. METALS does not exist. The bet is that the only credible way to get
-there is to first have one language whose semantics are fully pinned down and
-whose compiler actually produces machine code — so Gyro comes first, and the
-intermediate representation it lowers to is designed to become METALS rather
-than being thrown away.
+That is why there are no zero values, no implicit conversions between typed
+values, overflow that panics rather than wraps, exhaustive matches, definite
+assignment, borrow provenance written into signatures, and leak and race
+warnings.
 
-The related work lives in separate repositories: **meta**, a META-II style
-compiler-compiler, and **gyro-book**, the prose documentation.
+The longer-term bet is **METALS**: a shared intermediate representation that
+several source languages compile into, so a project can import them and have
+them compiled together rather than glued together at run time. That is no
+longer a sketch — METALS is specified, verified and linked, and it has four
+producers today: Gyro, a statically typed Scheme, a wasm32 reader, and a C
+front end that a Gyro program reaches when it imports a `.c` file.
 
-## Design decisions
+The related work lives in a separate repository: **meta**, a META-II style
+compiler-compiler.
 
-The choices below are settled and implemented in the parser. The full grammar
-is in [`docs/language.md`](docs/language.md).
+## Design at a glance
 
 | area | decision |
 | --- | --- |
-| declarations | `var` / `const`, annotation optional, types inferred |
+| declarations | `var` / `const`, annotation optional, types inferred; no `:=` |
 | functions | `fn f(a: i32): i32` — return type after a colon |
-| closures | anonymous `fn`, inferred types, explicit capture lists |
-| syntax | no semicolons, no parentheses on `if` / `while` / `for` |
-| primitives | explicit widths: `i8`–`i64`, `u8`–`u64`, `f32`, `f64` |
-| types | `struct` holds data, `impl` holds methods, `trait` holds contracts |
-| generics | `fn max<T: Ord & Display>` — bounds joined by intersection |
+| methods | free-standing `fn Type::name(self)`; no `impl`, no `trait`, no `Self` |
+| generics | duck-typed: no bounds, the body's usage is the requirement |
+| syntax | no semicolons, no parentheses on `if` / `while` / `for`; `elif`, never `else if` |
+| primitives | explicit widths: `i8`–`i64`, `u8`–`u64`, `usize`, `f32`, `f64`, `rune` |
 | null | `*T` is never null; only `T?` is, and it must be checked |
 | visibility | explicit `export`; no capitalization rules, no default exports |
 | modules | one file is one module |
-| errors | `(T, error?)` pairs, checked; `error` is an interface |
-| panics | out-of-bounds, null deref and overflow abort; `+%` wraps on purpose |
-| memory | manual `alloc` / `free`, `defer`, leak analysis warns |
+| errors | `(T, error?)` pairs, checked; `error` is any type with `message()` |
+| panics | out-of-bounds, null deref, divide by zero and overflow abort; `+%` wraps on purpose |
+| memory | manual `alloc` / `free`, `defer` at block exit, leak analysis warns |
 | slices | `T[]` borrows, `Array<T>` owns and grows |
-| pattern matching | `match subject { pattern: body, ... }` |
+| pattern matching | `match subject { pattern: body }`, exhaustive over enums |
 | concurrency | threads, channels (`chan<T>`, `select`), `async` / `await` |
-| effects | `!{ io, alloc }` rows — parsed, not yet checked |
-
-Every one of these, with the alternatives that were rejected and why, is
-recorded in [`docs/decisions.md`](docs/decisions.md).
+| effects | `!{ io, alloc }` rows, checked; `!{ &xs }` says what the result borrows |
+| C | `@extern("SDL2")` links a symbol; `import "./x.c"` compiles the C in |
 
 Two rules drive most of the rest:
 
 **Nothing is implicit.** If a name is not part of the formal syntax, it has
 to be imported. There is no universe scope, so `println` is imported while
-`ch.close()` and `xs.len()` are methods on built-in types. Visibility is
-declared, never inferred from spelling. Even `spawn` is a library function
-rather than a keyword — it takes a closure, so it needs no grammar of its
-own. Closures name what they capture for the same reason.
+`xs.len()` and `ch.close()` are methods on their types. Even `spawn` is a
+library function rather than a keyword — it takes a closure, so it needs no
+grammar of its own.
 
 **Errors cannot escape by accident.** A fallible function returns
-`(T, error)`, and discarding the error requires writing `_` explicitly.
+`(T, error?)`, and discarding the error requires writing `_` explicitly.
 
 ## Getting started
 
-Requires Go 1.24 or newer.
+Requires Go 1.24 or newer. `gyro build` additionally needs `nasm` and a C
+compiler, on Linux x86-64.
 
 ```sh
 git clone https://github.com/gyro-lang/gyro
@@ -101,10 +134,10 @@ make build
 ```
 
 ```sh
-./bin/gyro check examples/structs.gyro    # parse and report diagnostics
-./bin/gyro ast examples/structs.gyro      # dump the syntax tree
-./bin/gyro tokens examples/hello.gyro     # dump the token stream
-./bin/gyro explain E0401                  # what a diagnostic code means
+./bin/gyro check examples/structs.gyro       # type-check, report diagnostics
+./bin/gyro run examples/structs.gyro         # run it on the METALS evaluator
+./bin/gyro build examples/hello.gyro -o hi   # native binary
+./bin/gyro explain E0401                     # what a diagnostic code means
 ```
 
 Diagnostics print as a code frame, with the span underlined and the fix
@@ -120,104 +153,97 @@ error[E0401]: undeclared name println
   = help: "stdlib" exports println; add: import { println } from "stdlib"
 ```
 
-```sh
-make test    # run the test suite
-make check   # parse every example
-make fmt     # gofmt
-```
+The full command list is in
+[the book](docs/ch16-01-the-gyro-command.md); editor setup, including a
+working Neovim configuration, is in
+[chapter 16.2](docs/ch16-02-editors.md).
+
+## Examples
 
 The programs in [`examples/`](examples) are the working reference for the
-syntax; each one parses cleanly and is checked by the test suite.
+syntax; each one is checked by the test suite.
 
 | example | shows |
 | --- | --- |
-| `hello.gyro` | basics, string interpolation |
+| `hello.gyro` | bindings, interpolation, an effect row |
 | `fibonacci.gyro` | recursion, loops, `@comptime` |
-| `structs.gyro` | structs, impl blocks, enums, `match` |
-| `errors.gyro` | `(T, error)` returns and explicit handling |
-| `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, escape |
+| `structs.gyro` | structs, free methods, enums, `match`, borrows |
+| `errors.gyro` | `(T, error?)` returns and explicit handling |
+| `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, `move` |
 | `closures.gyro` | anonymous functions, inference, capture lists |
-| `traits.gyro` | traits, bounds, operator traits |
+| `methods.gyro` | methods, duck-typed generics, `to_string` |
+| `variadics.gyro` | `...T` packs, `...any`, `printf` |
 | `concurrency.gyro` | threads, channels, `select`, `async` / `await` |
+| `triangle.gyro` | a Gouraud-shaded triangle in an SDL window, through `@extern` |
 
 ## Architecture
 
-The compiler is written in Go. It was originally a TypeScript prototype built
-on a Peggy grammar; that was replaced because a generated PEG parser gives
-poor error messages, is slow, and would have fought the syntax extensions the
-language is meant to support. The old implementation is preserved in git
-history at commit `efc8c13`.
+The compiler is written in Go, with no dependencies.
 
-```
-main.go              CLI driver
-internal/token/      token kinds and keywords
-internal/lexer/      hand-written scanner, terminator insertion
-internal/ast/        syntax tree and its dumper
-internal/parser/     recursive descent, precedence climbing for expressions
-internal/diag/       source positions and diagnostics
-examples/            reference programs
-docs/language.md     grammar and semantics
-docs/decisions.md    what was decided, and what was rejected
+```text
+source
+  → internal/lexer      scanner, automatic statement termination
+  → internal/parser     recursive descent, precedence climbing
+  → internal/loader     module graph, dependency order
+  → internal/sema       name + type checking, all the safety analyses
+  → internal/lower      Gyro → METALS IR
+  → internal/metals     IR format, printer, parser, verifier, linker
+  ├─→ internal/meval    METALS evaluator
+  ├─→ internal/nasm     METALS → x86-64 NASM
+  └─→ internal/cgen     METALS → C
+                        both link internal/crt, the shared C runtime
 ```
 
-The parser is hand-written recursive descent, with a precedence-climbing loop
+Everything the compiler can read becomes METALS, and everything that runs,
+runs from METALS. METALS' other producers are `internal/lisp` (a statically
+typed Scheme), `internal/wasm` (wasm32, which is what clang makes of C) and
+`internal/cc` (C read directly). Editor support lives here too:
+`tree-sitter-gyro/`, `tree-sitter-metals/` and `internal/lsp`.
+
+The parser is hand-written recursive descent with a precedence-climbing loop
 for expressions. It buffers the whole token stream, which makes the bounded
 backtracking needed to tell `a < b` from `f<T>(x)` a matter of resetting an
-index.
+index. Three ambiguities shaped the design:
 
-Three ambiguities are worth knowing about, because they shaped the design:
+- **`f<T>(x)` versus `a < b`**, and `Array<i32>::new()` with it — resolved by
+  a speculative parse that commits only when the angle brackets close.
+- **`ch <- v` versus `x < -1`** — the lexer scans `<-` greedily and the
+  parser splits it back apart in binary-operator position. Sends are
+  statements, so the two never collide.
+- **`if Point { }`** — a struct literal cannot start at the top level of a
+  condition, since the brace opens the body.
 
-- **`f<T>(x)` versus `a < b`.** Resolved by a speculative parse that only
-  commits when the angle brackets close and a call follows.
-- **`ch <- v` versus `x < -1`.** The lexer scans `<-` greedily; the parser
-  splits it back apart in binary-operator position. Sends are statements, so
-  the two never collide.
-- **`Array<i32>::new()` versus `a < b`.** Type arguments can sit on any path
-  segment, so the same speculative parse decides whether `<` opens an
-  argument list or is a comparison.
-- **`if Point { }`.** A struct literal cannot start at the top level of a
-  condition, since the brace opens the body. Same resolution as Rust.
+## Testing
 
-## Roadmap
+**No tier is the specification.** Every program in the execution corpus runs
+three ways — the evaluator and both native backends — and all three are held
+to the same golden file, which is **written by hand**. There is no flag that
+regenerates a golden from what a tier happened to do.
 
-**Done**
+```sh
+make test      # go test ./...
+make check     # type-check every example
+make vet
+make bench     # both native backends over tests/bench
+make grammar   # regenerate and test both tree-sitter grammars
+```
 
-- [x] Lexer with automatic statement termination
-- [x] Recursive-descent parser and full syntax tree
-- [x] Diagnostics with real source positions and error recovery
-- [x] CLI: `check`, `ast`, `tokens`
-- [x] Test suite and reference examples
-
-**Next — v0.2, semantic analysis**
-
-- [ ] Name resolution, scopes, module graph
-- [ ] Type checking and inference
-- [ ] Exhaustiveness checking for `match`
-- [ ] Unused-error and leak analysis
-
-**v0.3 — code generation**
-
-- [ ] SSA-form intermediate representation (the seed of METALS)
-- [ ] Register allocation
-- [ ] x86-64 backend
-- [ ] `@comptime` evaluation
-
-**Later**
-
-- [ ] Effect row checking and inference
-- [ ] Generic instantiation
-- [ ] `@gpu`, `@concurrent`, `@distributed` lowering
-- [ ] Stack, the package manager
-- [ ] METALS, and non-Gyro front ends
+The corpora and what belongs in each are described in
+[chapter 17.3](docs/ch17-03-testing.md).
 
 ## Contributing
 
 The language design is still moving. Before implementing anything
-substantial, open an issue — a decision recorded in `docs/language.md` is
-worth more right now than code against a design that is about to change.
+substantial, open an issue — a decision recorded in the book is worth more
+right now than code against a design that is about to change.
 
-New syntax needs, in order: an entry in `docs/language.md`, a parser test, and
-an example program that exercises it.
+New syntax needs, in order: an entry in the book chapter that owns the topic
+([`docs/SUMMARY.md`](docs/SUMMARY.md) indexes them), a parser test, an
+example program that exercises it, corpus coverage, and an entry in
+[`docs/decisions.md`](docs/decisions.md) recording what was rejected.
+
+Gyro has no users, so nothing gets a migration path: when a spelling changes
+it changes everywhere, and the old one is deleted rather than deprecated.
 
 ## License
 

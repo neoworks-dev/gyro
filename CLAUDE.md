@@ -2,7 +2,7 @@
 
 Gyro is a programming language with a compiler written in Go. Everything the compiler can read becomes METALS, and the language runs through three execution tiers over that IR: the METALS evaluator (`internal/meval`) and two native backends over the same C runtime — x86-64 assembly via `internal/nasm` and generated C via `internal/cgen`.
 
-**No tier is the specification.** `docs/language.md` is. A golden file is written by hand and says what a program prints; a tier that disagrees with the golden is wrong, and so is a tier that disagrees with another tier. There is no flag that regenerates a golden from what some tier happened to do — that is what stops a backend from redefining the language it implements. If tiers disagree, fix the divergence; never redefine behavior independently in a backend. Implement semantics once, at the highest shared layer possible: prefer synthesizing behavior during lowering over duplicating it in the evaluator and the native backend.
+**No tier is the specification.** The book in `docs/` is. A golden file is written by hand and says what a program prints; a tier that disagrees with the golden is wrong, and so is a tier that disagrees with another tier. There is no flag that regenerates a golden from what some tier happened to do — that is what stops a backend from redefining the language it implements. If tiers disagree, fix the divergence; never redefine behavior independently in a backend. Implement semantics once, at the highest shared layer possible: prefer synthesizing behavior during lowering over duplicating it in the evaluator and the native backend.
 
 Gyro has no users. There are no migration paths, compatibility shims, deprecated aliases, tombstone comments, numbering placeholders, or diagnostics explaining obsolete or never-supported syntax. Replaced behavior is deleted outright — git keeps the history.
 
@@ -10,16 +10,20 @@ Gyro has no users. There are no migration paths, compatibility shims, deprecated
 
 Read the relevant docs before non-trivial changes:
 
-- `docs/language.md` — syntax and semantics (source of truth)
+- `docs/SUMMARY.md` — the book's table of contents; every chapter is listed there
+- `docs/ch*.md` — syntax and semantics (source of truth), chapter by chapter
 - `docs/decisions.md` — settled and rejected design decisions, with reasoning
-- `docs/metals.md` — METALS IR specification
-- `docs/native.md` — native backend and data-layout rules
-- `docs/tooling.md` — tree-sitter grammars and language server
+- `docs/appendix-d-metals.md` — METALS IR specification
+- `docs/appendix-e-native-backends.md` — native backends and data-layout rules
+- `docs/appendix-c-stdlib.md` — built-in method surface and standard library
+- `docs/appendix-f-diagnostics.md` — diagnostic shape, notes and code ranges
+- `docs/appendix-g-known-gaps.md` — what is not built yet
+- `docs/ch16-02-editors.md` — tree-sitter grammars and language server
 - `docs/agent-context.md` — detailed architecture, testing model, known gaps
 
 `README.md` may be stale; verify its claims against the docs and the implementation.
 
-When instructions conflict, the precedence is: explicit user request → `language.md` → `decisions.md` → subsystem spec (`metals.md`, `native.md`, `tooling.md`) → existing implementation and tests → this file. When the docs don't answer a question, don't invent syntax or semantics — ask.
+When instructions conflict, the precedence is: explicit user request → the book's chapters → `decisions.md` → subsystem appendices (METALS, native backends) → existing implementation and tests → this file. When the docs don't answer a question, don't invent syntax or semantics — ask.
 
 ## Repository layout
 
@@ -55,8 +59,8 @@ tests/               execution corpus
 
 When syntax, spelling, or semantics change:
 
-1. Read `docs/language.md` and the relevant `docs/decisions.md` entries first.
-2. Update `docs/language.md`, then change the implementation everywhere.
+1. Read the chapter that owns the topic (`docs/SUMMARY.md` indexes them) and the relevant `docs/decisions.md` entries first.
+2. Update that chapter, then change the implementation everywhere.
 3. Add parser coverage for syntax changes, add or extend a real program in `examples/`, and add execution or diagnostics corpus coverage as appropriate.
 4. Record the new decision and its rejected alternatives in `docs/decisions.md`.
 5. Update the tree-sitter grammars and tooling when affected.
@@ -99,7 +103,7 @@ Bundled sources live under `internal/stdlib/src/`. A declaration without a body 
 
 ## METALS and the native backend
 
-METALS is a whole-program IR (see `docs/metals.md`). The critical native layout rule: **storage is C's — a value in memory is exactly what `sizeof` says in C, at C's alignment, padded where C pads — while a register carries a scalar widened to a qword, and an `f32` as a double.** Loading a narrow scalar widens it, storing one narrows it, and what the runtime holds it holds in storage representation, so a narrow scalar reaches it through a staging cell rather than as the address of its register. The layout arithmetic is `metals.Layout`'s and belongs to no backend. When lowering stores a value in a mutable METALS register, the register name is not an immutable snapshot — deferred or delayed operations may need the captured value rather than the register's later contents.
+METALS is a whole-program IR (see `docs/appendix-d-metals.md`). The critical native layout rule: **storage is C's — a value in memory is exactly what `sizeof` says in C, at C's alignment, padded where C pads — while a register carries a scalar widened to a qword, and an `f32` as a double.** Loading a narrow scalar widens it, storing one narrows it, and what the runtime holds it holds in storage representation, so a narrow scalar reaches it through a staging cell rather than as the address of its register. The layout arithmetic is `metals.Layout`'s and belongs to no backend. When lowering stores a value in a mutable METALS register, the register name is not an immutable snapshot — deferred or delayed operations may need the captured value rather than the register's later contents.
 
 METALS has more than one producer. `internal/lower` is Gyro's; `internal/lisp` is a statically typed Scheme, and `internal/wasm` reads what clang makes of C. They exist to catch what the format only appears to guarantee because Gyro's lowering happens to satisfy it. Don't relax a verifier rule to make a producer compile — the closure-environment rule was tightened, not loosened, when the second producer broke it, and the third got linear memory added rather than `ptr<T>` weakened. Several modules link into one via `metals.Link` before any consumer sees them; that is also the only pass that compares an importer's declared signature against the exporter's actual one.
 

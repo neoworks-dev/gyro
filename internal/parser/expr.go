@@ -187,7 +187,7 @@ func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 			p.next()
 			index := &ast.IndexExpr{Offset: offset, X: expr}
 			p.withStructLits(true, func() {
-				index.Index = p.parseExpr()
+				index.Index = p.parseIndex()
 			})
 			p.expect(token.RBracket)
 			expr = index
@@ -206,6 +206,39 @@ func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 			return expr
 		}
 	}
+}
+
+// parseIndex reads what sits between the brackets: one index, or a range
+// narrowing a slice. An end may be left off — `xs[lo..]` runs to the
+// length and `xs[..hi]` starts at zero — which is why the operand is
+// parsed above `..`'s precedence rather than by parseExpr: the binary
+// loop would consume the `..` and then demand an operand the program did
+// not write.
+//
+// `xs[..]` is refused. It names the value it is already applied to, and
+// a fixed-size array becomes a slice where one is wanted without saying
+// so, which would make it a second spelling of a coercion.
+func (p *Parser) parseIndex() ast.Expr {
+	if p.kind() == token.DotDot {
+		offset := p.offset()
+		p.next()
+		if p.kind() == token.RBracket {
+			p.errorf(offset, "a range needs at least one end; xs[..] is the slice xs already is")
+			return &ast.RangeExpr{Offset: offset}
+		}
+		return &ast.RangeExpr{Offset: offset, Hi: p.parseExpr()}
+	}
+
+	lo := p.parseBinary(precRange + 1)
+	if p.kind() != token.DotDot {
+		return p.parseBinaryFrom(lo, precRange)
+	}
+	offset := p.offset()
+	p.next()
+	if p.kind() == token.RBracket {
+		return &ast.RangeExpr{Offset: offset, Lo: lo}
+	}
+	return &ast.RangeExpr{Offset: offset, Lo: lo, Hi: p.parseExpr()}
 }
 
 // parseSelector parses what follows a `.`: a field or method name, or a

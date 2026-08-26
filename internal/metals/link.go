@@ -6,7 +6,7 @@ import (
 )
 
 // Link merges a program's modules into the one module every consumer
-// takes. It is the pass docs/metals.md leaves open: an importer declares
+// takes. It is the pass docs/appendix-d-metals.md leaves open: an importer declares
 // the signatures it expects, an exporter has actual ones, and nothing
 // until now compared them.
 //
@@ -262,7 +262,9 @@ func (l *linker) check(m *Module) error {
 				// a value crossing a boundary is copied into the other
 				// side's own type, so two declarations of one shape are
 				// what a crossing is made of.
-				if err := checkBoundary(want.Name, have.Sig(), l.typeDecls[exporter.Name]); err != nil {
+				// Never native: a C library exports no METALS module, so
+				// nothing the linker resolves to is one.
+				if err := checkBoundary(want.Name, have.Sig(), l.typeDecls[exporter.Name], false); err != nil {
 					return fmt.Errorf("link: %s imports @%s from %q: %w",
 						m.Name, want.Name, imp.Module, err)
 				}

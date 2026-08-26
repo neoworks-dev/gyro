@@ -1,0 +1,86 @@
+// A union is one storage with several names for it. Every member begins
+// where the union does, so it is the size of the widest one and writing
+// a member unwrites the others — and nothing records which member is
+// live, which is what a union is and what everything below follows from.
+//
+// The shape it exists for is the tagged union every C message queue is
+// built on: a discriminant, and a family of structs that begin with it.
+// Reading across members that share an initial sequence is defined, so
+// `e.kind` answers whichever member was written last.
+
+import { println } from "stdlib"
+
+struct KeyEvent {
+  kind: i32
+  code: i32
+}
+
+struct MouseEvent {
+  kind: i32
+  x: i32
+  y: i32
+}
+
+union Event {
+  kind: i32
+  key: KeyEvent
+  mouse: MouseEvent
+}
+
+// A struct may hold one, and the fields beside it are ordinary fields.
+struct Queued {
+  at: i32
+  event: Event
+}
+
+// A union takes methods like any other declared type.
+fn Event::tag(self): i32 {
+  return self.kind
+}
+
+// Through a pointer, which is how a real event loop is handed one.
+fn dispatch(e: *Event): i32 {
+  if e.kind == 1 {
+    return e.key.code
+  }
+  if e.kind == 2 {
+    return e.mouse.x + e.mouse.y
+  }
+  return 0
+}
+
+// By value: the bytes copy, and which member they mean copies with them.
+fn code_of(e: Event): i32 {
+  return e.key.code
+}
+
+fn main() {
+  // A literal sets exactly one member, because there is room for one.
+  var e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
+  println(e.key.code)
+  println(e.kind)
+  println(e.tag())
+  println(dispatch(&e))
+  println(code_of(e))
+
+  // Writing another member is writing the same storage.
+  e.mouse = MouseEvent{ kind: 2, x: 10, y: 20 }
+  println(e.kind)
+  println(e.mouse.y)
+  println(dispatch(&e))
+
+  // Writing one field of a member leaves the rest of that member alone.
+  e.mouse.x = 5
+  println(dispatch(&e))
+
+  // A union inside a struct, and the field beside it untouched.
+  var queued = Queued{ at: 7, event: Event{ key: KeyEvent{ kind: 1, code: 66 } } }
+  println(queued.at)
+  println(queued.event.key.code)
+  println(dispatch(&queued.event))
+
+  // Printing one prints the word. There is no value here to render:
+  // nothing records which member the storage means, and printing the
+  // first member would be a guess that reads as an answer.
+  println(e)
+}

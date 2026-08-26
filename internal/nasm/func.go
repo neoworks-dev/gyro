@@ -760,13 +760,28 @@ func (f *frame) instr(instr metals.Instr) {
 		}
 
 	case *metals.Slice:
-		array, ok := f.typeOf(i.X).(*metals.ArrayOf)
-		if !ok {
-			g.fail("@%s: slice.of a non-array", f.fn.Name)
+		var length int64
+		switch t := f.typeOf(i.X).(type) {
+		case *metals.ArrayOf:
+			length = int64(t.Len)
+			g.ins("lea rax, %s", f.addr(i.X))
+		case *metals.Ptr:
+			array, ok := t.Elem.(*metals.ArrayOf)
+			if !ok {
+				g.fail("@%s: slice.of through a pointer to %s", f.fn.Name, t.Elem)
+			}
+			// The storage is where the pointer says, so the address is
+			// the register's value rather than its own cell.
+			length = int64(array.Len)
+			g.ins("mov rax, %s", f.slot(i.X))
+		default:
+			g.fail("@%s: slice.of a %s", f.fn.Name, t)
 		}
-		g.ins("lea rax, %s", f.addr(i.X))
 		g.ins("mov %s, rax", f.slot(i.Dst))
-		f.storeWord(f.slot(i.Dst).plus(8), int64(array.Len))
+		f.storeWord(f.slot(i.Dst).plus(8), length)
+
+	case *metals.SliceSub:
+		f.emitSliceSub(i)
 
 	case *metals.IndexGet:
 		element := f.indexedElement(i.X, i.Index)
@@ -775,6 +790,14 @@ func (f *frame) instr(instr metals.Instr) {
 	case *metals.IndexSet:
 		element := f.indexedElement(i.X, i.Index)
 		f.storeMember(element, f.slot(i.Val), f.typeOf(i.Val))
+
+	case *metals.IndexPtr:
+		// The same check and the same address arithmetic index.get does;
+		// what differs is that the address is the result rather than a
+		// place to load from.
+		element := f.indexedElement(i.Ptr, i.Index)
+		g.ins("lea rax, %s", element)
+		f.storeWork(f.slot(i.Dst), "rax")
 
 	case *metals.Len:
 		f.emitLen(i)
@@ -1025,6 +1048,17 @@ func (f *frame) indexedElement(x, index string) loc {
 		elemSize = g.sizeOf(t.Elem)
 		g.ins("lea rdx, %s", f.addr(x))
 		length = strconv.FormatInt(t.Len, 10)
+	case *metals.Ptr:
+		// index.ptr's base: the array is where the pointer says, so the
+		// address is the register's value rather than its slot, and the
+		// extent is the static one the pointee type carries.
+		array, ok := t.Elem.(*metals.ArrayOf)
+		if !ok {
+			g.fail("@%s: indexing through a pointer to %s", f.fn.Name, t.Elem)
+		}
+		elemSize = g.sizeOf(array.Elem)
+		g.ins("mov rdx, %s", f.slot(x))
+		length = strconv.FormatInt(array.Len, 10)
 	default:
 		g.fail("@%s: indexing a %s", f.fn.Name, t)
 	}
@@ -1044,6 +1078,47 @@ func (f *frame) indexedElement(x, index string) loc {
 		g.ins("add rdx, rax")
 	}
 	return memAt(memLoc{base: "rdx"})
+}
+
+// emitSliceSub narrows a slice onto the storage it already views: the
+// data pointer moves forward by lo elements and the length becomes
+// hi - lo. Clobbers rax, rcx, rdx, rsi, rdi.
+//
+// The check is two unsigned compares, so a bound that would be negative
+// as a signed value is a huge unsigned one and fails the same test. The
+// abort still prints it signed, which is what indexing already does.
+func (f *frame) emitSliceSub(i *metals.SliceSub) {
+	g := f.g
+	slice, ok := f.typeOf(i.X).(*metals.SliceOf)
+	if !ok {
+		g.fail("@%s: slice.sub of a %s", f.fn.Name, f.typeOf(i.X))
+	}
+
+	g.ins("mov rax, %s", f.slot(i.Lo))
+	g.ins("mov rsi, %s", f.slot(i.Hi))
+	g.ins("mov rcx, %s", f.slot(i.X).plus(8))
+
+	fail, done := g.newLabel(), g.newLabel()
+	g.ins("cmp rax, rsi")
+	g.ins("ja %s", fail)
+	g.ins("cmp rsi, rcx")
+	g.ins("jbe %s", done)
+	g.label(fail)
+	g.ins("mov rdi, rax")
+	g.ins("mov rdx, rcx")
+	g.ins("call %s", g.extern("gy_abort_slice"))
+	g.label(done)
+
+	g.ins("mov rdx, %s", f.slot(i.X))
+	g.ins("sub rsi, rax")
+	if stride := g.sizeOf(slice.Elem); stride != 1 {
+		g.ins("imul rax, rax, %d", stride)
+	}
+	g.ins("add rdx, rax")
+
+	dst := f.slot(i.Dst)
+	g.ins("mov %s, rdx", dst)
+	g.ins("mov %s, rsi", dst.plus(8))
 }
 
 func (f *frame) emitLen(i *metals.Len) {

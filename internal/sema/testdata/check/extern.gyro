@@ -84,10 +84,42 @@ struct Labelled {
 fn label(l: Labelled) !{}       //~ E0614 parameter l cannot cross to C: a string field is a pointer to Gyro's own header, which C cannot read
 
 @extern("c")
-fn through(p: *i32) !{}         //~ E0614 parameter p cannot cross to C: a pointer would be shared mutable memory, which the boundary does not have
-
-@extern("c")
 fn maybe(value: i32?) !{}       //~ E0614 parameter value cannot cross to C: only an @extern struct may be nullable; null is C's null pointer and nothing else
 
 @extern("c")
 fn tagged(value: any) !{}       //~ E0614 parameter value cannot cross to C: any carries a Gyro type tag C cannot read
+
+// ---------------------------------------------------------------------
+// Addresses cross, because a linked library shares this address space
+
+// An out-parameter is the pointer C declared: the library writes through
+// it on this thread, over this allocator, and nothing is copied.
+@extern("c")
+fn through(p: *i32) !{}
+
+@extern("c")
+fn opaque(p: anyptr, n: usize) !{}
+
+// A callback is a code pointer, which is one word, and its own signature
+// has to cross for the same reasons.
+@extern("c")
+fn qsort(base: anyptr, count: usize, size: usize, cmp: code(anyptr, anyptr): i32) !{}
+
+// What a pointer may not point at is a Gyro runtime object, which C has
+// no representation for at any depth.
+@extern("c")
+fn queue(p: *chan<i32>) !{}     //~ E0614 parameter p cannot cross to C: a channel is a Gyro runtime object
+
+@extern("c")
+fn text(p: *string) !{}         //~ E0614 parameter p cannot cross to C: a string field is a pointer to Gyro's own header, which C cannot read
+
+// A `fn` is two words and a C callback has room for one, so the value
+// that crosses is `&f` rather than a closure.
+@extern("c")
+fn each(step: fn(i32)) !{}      //~ E0614 parameter step cannot cross to C: a fn is code and a captured environment, and a C callback has one word for the two; pass &f, which is a code pointer
+
+@extern("c")
+fn back(): code(i32): i32 !{}
+
+@extern("c")
+fn refuse(cb: code(i32): any) !{}   //~ E0614 parameter cb cannot cross to C: any carries a Gyro type tag C cannot read

@@ -473,12 +473,33 @@ import "py:math" {
 }
 `, "values copy at the boundary")
 
-	// A native library is the case the rule exists for: nothing has
-	// verified what it does with an address it is handed.
+	// A runtime with a heap of its own is what the rule is about, and a
+	// pointer is the whole of what it refuses.
 	verifyError(t, `module "gyro:test/v"
+
+import "py:math" {
+  fn @keep(ptr<i32>)
+}
+`, "values copy at the boundary")
+
+	// A linked C library is a boundary of representation and not of
+	// memory: it dereferences this address on this thread, over this
+	// allocator, so an out-parameter and a callback both cross.
+	roundTrip(t, `module "gyro:test/v"
 
 import "c:SDL2" {
   fn @SDL_FreeSurface(ptr<i32>)
+  fn @SDL_free(anyptr)
+  fn @qsort(anyptr, u64, u64, code(anyptr, anyptr) -> i32)
+}
+`)
+
+	// What it does not carry either way is a Gyro runtime object, which
+	// C has no representation for at all.
+	verifyError(t, `module "gyro:test/v"
+
+import "c:SDL2" {
+  fn @SDL_FreeSurface(ptr<chan<i32>>)
 }
 `, "values copy at the boundary")
 
@@ -914,10 +935,13 @@ fn @f() {
 // still knows what is at it. Forgetting the target's type makes one less
 // crossable rather than more.
 func TestVerifierRefusesAnyPtrAtABoundary(t *testing.T) {
+	// An address forgets its target's type; it does not stop being an
+	// address in this process, so a runtime with a heap of its own has
+	// nothing to do with one.
 	verifyError(t, `module "gyro:test/v"
 
-import "c:SDL2" {
-  fn @SDL_free(anyptr)
+import "py:math" {
+  fn @free(anyptr)
 }
 `, "values copy at the boundary")
 }

@@ -9,16 +9,18 @@ reasoning attached.
 
 ### Which docs are authoritative
 
-| file                | status                                                 |
-| ------------------- | ------------------------------------------------------ |
-| `docs/language.md`  | **source of truth** for syntax and semantics           |
-| `docs/decisions.md` | what was decided and what was rejected, with reasoning |
-| `docs/metals.md`    | the IR spec                                            |
-| `docs/native.md`    | the native backend and its layout rules                |
-| `docs/tooling.md`   | grammars and language server                           |
-| `CLAUDE.md`         | operational rules for an agent                         |
-| `docs/index.md`     | **stale fossil — ignore**                              |
-| `README.md`         | stale in places; verify before trusting                |
+| file                                | status                                                 |
+| ----------------------------------- | ------------------------------------------------------ |
+| `docs/SUMMARY.md`                   | the book's table of contents; start here               |
+| the `docs/ch*.md` chapters          | **source of truth** for syntax and semantics           |
+| `docs/decisions.md`                 | what was decided and what was rejected, with reasoning |
+| `docs/appendix-d-metals.md`         | the IR spec                                            |
+| `docs/appendix-e-native-backends.md`| the native backends and their layout rules             |
+| `docs/appendix-c-stdlib.md`         | built-in method surface and standard library           |
+| `docs/appendix-g-known-gaps.md`     | what is not built yet                                  |
+| `docs/ch16-02-editors.md`           | grammars and language server                           |
+| `CLAUDE.md`                         | operational rules for an agent                         |
+| `README.md`                         | stale in places; verify before trusting                |
 
 ---
 
@@ -105,8 +107,9 @@ tree-walking interpreter, and what that bought was a tier whose bugs
 became the specification until someone read the file.
 
 So when tiers disagree, none of them is presumptively right: read
-`docs/language.md`, decide what the program should print, and record the
-decision in `docs/decisions.md` if the docs did not already answer it.
+the book chapter that covers the behaviour, decide what the program should
+print, and record the decision in `docs/decisions.md` if the docs did not
+already answer it.
 
 ---
 
@@ -261,8 +264,8 @@ changed, `make grammar` too (46 and 8 parses respectively).
 
 ## 4. Language surface
 
-`docs/language.md` is the source of truth. Highlights an agent needs
-loaded:
+The book's chapters are the source of truth — `docs/SUMMARY.md` indexes
+them. Highlights an agent needs loaded:
 
 ### Syntax
 
@@ -408,7 +411,7 @@ Facts that took work to get right and are easy to break:
 
 ## 6. METALS
 
-The IR. `docs/metals.md` is the spec.
+The IR. `docs/appendix-d-metals.md` is the spec.
 
 - one flat whole-program module; generics monomorphized under quoted
   names (`@"Pair<i32>::sum"`), closures lifted with heap env records,
@@ -426,7 +429,7 @@ The IR. `docs/metals.md` is the spec.
 
 ### Native layout
 
-`docs/native.md`. **Storage is C's; a register is one word.** A value in
+`docs/appendix-e-native-backends.md`. **Storage is C's; a register is one word.** A value in
 memory is what `sizeof` says in C, at C's alignment, padded where C pads.
 A register carries a scalar widened to a qword and an `f32` as a double,
 so a load widens and a store narrows.
@@ -480,7 +483,7 @@ progress on malformed input. `TestParserAlwaysTerminates` covers this.
 
 When a change touches syntax or semantics:
 
-1. update `docs/language.md` **first**
+1. update the book chapter that owns the topic **first**
 2. add a parser test
 3. add or extend an example so the syntax has a real user
 4. record the decision in `docs/decisions.md`
@@ -490,8 +493,7 @@ with reasoning. Read it before proposing a change to settled syntax.
 
 ### Ask before inventing
 
-Ask before inventing syntax or semantics `docs/language.md` does not
-cover. Guessing produces code that has to be undone. This is a real rule,
+Ask before inventing syntax or semantics the book does not cover. Guessing produces code that has to be undone. This is a real rule,
 not a formality — the effect-row syntax was designed, implemented, and
 then redesigned because it was not checked first.
 
@@ -550,8 +552,8 @@ grammar, check whether a closure-taking function would do.
 
 ## 9. Known gaps
 
-Kept honest in `docs/language.md` ("Still to come") and
-`docs/decisions.md` ("Still open"). The ones that matter most:
+Kept honest in `docs/appendix-g-known-gaps.md` and `docs/decisions.md`
+("Still open"). The ones that matter most:
 
 **Open in the wasm bridge** (`internal/wasm`, see
 [`decisions.md`](decisions.md)):
@@ -584,7 +586,7 @@ Kept honest in `docs/language.md` ("Still to come") and
   the out-parameter case works today (`tests/testdata/run/c-import/`).
 
 **Open in the C front end** (`internal/cc`, see
-[`metals.md`](metals.md), "The C front end"):
+[appendix D](appendix-d-metals.md), "The C front end"):
 
 - **Two `goto` shapes** — a jump *into* a block (a label in a statement
   list the goto is not inside), and a backward jump reaching past a later
@@ -609,7 +611,9 @@ Kept honest in `docs/language.md` ("Still to come") and
   `tests/testdata/run/union-punning.metals`.
 - **A variadic function cannot cross into Gyro**: a `...` says nothing
   about what a call passes, so there is nothing for the far side to
-  check. Nor can a `union`, which Gyro cannot declare.
+  check. Nor can a C `enum`: Gyro's is a tagged sum. A `union` does
+  cross — Gyro declares one now, so `headerGen` writes
+  `export union Name { ... }`.
   `headerGen` in `internal/loader/foreign.go` **skips** an export it
   cannot spell rather than failing the module, so one such helper does
   not make a whole C library unimportable; naming a skipped one is an

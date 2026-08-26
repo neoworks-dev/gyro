@@ -1,4 +1,8 @@
-# METALS
+# Appendix D. METALS
+
+This appendix is the specification of the intermediate representation Gyro
+compiles into. [Chapter 17.2](ch17-02-the-pipeline.md) is the shorter
+account of where it sits in the pipeline; this is the format itself.
 
 METALS is the shared intermediate representation that Gyro compiles into,
 and that other language front ends (JavaScript, Python, ...) will compile
@@ -7,7 +11,7 @@ producers, several consumers: the verifier, the evaluator
 (`internal/meval`, the oracle the lowering is diff-tested against), and
 the two native backends (`internal/nasm`, x86-64 via NASM, and
 `internal/cgen`, generated C — see
-[`native.md`](native.md)). `internal/lower` is the first producer and
+[appendix E](appendix-e-native-backends.md)). `internal/lower` is the first producer and
 `internal/lisp` — a statically typed Scheme — is the second, which is
 what keeps the format honest: anything the IR assumes about its input
 that only holds because Gyro's lowering happens to produce it shows up
@@ -198,7 +202,7 @@ in memory is C's answer — `sizeof`, C's alignment, C's padding — and
 `metals.Layout` computes it once for every consumer, so that two backends
 cannot pad a record differently. A register is a separate question and a
 separate representation: one machine word per scalar, an `f32` carried as
-the double it widens to. [`native.md`](native.md#value-layout) has the
+the double it widens to. [Appendix E](appendix-e-native-backends.md#value-layout) has the
 table and the conversions between the two.
 
 Named types are module-local: linking qualifies each with its module's
@@ -398,6 +402,11 @@ points into, or one element past its end, and `ptr.diff` is defined only
 for two pointers into one object. A producer that leaves the object has
 written an undefined program.
 
+Where the extent *is* known — an array behind a pointer, whose `N` is in
+its type — a producer reaching an element should use `index.ptr`, which
+checks. Unchecked arithmetic is for the case where nothing could check,
+not the default way to reach an element.
+
 The evaluator holds a producer to that — it knows which object a pointer
 belongs to and aborts on a load through one that has left it — while the
 native backends compute the address. That is a deliberate asymmetry, and
@@ -506,11 +515,52 @@ field.set %r, 0, %v               ; mutates the register's value in place
 %v = tuple.get %t, 0
 %a = array<i32>(%x, %y, %z)
 %s = slice.of %a                  ; borrow, shares storage
+%s = slice.of %p                  ; ...or the storage a ptr<array<T, N>> names
+%w = slice.sub %s, %lo, %hi       ; half-open window, lo <= hi <= len
 %v = index.get %s, %i             ; bounds-checked, aborts out of range
 index.set %s, %i, %v
+%q = index.ptr %p, %i             ; ptr<array<T, N>> or slice<T> -> ptr<T>
 %n = len %s                       ; -> usize
 %r = str.concat %a, %b
 ```
+
+`slice.of` takes an array or **the address of one**, and the second form
+is not a convenience: the value form would have to load the array first,
+so a slice of an array a pointer reaches would view a copy nothing else
+can see. It is the same argument `index.ptr` makes, and the extent is
+static either way.
+
+`slice.sub` narrows a slice onto storage it already views — the pointer
+moves forward and the length shortens, and nothing is copied. It is an
+instruction rather than arithmetic in a front end because a slice's
+extent is a run-time value, so the check has to be made where the length
+is, and because its abort is a message every tier has to word
+identically: `slice 2..9 out of range for length 5`.
+
+`index.get` and `index.set` take an array or a slice **as a value**, so
+an array a pointer reaches has to be loaded before either can touch it —
+and that copies every element to read or write one. `index.ptr` is the
+way not to: it takes the array's address, checks the index against the
+array's static `N`, and answers with the address of the element, which
+`load` and `store` then reach where it lies.
+
+It is the checked counterpart of `elem.ptr` composed with `ptr.offset`,
+and it is a separate instruction because those two are unchecked. The
+extent is what decides: `ptr.offset` cannot check, since a pointer does
+not carry the extent of what it points into, while `index.ptr`'s operand
+is a `ptr<array<T, N>>` whose extent is in the type. So the check is a
+compare against a constant, and it aborts with the message `index.get`
+aborts with.
+
+`index.ptr` takes a slice too, and the extent then comes from the length
+word rather than from the type's `N`. It is one question — the checked
+address of element `i` — with two places the answer's bound comes from,
+which is not the same as overloading one operand with two storage
+models: what `ptr.offset` cannot do is check at all.
+
+Reading a slice element needs no address instruction, because a slice
+already carries its own data pointer and length and `index.get` on one
+copies nothing. Taking the *address* of one does.
 
 Derived printing is not an IR concept: the front end generates an
 ordinary `-> str` function per type and calls it.
@@ -671,12 +721,20 @@ it, and it runs on one heap with one allocator. A call between two of
 them is an ordinary call and may carry anything an ordinary call carries,
 pointers included.
 
-A boundary is where that stops being true, and there are two ways it can:
-`c:`, a native library nothing verified, whose idea of what to do with an
-address it is handed is its own; and another language's runtime embedded
-in the process — `js:`, `py:` — with its own heap, its own lifetimes, and
-in all likelihood a collector that moves things. An unrecognized scheme
-is read as one of those, which is the conservative way round.
+A boundary is where that stops being true, and there are two kinds of it,
+which differ in exactly one respect — whether the far side has a heap.
+
+- **`c:`, a native library.** Linked into this process, running on this
+  thread, over the same allocator the runtime calls. Nothing verified
+  what it does, but there is no second heap: an address means on that
+  side what it means on this one. What separates it from a producer
+  scheme is *representation*, C's real widths against a qword register,
+  and the generated shim is what converts that.
+- **`js:`, `py:`, or an unrecognized scheme.** Another language's runtime
+  embedded in the process, with its own heap, its own lifetimes and in
+  all likelihood a collector that moves things. An address means nothing
+  there. An unknown scheme is read as one of these, which is the
+  conservative way round.
 
 A signature is *boundary-crossing* when it is imported from a module in
 another runtime, or exported to one. The verifier enforces the first and
@@ -684,20 +742,28 @@ the linker the second, because a module can see its own imports and only
 the linker sees who imports what it exports. On every parameter and
 result of such a signature:
 
-- allowed: primitives, `str`, `opt`, `tuple`, `array`, `slice`, records
-  and enums, `fn` (the runtime shims it), `any`, `handle`;
-- forbidden: `ptr`, `chan`, `future`, and any type containing one.
+- allowed at either kind: primitives, `str`, `opt`, `tuple`, `array`,
+  `slice`, records and enums, `fn` (the runtime shims it), `any`,
+  `handle`;
+- allowed at a native boundary only: `ptr`, `anyptr`, `code`, and a
+  `union` — an address, and storage C reads its own way;
+- forbidden at both: `chan`, `future`, and any type containing one.
+
+A channel and a future are refused at a native boundary too, and for a
+different reason than the heap: they are Gyro runtime objects and C has
+no representation for one at any width.
 
 "Containing one" is walked rather than assumed, records and enums
-included: a struct crossing by value is its fields crossing by value, and
-one of them holding a `ptr` is the shared mutable state the rule exists
-to refuse.
+included, and a `ptr` is walked *through* at a native boundary: a struct
+crossing by value is its fields crossing by value, and `ptr<chan<i32>>`
+is the runtime object the rule refuses with an address in front of it.
 
-Crossing copies: the caller's runtime converts arguments into the
-callee's world and the result back. `slice` crosses as a copy of its
-contents. Shared mutable state across runtimes does not exist; a foreign
-object you must keep alive is a `handle`, and its operations are imported
-functions taking that handle.
+Crossing a runtime boundary copies: the caller's runtime converts
+arguments into the callee's world and the result back, `slice` crosses as
+a copy of its contents, and a foreign object you must keep alive is a
+`handle` whose operations are imported functions taking it. Crossing a
+native boundary converts widths and copies nothing else, which is what
+makes an out-parameter and a callback ordinary there.
 
 ## Verification
 

@@ -193,6 +193,7 @@ type checker struct {
 
 	// structTypes and enumTypes map local declarations to their types.
 	structTypes map[*ast.StructDecl]*types.Struct
+	unionTypes  map[*ast.UnionDecl]*types.Union
 	enumTypes   map[*ast.EnumDecl]*types.Enum
 	funcSigs    map[*ast.FuncDecl]*types.Method
 
@@ -261,20 +262,21 @@ type checker struct {
 
 func newChecker(p *program, file *diag.File, modulePath string, imports map[string]*Exports) *checker {
 	c := &checker{
-		program:     p,
-		file:        file,
-		bag:         p.bag,
-		modulePath:  modulePath,
-		module:      newScope(nil),
-		imports:     imports,
-		structTypes: map[*ast.StructDecl]*types.Struct{},
-		enumTypes:   map[*ast.EnumDecl]*types.Enum{},
-		funcSigs:    map[*ast.FuncDecl]*types.Method{},
-		consts:      p.info.Consts,
-		rec:         &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
-		facts:       map[*symbol]bool{},
-		flow:        newFlow(),
-		guarded:       map[*symbol][]*symbol{},
+		program:         p,
+		file:            file,
+		bag:             p.bag,
+		modulePath:      modulePath,
+		module:          newScope(nil),
+		imports:         imports,
+		structTypes:     map[*ast.StructDecl]*types.Struct{},
+		unionTypes:      map[*ast.UnionDecl]*types.Union{},
+		enumTypes:       map[*ast.EnumDecl]*types.Enum{},
+		funcSigs:        map[*ast.FuncDecl]*types.Method{},
+		consts:          p.info.Consts,
+		rec:             &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
+		facts:           map[*symbol]bool{},
+		flow:            newFlow(),
+		guarded:         map[*symbol][]*symbol{},
 		importPaths:     map[string]string{},
 		reportedLeaks:   map[*symbol]bool{},
 		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
@@ -407,6 +409,15 @@ func (c *checker) collectModule(tree *ast.File) {
 			c.structTypes[d] = shell
 			c.program.info.Structs[d] = shell
 			c.declare(d.Name, d.Offset, symType, d).typ = shell
+		case *ast.UnionDecl:
+			shell := &types.Union{
+				Name:    d.Name,
+				Module:  c.modulePath,
+				Methods: map[string]*types.Method{},
+			}
+			c.unionTypes[d] = shell
+			c.program.info.Unions[d] = shell
+			c.declare(d.Name, d.Offset, symType, d).typ = shell
 		case *ast.EnumDecl:
 			shell := &types.Enum{
 				Name:       d.Name,
@@ -507,6 +518,10 @@ func (c *checker) collectExports(tree *ast.File) *Exports {
 			if d.Exported {
 				c.exportLocal(exports, d.Name)
 			}
+		case *ast.UnionDecl:
+			if d.Exported {
+				c.exportLocal(exports, d.Name)
+			}
 		case *ast.EnumDecl:
 			if d.Exported {
 				c.exportLocal(exports, d.Name)
@@ -592,6 +607,9 @@ func (c *checker) checkDecls(tree *ast.File) {
 		case *ast.StructDecl:
 			c.checkDecorators(d.Decorators)
 			c.checkExternStruct(d)
+		case *ast.UnionDecl:
+			c.checkDecorators(d.Decorators)
+			c.checkUnionDecl(d)
 		case *ast.EnumDecl:
 			c.checkDecorators(d.Decorators)
 		case *ast.VarDecl:
