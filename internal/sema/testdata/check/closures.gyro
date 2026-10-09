@@ -46,11 +46,12 @@ fn expressionBody() {
   run(fn() produce(10))
 }
 
-fn moveNeedsTheName(): fn() {
+fn moveNeedsTheName() {
   var node = 1
-  return fn[move node]() {
+  var f = fn[move node]() {
     var x = node
   }
+  f()
 }
 
 fn moveOfAGhost() {

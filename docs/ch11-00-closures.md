@@ -187,7 +187,7 @@ with a null pointer is returned unchanged by `keep` and ignored by
 import { keep, release, Allocator } from "mem"
 
 fn adder(a: Allocator, n: i32): fn(i32): i32 {
-  return keep(a, fn(x) x + n)     // copied out of this frame into a
+  return keep(a, fn(x: i32): i32 { return x + n })   // copied out of this frame into a
 }
 ```
 
@@ -217,7 +217,9 @@ for i in 0..3 {
 }
 ```
 
-Keep the closure before storing it, with `keep(a, fn() i)`.
+Keep the closure before storing it, with `keep(a, fn(): i32 { return i })`.
+`keep` is generic over the closure's type, so a closure written inside the
+call states its own parameter and result types.
 
 Futures and channels are not part of this; they still use the process heap
 ([appendix G](appendix-g-known-gaps.md)).

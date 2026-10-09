@@ -1,16 +1,23 @@
 package lower
 
 import (
+	"strconv"
+
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
 // evalClosure lifts a closure to a top-level function taking an
-// environment record pointer, and partially applies it. The environment
-// is heap-allocated and shared by every copy of the closure value, so a
-// closure owns one set of captured copies and its mutations accumulate
-// across calls — the recorded FnMut-style semantics.
+// environment record pointer, and partially applies it. The environment is
+// a record in this function's frame, shared by every copy of the closure
+// value, so a closure owns one set of captured copies and its mutations
+// accumulate across calls. The closure therefore borrows the frame; `keep`
+// in mem is what copies the record out when it has to live longer, which is
+// why the first word of every record is its own size.
+//
+// A closure that captures nothing needs no record: it is the lifted
+// function by itself, with a null environment word.
 func (f *funcLowerer) evalClosure(e *ast.ClosureExpr) string {
 	sig, ok := f.typeOf(e).(*types.Func)
 	if !ok {
@@ -18,8 +25,17 @@ func (f *funcLowerer) evalClosure(e *ast.ClosureExpr) string {
 	}
 	captured := f.freeVars(e)
 	liftedName := f.l.syntheticName(f.fn.Name + "::closure")
+
+	if len(captured) == 0 && !e.Async {
+		f.liftClosureBody(e, sig, liftedName, "", nil)
+		out := f.newReg("closure")
+		f.emit(&metals.FnRef{Dst: out, Callee: liftedName})
+		return out
+	}
+
 	envName := liftedName + ".env"
 	envDecl := &metals.TypeDecl{Name: envName, Record: &metals.RecordShape{}}
+	envDecl.Record.Fields = append(envDecl.Record.Fields, metals.FieldDecl{Name: "size", Type: metals.TUsize})
 	for _, c := range captured {
 		envDecl.Record.Fields = append(envDecl.Record.Fields, metals.FieldDecl{
 			Name: c.name,
@@ -31,13 +47,23 @@ func (f *funcLowerer) evalClosure(e *ast.ClosureExpr) string {
 
 	f.liftClosureBody(e, sig, liftedName, envName, captured)
 
+	layout := metals.NewLayout(f.l.module, func(format string, args ...any) {
+		f.l.fail("@%s: closure environment: "+format, append([]any{f.fn.Name}, args...)...)
+	})
+	size := layout.Size(&metals.Named{Name: envName})
+
 	envPtr := f.newReg("env")
-	f.emit(&metals.New{Dst: envPtr, Type: &metals.Named{Name: envName}})
+	f.emit(&metals.Slot{Dst: envPtr, Type: &metals.Named{Name: envName}})
+	sizeReg := f.newReg("size")
+	f.emit(&metals.Const{Dst: sizeReg, Type: metals.TUsize, Value: strconv.Itoa(size)})
+	sizePtr := f.newReg("size.p")
+	f.emit(&metals.FieldPtr{Dst: sizePtr, Ptr: envPtr, Index: 0})
+	f.emit(&metals.Store{Ptr: sizePtr, Val: sizeReg})
 	for i, c := range captured {
 		entry := f.lookup(c.name)
 		value := f.localPlace(entry).load()
 		fieldPtr := f.newReg("cap")
-		f.emit(&metals.FieldPtr{Dst: fieldPtr, Ptr: envPtr, Index: i})
+		f.emit(&metals.FieldPtr{Dst: fieldPtr, Ptr: envPtr, Index: i + 1})
 		f.emit(&metals.Store{Ptr: fieldPtr, Val: value})
 	}
 	out := f.newReg("closure")
@@ -63,13 +89,16 @@ func (f *funcLowerer) liftClosureBody(e *ast.ClosureExpr, sig *types.Func, lifte
 	child.blocks = []*[]metals.Instr{&child.fn.Body}
 	child.pushScope()
 
-	child.fn.Params = append(child.fn.Params, metals.Param{
-		Name: "env",
-		Type: &metals.Ptr{Elem: &metals.Named{Name: envName}},
-	})
-	child.noteReg("env")
+	if envName != "" {
+		child.fn.Params = append(child.fn.Params, metals.Param{
+			Name: "env",
+			Type: &metals.Ptr{Elem: &metals.Named{Name: envName}},
+		})
+		child.noteReg("env")
+	}
 	for i, c := range captured {
-		child.bind(c.name, &local{reg: "env", typ: c.typ, env: i})
+		// Field 0 is the record's size.
+		child.bind(c.name, &local{reg: "env", typ: c.typ, env: i + 1})
 	}
 	for _, param := range e.Params {
 		declared := child.localType(e, param.Name)

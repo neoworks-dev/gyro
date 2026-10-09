@@ -5,12 +5,6 @@ export fn print<T>(value: T) !{ io }
 export fn println<T>(value: T) !{ io }
 export fn eprintln<T>(value: T) !{ io }
 
-// spawn starts a thread. The closure carries the arguments across; join by
-// receiving on a channel the closure captures. Its row covers starting the
-// thread and stands in for the task's own effects, which no row can carry
-// until effect polymorphism reaches function values.
-export fn spawn(task: fn()) !{ io }
-
 // Array<T> owns its elements, in contrast to the borrowed view T[].
 export struct Array<T> {}
 

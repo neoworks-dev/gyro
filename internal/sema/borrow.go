@@ -135,6 +135,13 @@ func (c *checker) checkReturnedBorrow(e ast.Expr, offset int) {
 	}
 
 	// Frame storage is the worse problem, so it is the one reported.
+	if origin.local && isFunc(c.fn.result) {
+		c.errorHintf(offset, []string{
+			"the closure's environment is this frame's, and the caller outlives it",
+			"copy it out with keep(allocator, f) from mem, or write a closure that captures nothing",
+		}, "this returns a closure that borrows this frame")
+		return
+	}
 	if origin.local {
 		c.errorHintf(offset, []string{
 			"the storage is this frame's, and the caller outlives it",
@@ -184,6 +191,15 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 	case *ast.ArrayLit:
 		// The literal is storage in the enclosing scope.
 		return borrowOrigin{local: true}
+
+	case *ast.ClosureExpr:
+		// A closure that captures something keeps it in a record in this
+		// frame, so it borrows the frame like an array literal does. One
+		// that captures nothing has no record.
+		if len(c.closureCaptures[e]) > 0 || e.Async {
+			return borrowOrigin{local: true}
+		}
+		return borrowOrigin{}
 
 	case *ast.StructLit:
 		// A struct carries whatever its fields carry. `View{ data: xs }`
@@ -311,11 +327,15 @@ func viewType(t types.Type) bool {
 		return true
 	case *types.Basic:
 		return t.Kind == types.StringKind
+	case *types.Func:
+		// A closure borrows the frame its environment is stored in.
+		return true
 	case *types.Optional:
 		return viewType(t.Elem)
 	}
 	return false
 }
+
 
 func sortStrings(values []string) {
 	for i := 1; i < len(values); i++ {
@@ -323,4 +343,26 @@ func sortStrings(values []string) {
 			values[j], values[j-1] = values[j-1], values[j]
 		}
 	}
+}
+
+// checkKeep rejects keep and release of something that is not a function
+// value: only a fn has an environment to copy.
+func (c *checker) checkKeep(call *ast.CallExpr) {
+	name := c.intrinsicCall(call)
+	if (name != "keep" && name != "release") || len(call.Args) < 2 {
+		return
+	}
+	t := c.rec.types[call.Args[1].Value]
+	if t == nil || flexible(t) {
+		return
+	}
+	if _, ok := t.(*types.Func); ok {
+		return
+	}
+	if _, ok := t.(*types.TypeParam); ok {
+		return
+	}
+	c.errorHintf(call.Args[1].Value.Pos(), []string{
+		"keep copies a closure's environment; a code pointer, struct or number has none",
+	}, "%s takes a function value; %s is not one", name, describeType(t))
 }

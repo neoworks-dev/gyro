@@ -453,11 +453,8 @@ func makeTypeParams(params []ast.TypeParam) []*types.TypeParam {
 func bundledIntrinsic(modulePath, name string) string {
 	switch modulePath {
 	case stdlib.Path("mem"):
-		if name == "alloc" || name == "free" || name == "heap" || name == "panic" {
-			return name
-		}
-	case stdlib.Path("stdlib"):
-		if name == "spawn" {
+		if name == "alloc" || name == "free" || name == "heap" || name == "panic" ||
+			name == "spawn" || name == "keep" || name == "release" {
 			return name
 		}
 	}

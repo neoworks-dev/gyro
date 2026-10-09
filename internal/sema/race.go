@@ -59,10 +59,10 @@ func (c *checker) noteCapture(sym *symbol) {
 // checkSpawnRace reports the references a spawned closure shares with the
 // thread that spawned it.
 func (c *checker) checkSpawnRace(call *ast.CallExpr) {
-	if c.intrinsicCall(call) != "spawn" || len(call.Args) == 0 {
+	if c.intrinsicCall(call) != "spawn" || len(call.Args) < 2 {
 		return
 	}
-	closure, ok := call.Args[0].Value.(*ast.ClosureExpr)
+	closure, ok := call.Args[1].Value.(*ast.ClosureExpr)
 	if !ok {
 		return
 	}

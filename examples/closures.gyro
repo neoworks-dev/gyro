@@ -3,7 +3,8 @@
 // implicitly; the capture list exists only for `move`, which transfers
 // ownership and is what makes an allocation's escape visible in the source.
 
-import { println, spawn, Array } from "stdlib"
+import { println, Array } from "stdlib"
+import { heap, spawn } from "mem"
 
 // A closure's type is the function type that already existed in the language.
 // The input borrows; the result owns and is freed by the caller.
@@ -51,7 +52,7 @@ fn main() {
   // be a library function rather than a keyword. The channel is what orders
   // the two prints; without it the output is a race.
   var done = chan<bool>()
-  spawn(fn() {
+  spawn(heap(), fn() {
     println("on another thread")
     done <- true
   })

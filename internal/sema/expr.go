@@ -70,6 +70,7 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 		result := c.callExpr(e)
 		c.settleCallArgs(e)
 		c.checkSpawnRace(e)
+		c.checkKeep(e)
 		return result
 
 	case *ast.SelectorExpr:
