@@ -139,6 +139,9 @@ else about one:
   one storage has room for one of them, and position would not say which.
 - **A union is not generic.** Its size is its widest member's, and a
   parameter would make that depend on an argument.
+- **Reading a member is unsafe.** It needs an `unsafe fn` or a `safe fn`
+  around it ([chapter 4.6](ch04-06-unsafe.md)), because nothing says which
+  member is live. Writing one, and writing a literal, are safe.
 
 ### What may be a member
 
@@ -169,7 +172,7 @@ union Event {
   mouse: MouseEvent
 }
 
-fn dispatch(e: *Event): i32 {
+safe fn dispatch(e: *Event): i32 {
   if e.kind == 1 { return e.key.code }
   if e.kind == 2 { return e.mouse.x }
   return 0
@@ -178,7 +181,8 @@ fn dispatch(e: *Event): i32 {
 
 `e.kind` reads across members, and it works because they **share an initial
 sequence**. That is the one cross-member read C defines, and Gyro defines
-it too.
+it too. `dispatch` is a `safe fn` because it reads members: the author
+vouches that it reads `key` only when the tag says `key`.
 
 ### Reading across members that do not
 

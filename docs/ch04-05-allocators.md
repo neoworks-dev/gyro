@@ -154,12 +154,12 @@ struct Counter {
   allocs: i32
 }
 
-fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
-            old: anyptr?, old_size: usize): anyptr? {
+safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
+                 old: anyptr?, old_size: usize): anyptr? {
   if data == null {
     return null
   }
-  var counter = data as *Counter
+  var counter = cast<Counter>(data)
   if mode == Mode::Alloc {
     counter.allocs += 1
   }
@@ -171,6 +171,14 @@ var counter = Counter{ allocs: 0 }
 var counted = Allocator{ proc: &counting, data: &counter as anyptr }
 var node = make_node(counted, 1)       // counter.allocs is now 1
 ```
+
+The procedure is a `safe fn` because it gives `data` its type back with
+`cast` from the `unsafe` module, and vouches that the allocator it was
+registered with carries a `Counter`
+([chapter 4.6](ch04-06-unsafe.md)). The raw heap under `heap()` is the
+`unsafe` module's `raw_alloc`, `raw_free` and `raw_resize`, which were
+`mem` exports before; `mem` imports them and `alloc`, `Arena` and the
+others are written over them.
 
 ## Containers remember theirs
 

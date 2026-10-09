@@ -27,7 +27,7 @@ overloadable, so `<` on a user type is an error that points at
 | `< <= > >=` | numeric primitives and `rune` only |
 | `== !=` | primitives, pointers (identity), tuples, enums, structs (derived field-wise). **Not slices.** |
 | `&& \|\| !` | `bool` |
-| `as` | numeric types and `rune`; into and out of `any`; between pointer types and `anyptr` |
+| `as` | numeric types and `rune`; into and out of `any`; from a pointer to `anyptr` (the way back is `cast` in `unsafe`) |
 
 Operands must already share a type: there are no implicit conversions
 between typed values, and only literals adapt to context

@@ -20,13 +20,26 @@ world one belongs to, and the library it is linked from:
 
 ```gyro
 @extern("m")
-export fn sqrt(x: f64): f64 !{}
+export safe fn sqrt(x: f64): f64 !{}
 
 @extern("SDL2")
-export fn SDL_Init(flags: u32): i32 !{ io }
+export safe fn SDL_Init(flags: u32): i32 !{ io }
 
 @extern("SDL2", symbol = "SDL_Delay")
-export fn delay(millis: u32) !{ io }
+export safe fn delay(millis: u32) !{ io }
+```
+
+An `@extern` function is **unsafe to call** unless the declaration says
+otherwise: the compiler can check the signature and nothing about what the
+C does. Writing `safe` before `fn` vouches for it, and then any function
+may call it ([chapter 4.6](ch04-06-unsafe.md)):
+
+```gyro
+@extern("m")
+safe fn sqrt(x: f64): f64 !{}          // no f64 misuses it
+
+@extern("c")
+fn strlen(text: string): usize !{}     // callable from an unsafe fn or a safe fn
 ```
 
 The string is the library, spelled as the linker wants it without the `lib`
@@ -81,14 +94,14 @@ returned null pointer becomes `""`: a Gyro string is never absent.
 
 ```gyro
 @extern("m")
-fn frexp(value: f64, exponent: *i32): f64 !{}
+safe fn frexp(value: f64, exponent: *i32): f64 !{}
 
 @extern("c")
-fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
+safe fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
 
-fn ascending(a: anyptr, b: anyptr): i32 {
-  var left = a as *i32
-  var right = b as *i32
+safe fn ascending(a: anyptr, b: anyptr): i32 {
+  var left = cast<i32>(a)
+  var right = cast<i32>(b)
   if *left < *right { return 0 - 1 }
   if *left > *right { return 1 }
   return 0
@@ -147,7 +160,7 @@ back to the library that gave it to you:
 export struct Window {}
 
 @extern("SDL2")
-export fn SDL_CreateWindow(
+export safe fn SDL_CreateWindow(
   title: string, x: i32, y: i32, w: i32, h: i32, flags: u32,
 ): Window? !{ io }
 ```
@@ -164,7 +177,7 @@ rasterized in pure Gyro and put in an SDL window.
 ## Importing a `.c` file
 
 ```gyro
-import { add, divmod } from "./mathlib.c"
+import safe { add, divmod } from "./mathlib.c"
 ```
 
 The loader files `mathlib.c` as a foreign module the way it does a Gyro one:
@@ -173,12 +186,22 @@ Gyro's own C front end reads the C — its own preprocessor included, so
 declared types. `struct Point *` arrives as a pointer to a `%Point`, not as
 an integer.
 
+A function imported from a `.c` file is **unsafe to call** unless the import
+vouches for it, as `safe` does above: the C behind it can corrupt memory
+even though its signature is checked. One word on the import line keeps the
+trust visible without marking every call, and it covers every name the line
+binds ([chapter 4.6](ch04-06-unsafe.md)). Without it a call needs an
+`unsafe fn` or a `safe fn` around it. `import safe * as lib from "./x.c"`
+vouches for the namespace, and `safe` on an import of a Gyro module is an
+error, since a Gyro function already says for itself whether it is unsafe.
+The types a C file declares need no vouching.
+
 Because there is no boundary here, the restrictions above do not apply.
 **Pointers cross**, so out-parameters work:
 
 ```gyro
 import { alloc, free, heap } from "mem"
-import { divmod } from "./mathlib.c"
+import safe { divmod } from "./mathlib.c"
 
 var whole = alloc<i32>(heap())
 var rest = alloc<i32>(heap())
@@ -198,7 +221,8 @@ null **aborts with a message** where C leaves it undefined.
 
 A C `union` crosses as a Gyro `union` — same members, same storage, one
 declaration ([chapter 5.1](ch05-01-structs.md)) — which is what `union` is
-in the language for. A C `enum` does not: Gyro's is a tagged sum and the
+in the language for. Reading one of its members needs an unsafe context,
+like any union. A C `enum` does not: Gyro's is a tagged sum and the
 two are different things.
 
 An export the generated header cannot spell is left out rather than made an
@@ -211,28 +235,36 @@ shape that cannot cross today ([appendix G](appendix-g-known-gaps.md)).
 `anyptr` is an address whose target's type has been forgotten. It is the
 only pointer in Gyro that is not a pointer *to* something, so it has none of
 a pointer's operations: nothing to dereference, nothing to step, nothing to
-order, nothing to read. What it has is identity, and `as`:
+order, nothing to read. What it has is identity, and `as` in one direction:
 
 ```gyro
-import { Cell, keep, held } from "./store.c"
+import { cast } from "unsafe"
+import safe { Cell, keep, held } from "./store.c"
+
+safe fn value_at(address: anyptr): i32 {
+  return cast<Cell>(address).value   // remembering: this program's claim
+}
 
 var c = Cell{ value: 7 }
 keep(0, &c as anyptr)          // forgetting: always true, never fails
 
 var back = held(0)             // C's `void *` arrives as anyptr?
 if back != null {
-  var cell = back as *Cell     // remembering: this program's claim
-  println(cell.value)
+  println(value_at(back))
 }
 ```
 
-Forgetting is free and cannot be wrong. **Remembering is a claim** about
-what is at the address — the same claim C's own cast makes, with the
-difference that the METALS evaluator checks it and panics on a wrong one,
-while the native tiers do what C does.
+Forgetting is free and cannot be wrong, so it is an ordinary `as`.
+**Remembering is a claim** about what is at the address, the same claim C's
+own cast makes, and the native tiers do what C does when it is wrong. It is
+`cast<T>(p)` from the `unsafe` module, an unsafe function, so a program
+makes the claim inside an `unsafe fn` or a `safe fn`
+([chapter 4.6](ch04-06-unsafe.md)). `p as *T` on an `anyptr` is not a
+conversion in the language.
 
-Only a pointer converts either way; an integer does not, because a pointer
-that came out of arithmetic is the thing this language does not have.
+Only a pointer converts to an `anyptr`; an integer does not. A pointer made
+from an integer is `ptr_from_int` in the same module, for the addresses a
+program did not get from an allocation.
 
 An `anyptr` cannot go into an `any`: an `any` promises to give the concrete
 type back, and this one has thrown it away. It does cross to a foreign

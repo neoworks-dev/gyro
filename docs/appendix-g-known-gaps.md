@@ -67,6 +67,13 @@ attached — a skip is a program that will fail the day the gap closes
   ([appendix D](appendix-d-metals.md)).
 - **A slice can outlive the memory behind it**, and nothing detects that
   ([chapter 4.4](ch04-04-slices-and-views.md)).
+- **`safe` is a promise nothing checks.** A `safe fn` may do unsafe
+  things, and the compiler takes the author's word that no caller can
+  misuse it ([chapter 4.6](ch04-06-unsafe.md)). `import safe` of a C file is
+  the same promise about every name the line binds.
+- **Pointer arithmetic on `*T` does not exist yet** (#68). When it does it
+  is an `unsafe fn` in the `unsafe` module; `offset` on an `anyptr` is the
+  byte-granular form today.
 - **Views through a pointer are untraceable** by the borrow analysis.
 - **Effect rows under-report** where a row cannot travel: calling a function
   value contributes nothing.

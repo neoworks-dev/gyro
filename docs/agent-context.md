@@ -533,11 +533,21 @@ Bundled `.gyro` sources compiled into the binary, under
 body is ordinary Gyro, compiled like any other module.** What makes a
 struct an opaque handle is having no fields, not the module it lives in.
 
-Modules: `stdlib`, `mem`, `fs`, `net`, `convert`, `time`, `os`, `fmt`.
+Modules: `stdlib`, `mem`, `unsafe`, `fs`, `net`, `convert`, `time`, `os`, `fmt`, `math`.
+
+`unsafe` holds the unchecked primitives, all `unsafe fn` (chapter 4.6):
+`cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `copy_bytes`, the three
+`raw_` heap functions, `env_of` and `with_env`. `unsafe fn` is unsafe to
+call, `safe fn` may use unchecked things and vouches for callers, a plain
+`fn` may do neither; `unsafe` and `safe` are contextual words before `fn`
+and before an import list. sema checks it in `internal/sema/unsafe.go`
+(calls, union reads, `&f`); `@extern` declarations and functions of a `.c`
+import are unsafe unless written `safe` or imported with `import safe`.
+`mem` imports `unsafe`, never the other way round.
 
 Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `size`/
-`align`/`panic` and `raw_alloc`/`raw_free`/`raw_resize`,
+`align`/`panic` and `unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close`, `to_i32`/`to_f64`, `net::get`.
 
 Written in Gyro: `String` (on `Array<u8>`), its UTF-8 encoder, and the
@@ -650,13 +660,15 @@ declared types ask of the struct), `goto` in the shapes C is actually
 written in, a C struct crossing into Gyro (an `import` may declare types,
 the linker matches and resolves them, and there is one `%Point` in the
 linked program), a `void *` crossing into Gyro (`anyptr` is a Gyro type,
-and `as` goes both ways), and a callback crossing in both directions
+forgotten with `as`, remembered with `unsafe`'s `cast`), and a callback crossing in both directions
 (`code(A, B): C` is a Gyro type, and `&f` is how you get one).
 
 **Safety holes:**
 
 - **mutation rules unchecked** — `*self` vs `self`, assigning through a
   value receiver
+- **`safe` is a promise nothing checks** — a `safe fn` and an
+  `import safe` are the author's word (chapter 4.6)
 - **use-after-free, double free and uninitialized reads undetected** —
   the heap frees for real, and a block from `alloc<T>()` is zero-filled.
   The evaluator poisoned freed and unwritten cells and aborted on a

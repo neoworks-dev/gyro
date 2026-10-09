@@ -22,21 +22,23 @@ and no `int`. Traits and `impl` blocks were removed
 
 ## Contextual identifiers
 
-`move`, `copy` and `from` are **not** keywords. Each is recognized by the
-parser in exactly one position and is an ordinary identifier everywhere
-else:
+`move`, `copy`, `from`, `unsafe` and `safe` are **not** keywords. Each is
+recognized by the parser in a position of its own and is an ordinary
+identifier everywhere else:
 
-| word | its one position |
+| word | its position |
 | --- | --- |
 | `move` | a closure capture list: `fn[move node]() { ... }` |
 | `from` | between an import list and its path: `import { x } from "m"` |
+| `unsafe`, `safe` | in front of `fn` (after `export`, before `async`): `unsafe fn f()`, `safe fn f()` |
+| `safe` | in front of an import list or `*`: `import safe { x } from "m.c"` |
 
 `copy` is in the same family and has no special position at all: capture
 lists hold only `move name` entries, because copies are implicit and never
 listed ([chapter 11](ch11-00-closures.md)). It is an ordinary identifier,
 and must stay one.
 
-So `var from = 1` and `fn String::from(...)` both parse. If a word only
+So `var from = 1`, `fn String::from(...)` and `var safe = 1` all parse. If a word only
 means something in one place, it belongs here rather than in the token set —
 this has been broken twice.
 
@@ -53,7 +55,8 @@ method on a built-in type:
 | --- | --- |
 | `println`, `print`, `eprintln` | imported from `stdlib` |
 | `alloc`, `free`, `size`, `align`, `allocator`, `heap`, `Arena` | imported from `mem` |
-| `spawn` | imported from `stdlib` — a function taking a closure, not grammar |
+| `cast`, `offset`, `ptr_from_int` | imported from `unsafe`, all of them `unsafe fn` ([chapter 4.6](ch04-06-unsafe.md)) |
+| `spawn` | imported from `mem` — a function taking a closure, not grammar |
 | `Array`, `String`, `Map`, `Mutex` | imported types |
 | `len`, `runes`, `bytes`, `close`, `compare`, `hash`, `message`, `to_string` | the built-in method surface |
 | `trim`, `split`, `contains`, … | extension methods, imported from `stdlib` |
@@ -81,5 +84,5 @@ unknown decorator name is a compile error.
 @comptime const FIB_10: i32 = fib(10)
 @gpu fn kernel(a: *f32) {}
 @concurrent(threads = 8) fn work() {}
-@extern("m") fn sqrt(x: f64): f64 !{}
+@extern("m") safe fn sqrt(x: f64): f64 !{}
 ```

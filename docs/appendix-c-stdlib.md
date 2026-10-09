@@ -132,11 +132,12 @@ export fn MutexGuard<T>::unlock(*self) !{}
 
 The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
 `free`, `heap` and `Arena` are ordinary Gyro over the procedure an
-`Allocator` carries; `size`, `align`, `panic`, `copy_bytes` and the three `raw_` functions
-are the intrinsics under them. The `raw_` three are the process heap
-itself. `mem` also holds a private `offset` that `Arena` uses to carve its
-buffer; it is not exported, since pointer arithmetic is not part of the
-language's surface.
+`Allocator` carries; `size`, `align` and `panic` are the intrinsics under
+them. The raw memory they stand on, the process heap, `copy_bytes`, `offset`
+and a closure's environment, belongs to the `unsafe` module below, which
+`mem` imports. The functions here that use it are `safe fn`s: `alloc`,
+`heap`'s procedure, `Arena`'s, `keep`, `release` and the thread entry under
+`spawn`.
 
 ```gyro
 export enum Mode { Alloc, Free, FreeAll, Resize }
@@ -148,11 +149,11 @@ export struct Allocator {
 
 export fn heap(): Allocator !{}
 
-export fn keep<F>(a: Allocator, f: F): F !{}
-export fn release<F>(a: Allocator, f: F) !{}
+export safe fn keep<F>(a: Allocator, f: F): F !{}
+export safe fn release<F>(a: Allocator, f: F) !{}
 export fn spawn(a: Allocator, body: fn()) !{ io }
 
-export fn alloc<T>(a: Allocator): *T !{}
+export safe fn alloc<T>(a: Allocator): *T !{}
 export fn free<T>(a: Allocator, pointer: *T) !{}
 export fn size<T>(): usize !{}
 export fn align<T>(): usize !{}
@@ -160,11 +161,6 @@ export fn align<T>(): usize !{}
 export fn panic(message: string) !{}
 
 export fn format(a: Allocator, value: Format): string !{}
-
-export fn raw_alloc(size: usize, align: usize): anyptr? !{}
-export fn raw_free(pointer: anyptr) !{}
-export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
-export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
@@ -312,6 +308,32 @@ export fn to_f64(text: string): (f64, error?) !{}
 
 Both allocate, because the failure carries a message.
 
+### `unsafe`
+
+The operations the compiler cannot check, each an `unsafe fn`
+([chapter 4.6](ch04-06-unsafe.md)). Calling one needs an `unsafe fn` or a
+`safe fn` around it.
+
+```gyro
+export unsafe fn cast<T>(p: anyptr): *T !{}
+export unsafe fn ptr_from_int<T>(address: usize): *T !{}
+export unsafe fn ptr_to_int(p: anyptr): usize !{}
+export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
+export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
+
+export unsafe fn raw_alloc(size: usize, align: usize): anyptr? !{}
+export unsafe fn raw_free(pointer: anyptr) !{}
+export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
+
+export unsafe fn env_of<F>(f: F): anyptr? !{}
+export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
+```
+
+`cast` and `env_of`/`with_env` are answered by lowering. `ptr_from_int` is
+Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
+runtime functions: METALS has no instruction that makes a pointer of an
+integer.
+
 ### `net`
 
 ```gyro
@@ -322,7 +344,9 @@ export async fn get(url: string): (string, error?) !{ io }
 
 Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
-`align`, `panic` and `raw_alloc`/`raw_free`/`raw_resize`,
+`align`, `panic`, and the `unsafe` module's `raw_alloc`/`raw_free`/`raw_resize`,
+`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `env_of` and `with_env` are
+lowering's),
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
 `net::get`, the `os` and `time` surfaces. The `math` functions are METALS
 instructions.

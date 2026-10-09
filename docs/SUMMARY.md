@@ -25,6 +25,7 @@
 - [4.3. Nullability](ch04-03-nullability.md)
 - [4.4. Slices, arrays and views](ch04-04-slices-and-views.md)
 - [4.5. Allocators](ch04-05-allocators.md)
+- [4.6. Unsafe code](ch04-06-unsafe.md)
 
 # Structuring data
 

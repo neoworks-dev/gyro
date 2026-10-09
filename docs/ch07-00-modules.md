@@ -90,8 +90,8 @@ Those initializers run outside any effect row.
 
 ## The standard library
 
-The bundled modules are `stdlib`, `mem`, `fs`, `net`, `convert`, `time`,
-`os`, `fmt` and `math`. They are ordinary Gyro source compiled into the
+The bundled modules are `stdlib`, `mem`, `unsafe`, `fs`, `net`, `convert`,
+`time`, `os`, `fmt` and `math`. They are ordinary Gyro source compiled into the
 compiler binary, and the rule inside them is the same as anywhere: a
 declaration **with a body** is ordinary Gyro, and one **without** is a
 runtime intrinsic the tiers implement.

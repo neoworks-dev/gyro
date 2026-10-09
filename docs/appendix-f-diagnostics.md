@@ -74,6 +74,7 @@ A sample, so the ranges have a shape:
 | --- | --- |
 | E0105 | no such operator — there is no `++` or `--` |
 | E0209 | generic bounds — there are none to write |
+| E0218 | a function marked both `unsafe` and `safe` |
 | E0303 | circular import |
 | E0305 | not exported by that module |
 | E0401 | undeclared name |
@@ -89,6 +90,8 @@ A sample, so the ranges have a shape:
 | E0610 | a returned view of this frame's storage |
 | E0612 | an unknown entry in an effect row |
 | E0614 | an `@extern` signature carrying something that cannot cross |
+| E0618 | an unsafe call or union read in a plain `fn` |
+| E0619 | `import safe` of a Gyro module |
 | W0701 | a possible leak |
 | W0801 | a spawned closure sharing a reference |
 
