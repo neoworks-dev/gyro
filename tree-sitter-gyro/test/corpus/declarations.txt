@@ -281,7 +281,7 @@ effect rows
 ==================
 
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io, alloc }
+export fn load(p: string): (string, error?) !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
 @gpu fn kernel(a: *f32) !{}
 
@@ -311,7 +311,6 @@ fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
         (named_type
           (type_identifier))))
     (effect_row
-      (identifier)
       (identifier)))
   (function_declaration
     (identifier)
@@ -577,37 +576,6 @@ fn main() {
           (identifier)
           (arguments
             (identifier)))))))
-
-==================
-with
-==================
-
-fn main() {
-  with arena.allocator()
-  var node = alloc<Node>()
-}
-
----
-
-(source_file
-  (function_declaration
-    (identifier)
-    (parameter_list)
-    (block
-      (with_statement
-        (call_expression
-          (field_expression
-            (identifier)
-            (identifier))
-          (arguments)))
-      (variable_declaration
-        (identifier)
-        (call_expression
-          (identifier)
-          (type_arguments
-            (named_type
-              (type_identifier)))
-          (arguments))))))
 
 ==================
 default parameter values

@@ -224,10 +224,6 @@
       {
         "type": "while_statement",
         "named": true
-      },
-      {
-        "type": "with_statement",
-        "named": true
       }
     ]
   },
@@ -2553,22 +2549,6 @@
     "fields": {}
   },
   {
-    "type": "with_statement",
-    "named": true,
-    "fields": {
-      "allocator": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "!",
     "named": false
   },
@@ -2924,10 +2904,6 @@
   },
   {
     "type": "while",
-    "named": false
-  },
-  {
-    "type": "with",
     "named": false
   },
   {

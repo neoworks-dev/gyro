@@ -143,8 +143,6 @@
 
 "defer" @keyword
 
-"with" @keyword
-
 "chan" @keyword.type
 
 ; `code` is contextual: this only fires inside a code pointer type, so a
