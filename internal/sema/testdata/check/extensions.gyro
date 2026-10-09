@@ -3,9 +3,10 @@
 // collide the way any other duplicate name does.
 
 import { println } from "stdlib"
+import { format, heap } from "mem"
 
 fn string::shout(self): string {
-  return "#{self}!"
+  return format(heap(), "#{self}!")
 }
 
 fn i32::double(self): i32 {

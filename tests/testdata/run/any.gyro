@@ -1,4 +1,5 @@
 import { println } from "stdlib"
+import { format, heap } from "mem"
 
 struct Point {
   x: i32
@@ -12,11 +13,11 @@ enum Shape {
 
 fn describe(v: any): string {
   return match v {
-    i32(n): "i32 #{n + 1}"
-    string(s): "string of #{s.len()}"
-    bool(b): "bool #{b}"
-    Point(p): "point #{p.x},#{p.y}"
-    Shape(s): "shape #{s}"
+    i32(n): format(heap(), "i32 #{n + 1}")
+    string(s): format(heap(), "string of #{s.len()}")
+    bool(b): format(heap(), "bool #{b}")
+    Point(p): format(heap(), "point #{p.x},#{p.y}")
+    Shape(s): format(heap(), "shape #{s}")
     _: "something else"
   }
 }

@@ -15,6 +15,7 @@
 import { Calc } from "./machine"
 import { CalcError } from "./error"
 import { sqrt, abs, floor, ceil, round, trunc, min, max } from "math"
+import { format, heap } from "mem"
 
 // True is 1 and false is 0: there is no bool on the stack, because a
 // calculator that cannot add up its own comparisons is less useful.
@@ -87,10 +88,10 @@ export fn binary(calc: *Calc, word: string): error? {
 // the answer is repeated multiplication.
 export fn power(calc: *Calc, base: f64, exponent: f64): error? {
   if trunc(exponent) != exponent {
-    return CalcError{ text: "^ wants a whole exponent, not #{exponent}" }
+    return CalcError{ text: format(heap(), "^ wants a whole exponent, not #{exponent}") }
   }
   if abs(exponent) > 1024.0 {
-    return CalcError{ text: "^ wants an exponent within ±1024, not #{exponent}" }
+    return CalcError{ text: format(heap(), "^ wants an exponent within ±1024, not #{exponent}") }
   }
 
   var times = abs(exponent) as i32

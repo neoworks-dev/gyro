@@ -28,6 +28,7 @@ type callee struct {
 }
 
 func (c *checker) callExpr(call *ast.CallExpr) types.Type {
+	c.allowFormat(call)
 	target := c.resolveCallee(call)
 
 	if target.variant != nil {

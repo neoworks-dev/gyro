@@ -578,7 +578,7 @@ heap — linking gives each its own.
 
 **Blocking real applications:**
 
-- **memory reclamation** — every `#{}`, `split`, `text()` allocates and
+- **memory reclamation** — every `split` and `text()` allocates and
   nothing frees it. Fine for a CLI that exits; fatal for a server. The
   allocator model (chapter 4.5) is in for `alloc`/`free`/`Arena`; the
   runtime's own storage (`Array`, strings, closure environments,

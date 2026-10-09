@@ -7,6 +7,7 @@
 
 import { println, Array, Map, String, join } from "stdlib"
 import { CalcError } from "./error"
+import { format, heap } from "mem"
 
 export struct Calc {
   stack: Array<f64>
@@ -56,7 +57,7 @@ export fn Calc::push(*self, value: f64) {
 export fn Calc::pop(*self, word: string): (f64, error?) {
   var value, ok = self.stack.pop()
   if !ok {
-    return 0.0, CalcError{ text: "#{word} wants a value and the stack is empty" }
+    return 0.0, CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
   }
   return value, null
 }
@@ -66,7 +67,7 @@ export fn Calc::pop(*self, word: string): (f64, error?) {
 export fn Calc::pop2(*self, word: string): (f64, f64, error?) {
   if self.stack.len() < 2 {
     return 0.0, 0.0, CalcError{
-      text: "#{word} wants two values and the stack has #{self.stack.len()}",
+      text: format(heap(), "#{word} wants two values and the stack has #{self.stack.len()}"),
     }
   }
   var b, _ = self.stack.pop()
@@ -78,7 +79,7 @@ export fn Calc::pop2(*self, word: string): (f64, f64, error?) {
 export fn Calc::pop3(*self, word: string): (f64, f64, f64, error?) {
   if self.stack.len() < 3 {
     return 0.0, 0.0, 0.0, CalcError{
-      text: "#{word} wants three values and the stack has #{self.stack.len()}",
+      text: format(heap(), "#{word} wants three values and the stack has #{self.stack.len()}"),
     }
   }
   var c, _ = self.stack.pop()
@@ -124,7 +125,7 @@ export fn Calc::show(self) {
     if i > 0 {
       out.push(" ")
     }
-    out.push("#{self.stack.get(i)}")
+    out.push(format(heap(), "#{self.stack.get(i)}"))
     i += 1
   }
   println(out.text())

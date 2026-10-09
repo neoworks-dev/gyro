@@ -1051,6 +1051,41 @@ Rejected primitives-only printing (debugging convenience matters more than
 avoiding generated code) — the derived form is compiler-emitted, accepted as
 the one place code generation is invisible.
 
+### Interpolation is a format value, streamed or formatted into an allocator *(new)*
+
+**Status: decided, done.** A string literal with a `#{}` in it is not a
+`string`. It is a `Format`, from `stdlib`: a record of the literal pieces and
+the values in them, built in the caller's frame, allocating nothing.
+`print`, `println` and `eprintln` stream the pieces one after another, and
+`format(allocator, value)` from `mem` builds them into the allocator it is
+given and returns a `string`. A plain literal with no `#{}` stays a
+`string`. A function may take a `Format` and pass it on, which is how a
+logging helper forwards its message to `println`.
+
+Following Rust's `format_args!`, a format value borrows what it names, so
+it cannot outlive its statement. The rule that enforces it is the simplest
+coherent one: a `Format` may only appear as a call argument. Binding,
+returning, storing, sending, capturing and wrapping it into an `any` are
+errors, and a `Format` where a `string` is wanted is a type error whose help
+names `format`.
+
+This is what explicit allocators needed. With an expression unable to
+allocate without naming an allocator, `"#{i}. #{title}"` could no longer
+quietly build a heap string nothing frees.
+
+Rejected interpolation allocating a heap string implicitly: it is the hidden
+allocation that every other allocating call has just been made to name, and
+nothing frees the result. Rejected allowing interpolation only as
+`println`'s argument with no type: a logging helper could not forward its
+message, and every function that wanted a formatted line would have to
+print it itself. Rejected dropping `#{}` for printf-style formatting: the
+readable form is the one every example uses, and `fmt.sprintf` already
+exists for the case where a format string is data.
+
+`panic` keeps taking a `string`; a message with a hole in it is written
+`panic(format(heap(), "..."))`. `format` lives in `mem` rather than
+`stdlib`, since it takes an `Allocator` and `mem` already imports `stdlib`.
+
 ---
 
 ## Runtime behaviour

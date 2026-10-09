@@ -19,6 +19,7 @@ import { repeat } from "stdlib"
 import { printf } from "fmt"
 import * as md5 from "./md5"
 import * as sha256 from "./sha256"
+import { format, heap } from "mem"
 
 const REPEATS: i64 = 1000
 
@@ -58,6 +59,6 @@ fn main() {
   // own, and 0 and 70 are the ends.
   for length in 0..71 {
     var message = "a".repeat(length)
-    both("#{length}", message)
+    both(format(heap(), "#{length}"), message)
   }
 }

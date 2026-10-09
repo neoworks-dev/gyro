@@ -1,0 +1,13 @@
+//gyro:panic format: the allocator is out of memory
+// Formatting into an arena that cannot hold the text stops the way an
+// allocation does, rather than writing past the end of the buffer.
+
+import { println } from "stdlib"
+import { format, heap, Arena } from "mem"
+
+fn main() {
+  var arena = Arena::new(heap(), 16)
+  defer arena.free()
+  var text = format(arena.allocator(), "no room for #{16}")
+  println(text)
+}

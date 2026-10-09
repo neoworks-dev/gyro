@@ -40,9 +40,10 @@ true      false         null
 (1, "a")                            // tuple
 ```
 
-A character literal such as `'c'` has type `rune`. Strings interpolate with
-`#{expr}`, where the expression is arbitrary Gyro; escape it as `\#{` to
-write the sequence literally. The escapes are `\n`, `\t`, `\r`, `\0`, `\\`,
+A character literal such as `'c'` has type `rune`. A string literal may
+interpolate with `#{expr}`, where the expression is arbitrary Gyro; escape it
+as `\#{` to write the sequence literally. Such a literal is a `Format`, not a
+`string` ([chapter 14.2](ch14-02-printing.md)). The escapes are `\n`, `\t`, `\r`, `\0`, `\\`,
 `\'`, `\"`, `\#`, `\xNN` and `\u{...}`.
 
 ## Numeric literals are context-typed

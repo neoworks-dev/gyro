@@ -8,6 +8,7 @@
 
 import { println } from "stdlib"
 import { printf } from "fmt"
+import { format, heap } from "mem"
 
 // A homogeneous pack. The call site may pass nothing at all.
 fn sum(values: ...i32): i32 {
@@ -43,9 +44,9 @@ fn describe(label: string, values: ...any) {
     var kind = match value {
       i32(n): "an i32"
       f64(f): "an f64"
-      string(s): "a string of #{s.len()}"
+      string(s): format(heap(), "a string of #{s.len()}")
       bool(b): "a bool"
-      Point(p): "a point at #{p.x},#{p.y}"
+      Point(p): format(heap(), "a point at #{p.x},#{p.y}")
       _: "something else"
     }
     println("  #{value} is #{kind}")

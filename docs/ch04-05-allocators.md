@@ -174,9 +174,9 @@ var node = make_node(counted, 1)       // counter.allocs is now 1
 
 ## What honours the allocator today
 
-`alloc`, `free`, `Arena` and everything written over them. The runtime's
-own storage — an `Array<T>`'s buffer, the text `#{}` and the string
-methods build, a closure's environment, a future — still comes from the
+`alloc`, `free`, `Arena`, `format` and everything written over them. The runtime's
+own storage — an `Array<T>`'s buffer, the text the string methods
+build, a closure's environment, a future — still comes from the
 process heap, because those take no allocator to honour
 ([appendix G](appendix-g-known-gaps.md)). So does a `to_string`, `hash` or
 `message` the compiler calls on its own behalf while printing, hashing or

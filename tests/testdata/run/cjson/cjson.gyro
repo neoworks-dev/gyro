@@ -58,7 +58,7 @@
 //     limit and a raw node with no text still produce.
 
 import { Array, String, from_utf8 } from "stdlib"
-import { alloc, free, heap } from "mem"
+import { alloc, free, format, heap } from "mem"
 import { to_f64 } from "convert"
 import * as dtoa from "./dtoa"
 
@@ -776,7 +776,7 @@ fn print_number(item: *Node, output: *Printer): bool {
     return true
   }
   if value == (integer as f64) {
-    output.text("#{integer}")
+    output.text(format(heap(), "#{integer}"))
     return true
   }
 

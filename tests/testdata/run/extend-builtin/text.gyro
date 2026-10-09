@@ -1,8 +1,9 @@
 import { String, split, join } from "stdlib"
+import { format, heap } from "mem"
 
 // A user module may extend a built-in exactly as the stdlib does.
 export fn string::shout(self): string {
-  return "#{self}!"
+  return format(heap(), "#{self}!")
 }
 
 export fn string::first_word(self): string {

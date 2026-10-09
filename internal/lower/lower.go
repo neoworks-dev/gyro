@@ -67,6 +67,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	l.collectGlobals()
 	l.ensureFunc(main, nil)
 	l.drain()
+	l.settleAnyTypes()
 	l.emitGlobalInit()
 	l.finishErrorType()
 	l.finishAnyType()
@@ -171,6 +172,10 @@ type lowerer struct {
 	// anyPrinters names the generated %any printers a call site asked for.
 	anyPrinters map[string]bool
 
+	// stdlib is the bundled stdlib module, where Format is declared and the
+	// streaming printers a format value is handed to live.
+	stdlib *loader.Module
+
 	synthetic int
 }
 
@@ -202,6 +207,9 @@ func (l *lowerer) indexModules() {
 			for name := range module.Foreign.TypeEnv() {
 				l.foreignName[name] = true
 			}
+		}
+		if module.Path == stdlib.Path("stdlib") {
+			l.stdlib = module
 		}
 
 		for _, decl := range module.Tree.Decls {

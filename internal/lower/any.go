@@ -32,6 +32,34 @@ func (l *lowerer) anyVariantOf(t types.Type) int {
 	return index
 }
 
+// settleAnyTypes lowers what the any printers will call, while there is
+// still a queue to lower it from. A printer shows a variant through its
+// to_string or its derived repr, and either may reach functions nothing
+// else called; those bodies may wrap further types, so this runs until the
+// set of wrapped types stops growing.
+func (l *lowerer) settleAnyTypes() {
+	if len(l.anyPrinters) == 0 {
+		return
+	}
+	for seen := 0; ; {
+		l.drain()
+		if seen == len(l.anyTypes) {
+			return
+		}
+		for ; seen < len(l.anyTypes); seen++ {
+			t := l.anyTypes[seen]
+			if isStringType(t) {
+				continue
+			}
+			if method := toStringMethodOf(t); method != nil {
+				l.ensureFunc(method.Decl, ownerBindings(method.Decl, t))
+				continue
+			}
+			l.reprFor(t)
+		}
+	}
+}
+
 // finishAnyType emits the %any declaration and its printers once every
 // wrap in the program has been seen.
 func (l *lowerer) finishAnyType() {
@@ -53,6 +81,11 @@ func (l *lowerer) finishAnyType() {
 	}
 	if l.anyPrinters[anyDisplayName] {
 		l.buildAnyRepr(anyDisplayName, true)
+	}
+	for _, printer := range []string{"print", "eprint"} {
+		if name := printer + "<any>"; l.anyPrinters[name] {
+			l.buildAnyStream(name, printer)
+		}
 	}
 }
 

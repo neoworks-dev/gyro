@@ -1,0 +1,22 @@
+3. Gyro
+6 3 2.5 true x 3 true
+Point{ x: 1, y: 2 } Shape::Dot Shape::Circle(1.5) (3, "Gyro")
+[10, 20, 30] null
+v1.9
+a33b
+#{n} stays literal
+say "Gyro"
+before (rendering)
+loud7 after
+log: the answer is 3
+forwarded Gyro
+loud 3!
+generic 4
+3. Gyro
+7
+true
+64
+GyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyroGyro
+first 3
+other 4
+other 4

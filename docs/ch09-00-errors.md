@@ -35,7 +35,7 @@ export struct RangeError {
 }
 
 fn RangeError::message(self): string {
-  return "value #{self.value} is outside #{self.low}..#{self.high}"
+  return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
 }
 
 export fn parse_port(text: string): (i32, error?) {

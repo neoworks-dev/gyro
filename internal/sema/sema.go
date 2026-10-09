@@ -139,6 +139,10 @@ type program struct {
 	// depth guards against infinitely growing instantiations such as a
 	// generic function calling itself with Pair<T>.
 	depth int
+	// format is stdlib's Format, the type of a string literal with a
+	// #{} in it. Nil until the stdlib module has been checked, and for a
+	// program that never loads it.
+	format *types.Struct
 }
 
 func newProgram(bag *diag.Bag) *program {
@@ -242,6 +246,10 @@ type checker struct {
 	// to, which is how `alloc` is told from a local function of that name.
 	importPaths map[string]string
 
+	// formatOK holds the expressions standing where a format value may:
+	// a call's argument, or the base of a selector.
+	formatOK map[ast.Expr]bool
+
 	// closureDepth counts the closures enclosing the expression being
 	// checked. A name used deeper than it was declared is captured.
 	closureDepth int
@@ -280,6 +288,7 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		importPaths:     map[string]string{},
 		reportedLeaks:   map[*symbol]bool{},
 		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
+		formatOK:        map[ast.Expr]bool{},
 	}
 	c.scope = c.module
 	return c
@@ -315,6 +324,7 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 
 func (c *checker) run(tree *ast.File) *Exports {
 	c.collectModule(tree)
+	c.noteFormat(tree)
 	c.buildTypes(tree)
 	exports := c.collectExports(tree)
 	c.checkDecls(tree)

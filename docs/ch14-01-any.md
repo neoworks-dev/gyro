@@ -32,8 +32,8 @@ on an `error`:
 
 ```gyro
 var text = match v {
-  i32(n):    "int #{n}"
-  string(s): "text #{s}"
+  i32(n):    format(heap(), "int #{n}")
+  string(s): format(heap(), "text #{s}")
   _:         "something else"
 }
 ```
@@ -45,10 +45,10 @@ A type an ordinary path cannot spell is written out in the arm:
 
 ```gyro
 var text = match v {
-  (i32, string)(pair): "pair #{pair.0}"
-  i32[](xs):           "#{xs.len()} numbers"
+  (i32, string)(pair): format(heap(), "pair #{pair.0}")
+  i32[](xs):           format(heap(), "#{xs.len()} numbers")
   i32[3](fixed):       "three numbers"
-  *Node(node):         "node #{node.value}"
+  *Node(node):         format(heap(), "node #{node.value}")
   _:                   "something else"
 }
 ```

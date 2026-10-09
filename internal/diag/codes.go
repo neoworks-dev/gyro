@@ -109,6 +109,9 @@ const (
 	EExternDeclaration Code = "E0613"
 	EExternSignature   Code = "E0614"
 
+	// Format values
+	EFormatEscapes Code = "E0616"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -283,6 +286,8 @@ var explanations = map[Code]explanation{
 		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
 	EExternSignature: {"type cannot cross to C",
 		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
+	EFormatEscapes: {"format value outlives its statement",
+		"A string literal with a #{} in it is a Format: a record of its pieces\nthat borrows what it names and allocates nothing. It lives in the frame of\nthe statement that wrote it, so it can only be passed on as an argument.\nBinding, returning, storing, sending or capturing it would keep the\nborrow past the statement.\n\nTo get text, call format(allocator, ...) from mem, which builds a string\nin the allocator it is given."},
 	EEscapingLocalView: {"view outlives the storage behind it",
 		"The storage belongs to this frame — an array literal, or a buffer this\nfunction owns — and the caller outlives the frame, so the view it gets\nback points at memory that is gone.\n\nReturn an owning Array<T> or String, or take the storage as a parameter\nand name it in the row."},
 	WSpawnRace: {"spawned closure shares a reference with its spawner",

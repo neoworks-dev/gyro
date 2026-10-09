@@ -50,10 +50,11 @@ fn fill(xs: Array<i32>, v: i32): i32[] !{ &xs } {
   return xs.slice()
 }
 
-// Pushing and interpolating allocate, and neither is an effect.
-fn describe(xs: Array<i32>, n: i32): string !{} {
+// Pushing allocates and interpolating builds a Format, and neither is an
+// effect: io for the print is the whole row.
+fn describe(xs: Array<i32>, n: i32) !{ io } {
   xs.push(n)
-  return "n = #{n}"
+  println("n = #{n}")
 }
 
 struct Logger {

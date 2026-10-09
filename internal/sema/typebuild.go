@@ -44,7 +44,7 @@ func (c *checker) buildStruct(decl *ast.StructDecl) {
 		for _, field := range decl.Fields {
 			shell.Fields = append(shell.Fields, types.Field{
 				Name:     field.Name,
-				Type:     c.resolveType(field.Type),
+				Type:     c.noFormat(field.Type.Pos(), c.resolveType(field.Type)),
 				Exported: field.Exported,
 			})
 		}
@@ -170,11 +170,11 @@ func (c *checker) resultType(results []ast.Type) types.Type {
 	case 0:
 		return types.Void
 	case 1:
-		return c.resolveType(results[0])
+		return c.noFormat(results[0].Pos(), c.resolveType(results[0]))
 	}
 	tuple := &types.Tuple{Elems: make([]types.Type, len(results))}
 	for i, result := range results {
-		tuple.Elems[i] = c.resolveType(result)
+		tuple.Elems[i] = c.noFormat(result.Pos(), c.resolveType(result))
 	}
 	return tuple
 }
@@ -283,15 +283,15 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 	case *ast.NamedType:
 		return c.resolveNamedType(t)
 	case *ast.PointerType:
-		return &types.Pointer{Elem: c.resolveType(t.Elem)}
+		return &types.Pointer{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
 	case *ast.OptionalType:
-		return types.NewOptional(c.resolveType(t.Elem))
+		return types.NewOptional(c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem)))
 	case *ast.ArrayType:
 		return c.resolveArrayType(t)
 	case *ast.TupleType:
 		tuple := &types.Tuple{Elems: make([]types.Type, len(t.Elements))}
 		for i, element := range t.Elements {
-			tuple.Elems[i] = c.resolveType(element)
+			tuple.Elems[i] = c.noFormat(element.Pos(), c.resolveType(element))
 		}
 		return tuple
 	case *ast.FuncType:
@@ -309,13 +309,13 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		code.Result = c.resultType(t.Results)
 		return code
 	case *ast.ChanType:
-		return &types.Chan{Elem: c.resolveType(t.Elem)}
+		return &types.Chan{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
 	}
 	return types.Unknown
 }
 
 func (c *checker) resolveArrayType(t *ast.ArrayType) types.Type {
-	elem := c.resolveType(t.Elem)
+	elem := c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))
 	if t.Length == nil {
 		return &types.Slice{Elem: elem}
 	}
@@ -379,7 +379,7 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 func (c *checker) resolveTypeArgs(args []ast.Type) []types.Type {
 	out := make([]types.Type, len(args))
 	for i, arg := range args {
-		out[i] = c.resolveType(arg)
+		out[i] = c.noFormat(arg.Pos(), c.resolveType(arg))
 	}
 	return out
 }

@@ -4,6 +4,7 @@
 // checked when the generic is instantiated.
 
 import { println } from "stdlib"
+import { format, heap } from "mem"
 
 export struct Version {
   export major: i32
@@ -36,7 +37,7 @@ export fn Version::compare(self, other: Version): i32 {
 // println and #{} use the compiler-derived representation unless a type
 // defines to_string, which then wins.
 export fn Version::to_string(self): string {
-  return "v#{self.major}.#{self.minor}"
+  return format(heap(), "v#{self.major}.#{self.minor}")
 }
 
 // Duck-typed generic: no bounds. Calling max with a type that has no

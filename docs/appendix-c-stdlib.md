@@ -49,8 +49,26 @@ Printing:
 ```gyro
 export fn print<T>(value: T) !{ io }
 export fn println<T>(value: T) !{ io }
+export fn eprint<T>(value: T) !{ io }
 export fn eprintln<T>(value: T) !{ io }
 ```
+
+`Format` is what a string literal containing `#{}` is: its pieces, recorded,
+and nothing allocated ([chapter 14.2](ch14-02-printing.md)). The printers
+take one as they take any value and stream it; `mem`'s `format` builds it
+into an allocator.
+
+```gyro
+export struct Format { pieces: any[] }
+
+export fn Format::len(self): usize !{}
+export fn Format::piece(self, index: usize): any !{}
+export fn Format::text(self, index: usize): string !{}
+```
+
+`piece` is the value a hole held, or a literal segment as a `string`. `text`
+shows it the way `println` would. A `Format` may only be passed as an
+argument.
 
 Threads:
 
@@ -157,6 +175,8 @@ export fn align<T>(): usize !{}
 
 export fn panic(message: string) !{}
 
+export fn format(a: Allocator, value: Format): string !{}
+
 export fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export fn raw_free(pointer: anyptr) !{}
 export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
@@ -168,6 +188,11 @@ export fn Arena::allocator(*self): Allocator !{}
 export fn Arena::free_all(*self) !{}
 export fn Arena::free(*self) !{}
 ```
+
+`format` shows each piece of a `Format` and joins them into a `string`
+whose bytes come from `a`. The text of a piece that is not already a string
+is still produced by the runtime on the process heap on the way through, so
+only the result is in `a` ([appendix G](appendix-g-known-gaps.md)).
 
 `panic` aborts the process with the message, the way an index out of
 range does. It is a function rather than a keyword because a program that
@@ -284,14 +309,15 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
+Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
 `align`, `panic` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
 `net::get`, the `os` and `time` surfaces. The `math` functions are METALS
 instructions.
 
-Ordinary Gyro: `String` and its UTF-8 encoder, every text method,
+Ordinary Gyro: `String` and its UTF-8 encoder, every text method, `Format`'s
+methods and `mem`'s `format`,
 `Map<K, V>`, `Array<T>::is_empty`, all of `fmt`, and `mem`'s `alloc`,
 `free`, `heap` and `Arena`.
 

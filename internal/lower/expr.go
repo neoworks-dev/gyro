@@ -864,54 +864,6 @@ func (f *funcLowerer) rewrapOptional(reg string, from, to *types.Optional) strin
 // String interpolation and display
 // ---------------------------------------------------------------------------
 
-func (f *funcLowerer) evalStringLit(e *ast.StringLit) string {
-	var acc string
-	appendPart := func(part string) {
-		if acc == "" {
-			acc = part
-			return
-		}
-		joined := f.newReg("s")
-		f.emit(&metals.StrConcat{Dst: joined, A: acc, B: part})
-		acc = joined
-	}
-	for _, part := range e.Parts {
-		if part.Expr == nil {
-			if part.Text == "" {
-				continue
-			}
-			text := f.newReg("s")
-			f.emit(&metals.Const{Dst: text, Type: metals.TStr, Value: strconv.Quote(part.Text)})
-			appendPart(text)
-			continue
-		}
-		appendPart(f.display(part.Expr))
-	}
-	if acc == "" {
-		empty := f.newReg("s")
-		f.emit(&metals.Const{Dst: empty, Type: metals.TStr, Value: `""`})
-		return empty
-	}
-	return acc
-}
-
-// display renders a value the way #{} and println show it: strings pass
-// through, a to_string method wins, everything else goes to the runtime.
-func (f *funcLowerer) display(e ast.Expr) string {
-	if isNullLiteral(e) {
-		return f.text("null")
-	}
-	t := f.typeOf(e)
-	if isStringType(t) {
-		return f.lowerExpr(e, nil)
-	}
-	if toString := f.toStringMethod(t); toString != nil {
-		return f.callToString(e, t, toString)
-	}
-	value := f.lowerExpr(e, nil)
-	return f.displayReg(value, t)
-}
-
 // displayReg converts an already-evaluated value to its display string. A
 // composite has a synthesized repr; the runtime answers for the leaves.
 func (f *funcLowerer) displayReg(value string, t types.Type) string {

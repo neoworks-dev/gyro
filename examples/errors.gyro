@@ -10,6 +10,7 @@
 import { println, eprintln } from "stdlib"
 import { to_i32 } from "convert"
 import { open, read_all } from "fs"
+import { format, heap } from "mem"
 
 export struct RangeError {
   export value: i32
@@ -21,7 +22,7 @@ export struct RangeError {
 // it travels inside the error value's inline storage and costs no
 // allocation on the error path.
 fn RangeError::message(self): string {
-  return "value #{self.value} is outside #{self.low}..#{self.high}"
+  return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
 }
 
 export fn parse_port(text: string): (i32, error?) {

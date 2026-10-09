@@ -3,6 +3,7 @@
 // the call that argument sits on.
 
 import { println, Array } from "stdlib"
+import { format, heap } from "mem"
 
 fn each<T>(xs: T[], visit: fn(T)) {
   for x in xs {
@@ -34,12 +35,12 @@ fn main() {
 
   var labels = Array<string>::new()
   defer labels.free()
-  map_into(xs.slice(), &labels, fn(v) "<#{v}>")
+  map_into(xs.slice(), &labels, fn(v) format(heap(), "<#{v}>"))
   each(labels.slice(), fn(v) println(v))
 
   println(apply(5, fn(v) v * 3))
   println(twice(fn(v) v + 1, 10))
-  println(apply("hi", fn(v) "#{v}!"))
+  println(apply("hi", fn(v) format(heap(), "#{v}!")))
 
   // A fixed-size array lends a view of itself to a T[] parameter, and
   // that is where T comes from.

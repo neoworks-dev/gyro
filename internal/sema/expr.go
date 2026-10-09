@@ -21,6 +21,7 @@ func (c *checker) expr(e ast.Expr) types.Type {
 // closure parameters, and nothing else — typed values never convert.
 func (c *checker) exprWith(e ast.Expr, want types.Type) types.Type {
 	t := c.exprValue(e, want)
+	t = c.checkFormatPosition(e, t)
 	c.record(e, t)
 	return t
 }
@@ -44,12 +45,7 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 		return c.basicLit(e, want)
 
 	case *ast.StringLit:
-		for _, part := range e.Parts {
-			if part.Expr != nil {
-				c.expr(part.Expr)
-			}
-		}
-		return types.String
+		return c.formatLiteral(e)
 
 	case *ast.ArrayLit:
 		return c.arrayLit(e, want)
@@ -130,6 +126,10 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 	}
 	c.checkAssigned(sym, e.Offset, e.Name)
 	c.noteCapture(sym)
+	if sym.kind == symValue && sym.closureDepth < c.closureDepth && c.isFormat(sym.typ) {
+		c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")
+		return types.Unknown
+	}
 	return c.symbolValueType(sym, e.Offset, e.Name)
 }
 
@@ -338,6 +338,12 @@ func (c *checker) assignExpr(e ast.Expr, target types.Type, context string) {
 func (c *checker) assignValue(offset int, e ast.Expr, value, target types.Type, context string) {
 	if e != nil {
 		value = c.adaptUntyped(e, value, target)
+	}
+	if c.isFormat(value) && types.Identical(target, types.String) {
+		c.errorHintf(offset, []string{
+			"a Format is not text; build the string into an allocator: format(heap(), ...) from mem",
+		}, "cannot use %s as %s in %s", describeType(value), target, context)
+		return
 	}
 	if !c.assignableType(value, target) {
 		c.errorLabelf(offset, fmt.Sprintf("expected %s", target),
@@ -1040,6 +1046,7 @@ func (c *checker) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) types.Type 
 // selectorExpr types `x.name`: a struct field, or nothing here — method
 // calls are handled by callExpr, so a bare method reference is an error.
 func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
+	c.formatOK[e.X] = true
 	base := c.expr(e.X)
 	return c.selectField(e.NameOffset, base, e.Name, true)
 }
@@ -1368,6 +1375,11 @@ func anyPayload(t types.Type) bool {
 		}
 		return true
 	case *types.Struct:
+		// A Format borrows its statement's frame, and an any can be
+		// carried anywhere.
+		if t.Name == "Format" && t.Module == stdlib.Path("stdlib") {
+			return false
+		}
 		return !isRuntimeHandle(t) && !holdsUnion(t, map[*types.Struct]bool{})
 	case *types.Union:
 		// An any promises the concrete value comes back out, and a union
