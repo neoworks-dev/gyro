@@ -1,7 +1,7 @@
 // A capture copies, and copying a reference shares what it points at.
 
 import { println, spawn } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 
 struct Node {
   value: i32
@@ -55,9 +55,9 @@ fn overAChannel(ch: chan<i32>) {
 
 // A move hands the binding over rather than sharing it.
 fn moved() {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   spawn(fn[move node]() {
-    free(node)
+    free(heap(), node)
   })
 }
 

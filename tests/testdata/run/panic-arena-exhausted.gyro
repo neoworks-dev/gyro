@@ -4,7 +4,7 @@
 // is not one.
 
 import { println } from "stdlib"
-import { alloc, Arena } from "mem"
+import { alloc, heap, Arena } from "mem"
 
 struct Node {
   value: i32
@@ -12,15 +12,14 @@ struct Node {
 }
 
 fn main() {
-  var arena = Arena::new(40)
+  var arena = Arena::new(heap(), 40)
   defer arena.free()
-  with arena.allocator()
 
-  var a = alloc<Node>()
-  var b = alloc<Node>()
+  var a = alloc<Node>(arena.allocator())
+  var b = alloc<Node>(arena.allocator())
   a.value = 1
   b.value = 2
   println(a.value + b.value)
-  var c = alloc<Node>()
+  var c = alloc<Node>(arena.allocator())
   println(c.value)
 }

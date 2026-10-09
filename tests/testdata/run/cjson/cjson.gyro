@@ -19,7 +19,7 @@
 //     `type_of` recovers C's integer tag where the algorithm really is a
 //     switch on it.
 //
-//   * **Ownership is real.** A node is an `alloc<Node>()` and `delete`
+//   * **Ownership is real.** A node is an `alloc<Node>(heap())` and `delete`
 //     frees it, exactly where `cJSON_Delete` does. The strings are the
 //     part Gyro cannot follow: `from_utf8` allocates and nothing in the
 //     language reclaims text, so where C frees `valuestring` and `string`
@@ -58,7 +58,7 @@
 //     limit and a raw node with no text still produce.
 
 import { Array, String, from_utf8 } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 import { to_f64 } from "convert"
 import * as dtoa from "./dtoa"
 
@@ -118,7 +118,7 @@ export struct Node {
 // new_node is cJSON_New_Item: a blank node. C memsets it; Gyro has no zero
 // value, so every field is written.
 fn new_node(): *Node {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = Value::Invalid
   node.key = null
   node.next = null
@@ -212,7 +212,7 @@ export fn delete(item: *Node?) {
   while current != null {
     var next = current.next
     delete(current.child)
-    free(current)
+    free(heap(), current)
     current = next
   }
 }

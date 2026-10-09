@@ -1,7 +1,8 @@
 // Concrete effects. A declared row is a complete statement of what the
-// function does: a row without io promises no io, a row without alloc
-// promises no allocation, and a row holding only borrows promises both.
-// A function with no row is unconstrained in v1.
+// function does: a row without io promises no io, and a row holding only
+// borrows promises the same. A function with no row is unconstrained in
+// v1. Allocation is not an effect: a function allocates when it is handed
+// an Allocator, and that shows in its parameters.
 
 import { println, Array } from "stdlib"
 
@@ -42,36 +43,17 @@ fn deep(message: string) !{} {
                          //~^^^ help: name it in the row: !{ io }
 }
 
-// Two effects reaching one call by different routes are explained
-// separately: what allocates is not what prints.
-fn noisy(n: i32) {
-  println(n)
-}
-
-fn builder(n: i32): string {
-  return "n = #{n}"
-}
-
-fn both(n: i32) !{} {
-  noisy(n)               //~ E0611 noisy does io, which the row does not name
-                         //~^ span: noisy calls println, which does io
-                         //~^^ help: name it in the row: !{ io }
-  var text = builder(n)  //~ E0611 builder does alloc, which the row does not name
-                         //~^ span: builder interpolates a string, which allocates
-                         //~^^ help: name it in the row: !{ alloc }
-}
-
-// A borrow-only row still promises no concrete effects.
+// A borrow-only row still promises no io.
 fn fill(xs: Array<i32>, v: i32): i32[] !{ &xs } {
-  xs.push(v)             //~ E0611 push does alloc, which the row does not name
-                         //~^ help: name it in the row: !{ alloc, &xs }
+  println(v)             //~ E0611 println does io, which the row does not name
+                         //~^ help: name it in the row: !{ io, &xs }
   return xs.slice()
 }
 
-// Interpolation builds new text, which allocates.
-fn describe(n: i32): string !{} {
-  return "n = #{n}"      //~ E0611 this string interpolation allocates, which the row does not name
-                         //~^ help: name it in the row: !{ alloc }
+// Pushing and interpolating allocate, and neither is an effect.
+fn describe(xs: Array<i32>, n: i32): string !{} {
+  xs.push(n)
+  return "n = #{n}"
 }
 
 struct Logger {
@@ -110,17 +92,23 @@ fn callsRelay() !{} {
   relay(Shout{ n: 2 })   //~ E0611 relay does io, which the row does not name
 }
 
-// The effect vocabulary is closed: io, alloc, and &name for a borrow.
+// The effect vocabulary is closed: io, and &name for a borrow. There is no
+// alloc effect.
 fn misspelled(n: i32) !{ ioo } {   //~ E0612 ioo is not an effect
-                                   //~^ help: the effects are io and alloc; a &name entry names a borrow source
+                                   //~^ help: the only effect is io; a &name entry names a borrow source
+  var doubled = n * 2
+}
+
+fn allocating(n: i32) !{ alloc } {   //~ E0612 alloc is not an effect
+                                     //~^ help: the only effect is io; a &name entry names a borrow source
   var doubled = n * 2
 }
 
 // runes() and bytes() have no declaration to carry a row, so the built-in
-// surface answers for itself. Both copy into new storage.
+// surface answers for itself, and it performs no io.
 fn count(text: string): i32 !{} {
   var seen = 0
-  for point in text.runes() {   //~ E0611 runes does alloc, which the row does not name
+  for point in text.runes() {
     seen += 1
   }
   return seen
@@ -136,6 +124,6 @@ fn closureRow() {
 }
 
 // The row that names what the body does checks clean.
-fn loud(message: string) !{ io, alloc } {
+fn loud(message: string) !{ io } {
   println("message: #{message}")
 }

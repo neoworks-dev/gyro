@@ -343,8 +343,8 @@ func TestDeclarations(t *testing.T) {
 		},
 		{
 			name: "effect row",
-			src:  "export fn f() !{ io, alloc } {\n}\n",
-			want: "File test.gyro Func export f Effects: !{io, alloc} Body: Block",
+			src:  "export fn f() !{ io } {\n}\n",
+			want: "File test.gyro Func export f Effects: !{io} Body: Block",
 		},
 		{
 			name: "effect row variable",
@@ -754,7 +754,8 @@ func TestForms(t *testing.T) {
 		"fn t() {\n  for v in 0..10 {\n  }\n}\n",
 		"fn t() {\n  while a < b {\n    break\n  }\n}\n",
 		"fn t() {\n  defer free(p)\n}\n",
-		"fn t() {\n  with arena.allocator()\n  var p = alloc<Node>()\n}\n",
+		"fn t() {\n  var p = alloc<Node>(arena.allocator())\n}\n",
+		"fn t(with: i32): i32 {\n  return with\n}\n",
 		"fn t() {\n  spawn(fn() worker(ch))\n}\n",
 		"fn t() {\n  var x = await f()\n}\n",
 		"fn t() {\n  var c = chan<i32>(64)\n}\n",
@@ -771,6 +772,17 @@ func TestForms(t *testing.T) {
 
 	for _, src := range sources {
 		parseOK(t, src)
+	}
+}
+
+// There is no `with` statement: the allocator a call uses is an argument
+// written at the call, so the word is an ordinary identifier.
+func TestWithIsNotAStatement(t *testing.T) {
+	var bag diag.Bag
+	Parse("test.gyro", "fn t() {\n  with arena.allocator()\n}\n", &bag)
+
+	if !bag.HasErrors() {
+		t.Fatal("expected `with expr` to be rejected")
 	}
 }
 

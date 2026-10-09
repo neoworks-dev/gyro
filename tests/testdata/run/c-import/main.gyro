@@ -12,7 +12,7 @@
 // boundaries".
 
 import { println } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 import { add, clamp, fib, gcd, mean_of_range, divmod, hypot_squared, char_wraps } from "./mathlib.c"
 
 fn main() {
@@ -26,10 +26,10 @@ fn main() {
   println(mean_of_range(1, 10))
 
   // Out-parameters: storage Gyro owns, written by C.
-  var whole = alloc<i32>()
-  var rest = alloc<i32>()
-  defer free(whole)
-  defer free(rest)
+  var whole = alloc<i32>(heap())
+  var rest = alloc<i32>(heap())
+  defer free(heap(), whole)
+  defer free(heap(), rest)
   divmod(47, 10, whole, rest)
   println(*whole)
   println(*rest)

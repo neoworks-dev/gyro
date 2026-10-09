@@ -1,21 +1,50 @@
-// Allocators ride on the alloc effect: a function whose row names alloc
-// is handed one, `with` chooses it for the rest of a block, and an arena
-// hands blocks out of one buffer and takes them all back at once.
+// Allocators are explicit parameters: a function allocates exactly when it
+// is handed an Allocator, an arena hands blocks out of one buffer it took
+// from a parent allocator and gives them all back at once, and a program
+// can write an allocator of its own.
 
 import { println } from "stdlib"
-import { alloc, free, allocator, heap, size, align, Arena } from "mem"
+import { alloc, free, heap, size, align, Allocator, Arena, Mode } from "mem"
 
 struct Node {
   value: i32
   next: *Node?
 }
 
-// Rowless, allocates, so it receives the allocator its caller was using.
-fn make_node(value: i32): *Node {
-  var node = alloc<Node>()
+// Takes an allocator, so it allocates from whichever the caller names.
+fn make_node(a: Allocator, value: i32): *Node {
+  var node = alloc<Node>(a)
   node.value = value
   node.next = null
   return node
+}
+
+// An allocator of the program's own: counts the requests that reach it and
+// leaves the work to the heap.
+struct Counter {
+  allocs: i32
+  frees: i32
+}
+
+fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? {
+  if data == null {
+    return null
+  }
+  var counter = data as *Counter
+  match mode {
+    Mode::Alloc: {
+      counter.allocs += 1
+    }
+    Mode::Free: {
+      counter.frees += 1
+    }
+    Mode::FreeAll: {
+    }
+    Mode::Resize: {
+    }
+  }
+  var h = heap()
+  return h.proc(h.data, mode, size, align, old, old_size)
 }
 
 fn main() {
@@ -23,73 +52,59 @@ fn main() {
   println(align<Node>())
   println(size<u8>())
 
-  var arena = Arena::new(256)
+  var arena = Arena::new(heap(), 256)
   defer arena.free()
 
-  // Everything below the with comes out of the arena, and the arena is
-  // what reclaims it: no free, no warning.
-  var first: *Node
-  {
-    with arena.allocator()
-    first = make_node(1)
-    var second = make_node(2)
-    first.next = second
-    println(first.value + second.value)
+  // Both blocks come out of the arena, which is what reclaims them: no
+  // free, no warning.
+  var first = make_node(arena.allocator(), 1)
+  var second = make_node(arena.allocator(), 2)
+  first.next = second
+  println(first.value + second.value)
+  println(first.next == second)
 
-    // The block's allocator is the one allocator() answers with.
-    println(allocator().data == arena.allocator().data)
-  }
-
-  // The block ended, so this is the heap's again.
-  println(allocator().data == heap().data)
-  var kept = make_node(3)
-  defer free(kept)
+  // A block from the heap is freed to the heap.
+  var kept = make_node(heap(), 3)
+  defer free(heap(), kept)
   println(kept.value)
+  println(kept == first)
 
-  // free_all resets the arena: the next block is the first block again.
+  // free_all resets the arena: the next block is the first block again,
+  // and zero-filled even though the first one held a 1.
   arena.free_all()
-  with arena.allocator()
-  var again = make_node(4)
+  var again = alloc<Node>(arena.allocator())
   println(again == first)
   println(again.value)
+  println(again.next == null)
 
-  // A block from Alloc is zero-filled, even one reused after free_all.
-  var fresh = alloc<Node>()
-  println(fresh.value)
-  println(fresh.next == null)
-
-  // A closure captures the allocator current where it is written.
-  var build = fn(n: i32): *Node {
-    return make_node(n)
-  }
-  arena.free_all()
-  var built = build(5)
-  println(built == first)
-  println(built.value)
-
-  // So does a named allocating function taken as a value.
-  var named = make_node
-  arena.free_all()
-  println(named(6) == first)
-
-  // Its address is a thunk that supplies the heap: what it makes is not
-  // the arena's, and is freed to the heap.
+  // &make_node is an ordinary code pointer: the allocator is an argument.
   arena.free_all()
   var code = &make_node
-  var off = code(7)
-  println(off == first)
-  println(off.value)
-  {
-    with heap()
-    free(off)
-  }
+  var via_code = code(arena.allocator(), 5)
+  println(via_code == first)
+  println(via_code.value)
+
+  // So is the function as a value.
+  var named = make_node
+  var via_fn = named(heap(), 6)
+  println(via_fn.value)
+  free(heap(), via_fn)
 
   // An arena inside an arena takes its buffer from the outer one.
-  var inner = Arena::new(64)
-  {
-    with inner.allocator()
-    var deep = make_node(8)
-    println(deep.value)
-  }
+  arena.free_all()
+  var inner = Arena::new(arena.allocator(), 64)
+  var deep = make_node(inner.allocator(), 7)
+  println(deep.value)
   inner.free()
+
+  // Any value of the right shape is an allocator.
+  var counter = Counter{ allocs: 0, frees: 0 }
+  var counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
+  var c1 = make_node(counting, 8)
+  var c2 = make_node(counting, 9)
+  println(counter.allocs)
+  println(c1.value + c2.value)
+  free(counting, c1)
+  free(counting, c2)
+  println(counter.frees)
 }

@@ -243,12 +243,6 @@ func (p *printer) node(node Node) {
 		p.node(n.Call)
 		p.indent--
 
-	case *WithStmt:
-		p.line("With")
-		p.indent++
-		p.node(n.Allocator)
-		p.indent--
-
 	case *Ident:
 		p.line("Ident %s", n.Name)
 

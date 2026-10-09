@@ -48,18 +48,18 @@ fn SDL_Init(flags: u32): i32 !{ io }
 fn SDL_Quit() !{ io }
 
 @extern("SDL2")
-fn SDL_GetError(): string !{ alloc }
+fn SDL_GetError(): string !{}
 
 @extern("SDL2")
 fn SDL_CreateWindow(
   title: string, x: i32, y: i32, width: i32, height: i32, flags: u32,
-): Window? !{ io, alloc }
+): Window? !{ io }
 
 @extern("SDL2")
 fn SDL_DestroyWindow(window: Window) !{ io }
 
 @extern("SDL2")
-fn SDL_CreateRenderer(window: Window, index: i32, flags: u32): Renderer? !{ io, alloc }
+fn SDL_CreateRenderer(window: Window, index: i32, flags: u32): Renderer? !{ io }
 
 @extern("SDL2")
 fn SDL_DestroyRenderer(renderer: Renderer) !{ io }
@@ -67,7 +67,7 @@ fn SDL_DestroyRenderer(renderer: Renderer) !{ io }
 @extern("SDL2")
 fn SDL_CreateTexture(
   renderer: Renderer, format: u32, access: i32, width: i32, height: i32,
-): Texture? !{ io, alloc }
+): Texture? !{ io }
 
 @extern("SDL2")
 fn SDL_DestroyTexture(texture: Texture) !{ io }

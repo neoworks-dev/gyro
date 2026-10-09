@@ -17,14 +17,6 @@ func (f *funcLowerer) evalClosure(e *ast.ClosureExpr) string {
 		f.l.fail("@%s: a closure without a function type", f.fn.Name)
 	}
 	captured := f.freeVars(e)
-	// A closure that allocates captures the allocator current where it is
-	// written, by copy like any other local, so calling it later
-	// allocates from that one wherever the call happens.
-	if f.l.info.ClosureAllocates[e] {
-		f.currentAllocator()
-		captured = append(captured, capture{name: allocatorLocal, typ: f.l.allocatorStruct()})
-	}
-
 	liftedName := f.l.syntheticName(f.fn.Name + "::closure")
 	envName := liftedName + ".env"
 	envDecl := &metals.TypeDecl{Name: envName, Record: &metals.RecordShape{}}
@@ -220,8 +212,6 @@ func (w *fvWalker) stmt(s ast.Stmt) {
 		w.pop()
 	case *ast.DeferStmt:
 		w.expr(s.Call)
-	case *ast.WithStmt:
-		w.expr(s.Allocator)
 	case *ast.SendStmt:
 		w.expr(s.Chan)
 		w.expr(s.Value)

@@ -222,8 +222,6 @@ func (c *hintCollector) collectStmt(stmt ast.Stmt) {
 		c.collectForIn(s)
 	case *ast.DeferStmt:
 		c.collectExpr(s.Call)
-	case *ast.WithStmt:
-		c.collectExpr(s.Allocator)
 	case *ast.SendStmt:
 		c.collectExpr(s.Chan)
 		c.collectExpr(s.Value)

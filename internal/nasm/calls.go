@@ -506,6 +506,8 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_raw_resize", args: values(0, 1, 2, 3)}
 	case "copy_bytes":
 		return nativePlan{symbol: "gy_copy_bytes", args: values(0, 1, 2)}
+	case "offset":
+		return nativePlan{symbol: "gy_offset", args: values(0, 1)}
 	case "panic":
 		return nativePlan{symbol: "gy_panic", args: values(0)}
 

@@ -171,52 +171,7 @@ type lowerer struct {
 	// anyPrinters names the generated %any printers a call site asked for.
 	anyPrinters map[string]bool
 
-	// mem is the bundled mem module, which the loader puts in every
-	// program: the allocator a function receives is its Allocator, and
-	// main starts on its heap. allocatorType caches that struct.
-	mem           *loader.Module
-	allocatorType *types.Struct
-
 	synthetic int
-}
-
-// allocates reports whether a declaration receives the allocator: sema
-// recorded alloc among its effects, declared or inferred. A caller and
-// the callee both ask this, which is what keeps the two in agreement.
-func (l *lowerer) allocates(decl *ast.FuncDecl) bool {
-	return l.info.Effects[decl].Alloc
-}
-
-// memDecl finds a function mem declares, by name.
-func (l *lowerer) memDecl(name string) *ast.FuncDecl {
-	if l.mem == nil {
-		l.fail("the program has no mem module, so it has no %s", name)
-	}
-	for _, decl := range l.mem.Tree.Decls {
-		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Owner == "" && fn.Name == name {
-			return fn
-		}
-	}
-	l.fail("mem declares no %s", name)
-	return nil
-}
-
-// allocatorStruct is mem's Allocator: what the hidden parameter carries.
-func (l *lowerer) allocatorStruct() *types.Struct {
-	if l.allocatorType != nil {
-		return l.allocatorType
-	}
-	if l.mem == nil {
-		l.fail("the program has no mem module, so it has no Allocator")
-	}
-	for _, decl := range l.mem.Tree.Decls {
-		if s, ok := decl.(*ast.StructDecl); ok && s.Name == "Allocator" {
-			l.allocatorType = l.info.Structs[s]
-			return l.allocatorType
-		}
-	}
-	l.fail("mem declares no Allocator")
-	return nil
 }
 
 type workItem struct {
@@ -247,9 +202,6 @@ func (l *lowerer) indexModules() {
 			for name := range module.Foreign.TypeEnv() {
 				l.foreignName[name] = true
 			}
-		}
-		if module.Path == stdlib.Path("mem") {
-			l.mem = module
 		}
 
 		for _, decl := range module.Tree.Decls {
@@ -629,9 +581,6 @@ func (l *lowerer) ensureNativeImport(name string, decl *ast.FuncDecl, sig *types
 	lowered := l.metalsFnType(sig)
 	if decl.Recv != nil {
 		lowered.Params = append([]metals.Type{&metals.Handle{}}, lowered.Params...)
-	}
-	if l.allocates(decl) {
-		lowered.Params = append(lowered.Params, l.metalsType(l.allocatorStruct()))
 	}
 	l.imports[name] = lowered
 }

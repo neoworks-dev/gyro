@@ -18,6 +18,6 @@ fn stated(n: i32) !{} {
 }
 
 fn opaque(message: string) !{} {
-  platform_log(message)  //~ E0611 platform_log is an intrinsic with no row, so it may do io and alloc
-                         //~^ help: name it in the row: !{ io, alloc }
+  platform_log(message)  //~ E0611 platform_log is an intrinsic with no row, so it may do io
+                         //~^ help: name it in the row: !{ io }
 }

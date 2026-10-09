@@ -102,65 +102,11 @@ func (l *lowerer) lowerFunc(item workItem) {
 	for _, param := range decl.Params {
 		f.declareParam(param.Name, f.localType(decl, param.Name))
 	}
-	// A function whose row names alloc receives the allocator last. main
-	// is called by the runtime, which has none to pass, so it starts on
-	// the heap instead.
-	if l.allocates(decl) {
-		if f.fn.Export {
-			f.bindAllocator(f.heapAllocator())
-		} else {
-			f.declareParam(allocatorLocal, l.allocatorStruct())
-		}
-	}
-
 	f.blockInPlace(decl.Body)
 	f.epilogue(blockTerminates(decl.Body))
 	f.popScopeNoDefers()
 
 	l.module.Funcs = append(l.module.Funcs, f.fn)
-}
-
-// allocatorLocal is the name the current allocator is bound under. It is
-// the keyword that chooses one, so no local of the program can collide
-// with it — the same trick sema's Locals play with "self" and "return".
-const allocatorLocal = "with"
-
-// currentAllocator is the allocator every allocating call from here is
-// handed. A function that receives one has it bound as a parameter and a
-// `with` rebinds it; where nothing is bound — a closure written inside a
-// function that does not allocate, or a module initializer — the heap is
-// what there is, and it is bound so later uses share it.
-func (f *funcLowerer) currentAllocator() string {
-	if entry := f.lookup(allocatorLocal); entry != nil {
-		return f.localPlace(entry).load()
-	}
-	f.bindAllocator(f.heapAllocator())
-	return f.localPlace(f.lookup(allocatorLocal)).load()
-}
-
-// heapAllocator calls mem's heap(), which builds the value and allocates
-// nothing.
-func (f *funcLowerer) heapAllocator() string {
-	name := f.l.ensureFunc(f.l.memDecl("heap"), nil)
-	out := f.newReg("heap")
-	f.emit(&metals.Call{Dst: out, Callee: name, Args: nil})
-	return out
-}
-
-// bindAllocator makes value the current allocator for the rest of the
-// current scope. An Allocator is a record, so it lives in a slot the way
-// every other struct local does.
-func (f *funcLowerer) bindAllocator(value string) {
-	typ := f.l.allocatorStruct()
-	slot := f.newReg(allocatorLocal)
-	f.emit(&metals.Slot{Dst: slot, Type: f.l.metalsType(typ)})
-	f.emit(&metals.Store{Ptr: slot, Val: value})
-	f.bind(allocatorLocal, &local{reg: slot, typ: typ, slot: true, env: -1})
-}
-
-// withStmt is `with expr`: the allocator for the rest of the block.
-func (f *funcLowerer) withStmt(s *ast.WithStmt) {
-	f.bindAllocator(f.lowerExpr(s.Allocator, f.l.allocatorStruct()))
 }
 
 func (f *funcLowerer) declareReceiver() {
@@ -518,8 +464,6 @@ func (f *funcLowerer) stmt(s ast.Stmt) {
 		f.branchStmt(s)
 	case *ast.DeferStmt:
 		f.deferStmt(s)
-	case *ast.WithStmt:
-		f.withStmt(s)
 	case *ast.SendStmt:
 		f.sendStmt(s)
 	case *ast.SelectStmt:
@@ -1473,8 +1417,6 @@ func walk(node ast.Node, visit func(ast.Node)) {
 		walk(n.Body, visit)
 	case *ast.DeferStmt:
 		walk(n.Call, visit)
-	case *ast.WithStmt:
-		walk(n.Allocator, visit)
 	case *ast.SendStmt:
 		walk(n.Chan, visit)
 		walk(n.Value, visit)

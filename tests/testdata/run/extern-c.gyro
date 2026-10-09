@@ -30,7 +30,7 @@ fn ldexp(fraction: f64, exponent: i32): f64 !{}
 struct Block {}
 
 @extern("c")
-fn malloc(size: usize): Block? !{ alloc }
+fn malloc(size: usize): Block? !{}
 
 @extern("c")
 fn free(block: Block) !{}
