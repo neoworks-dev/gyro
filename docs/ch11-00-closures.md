@@ -61,15 +61,17 @@ own, so both threads then reach the same memory
 ## Closures are why `spawn` is not a keyword
 
 ```gyro
-import { spawn } from "stdlib"
+import { heap, spawn } from "mem"
 
-spawn(fn() produce(values, 10))
+spawn(heap(), fn() produce(values, 10))
 ```
 
 `spawn` is an ordinary library function taking a closure, and the closure is
 what carries the arguments across to the new thread. It used to be grammar;
 closures made the grammar unnecessary. **Prefer a library function over a
-keyword** is a rule the language applies to itself.
+keyword** is a rule the language applies to itself. It takes an allocator
+because the thread outlives the function that started it, so the closure has
+to be copied out of that function's frame ([below](#a-closure-lives-in-its-frame)).
 
 ## Passing functions around
 
@@ -134,12 +136,93 @@ A nullable code pointer needs parentheses — `(code(i32): i32)?` — because a
 applies to a `fn` type and to a parenthesized tuple result.
 [Chapter 15](ch15-00-c-interop.md) is where code pointers get used.
 
-## What closures cost
+## A closure lives in its frame
 
-A capturing closure's environment is real heap storage — a record the
-lowering allocates and the closure carries a pointer to. Nothing frees it
-today, and it comes from the process heap rather than from an allocator
-the program chose ([appendix G](appendix-g-known-gaps.md)).
+A closure that captures something keeps what it captured in a record, its
+**environment**, and the record is stored in the stack frame of the function
+that wrote the closure, the way a local struct is. Writing a closure
+allocates nothing. The `fn` value is still two words, the code and a pointer
+to that record, and a closure that captures nothing has a null pointer and
+no record at all. A named function taken as a value has none either.
+
+```gyro
+var factor = 3
+var scale = fn(x: i32): i32 { return x * factor }   // the record is in this frame
+```
+
+Every copy of the value shares the one record, so a closure's mutations of
+what it captured accumulate across calls.
+
+The consequence is the one a slice of an array literal already has: **the
+closure borrows the frame.** The borrow analysis
+([chapter 4.4](ch04-04-slices-and-views.md)) treats a capturing closure as a
+view of the function that wrote it, and a `return` of one is an error:
+
+```gyro
+fn adder(n: i32): fn(i32): i32 {
+  return fn(x) x + n     // error: this returns a view into storage that ends with this function
+}
+```
+
+Passing a closure down to `apply` or `fold` above is exactly what the frame
+is for: they run while the frame is alive, and nothing is allocated.
+
+### `keep` and `release`
+
+A closure that has to live longer than its frame is copied out of it into an
+allocator with `keep`, from `mem`:
+
+```gyro
+export fn keep<F>(a: Allocator, f: F): F
+export fn release<F>(a: Allocator, f: F)
+```
+
+`keep(a, f)` allocates the record from `a`, copies it, and answers a value
+with the same code and the new record. `release(a, f)` gives that record
+back. `F` has to be a function type; anything else is an error. A closure
+with a null pointer is returned unchanged by `keep` and ignored by
+`release`, so neither allocates for a closure that captured nothing.
+
+```gyro
+import { keep, release, Allocator } from "mem"
+
+fn adder(a: Allocator, n: i32): fn(i32): i32 {
+  return keep(a, fn(x: i32): i32 { return x + n })   // copied out of this frame into a
+}
+```
+
+After `keep` the closure's storage is `a`'s, and the borrow analysis no longer
+ties it to the frame. The copy is a copy: it has its own record, so mutations
+do not reach the original. A `fn[move node]` capture list moves the binding
+into the record and into the copy, as it does into the record in the frame
+([chapter 4.2](ch04-02-leaks-and-defer.md)). `release` has to be given the
+allocator the closure was kept in, and only a closure `keep` returned; giving
+it a frame closure frees memory that was never allocated.
+
+Every record starts with a header word holding its size in bytes. That is
+what lets `keep` be ordinary Gyro: the type `fn(i32): i32` does not say how
+big the record is, and the header does. Records are word aligned.
+
+### The hole it shares with slices
+
+The analysis follows a closure through locals and returns. It does not
+follow one into a struct field or a container, which is the same gap a slice
+has ([appendix G](appendix-g-known-gaps.md)). A closure written in a loop body
+and pushed into an `Array` without `keep` leaves every element pointing at
+the same record in the same frame:
+
+```gyro
+for i in 0..3 {
+  fns.push(fn() i)       // all three share one record, and it dies with the frame
+}
+```
+
+Keep the closure before storing it, with `keep(a, fn(): i32 { return i })`.
+`keep` is generic over the closure's type, so a closure written inside the
+call states its own parameter and result types.
+
+Futures and channels are not part of this; they still use the process heap
+([appendix G](appendix-g-known-gaps.md)).
 
 A closure that allocates does so from an `Allocator` it captured like any
 other local, or was handed as a parameter ([chapter 4.5](ch04-05-allocators.md)).

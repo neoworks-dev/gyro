@@ -769,8 +769,8 @@ and is not returned, so that a second `free` is caught instead of read
 through a freed block. From `heap()` that is a leak of one header, as it
 always was; in an arena it is reclaimed with the rest.
 
-**What still uses the process heap.** The text `#{}` builds (#92), the
-message of an error the runtime reports, and a `to_string`, `hash` or
+**What still uses the process heap.** The text of a `Format` piece that
+is not a string, the message of an error the runtime reports, and a `to_string`, `hash` or
 `message` the compiler calls on its own behalf while printing or hashing
 (#92 and #3). `printf` and `eprintf` format through `heap()` because they
 print what they build.
@@ -787,6 +787,47 @@ containers, unmanaged). It is what #91 removed. **Rejected: moving
 `Array<T>` into Gyro** for now, for the slice reason above.
 **Rejected: allocating the header from the process heap** so that `free`
 could release it, since the container would then use two allocators.
+
+### A closure's environment lives in its frame, and keep copies it out *(new)*
+
+**Status: decided, done.** A closure that captures something stores its
+environment, a record of the captured values, in the stack frame of the
+function that wrote it, like a local struct. Writing a closure allocates
+nothing. The `fn` value stays two words, the code and a pointer to the
+record; a closure that captures nothing, and a named function taken as a
+value, have a null pointer. Every record begins with a header word holding
+its size in bytes, so `keep(a, f)` in `mem` can copy it without knowing its
+static type: it allocates that many bytes from `a`, copies, and answers a
+value with the same code and the new record. `release(a, f)` gives the copy
+back, and both do nothing for a null environment. They are ordinary Gyro
+over two private `mem` intrinsics that read a `fn` value's environment word
+and rebuild one around another; neither is exported, because a public
+raw-memory surface is a separate design. `F` must be a function type, which
+sema checks with a diagnostic. `spawn` takes an allocator, keeps the
+closure it is given, and the thread releases it when the closure returns;
+it moved to `mem` for the same import-cycle reason: `mem` already imports
+`stdlib`, and `spawn` needs `Allocator`.
+
+The closure then borrows the frame exactly as a slice of an array literal
+does, so the existing provenance analysis rejects returning one and `keep`
+is what ends the borrow. Objective-C blocks are the precedent: a block
+literal is on the stack and `Block_copy` moves it to the heap.
+
+**The gap it inherits.** A frame closure stored in a struct field or
+pushed into a container is the problem of a slice outliving its memory
+(#58), and nothing here adds machinery for it. A closure written in a loop
+body and pushed without `keep` shares one record across iterations. It is
+recorded in appendix G and kept in the corpus as a skipped case.
+
+**Rejected: heap environments that nothing frees.** It is the hidden
+allocation explicit allocators exist to remove, and a long-running program
+leaks one record per closure written. **Rejected: Zig-style closures that
+cannot capture.** It loses `map`, `filter` and `fold` with a captured
+value, which is most of what closures are used for. **Rejected: a literal
+syntax for allocating closures.** `spawn` receives a value, so a function
+that copies a closure is needed anyway, and a second way to say the same
+thing is worse than one. **Not here:** futures and channels keep using the
+process heap (#51).
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -1994,6 +2035,11 @@ built an environment as a value and both native backends miscompiled it:
 a function value has one word to carry its environment in, and a closure
 outlives the frame that built it, so the environment has to be heap
 storage. The rule was always real and only the verifier did not know it.
+
+*Amended by "A closure's environment lives in its frame, and keep copies it
+out":* the pointer rule stands, but the environment no longer has to be heap
+storage. Gyro's lowering points it into the writing function's frame, and
+what the pointer addresses is the producer's to keep alive.
 
 This is the first thing a second producer found, and it is the argument
 for having one.
@@ -3828,7 +3874,7 @@ and bound imports opaquely; it is deleted.
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
-| memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
+| memory reclamation | native binaries free only what the program frees; strings and other implicit allocations leak until an ownership/GC decision exists |
 | use-after-free and uninitialized reads | the runtime frees for real and leaves storage as the allocator returned it, so a binary silently reads garbage. The evaluator poisoned freed cells and unwritten storage and aborted on a read; it is deleted, and a poisoning allocator in `rt.c` is the replacement worth building. It cannot even name a double free today, since `gy_free` hands the block back to libc before a second free could read the poison |
 | type punning is not diagnosed | reading across union members with no common initial sequence, or a struct's storage as bytes, reinterprets whatever is there; catching it needs something that records which member was written |
 | a pointer that has left its object | `ptr.offset` past an extent and a `ptr.cast` naming the wrong type are a producer's claim and nothing verifies either |

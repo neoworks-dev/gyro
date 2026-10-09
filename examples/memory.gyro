@@ -10,7 +10,7 @@
 // dereferenced until it has been checked.
 
 import { println } from "stdlib"
-import { alloc, free, heap, Allocator, Arena } from "mem"
+import { alloc, free, heap, Allocator, Arena, keep } from "mem"
 
 struct Node {
   value: i32
@@ -59,9 +59,9 @@ export fn defer_release(value: i32): fn() {
   var node = alloc<Node>(heap())
   node.value = value
 
-  return fn[move node]() {
+  return keep(heap(), fn[move node]() {
     free(heap(), node)
-  }
+  })
 }
 
 fn main() {

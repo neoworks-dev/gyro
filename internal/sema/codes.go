@@ -35,6 +35,10 @@ var codes = map[string]diag.Code{
 	"a closure cannot capture a format value, because it cannot outlive the statement it is written in":            diag.EFormatEscapes,
 	"string interpolation builds a Format, which mem declares; this program does not load mem":                     diag.EFormatEscapes,
 
+	// A closure's environment is a record in the frame that wrote it.
+	"this returns a closure that borrows this frame": diag.EEscapingLocalView,
+	"%s takes a function value; %s is not one":       diag.EKeepNotFunction,
+
 	// Unions. One storage with several names for it, and nothing records
 	// which is live — which is what decides both what may be a member and
 	// what a literal may say.

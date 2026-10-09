@@ -640,11 +640,12 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if err != nil {
 			return err
 		}
-		// The environment is heap storage, never a value: a closure
-		// outlives the frame that built it, and a function value has
-		// one word to carry its environment in.
+		// The environment is a pointer, never a value: a function value
+		// has one word to carry its environment in. What it points at,
+		// a frame or an allocator's block, is the producer's to keep
+		// alive.
 		if _, isPtr := envType.(*Ptr); !isPtr {
-			return fmt.Errorf("closure environment is %s; it must be a ptr, since the closure outlives the frame that built it", envType)
+			return fmt.Errorf("closure environment is %s; it must be a ptr, since a function value has one word to carry it in", envType)
 		}
 		if !TypesEqual(envType, sig.Params[0]) {
 			return fmt.Errorf("closure environment is %s, @%s wants %s", envType, i.Callee, sig.Params[0])

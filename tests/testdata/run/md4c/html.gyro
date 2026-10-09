@@ -14,7 +14,7 @@
 // upstream share one struct.
 
 import { Array, from_utf8, bytes } from "stdlib"
-import { alloc, heap } from "mem"
+import { alloc, heap, keep } from "mem"
 import * as md from "./md4c"
 import * as entity from "./entity"
 
@@ -464,16 +464,17 @@ fn Render::text(*self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
 
 // parser_for wires the five callbacks to one renderer. This is the whole
 // of md4c's MD_PARSER: closures capture the pointer by copy, so all five
-// reach the same Render.
+// reach the same Render. They leave this function inside the struct, so
+// each is kept out of its frame.
 export fn parser_for(render: *Render): md::Parser {
   return md::Parser{
-    enter_block: fn(kind: md::BlockKind, detail: md::Detail) { render.enter_block(kind, detail) },
-    leave_block: fn(kind: md::BlockKind, detail: md::Detail) { render.leave_block(kind, detail) },
-    enter_span: fn(kind: md::SpanKind, detail: md::Detail) { render.enter_span(kind, detail) },
-    leave_span: fn(kind: md::SpanKind, detail: md::Detail) { render.leave_span(kind, detail) },
-    text: fn(kind: md::TextKind, source: u8[], beg: i64, end: i64) {
+    enter_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.enter_block(kind, detail) }),
+    leave_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.leave_block(kind, detail) }),
+    enter_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.enter_span(kind, detail) }),
+    leave_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.leave_span(kind, detail) }),
+    text: keep(heap(), fn(kind: md::TextKind, source: u8[], beg: i64, end: i64) {
       render.text(kind, source, beg, end)
-    },
+    }),
   }
 }
 

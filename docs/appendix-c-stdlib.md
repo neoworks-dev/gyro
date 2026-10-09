@@ -53,12 +53,6 @@ export fn eprint<T>(value: T) !{ io }
 export fn eprintln<T>(value: T) !{ io }
 ```
 
-Threads:
-
-```gyro
-export fn spawn(task: fn()) !{ io }
-```
-
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
 `Allocator` from `mem` and records it, and `push` and `free` go through
 the recorded one ([chapter 8.1](ch08-01-array.md)):
@@ -154,6 +148,10 @@ export struct Allocator {
 
 export fn heap(): Allocator !{}
 
+export fn keep<F>(a: Allocator, f: F): F !{}
+export fn release<F>(a: Allocator, f: F) !{}
+export fn spawn(a: Allocator, body: fn()) !{ io }
+
 export fn alloc<T>(a: Allocator): *T !{}
 export fn free<T>(a: Allocator, pointer: *T) !{}
 export fn size<T>(): usize !{}
@@ -197,6 +195,15 @@ export fn Format::text(self, index: usize): string !{}
 `piece` is the value a hole held, or a literal segment as a `string`. `text`
 shows it the way `println` would. A `Format` may only be passed as an
 argument.
+
+`keep` copies a closure's environment out of the frame that wrote it into
+`a`, and `release` gives the copy back; a closure with no environment passes
+through both untouched ([chapter 11](ch11-00-closures.md)). `F` has to be a
+function type. `spawn` starts a thread, calling `keep(a, body)` first and
+releasing the copy when the thread's closure returns; it lives in `mem`
+beside `keep`, which it is written over. `keep` and `release` are written over two private intrinsics that
+read a `fn` value's environment word and rebuild one with another; neither
+is exported, since raw memory is not part of the language's surface.
 
 `panic` aborts the process with the message, the way an index out of
 range does. It is a function rather than a keyword because a program that
@@ -313,7 +320,7 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, `spawn`, `Array<T>`,
+Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
 `align`, `panic` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,

@@ -580,8 +580,9 @@ heap — linking gives each its own.
 
 - **memory reclamation** — the allocator model (chapter 4.5) is in for
   `alloc`/`free`/`Arena`, the containers, the text functions and `format`;
-  `#{}` allocates nothing. The runtime's other storage (closure
-  environments, futures, channels, runtime error messages, and the text of
+  `#{}` allocates nothing. A capturing closure's environment lives
+  in its frame and `keep` copies it into an allocator. The runtime's other
+  storage (futures, channels, runtime error messages, and the text of
   a non-string piece a `Format` renders) still comes from the process heap.
 - no sorting
 - **FFI has two gaps left** — `@extern` carries primitives, `string`,

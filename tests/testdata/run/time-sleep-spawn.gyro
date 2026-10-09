@@ -2,12 +2,13 @@
 // producer keeps running, and while the producer sleeps main's receive
 // just waits — neither side can deadlock the other.
 
-import { println, spawn } from "stdlib"
+import { println } from "stdlib"
+import { heap, spawn } from "mem"
 import { sleep } from "time"
 
 fn main() {
   var done = chan<i32>(1)
-  spawn(fn() {
+  spawn(heap(), fn() {
     sleep(5)
     done <- 41
   })

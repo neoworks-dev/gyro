@@ -4,9 +4,9 @@
 //   channels - hand work between them safely  (chan<T>, select)
 //   async    - hold many idle IO operations   (async fn / await)
 
-import { println, spawn, Mutex, Array } from "stdlib"
+import { println, Mutex, Array } from "stdlib"
+import { heap, spawn, format } from "mem"
 import { get } from "net"
-import { heap, format } from "mem"
 
 // --- channels -------------------------------------------------------------
 
@@ -94,14 +94,14 @@ async fn main() {
   // both threads reaching the same memory, and the compiler warns about it.
   // Hand a reference over with `fn[move x]()`, or share through a channel
   // or a Mutex as these do.
-  spawn(fn() produce(values, 10))
-  spawn(fn() consume(values, done))
+  spawn(heap(), fn() produce(values, 10))
+  spawn(heap(), fn() consume(values, done))
   var _ = <-done
 
   // The tuple comes out whole; a two-name binding on a receive already
   // means (value, open), so the element is destructured afterwards.
   var results = chan<(string, error?)>()
-  spawn(fn() fetch_into("https://example.com", results))
+  spawn(heap(), fn() fetch_into("https://example.com", results))
   var result = <-results
   println("first fetch: #{result.0}")
 

@@ -202,8 +202,7 @@ caller owns ([chapter 8.2](ch08-02-strings.md)).
 
 `alloc`, `free`, `Arena`, `format`, `Array<T>`, `Map<K, V>`, `String`, and
 the text and readers listed above. What still comes from the process heap:
-the text of a `Format` piece that is not a string, a closure's environment,
-a future, a channel, the message of an error the runtime reports (a failed
+the text of a `Format` piece that is not a string, a future, a channel, the message of an error the runtime reports (a failed
 `open`, a `to_i32` that does not parse), and a `to_string`, `hash` or
 `message` the compiler calls on its own behalf while printing, hashing or
 rendering an error ([appendix G](appendix-g-known-gaps.md)).

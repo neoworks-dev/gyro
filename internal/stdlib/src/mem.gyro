@@ -269,3 +269,81 @@ export fn format(a: Allocator, value: Format): string !{} {
   }
   return text_seal(block, used)
 }
+
+// ---------------------------------------------------------------------------
+// Closures that outlive their frame
+// ---------------------------------------------------------------------------
+
+// A closure's environment is a record in the frame that wrote it, and its
+// first word is the record's size in bytes. env_of answers the address of a
+// fn value's environment, null when it has none; with_env answers the same
+// code over another. They are private, like offset: raw memory is not part
+// of the language's surface.
+fn env_of<F>(f: F): anyptr? !{}
+fn with_env<F>(f: F, env: anyptr?): F !{}
+
+// keep copies a closure's environment out of the frame into a, for a
+// closure that has to live longer than the function that wrote it. A closure
+// with no environment is returned as it is, and nothing is allocated.
+export fn keep<F>(a: Allocator, f: F): F !{} {
+  var env = env_of(f)
+  if env == null {
+    // Rebuilt rather than returned as it is: returning the parameter
+    // would read, to the borrow analysis, as a view of it.
+    return with_env(f, null)
+  }
+  var size = *(env as *usize)
+  var block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
+  if block == null {
+    panic(format(heap(), "allocation of #{size} bytes failed"))
+  }
+  copy_bytes(block, env, size)
+  return with_env(f, block)
+}
+
+// release gives back the environment keep copied into a. It takes only a
+// closure keep returned, and the allocator it was kept in.
+export fn release<F>(a: Allocator, f: F) !{} {
+  var env = env_of(f)
+  if env == null {
+    return
+  }
+  a.proc(a.data, Mode::Free, 0, 0, env, *(env as *usize))
+}
+
+// ---------------------------------------------------------------------------
+// Threads
+// ---------------------------------------------------------------------------
+
+// start_thread runs entry(data) on a new thread. The runtime owns the thread; what
+// data points at is the caller's to keep alive until entry is done with it.
+fn start_thread(entry: code(anyptr?), data: anyptr?) !{ io }
+
+struct Job {
+  a: Allocator
+  body: fn()
+}
+
+fn run(data: anyptr?) !{ io } {
+  if data == null {
+    return
+  }
+  var job = data as *Job
+  var body = job.body
+  body()
+  release(job.a, body)
+  free(job.a, job)
+}
+
+// spawn starts a thread. The closure carries the arguments across; join by
+// receiving on a channel the closure captures. The thread outlives the
+// function that started it, so the closure is kept in a first and the thread
+// releases it when it is done. The row covers starting the thread and stands
+// in for the task's own effects, which no row can carry until effect
+// polymorphism reaches function values.
+export fn spawn(a: Allocator, body: fn()) !{ io } {
+  var job = alloc<Job>(a)
+  job.a = a
+  job.body = keep(a, body)
+  start_thread(&run, job as anyptr)
+}

@@ -2,7 +2,7 @@
 // allocation outliving its frame visible in the source.
 
 import { println } from "stdlib"
-import { alloc, free, heap } from "mem"
+import { alloc, free, heap, keep } from "mem"
 
 struct Node {
   value: i32
@@ -11,10 +11,10 @@ struct Node {
 fn make_release(value: i32): fn() {
   var node = alloc<Node>(heap())
   node.value = value
-  return fn[move node]() {
+  return keep(heap(), fn[move node]() {
     println(node.value)
     free(heap(), node)
-  }
+  })
 }
 
 fn main() {

@@ -112,6 +112,9 @@ const (
 	// Format values
 	EFormatEscapes Code = "E0616"
 
+	// Closures
+	EKeepNotFunction Code = "E0617"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -284,6 +287,8 @@ var explanations = map[Code]explanation{
 		"The effect vocabulary is closed: io is the one concrete effect, and a\n&name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
 	EExternDeclaration: {"@extern is on the wrong kind of declaration",
 		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
+	EKeepNotFunction: {"keep and release take a function value",
+		"A closure's environment lives in the frame that wrote it, and keep copies\nit into an allocator by reading the size every environment starts with.\nOnly a fn value has an environment; a code pointer, a struct or a number\ndoes not, so there is nothing to copy."},
 	EExternSignature: {"type cannot cross to C",
 		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
 	EFormatEscapes: {"format value outlives its statement",

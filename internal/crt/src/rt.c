@@ -1492,34 +1492,28 @@ void gy_select_pause(void) { usleep(200); }
 /* ------------------------------------------------------------------ */
 
 typedef struct {
-    void (*bare)(void);
-    void (*withEnv)(void *);
-    void *env;
-} gy_spawn_arg;
+    void (*entry)(void *);
+    void *data;
+} gy_start_arg;
 
-static void *gy_spawn_main(void *raw) {
-    gy_spawn_arg arg = *(gy_spawn_arg *)raw;
+static void *gy_start_main(void *raw) {
+    gy_start_arg arg = *(gy_start_arg *)raw;
     free(raw);
     gy_on_worker_thread = 1;
-    if (arg.env != NULL) {
-        arg.withEnv(arg.env);
-    } else {
-        arg.bare();
-    }
+    arg.entry(arg.data);
     return NULL;
 }
 
-/* fnval points at a { code, env } function value. */
-void gy_spawn(void **fnval) {
-    gy_spawn_arg *arg = calloc(1, sizeof(gy_spawn_arg));
-    arg->bare = (void (*)(void))fnval[0];
-    arg->withEnv = (void (*)(void *))fnval[0];
-    arg->env = fnval[1];
+/* gy_start runs entry(data) on a detached thread. */
+void gy_start(void (*entry)(void *), void *data) {
+    gy_start_arg *arg = calloc(1, sizeof(gy_start_arg));
+    arg->entry = entry;
+    arg->data = data;
     pthread_t thread;
     pthread_attr_t attrs;
     pthread_attr_init(&attrs);
     pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&thread, &attrs, gy_spawn_main, arg);
+    pthread_create(&thread, &attrs, gy_start_main, arg);
     pthread_attr_destroy(&attrs);
 }
 

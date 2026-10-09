@@ -405,6 +405,8 @@ func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDec
 // which lower as ordinary natives.
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
+	case "env_of", "with_env":
+		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
 	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

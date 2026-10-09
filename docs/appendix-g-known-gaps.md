@@ -14,7 +14,7 @@ attached — a skip is a program that will fail the day the gap closes
   ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
   `alloc<T>(a)`, `free(a, p)`, `format(a, ...)` and the containers and text
   functions honour it today, but the runtime's own storage does not yet: a
-  closure's environment, a future, a channel and the message of an error
+  future, a channel and the message of an error
   the runtime reports all come from the process heap and leak by design.
   Fine for a program that exits; fatal for a server. An `Array`, `Map` or
   `String` from `heap()` that is never freed is not warned about.
@@ -24,6 +24,13 @@ attached — a skip is a program that will fail the day the gap closes
   by the runtime on the process heap first, and nothing frees it. Streaming
   has the same cost for those pieces except the primitives, which the
   runtime writes directly.
+- **A frame closure can outlive its frame through a container.** A
+  closure's environment lives in the frame that wrote it and the borrow
+  analysis rejects returning one, but it does not follow one into a struct
+  field or an `Array`: that is the same hole a slice of an array literal has
+  (issue #58). A closure written in a loop body and pushed without `keep`
+  leaves every element sharing one record. The corpus keeps it as
+  `closure-loop-push.gyro`, skipped with that reason.
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 
