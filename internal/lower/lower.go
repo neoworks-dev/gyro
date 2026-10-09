@@ -67,6 +67,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	l.collectGlobals()
 	l.ensureFunc(main, nil)
 	l.drain()
+	l.settleAnyTypes()
 	l.emitGlobalInit()
 	l.finishErrorType()
 	l.finishAnyType()

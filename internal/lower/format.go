@@ -1,7 +1,6 @@
 package lower
 
 import (
-
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -161,4 +160,3 @@ func (b *reprBuilder) streamPiece(printer, reg string, t types.Type) {
 		call(t, reg)
 	}
 }
-

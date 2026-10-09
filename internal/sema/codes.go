@@ -33,10 +33,10 @@ var codes = map[string]diag.Code{
 
 	// Format values. A string literal with a #{} borrows what it names, so
 	// it is only ever passed on.
-	"a format value can only be passed as an argument, because it cannot outlive the statement it is written in": diag.EFormatEscapes,
+	"a format value can only be passed as an argument, because it cannot outlive the statement it is written in":   diag.EFormatEscapes,
 	"a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in": diag.EFormatEscapes,
-	"a closure cannot capture a format value, because it cannot outlive the statement it is written in":           diag.EFormatEscapes,
-	"string interpolation builds a Format, which stdlib declares; this program does not load stdlib":              diag.EFormatEscapes,
+	"a closure cannot capture a format value, because it cannot outlive the statement it is written in":            diag.EFormatEscapes,
+	"string interpolation builds a Format, which stdlib declares; this program does not load stdlib":               diag.EFormatEscapes,
 
 	// Unions. One storage with several names for it, and nothing records
 	// which is live — which is what decides both what may be a member and
@@ -197,9 +197,9 @@ var codes = map[string]diag.Code{
 	"this returns a view into storage that ends with this function": diag.EEscapingLocalView,
 
 	// Effects
-	"%s does %s, which the row does not name":                          diag.EUnnamedEffect,
-	"%s is an intrinsic with no row, so it may do %s":                  diag.EUnnamedEffect,
-	"%s is not an effect":                                              diag.EUnknownEffect,
+	"%s does %s, which the row does not name":         diag.EUnnamedEffect,
+	"%s is an intrinsic with no row, so it may do %s": diag.EUnnamedEffect,
+	"%s is not an effect":                             diag.EUnknownEffect,
 
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
