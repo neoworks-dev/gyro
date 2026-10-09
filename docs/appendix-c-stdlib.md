@@ -292,7 +292,7 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprintln`, a private `start` under `spawn`, `Array<T>`,
+Runtime intrinsics: `print`/`println`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
 `align`, `panic` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,

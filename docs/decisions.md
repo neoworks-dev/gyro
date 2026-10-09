@@ -3780,7 +3780,7 @@ and bound imports opaquely; it is deleted.
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
 | receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
-| memory reclamation | native binaries free only what the program frees; strings, closure environments and other implicit allocations leak until an ownership/GC decision exists |
+| memory reclamation | native binaries free only what the program frees; strings and other implicit allocations leak until an ownership/GC decision exists |
 | use-after-free and uninitialized reads | the runtime frees for real and leaves storage as the allocator returned it, so a binary silently reads garbage. The evaluator poisoned freed cells and unwritten storage and aborted on a read; it is deleted, and a poisoning allocator in `rt.c` is the replacement worth building. It cannot even name a double free today, since `gy_free` hands the block back to libc before a second free could read the poison |
 | type punning is not diagnosed | reading across union members with no common initial sequence, or a struct's storage as bytes, reinterprets whatever is there; catching it needs something that records which member was written |
 | a pointer that has left its object | `ptr.offset` past an extent and a `ptr.cast` naming the wrong type are a producer's claim and nothing verifies either |

@@ -336,7 +336,6 @@ func viewType(t types.Type) bool {
 	return false
 }
 
-
 func sortStrings(values []string) {
 	for i := 1; i < len(values); i++ {
 		for j := i; j > 0 && values[j] < values[j-1]; j-- {

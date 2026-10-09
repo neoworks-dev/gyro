@@ -233,9 +233,9 @@ export fn release<F>(a: Allocator, f: F) !{} {
 // Threads
 // ---------------------------------------------------------------------------
 
-// start runs entry(data) on a new thread. The runtime owns the thread; what
+// start_thread runs entry(data) on a new thread. The runtime owns the thread; what
 // data points at is the caller's to keep alive until entry is done with it.
-fn start(entry: code(anyptr?), data: anyptr?) !{ io }
+fn start_thread(entry: code(anyptr?), data: anyptr?) !{ io }
 
 struct Job {
   a: Allocator
@@ -263,5 +263,5 @@ export fn spawn(a: Allocator, body: fn()) !{ io } {
   var job = alloc<Job>(a)
   job.a = a
   job.body = keep(a, body)
-  start(&run, job as anyptr)
+  start_thread(&run, job as anyptr)
 }

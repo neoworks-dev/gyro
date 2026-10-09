@@ -581,7 +581,7 @@ heap — linking gives each its own.
 - **memory reclamation** — every `#{}`, `split`, `text()` allocates and
   nothing frees it. Fine for a CLI that exits; fatal for a server. The
   allocator model (chapter 4.5) is in for `alloc`/`free`/`Arena`; the
-  runtime's own storage (`Array`, strings, closure environments,
+  runtime's own storage (`Array`, strings,
   futures, channels) does not yet take an allocator.
 - no sorting
 - **FFI has two gaps left** — `@extern` carries primitives, `string`,
