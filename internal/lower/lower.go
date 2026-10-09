@@ -175,6 +175,7 @@ type lowerer struct {
 	// program: the allocator a function receives is its Allocator, and
 	// main starts on its heap. allocatorType caches that struct.
 	mem           *loader.Module
+	stdlib        *loader.Module
 	allocatorType *types.Struct
 
 	synthetic int
@@ -250,6 +251,9 @@ func (l *lowerer) indexModules() {
 		}
 		if module.Path == stdlib.Path("mem") {
 			l.mem = module
+		}
+		if module.Path == stdlib.Path("stdlib") {
+			l.stdlib = module
 		}
 
 		for _, decl := range module.Tree.Decls {

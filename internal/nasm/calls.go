@@ -477,7 +477,7 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 
 func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan {
 	switch method {
-	case "print", "println", "eprintln":
+	case "print", "println", "eprint", "eprintln":
 		suffix, ok := printSuffix(sig.Params[0])
 		if !ok {
 			g.fail("@%s: printing a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
@@ -508,6 +508,16 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_copy_bytes", args: values(0, 1, 2)}
 	case "panic":
 		return nativePlan{symbol: "gy_panic", args: values(0)}
+	case "text_size":
+		return nativePlan{symbol: "gy_text_size", args: values(0)}
+	case "text_write":
+		return nativePlan{symbol: "gy_text_write", args: values(0, 1, 2)}
+	case "text_seal":
+		return nativePlan{symbol: "gy_text_seal", args: values(0, 1)}
+	case "lock_output":
+		return nativePlan{symbol: "gy_lock_output"}
+	case "unlock_output":
+		return nativePlan{symbol: "gy_unlock_output"}
 
 	// The foreign boundary. Lowering emits these around every @extern
 	// call, so neither backend converts anything itself.

@@ -278,6 +278,9 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	if module != nil && module.Path == stdlib.Path("math") {
 		return f.prepareMathIntrinsic(call, decl)
 	}
+	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && decl.Name == "show" {
+		return f.prepareShow(call)
+	}
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
 		return f.preparePrint(call, resolved, decl)
 	}
@@ -315,7 +318,7 @@ func (f *funcLowerer) nativeReceiver(recv ast.Expr) string {
 }
 
 func isPrintName(name string) bool {
-	return name == "print" || name == "println" || name == "eprintln"
+	return name == "print" || name == "println" || name == "eprint" || name == "eprintln"
 }
 
 // preparePrint lowers the print family with display semantics: strings
@@ -332,6 +335,15 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 	var value string
 	displayType := argType
 	switch {
+	case f.l.isFormat(argType):
+		return f.prepareStream(decl, f.lowerExpr(arg, nil))
+	case isAnyType(argType) && (decl.Name == "print" || decl.Name == "eprint"):
+		name := f.l.ensureAnyStream(decl.Name)
+		value := f.lowerExpr(arg, nil)
+		return func() string {
+			f.emit(&metals.Call{Callee: name, Args: []string{value}})
+			return ""
+		}
 	case isNullLiteral(arg):
 		value = f.text("null")
 		displayType = types.String

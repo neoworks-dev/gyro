@@ -230,6 +230,21 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
     memmove(to, from, (size_t)bytes);
 }
 
+/* A string is a { len, bytes } header followed by its bytes in one block.
+ * Building one in an allocator's block is three steps: ask how big the
+ * block must be, copy text in at an offset, and seal it with its length. */
+int64_t gy_text_size(int64_t len) { return (int64_t)sizeof(gy_str) + len; }
+
+void gy_text_write(void *block, int64_t at, const gy_str *text) {
+    memcpy(((gy_str *)block)->bytes + at, text->bytes, (size_t)text->len);
+}
+
+const gy_str *gy_text_seal(void *block, int64_t len) {
+    gy_str *s = block;
+    s->len = len;
+    return s;
+}
+
 /* panic ends the process with the message, the way an index out of range
  * does: the same abort, reached from Gyro. */
 void gy_panic(const gy_str *message) { gy_abort(message); }
@@ -385,7 +400,12 @@ static gy_str *gy_quote(const gy_str *s) {
 /* The print family and str<T>.                                       */
 /* ------------------------------------------------------------------ */
 
-static pthread_mutex_t gy_print_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* Recursive, because a format value holds it across all its pieces and a
+   piece's to_string may print. */
+static pthread_mutex_t gy_print_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+
+void gy_lock_output(void) { pthread_mutex_lock(&gy_print_mutex); }
+void gy_unlock_output(void) { pthread_mutex_unlock(&gy_print_mutex); }
 
 static void gy_write(FILE *stream, const char *bytes, size_t len, int newline) {
     pthread_mutex_lock(&gy_print_mutex);
@@ -413,6 +433,11 @@ static void gy_print_dispatch(FILE *stream, int newline, const char *bytes, size
         gy_render_##suffix(v, buf, sizeof buf);                                \
         gy_print_dispatch(stdout, 1, buf, strlen(buf));                        \
     }                                                                          \
+    void gy_eprint_##suffix(type v) {                                          \
+        char buf[64];                                                          \
+        gy_render_##suffix(v, buf, sizeof buf);                                \
+        gy_print_dispatch(stderr, 0, buf, strlen(buf));                        \
+    }                                                                          \
     void gy_eprintln_##suffix(type v) {                                        \
         char buf[64];                                                          \
         gy_render_##suffix(v, buf, sizeof buf);                                \
@@ -432,6 +457,7 @@ GY_PRINT_FAMILY(rune, int64_t, buf[gy_encode_rune(v, buf)] = 0)
 
 void gy_print_str(const gy_str *s) { gy_print_dispatch(stdout, 0, s->bytes, (size_t)s->len); }
 void gy_println_str(const gy_str *s) { gy_print_dispatch(stdout, 1, s->bytes, (size_t)s->len); }
+void gy_eprint_str(const gy_str *s) { gy_print_dispatch(stderr, 0, s->bytes, (size_t)s->len); }
 void gy_eprintln_str(const gy_str *s) { gy_print_dispatch(stderr, 1, s->bytes, (size_t)s->len); }
 
 /* A string prints raw but renders quoted: str<string> is only ever

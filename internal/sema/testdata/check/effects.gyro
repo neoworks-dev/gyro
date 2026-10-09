@@ -48,16 +48,18 @@ fn noisy(n: i32) {
   println(n)
 }
 
-fn builder(n: i32): string {
-  return "n = #{n}"
+fn builder(xs: Array<i32>, n: i32) {
+  xs.push(n)
 }
 
 fn both(n: i32) !{} {
   noisy(n)               //~ E0611 noisy does io, which the row does not name
                          //~^ span: noisy calls println, which does io
                          //~^^ help: name it in the row: !{ io }
-  var text = builder(n)  //~ E0611 builder does alloc, which the row does not name
-                         //~^ span: builder interpolates a string, which allocates
+  var xs = Array<i32>::new()  //~ E0611 new does alloc, which the row does not name
+                         //~^ help: name it in the row: !{ alloc }
+  builder(xs, n)         //~ E0611 builder does alloc, which the row does not name
+                         //~^ span: builder calls push, which does alloc
                          //~^^ help: name it in the row: !{ alloc }
 }
 
@@ -68,10 +70,10 @@ fn fill(xs: Array<i32>, v: i32): i32[] !{ &xs } {
   return xs.slice()
 }
 
-// Interpolation builds new text, which allocates.
-fn describe(n: i32): string !{} {
-  return "n = #{n}"      //~ E0611 this string interpolation allocates, which the row does not name
-                         //~^ help: name it in the row: !{ alloc }
+// Interpolation allocates nothing: it records its pieces in a Format, so a
+// row naming io for the print is the whole of what this does.
+fn describe(n: i32) !{ io } {
+  println("n = #{n}")
 }
 
 struct Logger {
@@ -136,6 +138,6 @@ fn closureRow() {
 }
 
 // The row that names what the body does checks clean.
-fn loud(message: string) !{ io, alloc } {
+fn loud(message: string) !{ io } {
   println("message: #{message}")
 }

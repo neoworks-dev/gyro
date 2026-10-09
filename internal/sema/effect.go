@@ -236,12 +236,6 @@ func (c *checker) checkDeclaredEffects(decl *ast.FuncDecl) {
 func (c *checker) checkBody(body ast.Stmt, row *ast.EffectRow, calls map[*ast.CallExpr]*CallInfo, allowed effectSet, reported map[string]bool) {
 	walkEffectStmt(body, func(source ast.Expr) {
 		switch source := source.(type) {
-		case *ast.StringLit:
-			if allowed.alloc {
-				return
-			}
-			c.reportEffect(source.Offset, reported, row, effectSet{alloc: true}, nil,
-				"this string interpolation allocates, which the row does not name")
 		case *ast.CallExpr:
 			resolved := calls[source]
 			if resolved == nil || resolved.Method == nil {
@@ -293,15 +287,8 @@ func effectSpans(routes []effectRoute) []diag.Span {
 	for _, route := range routes {
 		for i, hop := range route.hops {
 			label := hop.caller + " calls " + hop.callee
-			if hop.callee == "" {
-				label = hop.caller + " interpolates a string"
-			}
 			if i == len(route.hops)-1 {
-				if hop.callee == "" {
-					label += ", which allocates"
-				} else {
-					label += ", which does " + route.effect.String()
-				}
+				label += ", which does " + route.effect.String()
 			}
 			spans = append(spans, diag.Span{Pos: hop.pos, Label: label})
 		}
@@ -374,9 +361,6 @@ func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effec
 	for _, calls := range c.bodyResolutions(decl) {
 		walkEffectStmt(decl.Body, func(source ast.Expr) {
 			switch source := source.(type) {
-			case *ast.StringLit:
-				inferred.note(effectFacts{set: effectSet{alloc: true}},
-					effectHop{caller: name, pos: c.declPos(decl, source.Offset)})
 			case *ast.CallExpr:
 				resolved := calls[source]
 				if resolved == nil || resolved.Method == nil {
@@ -537,8 +521,6 @@ func (c *checker) closureAllocates(decl *ast.FuncDecl, closure *ast.ClosureExpr)
 	for _, calls := range c.bodyResolutions(decl) {
 		walkEffectStmt(body, func(source ast.Expr) {
 			switch source := source.(type) {
-			case *ast.StringLit:
-				allocates = true
 			case *ast.CallExpr:
 				resolved := calls[source]
 				if resolved == nil || resolved.Method == nil {
@@ -643,7 +625,6 @@ func walkEffectStmt(stmt ast.Stmt, visit func(source ast.Expr)) {
 func walkEffectExpr(e ast.Expr, visit func(source ast.Expr)) {
 	switch e := e.(type) {
 	case *ast.StringLit:
-		visit(e)
 		for _, part := range e.Parts {
 			walkEffectExpr(part.Expr, visit)
 		}

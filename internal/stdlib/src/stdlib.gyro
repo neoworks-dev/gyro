@@ -3,7 +3,77 @@
 
 export fn print<T>(value: T) !{ io }
 export fn println<T>(value: T) !{ io }
+export fn eprint<T>(value: T) !{ io }
 export fn eprintln<T>(value: T) !{ io }
+
+// Format is what a string literal containing #{} is: its pieces, the
+// literal text and the values in the holes, each wrapped as an any. It is
+// built in the caller's frame and borrows what it names, which is why
+// sema lets it be passed as an argument and nothing else.
+//
+// The printers take one like any other value and stream it, by calling the
+// stream_ functions below; mem's format builds it into an allocator.
+export struct Format {
+  pieces: any[]
+}
+
+export fn Format::len(self): usize !{} {
+  return self.pieces.len()
+}
+
+// piece is the value a hole held, or a literal segment as a string.
+export fn Format::piece(self, index: usize): any !{} {
+  return self.pieces[index]
+}
+
+// text shows a piece the way println would.
+export fn Format::text(self, index: usize): string !{} {
+  return show(self.pieces[index])
+}
+
+// show renders an any the way println shows it. The compiler supplies it,
+// since only lowering knows which types the program ever wrapped.
+fn show(piece: any): string !{}
+
+// A line is written piece by piece, so the output lock is held across
+// all of them and two threads printing do not tear each other's lines.
+// The lock is recursive: a to_string that prints takes it again.
+fn lock_output() !{ io }
+fn unlock_output() !{ io }
+
+fn stream_print(message: Format) !{ io } {
+  lock_output()
+  for piece in message.pieces {
+    print(piece)
+  }
+  unlock_output()
+}
+
+fn stream_println(message: Format) !{ io } {
+  lock_output()
+  for piece in message.pieces {
+    print(piece)
+  }
+  println("")
+  unlock_output()
+}
+
+fn stream_eprint(message: Format) !{ io } {
+  lock_output()
+  for piece in message.pieces {
+    eprint(piece)
+  }
+  unlock_output()
+}
+
+fn stream_eprintln(message: Format) !{ io } {
+  lock_output()
+  for piece in message.pieces {
+    eprint(piece)
+  }
+  eprintln("")
+  unlock_output()
+}
 
 // spawn starts a thread. The closure carries the arguments across; join by
 // receiving on a channel the closure captures. Its row covers starting the

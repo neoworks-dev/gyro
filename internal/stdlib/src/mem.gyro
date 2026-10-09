@@ -5,7 +5,7 @@
 // pointer, a function whose row names `alloc` receives the one its caller
 // was using, and `with expr` chooses it for the rest of a block.
 
-import { Array } from "stdlib"
+import { Array, Format } from "stdlib"
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -45,7 +45,7 @@ export fn alloc<T>(): *T !{ alloc } {
   var current = allocator()
   var block = current.proc(current.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
   if block == null {
-    panic("allocation of #{size<T>()} bytes failed")
+    panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
   }
   return block as *T
 }
@@ -178,4 +178,57 @@ export fn Arena::free_all(*self) !{} {
 // free returns the buffer to the allocator new took it from.
 export fn Arena::free(*self) !{ alloc } {
   self.buffer.free()
+}
+
+// ---------------------------------------------------------------------------
+// Formatting into an allocator
+// ---------------------------------------------------------------------------
+
+// A string is a header followed by its bytes in one block, and the runtime
+// owns that layout: text_size says how big the block for a given length is,
+// text_write copies a string in at a byte offset, and text_seal stamps the
+// length on and answers the block as a string.
+fn text_size(len: usize): usize !{}
+fn text_write(block: anyptr, at: usize, text: string) !{}
+fn text_seal(block: anyptr, len: usize): string !{}
+
+// block_for answers a block holding a string of `to` bytes, grown from one
+// of `from` bytes when there is one.
+fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
+  if old == null {
+    var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
+    if fresh == null {
+      panic("format: the allocator is out of memory")
+    }
+    return fresh
+  }
+  var grown = a.proc(a.data, Mode::Resize, text_size(to), 8, old, text_size(from))
+  if grown == null {
+    panic("format: the allocator is out of memory")
+  }
+  return grown
+}
+
+// format shows each piece of a Format the way println would and joins them
+// into a string whose bytes come from `a`. The block doubles as the text
+// grows, since the length is not known until the last piece is shown.
+export fn format(a: Allocator, value: Format): string !{} {
+  var capacity: usize = 64
+  var block = block_for(a, null, 0, capacity)
+  var used: usize = 0
+  for i in 0..value.len() {
+    var text = value.text(i)
+    var needed = used + text.len()
+    if needed > capacity {
+      var wider = capacity * 2
+      while wider < needed {
+        wider *= 2
+      }
+      block = block_for(a, block, capacity, wider)
+      capacity = wider
+    }
+    text_write(block, used, text)
+    used = needed
+  }
+  return text_seal(block, used)
 }

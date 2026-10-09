@@ -54,6 +54,11 @@ func (l *lowerer) finishAnyType() {
 	if l.anyPrinters[anyDisplayName] {
 		l.buildAnyRepr(anyDisplayName, true)
 	}
+	for _, printer := range []string{"print", "eprint"} {
+		if name := printer + "<any>"; l.anyPrinters[name] {
+			l.buildAnyStream(name, printer)
+		}
+	}
 }
 
 // ensureAnyPrinter records that one of the two %any printers is called, so
