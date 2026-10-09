@@ -35,9 +35,10 @@ export fn raw_free(pointer: anyptr) !{}
 export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
 export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 
-// offset is the address `bytes` past base, which is how an allocator that
-// carves one block into many says where each one starts.
-export fn offset(base: anyptr, bytes: usize): anyptr !{}
+// offset is the address `bytes` past base, which is how Arena says where
+// each block it carves out of its buffer starts. It is private: pointer
+// arithmetic is not part of the language's surface.
+fn offset(base: anyptr, bytes: usize): anyptr !{}
 
 // alloc answers one zero-filled T from a, and panics with the size when a
 // cannot supply it.

@@ -134,11 +134,11 @@ export fn MutexGuard<T>::unlock(*self) !{}
 
 The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
 `free`, `heap` and `Arena` are ordinary Gyro over the procedure an
-`Allocator` carries; `size`, `align`, `panic`, `copy_bytes`, `offset` and
-the three `raw_` functions are the intrinsics under them. The `raw_` three
-are the process heap itself. `offset` answers the address `bytes` past
-`base`, which is how an allocator that carves one block into many says
-where each piece starts.
+`Allocator` carries; `size`, `align`, `panic`, `copy_bytes` and the three `raw_` functions
+are the intrinsics under them. The `raw_` three are the process heap
+itself. `mem` also holds a private `offset` that `Arena` uses to carve its
+buffer; it is not exported, since pointer arithmetic is not part of the
+language's surface.
 
 ```gyro
 export enum Mode { Alloc, Free, FreeAll, Resize }
@@ -161,7 +161,6 @@ export fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export fn raw_free(pointer: anyptr) !{}
 export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
 export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
-export fn offset(base: anyptr, bytes: usize): anyptr !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}

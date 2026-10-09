@@ -537,7 +537,7 @@ Modules: `stdlib`, `mem`, `fs`, `net`, `convert`, `time`, `os`, `fmt`.
 
 Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `size`/
-`align`/`panic`/`offset` and `raw_alloc`/`raw_free`/`raw_resize`,
+`align`/`panic` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close`, `to_i32`/`to_f64`, `net::get`.
 
 Written in Gyro: `String` (on `Array<u8>`), its UTF-8 encoder, and the

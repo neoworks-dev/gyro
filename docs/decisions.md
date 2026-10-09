@@ -708,10 +708,11 @@ passed, so the analysis cannot say the block is lost. Tracking every call
 would have warned about the arena idiom, which was the reason `with`
 silenced it in the first design.
 
-**`offset` is the one new intrinsic.** An arena carves one block into
-many, and Gyro has no pointer arithmetic. `offset(base, bytes)` answers
-the address `bytes` past `base`, beside `copy_bytes` in the floor `mem`
-sits on. The arena's buffer is a block from its parent allocator rather
+**`offset` is private to `mem`.** An arena carves one block into many,
+and Gyro has no pointer arithmetic, so `mem` holds a bodyless `offset`
+intrinsic that answers the address `bytes` past a base. It is not
+exported: whether pointer arithmetic belongs on the language's surface is
+a separate question, and this decision does not answer it. The arena's buffer is a block from its parent allocator rather
 than an `Array<u8>`, since the parent has to be the one that supplied it.
 
 **Rejected: the hidden parameter with `with`** (the design this replaces).
