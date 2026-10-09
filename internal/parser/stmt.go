@@ -48,8 +48,6 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return p.parseFor()
 	case token.Defer:
 		return p.parseDefer()
-	case token.With:
-		return p.parseWith()
 	case token.Select:
 		return p.parseSelect()
 	case token.Break, token.Continue:
@@ -169,16 +167,6 @@ func (p *Parser) parseDefer() ast.Stmt {
 		p.errorf(stmt.Offset, "defer needs a function call")
 	}
 
-	p.expectTerminator()
-	return stmt
-}
-
-// parseWith parses `with expr`. A block does not follow: the statement
-// applies to the rest of the block it sits in, the way defer does.
-func (p *Parser) parseWith() ast.Stmt {
-	stmt := &ast.WithStmt{Offset: p.offset()}
-	p.expect(token.With)
-	stmt.Allocator = p.parseExpr()
 	p.expectTerminator()
 	return stmt
 }

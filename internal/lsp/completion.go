@@ -15,7 +15,7 @@ import (
 
 var keywordCompletions = []string{
 	"var", "const", "fn", "struct", "union", "enum", "return", "if", "elif", "else",
-	"while", "for", "in", "match", "break", "continue", "defer", "with", "async",
+	"while", "for", "in", "match", "break", "continue", "defer", "async",
 	"await", "chan", "select", "import", "from", "as", "export", "self",
 	"true", "false", "null",
 }

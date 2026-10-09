@@ -28,9 +28,6 @@ var codes = map[string]diag.Code{
 	"@extern's second argument is symbol = \"the_c_name\"":                                       diag.EExternDeclaration,
 	"%s cannot cross to C: %s":                                                                   diag.EExternSignature,
 
-	// Allocators. The statement that chooses one has to be handed one.
-	"with needs an Allocator, not %s": diag.EWithNotAllocator,
-
 	// Unions. One storage with several names for it, and nothing records
 	// which is live — which is what decides both what may be a member and
 	// what a literal may say.
@@ -190,10 +187,9 @@ var codes = map[string]diag.Code{
 	"this returns a view into storage that ends with this function": diag.EEscapingLocalView,
 
 	// Effects
-	"%s does %s, which the row does not name":                          diag.EUnnamedEffect,
-	"%s is an intrinsic with no row, so it may do %s":                  diag.EUnnamedEffect,
-	"this string interpolation allocates, which the row does not name": diag.EUnnamedEffect,
-	"%s is not an effect":                                              diag.EUnknownEffect,
+	"%s does %s, which the row does not name":         diag.EUnnamedEffect,
+	"%s is an intrinsic with no row, so it may do %s": diag.EUnnamedEffect,
+	"%s is not an effect":                             diag.EUnknownEffect,
 
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,

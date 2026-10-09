@@ -2,5 +2,5 @@
 
 // Both allocate: the failure carries a message, and building it is the
 // one thing either of them puts on the heap.
-export fn to_i32(text: string): (i32, error?) !{ alloc }
-export fn to_f64(text: string): (f64, error?) !{ alloc }
+export fn to_i32(text: string): (i32, error?) !{}
+export fn to_f64(text: string): (f64, error?) !{}

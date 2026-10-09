@@ -206,15 +206,7 @@ func (b *reprBuilder) part(reg string, t types.Type) string {
 		bindings := ownerBindings(method.Decl, t)
 		callee := b.l.ensureFunc(method.Decl, bindings)
 		dst := b.reg("shown")
-		args := []string{reg}
-		if b.l.allocates(method.Decl) {
-			// A synthesized repr has no allocator in scope, so a
-			// to_string that allocates gets the heap.
-			heap := b.reg("heap")
-			b.emit(&metals.Call{Dst: heap, Callee: b.l.heapFunc()})
-			args = append(args, heap)
-		}
-		b.emit(&metals.Call{Dst: dst, Callee: callee, Args: args})
+		b.emit(&metals.Call{Dst: dst, Callee: callee, Args: []string{reg}})
 		return dst
 	}
 	if callee := b.l.reprFor(t); callee != "" {

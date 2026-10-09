@@ -21,7 +21,7 @@ import { Array, from_utf8, print, eprintln } from "stdlib"
 // Between the % and the verb: an optional `-` to left-align, an optional
 // `0` to pad with zeros instead of spaces, and an optional decimal width.
 // `%-4d`, `%02x` and `%8s` all mean what they do in C.
-export fn sprintf(format: string, args: ...any): string !{ alloc } {
+export fn sprintf(format: string, args: ...any): string !{} {
   var out = Array<u8>::new()
   var body = format.bytes()
   var next: usize = 0
@@ -53,11 +53,11 @@ export fn sprintf(format: string, args: ...any): string !{ alloc } {
   return text
 }
 
-export fn printf(format: string, args: ...any) !{ io, alloc } {
+export fn printf(format: string, args: ...any) !{ io } {
   print(sprintf(format, args...))
 }
 
-export fn eprintf(format: string, args: ...any) !{ io, alloc } {
+export fn eprintf(format: string, args: ...any) !{ io } {
   eprintln(sprintf(format, args...))
 }
 
@@ -69,7 +69,7 @@ const zero_digit: u8 = 48
 const nine_digit: u8 = 57
 const space: u8 = 32
 
-fn push_text(out: Array<u8>, text: string) !{ alloc } {
+fn push_text(out: Array<u8>, text: string) !{} {
   for byte in text.bytes() {
     out.push(byte)
   }
@@ -116,7 +116,7 @@ fn read_spec(body: u8[], from: usize): (Spec, usize) {
 // pad widens a rendered value to the spec's width. It returns its
 // argument unchanged when nothing has to be added, which is why the row
 // says the result may view it.
-fn pad(text: string, spec: Spec): string !{ alloc, &text } {
+fn pad(text: string, spec: Spec): string !{ &text } {
   var width = text.len()
   if width >= spec.width {
     return text
@@ -151,7 +151,7 @@ fn pad(text: string, spec: Spec): string !{ alloc, &text } {
 // the any holds falls back to the value's own representation rather than
 // panicking: a format string is data, and a mismatch in it should not
 // take the program down.
-fn render(value: any, verb: u8): string !{ alloc } {
+fn render(value: any, verb: u8): string !{} {
   if verb == 120 || verb == 88 {
     var n, ok = as_unsigned(value)
     if ok {
@@ -199,7 +199,7 @@ fn widen(value: i64): u64 {
   return 18446744073709551615 - ((-(value + 1)) as u64)
 }
 
-fn hex(value: u64, upper: bool): string !{ alloc } {
+fn hex(value: u64, upper: bool): string !{} {
   if value == 0 {
     return "0"
   }

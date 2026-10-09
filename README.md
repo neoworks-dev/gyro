@@ -104,11 +104,11 @@ compiler-compiler.
 | modules | one file is one module |
 | errors | `(T, error?)` pairs, checked; `error` is any type with `message()` |
 | panics | out-of-bounds, null deref, divide by zero and overflow abort; `+%` wraps on purpose |
-| memory | manual `alloc` / `free`, `defer` at block exit, leak analysis warns |
+| memory | manual `alloc(a)` / `free(a, p)` over explicit allocators, `defer` at block exit, leak analysis warns |
 | slices | `T[]` borrows, `Array<T>` owns and grows |
 | pattern matching | `match subject { pattern: body }`, exhaustive over enums |
 | concurrency | threads, channels (`chan<T>`, `select`), `async` / `await` |
-| effects | `!{ io, alloc }` rows, checked; `!{ &xs }` says what the result borrows |
+| effects | `!{ io }` rows, checked; `!{ &xs }` says what the result borrows |
 | C | `@extern("SDL2")` links a symbol; `import "./x.c"` compiles the C in |
 
 Two rules drive most of the rest:

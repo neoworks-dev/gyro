@@ -75,7 +75,7 @@ type symbol struct {
 	// analysis follows until something settles it.
 	holdsAllocation bool
 	// intrinsic names the bundled function an imported symbol stands for —
-	// "alloc", "free", "panic" or "spawn" — and is empty for everything else. The
+	// "alloc", "free", "heap", "panic" or "spawn" — and is empty for everything else. The
 	// analyses that care about these have to know the import they came
 	// through, since the names are ordinary and can be aliased.
 	intrinsic string
@@ -238,11 +238,6 @@ type checker struct {
 	// exit and again at the end of its block.
 	reportedLeaks map[*symbol]bool
 
-	// withDepth counts the `with` statements in force at the statement
-	// being checked. Above zero, an allocation belongs to the allocator
-	// the block chose and the leak analysis leaves it alone.
-	withDepth int
-
 	// importPaths maps an import specifier to the module path it resolved
 	// to, which is how `alloc` is told from a local function of that name.
 	importPaths map[string]string
@@ -314,11 +309,6 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	// every same-module body resolved and every instantiation recorded.
 	for i, module := range prog.Modules {
 		checkers[i].checkModuleEffects(module.Tree)
-	}
-	// What each function and closure does is then written down for the
-	// lowering, which passes an allocator to exactly the ones that use it.
-	for i, module := range prog.Modules {
-		checkers[i].recordModuleEffects(module.Tree)
 	}
 	return p.info
 }
@@ -463,7 +453,7 @@ func makeTypeParams(params []ast.TypeParam) []*types.TypeParam {
 func bundledIntrinsic(modulePath, name string) string {
 	switch modulePath {
 	case stdlib.Path("mem"):
-		if name == "alloc" || name == "free" || name == "panic" {
+		if name == "alloc" || name == "free" || name == "heap" || name == "panic" {
 			return name
 		}
 	case stdlib.Path("stdlib"):

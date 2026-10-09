@@ -19,7 +19,7 @@ These are part of the type and need no import:
 
 `runes()` and `bytes()` **copy**, and therefore borrow nothing — a string is
 immutable and shared while a slice is neither, and a rune is four bytes
-where UTF-8 is not. That is why they carry `!{ alloc }` and no `&` entry.
+where UTF-8 is not. That is why they carry `!{}` and no `&` entry.
 
 Indexing a string with `[]` is not a thing: bytes and code points are
 different questions, and each has a method that answers it.
@@ -35,8 +35,8 @@ means a struct prints as its derived representation and an `any` prints as
 whatever is inside it ([chapter 14.2](ch14-02-printing.md)). Escape the
 sequence as `\#{`.
 
-Interpolation **allocates** — it builds new text — which is why a function
-that interpolates needs `alloc` in its effect row.
+Interpolation builds new text, which comes from the process heap. It is not
+an effect: a function that interpolates needs nothing in its row.
 
 ## Building text
 

@@ -2,10 +2,8 @@
 // a body is ordinary Gyro over the allocator a function is handed.
 //
 // The model is chapter 4.5: an allocator is a procedure and a data
-// pointer, a function whose row names `alloc` receives the one its caller
-// was using, and `with expr` chooses it for the rest of a block.
-
-import { Array } from "stdlib"
+// pointer, an ordinary value, and a function allocates exactly when it is
+// handed one as a parameter.
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -20,10 +18,6 @@ export struct Allocator {
   export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
   export data: anyptr?
 }
-
-// allocator is the one this function received. Its row is what makes a
-// function receive one at all.
-export fn allocator(): Allocator !{ alloc }
 
 // size and align answer what C's sizeof and _Alignof would for T.
 export fn size<T>(): usize !{}
@@ -41,9 +35,15 @@ export fn raw_free(pointer: anyptr) !{}
 export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
 export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 
-export fn alloc<T>(): *T !{ alloc } {
-  var current = allocator()
-  var block = current.proc(current.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
+// offset is the address `bytes` past base, which is how Arena says where
+// each block it carves out of its buffer starts. It is private: pointer
+// arithmetic is not part of the language's surface.
+fn offset(base: anyptr, bytes: usize): anyptr !{}
+
+// alloc answers one zero-filled T from a, and panics with the size when a
+// cannot supply it.
+export fn alloc<T>(a: Allocator): *T !{} {
+  var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
   if block == null {
     panic("allocation of #{size<T>()} bytes failed")
   }
@@ -53,9 +53,9 @@ export fn alloc<T>(): *T !{ alloc } {
 // A call to panic ends the block for the checker, so `if p == null {
 // panic(...) }` narrows p below it, the way a return would.
 
-export fn free<T>(pointer: *T) !{ alloc } {
-  var current = allocator()
-  current.proc(current.data, Mode::Free, 0, 0, pointer as anyptr, size<T>())
+// free returns a block to the allocator that gave it out.
+export fn free<T>(a: Allocator, pointer: *T) !{} {
+  a.proc(a.data, Mode::Free, 0, 0, pointer as anyptr, size<T>())
 }
 
 // ---------------------------------------------------------------------------
@@ -94,19 +94,22 @@ export fn heap(): Allocator !{} {
 // ---------------------------------------------------------------------------
 
 export struct Arena {
-  buffer: Array<u8>
+  parent: Allocator
+  base: anyptr
   capacity: usize
   used: usize
 }
 
-// new takes the buffer from the allocator current where it is called, so
-// an arena inside an arena is an ordinary thing to build.
-export fn Arena::new(capacity: usize): Arena !{ alloc } {
-  var buffer = Array<u8>::with_capacity(capacity)
-  for i in 0..capacity {
-    buffer.push(0)
+// new takes the buffer from a, and remembers a so that free can give it
+// back to the same allocator. An arena inside an arena is an ordinary
+// thing to build. Sixteen is the largest alignment a block of any type
+// needs, so every block carved out of the buffer can be aligned within it.
+export fn Arena::new(a: Allocator, capacity: usize): Arena !{} {
+  var block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
+  if block == null {
+    panic("allocation of #{capacity} bytes failed")
   }
-  return Arena{ buffer: buffer, capacity: capacity, used: 0 }
+  return Arena{ parent: a, base: block, capacity: capacity, used: 0 }
 }
 
 // take carves the next block out of the buffer, aligned, zeroed, or
@@ -126,11 +129,13 @@ fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
   if start + width > self.capacity {
     return null
   }
-  for i in start..start + width {
-    self.buffer.set(i, 0)
+  var block = offset(self.base, start)
+  for i in 0..width {
+    var byte = offset(block, i) as *u8
+    *byte = 0
   }
   self.used = start + width
-  return &self.buffer[start] as anyptr
+  return block
 }
 
 fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
@@ -164,7 +169,8 @@ fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?
   }
 }
 
-// allocator is the value to hand to `with`. It points at the arena, so
+// allocator is the value to hand to whatever should allocate from the
+// arena. It points at the arena, so
 // the arena has to stay where it is while the value is in use.
 export fn Arena::allocator(*self): Allocator !{} {
   return Allocator{ proc: &arena_proc, data: &self as anyptr }
@@ -176,6 +182,6 @@ export fn Arena::free_all(*self) !{} {
 }
 
 // free returns the buffer to the allocator new took it from.
-export fn Arena::free(*self) !{ alloc } {
-  self.buffer.free()
+export fn Arena::free(*self) !{} {
+  self.parent.proc(self.parent.data, Mode::Free, 0, 0, self.base, self.capacity)
 }

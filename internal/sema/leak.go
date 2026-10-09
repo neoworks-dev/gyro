@@ -26,11 +26,9 @@ type allocSite struct {
 }
 
 // trackAllocation registers a local bound to an alloc call against the block
-// it was declared in. Below a `with`, nothing is registered: the block
-// chose an allocator for what follows, and what it hands out is that
-// allocator's to reclaim, which is the arena idiom.
+// it was declared in.
 func (c *checker) trackAllocation(sym *symbol, offset int, name string) {
-	if sym == nil || len(c.allocScopes) == 0 || c.withDepth > 0 {
+	if sym == nil || len(c.allocScopes) == 0 {
 		return
 	}
 	top := len(c.allocScopes) - 1
@@ -38,13 +36,10 @@ func (c *checker) trackAllocation(sym *symbol, offset int, name string) {
 }
 
 // pushAllocScope runs a block's statements with their own set of tracked
-// allocations, reporting the ones nothing settled when the block ends. A
-// `with` inside the block ends with it, so the outer count is restored.
+// allocations, reporting the ones nothing settled when the block ends.
 func (c *checker) pushAllocScope(walk func()) {
 	c.allocScopes = append(c.allocScopes, nil)
-	saved := c.withDepth
 	walk()
-	c.withDepth = saved
 
 	sites := c.allocScopes[len(c.allocScopes)-1]
 	c.allocScopes = c.allocScopes[:len(c.allocScopes)-1]
@@ -133,10 +128,17 @@ func (c *checker) settleCallArgs(e ast.Expr) {
 	}
 }
 
-// allocationCall reports whether an expression is a call to mem's alloc, so
-// that the local it initializes becomes this block's responsibility.
+// allocationCall reports whether an expression is a call to mem's alloc on
+// the process heap, so that the local it initializes becomes this block's
+// responsibility. A block from any other allocator — an arena, or one the
+// function was handed — is that allocator's to reclaim, so it is not
+// tracked.
 func (c *checker) allocationCall(e ast.Expr) bool {
-	return c.intrinsicCall(e) == "alloc"
+	if c.intrinsicCall(e) != "alloc" {
+		return false
+	}
+	call := e.(*ast.CallExpr)
+	return len(call.Args) == 1 && c.intrinsicCall(call.Args[0].Value) == "heap"
 }
 
 // intrinsicCall names the mem intrinsic a call invokes, or "".

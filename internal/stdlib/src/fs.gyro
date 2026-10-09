@@ -4,8 +4,8 @@ import { Array } from "stdlib"
 
 export struct File {}
 
-export fn open(path: string): (File, error?) !{ io, alloc }
-export fn read_all(file: File): (string, error?) !{ io, alloc }
+export fn open(path: string): (File, error?) !{ io }
+export fn read_all(file: File): (string, error?) !{ io }
 export fn File::close(*self) !{ io }
 
 // The one-shot operations take a path, not a handle: each opens, acts and
@@ -17,5 +17,5 @@ export fn remove(path: string): error? !{ io }
 
 // read_dir lists an existing directory's entry names, sorted, without
 // "." and "..".
-export fn read_dir(path: string): (Array<string>, error?) !{ io, alloc }
+export fn read_dir(path: string): (Array<string>, error?) !{ io }
 export fn exists(path: string): bool !{ io }

@@ -20,9 +20,9 @@ println(buf[0])         // 4
 
 | method | row | notes |
 | --- | --- | --- |
-| `Array<T>::new(): Array<T>` | `!{ alloc }` | |
-| `Array<T>::with_capacity(capacity: usize): Array<T>` | `!{ alloc }` | |
-| `push(*self, value: T)` | `!{ alloc }` | may grow the buffer |
+| `Array<T>::new(): Array<T>` | `!{}` | |
+| `Array<T>::with_capacity(capacity: usize): Array<T>` | `!{}` | |
+| `push(*self, value: T)` | `!{}` | may grow the buffer |
 | `pop(*self): (T, bool)` | `!{}` | the flag reports whether there was one |
 | `get(self, index: usize): T` | `!{}` | a **copy** of the element; bounds-checked |
 | `set(*self, index: usize, value: T)` | `!{}` | |

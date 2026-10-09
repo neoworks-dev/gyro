@@ -10,7 +10,7 @@
 // dereferenced until it has been checked.
 
 import { println } from "stdlib"
-import { alloc, free, Arena } from "mem"
+import { alloc, free, heap, Allocator, Arena } from "mem"
 
 struct Node {
   value: i32
@@ -19,8 +19,8 @@ struct Node {
 
 // Freed on every path, including the early return.
 fn sum_pair(a: i32, b: i32): i32 {
-  var node = alloc<Node>()
-  defer free(node)
+  var node = alloc<Node>(heap())
+  defer free(heap(), node)
 
   node.value = a + b
   if node.value < 0 {
@@ -29,10 +29,11 @@ fn sum_pair(a: i32, b: i32): i32 {
   return node.value
 }
 
-// The allocation escapes through the return value, so ownership moves to the
-// caller and no warning is reported here.
-export fn make_node(value: i32): *Node {
-  var node = alloc<Node>()
+// Takes the allocator it allocates from, so the caller chooses it and can
+// read the choice at the call. The allocation escapes through the return
+// value, so ownership moves to the caller and no warning is reported here.
+export fn make_node(a: Allocator, value: i32): *Node {
+  var node = alloc<Node>(a)
   node.value = value
   node.next = null
   return node
@@ -46,7 +47,7 @@ export fn free_chain(head: *Node) {
     // `current` is narrowed to *Node inside the check, so the field access
     // needs no unwrapping.
     var next = current.next
-    free(current)
+    free(heap(), current)
     current = next
   }
 }
@@ -55,11 +56,11 @@ export fn free_chain(head: *Node) {
 // `move` is the one thing a capture list can say, and it is what tells the
 // leak analysis to stop tracking the allocation here.
 export fn defer_release(value: i32): fn() {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = value
 
   return fn[move node]() {
-    free(node)
+    free(heap(), node)
   }
 }
 
@@ -69,26 +70,23 @@ fn main() {
   var release = defer_release(7)
   defer release()
 
-  var head = make_node(1)
-  head.next = make_node(2)
+  var head = make_node(heap(), 1)
+  head.next = make_node(heap(), 2)
   defer free_chain(head)
 
   var address = &head.value
   println(*address)
 
-  // Every allocation is made by an allocator, and `with` chooses one for
-  // the rest of the block. An arena hands blocks out of one buffer and
+  // Every allocation is made by an allocator, and a function that
+  // allocates is handed one. An arena hands blocks out of one buffer and
   // takes them all back at once, so nothing below needs a free — and the
   // leak analysis knows that.
-  var arena = Arena::new(1024)
+  var arena = Arena::new(heap(), 1024)
   defer arena.free()
-  {
-    with arena.allocator()
-    var scratch = make_node(3)
-    var tail = make_node(4)
-    scratch.next = tail
-    println(scratch.value + tail.value)
-  }
+  var scratch = make_node(arena.allocator(), 3)
+  var tail = make_node(arena.allocator(), 4)
+  scratch.next = tail
+  println(scratch.value + tail.value)
 
   // Overflow is a panic, not a wrap. Wrapping is spelled out where it is
   // wanted, as in a hash. Literals adapt to the context type; the typed

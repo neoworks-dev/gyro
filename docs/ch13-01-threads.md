@@ -67,7 +67,7 @@ the same memory.
 Handing a reference to `spawn` that way **warns**:
 
 ```gyro
-var node = alloc<Node>()
+var node = alloc<Node>(heap())
 spawn(fn() { node.value = 1 })      // warns: both threads reach node
 
 spawn(fn[move node]() { ... })      // fine: the binding goes with it
@@ -87,7 +87,7 @@ case, which is the one people write by accident.
 
 - A panic on a spawned thread prints and kills that thread; the process
   keeps running.
-- `spawn` declares `!{ io, alloc }`, which covers starting the thread and
+- `spawn` declares `!{ io }`, which covers starting the thread and
   stands in for the task's own effects until a row can travel with a
   function value ([chapter 12](ch12-00-effect-rows.md)).
 - Concurrent programs whose output order is not determined cannot be pinned

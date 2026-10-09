@@ -661,69 +661,73 @@ guests (Lua, Go), Gyro does not move onto it.
 
 Consequence: the `memory reclamation` gap must be solved unmanaged —
 arenas, a quarantining allocator, or stronger static analysis. The
-answer is allocators as values, riding on the `alloc` effect; see
-"Allocators ride on the `alloc` effect" below.
+answer is allocators as values, passed as explicit parameters; see
+"Allocators are explicit parameters" below.
 
-### Allocators ride on the `alloc` effect *(new)*
+### Allocators are explicit parameters *(new)*
 
-**Status: decided; `alloc`, `free` and `Arena` honour it, the runtime's
-own storage does not yet.** An allocator is a value — a procedure and a
-data pointer, Odin's shape — and every function whose row names `alloc`,
-written or inferred, receives one as a trailing parameter the compiler
-passes. A function whose row does not name it receives nothing. `with
-expr` is a statement that replaces the allocator for the rest of the
-enclosing block. `allocator()` reads the current one, `heap()` is the
-process heap, `main` and module initializers start on the heap. `alloc`
-and `free` are ordinary Gyro over the procedure, which is why `free` is
-now `!{ alloc }`: the effect means *uses the allocator*, in either
-direction. [Chapter 4.5](ch04-05-allocators.md) is the specification.
+**Status: decided; `alloc`, `free` and `Arena` take one, the runtime's own
+storage does not yet.** An allocator is an ordinary value of type
+`Allocator` from `mem` — a procedure and a data pointer, Odin's shape —
+and a function allocates exactly when it is handed one as a parameter.
+`alloc<T>(a)` returns one zero-filled `T` from `a`, `free(a, p)` gives it
+back, `heap()` is the process heap, and `Arena::new(a, capacity)` takes
+its buffer from `a` and remembers it, so `Arena::free` returns the buffer
+to the allocator it came from without being told which. Running out of
+memory panics with the size. [Chapter 4.5](ch04-05-allocators.md) is the
+specification.
 
-**Why the row.** Gyro already computes, whole-program, which functions
-allocate; that is what the effect checker is. A hidden parameter needs
-exactly that knowledge — who takes it — and inferring it a second time
-for a context struct would be the same analysis under a second name. So
-the row is the parameter: `!{}` costs nothing and can reach no
-allocator, which is what `@gpu` and `@comptime` wanted from rows in the
-first place, and a rowless function that calls `alloc<T>()` is handed one
-without writing a word. The parameter is an ordinary METALS parameter,
-so the verifier, the linker and the backend learn nothing new.
+**Why explicit.** The first design made the allocator a hidden trailing
+parameter: the `alloc` effect decided which functions received it, and a
+`with expr` statement swapped it for the rest of a block. The allocator a
+call used could then not be read from the call. Code that reads correctly
+could grow a buffer from one allocator and free it to another, because
+nothing at either call said which one was in force. That is the failure
+of JavaScript's `with`, and for the same reason: a name's meaning depends
+on a binding established somewhere else, and a reader has to reconstruct
+the scope to know what a line does. Gyro is meant to be verbose and easy
+to read, and a parameter is the form of dependency that every reader
+already knows how to follow. There is no effect for it either: whether a
+function allocates is in its signature, as a parameter, where a row would
+only have said it a second time.
 
-**Closures capture it; code pointers get the heap.** A closure that
-allocates captures the allocator as it captures any local, so calling a
-function value still contributes nothing to a row and `spawn` carries the
-allocator across a thread for free. `&f` on an allocating function is the
-address of a thunk that supplies the heap: a callback C makes has nowhere
-to put an allocator, and refusing the address would make an allocating
-callback unwritable.
+**What went with it.** The `with` statement, the `alloc` effect and its
+row entry, the `allocator()` intrinsic, the wrappers that captured the
+current allocator into a function value, and the thunk that supplied the
+heap to `&f`. A closure no longer carries an allocator it was never
+handed, and `&f` on a function with an `Allocator` parameter is an
+ordinary code pointer: the allocator is an argument the caller of the
+pointer passes, like any other. `mem` is no longer loaded into every
+program, since the lowering has no hidden parameter whose type it must
+know. Interpolation counts as no effect.
 
-**Where it lives.** `Allocator`, `Mode`, `alloc`, `free`, `heap` and
-`Arena` are Gyro in `mem`; the intrinsics under them are `allocator()`,
-`size`, `align`, `panic` and the three `raw_` heap calls. `mem` is loaded
-into every program because the parameter's type is Gyro's, not the
-runtime's. An `Arena` is written over an `Array<u8>` rather than a new
-address-arithmetic primitive, which keeps the surface as it was and
-proves the model on the first allocator written in it.
+**The leak analysis follows the heap.** A local bound to `alloc<T>(heap())`
+is still tracked. A block from any other allocator is not: an arena
+reclaims what it handed out, and so does an allocator the function was
+passed, so the analysis cannot say the block is lost. Tracking every call
+would have warned about the arena idiom, which was the reason `with`
+silenced it in the first design.
 
-**Zero-filled.** A block from `Alloc` is zeroed. An allocator reuses
-memory, and the last owner's bytes are not the next one's to read. The
-evaluator's "uninitialized read panics" is gone with the evaluator; the
-detection belongs in a quarantining allocator now, written in Gyro.
+**`offset` is private to `mem`.** An arena carves one block into many,
+and Gyro has no pointer arithmetic, so `mem` holds a bodyless `offset`
+intrinsic that answers the address `bytes` past a base. It is not
+exported: whether pointer arithmetic belongs on the language's surface is
+a separate question, and this decision does not answer it. The arena's buffer is a block from its parent allocator rather
+than an `Array<u8>`, since the parent has to be the one that supplied it.
 
-**Rejected: a hidden context on every call** (Odin verbatim). It changes
-the convention of every function, closures and callbacks included,
-whether or not they allocate, and it is the implicit ambient state Gyro
-has no other instance of. **Rejected: an explicit allocator parameter
-everywhere** (Zig). Honest, and the tedium is real: it forgoes the
-inference the checker already does, and every rowless function that
-transitively allocates would have to be edited. **Rejected: `with expr
-{ }` as a block.** A statement scoped to the rest of the block reads
-like `defer` and needs no extra nesting for the common case, where the
-arena is chosen once at the top. **Rejected: four `code` fields on the
-allocator** instead of one procedure and a mode. One procedure is
-Odin's, wraps cleanly (a tracking allocator forwards one call), and
-keeps the value two words. **Rejected: refusing `&f` on an allocating
-function.** See above. **Rejected: keeping `free` at `!{}`.** It would
-have to reach the allocator without being handed one.
+**Rejected: the hidden parameter with `with`** (the design this replaces).
+See above. **Rejected: an implicit context on every call** (Odin
+verbatim), for the same reason, and it also changes the convention of every
+function whether or not it allocates. **Rejected: `with expr { }` as a
+block**: it narrows the scope and keeps the problem. **Rejected: four
+`code` fields on the allocator** instead of one procedure and a mode. One
+procedure is Odin's, wraps cleanly (a tracking allocator forwards one
+call), and keeps the value two words.
+
+**Not here.** Containers that remember the allocator they grew from are
+issue #49, so `Array<T>`, `String` and the text the string methods build
+still come from the process heap. Closures that capture are issue #93, and
+formatting text with `#{}` is issue #92.
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -1150,7 +1154,7 @@ deterministic value to observe.
 one more intrinsic beside `read_stdin`:
 
 ```gyro
-export fn readline(): string? !{ io, alloc }
+export fn readline(): string? !{ io }
 ```
 
 It answers the next line without its terminator, and null at end of file.
@@ -1372,7 +1376,7 @@ Reading the row at call sites is what makes it a real check rather than a
 local one, and it is the reason the annotation earns its cost: the fact a
 signature states is usable by everyone who calls it, including across a
 module, without anyone re-deriving it from a body. It is also the machinery
-the concrete effects use — `io` and `alloc` are checked by the same "read
+the concrete effect uses — `io` is checked by the same "read
 the callee's row, apply it here" step.
 
 Frame storage propagates through a call: passing a local where the callee
@@ -1381,7 +1385,7 @@ borrows makes the result view the caller's frame. That falls out of mapping
 
 ### Effect rows themselves
 
-**Status: checked, v1.** Signatures may carry `!{ io, alloc }`, and sema
+**Status: checked, v1.** Signatures may carry `!{ io }`, and sema
 checks the concrete effects the same way it checks borrows: the signature
 states the fact and the body is held to it.
 
@@ -1395,8 +1399,8 @@ row is unconstrained in v1.
 
 **Inference reaches through imports** *(revised)*. A call contributes its
 callee's declared row; when the callee states none, the effects are
-inferred from its body, bottom-up and transitively — the lattice is two
-bits, and a cycle guard makes recursion converge. The body is read no
+inferred from its body, bottom-up and transitively — the lattice is one
+bit, and a cycle guard makes recursion converge. The body is read no
 matter which module it lives in.
 
 This reverses the original ruling, which stopped inference at the module
@@ -1468,31 +1472,26 @@ no route and gets no notes, because the message already names it.
 **A rowless intrinsic contributes every effect.** The one body that cannot
 be read is the one that does not exist. A declaration with no body is a
 foreign function, and with no row there is nothing to know it by, so it is
-assumed to do `io` and `alloc`. That is what forced every intrinsic in the
+assumed to do `io`. That is what forced every intrinsic in the
 standard library to state a row — `Array<T>::get(self, index: usize): T !{}`
 down to `MutexGuard<T>::unlock(*self) !{}` — which is the right place for
 the annotation burden to fall: the runtime boundary is where a row is the
 only possible source of truth.
 
-**The vocabulary is closed.** A row entry that is neither `io`, `alloc` nor
-a `&name` borrow is an error (`E0612`). `!{ foo }` used to parse and be
+**The vocabulary is closed.** A row entry that is neither `io` nor a
+`&name` borrow is an error (`E0612`). `!{ foo }` used to parse and be
 ignored, so a misspelled row promised less than it appeared to.
 
-The effect sources are calls, string interpolation (building text
-allocates), and the stdlib's declared rows: `print`/`println`/`eprintln`
-`!{ io }`; `mem`'s `alloc` `!{ alloc }`; `Array::new`/`with_capacity`/
-`push` `!{ alloc }` (push may grow; pop, get, set, len and free do not
-allocate); `from_utf8` and the text builders (`String`'s appenders,
-`substring`, `trim`, `split`, `join`, `repeat`) `!{ alloc }`; `fs`'s
-`open`/`read_all` `!{ io, alloc }` and `File::close` `!{ io }`; `net::get`
-`!{ io, alloc }`. The modules that landed alongside the checker follow the
-same scheme: `fs`'s one-shot writes, `remove` and `exists` are `!{ io }`
-and `read_dir` `!{ io, alloc }`; `os`'s `env` and `exit` are `!{ io }` and
-`read_stdin` `!{ io, alloc }`; all of `time` is `!{ io }` — a clock
-reading is an observation of the world, and marking it keeps `now()` out
-of anything `@comptime` will one day accept. `Array<T>::slice` keeps its
-borrow-only row — lending a
-view allocates nothing.
+The effect sources are calls and the stdlib's declared rows:
+`print`/`println`/`eprintln` `!{ io }`; `fs`'s `open`/`read_all`/`read_dir`
+and one-shot writes, `remove` and `exists`, and `File::close`, `!{ io }`;
+`net::get` `!{ io }`; `os`'s `env`, `exit`, `read_stdin` and `readline`
+`!{ io }`; all of `time` `!{ io }` — a clock reading is an observation of
+the world, and marking it keeps `now()` out of anything `@comptime` will
+one day accept. Everything that only allocates, from `Array::new` to
+`from_utf8` and the text builders, states `!{}`, since allocation is not
+an effect. `Array<T>::slice` keeps its borrow-only row — lending a view
+allocates nothing.
 
 A generic body's effects are judged per instantiation, mirroring borrows:
 what a call on a type parameter reaches is only known once the parameter is
@@ -1502,11 +1501,9 @@ its recorded instantiations, unioned — because its body resolves no calls
 until a type argument is known; before this it contributed nothing, which
 was the same silent hole as the cross-module one.
 
-**The built-in method surface answers from a fixed table.** `runes()` and
-`bytes()` copy into new storage, so both are `alloc`; `len`, `close`,
-`hash`, `compare` and `message` are effect-free. They have no declaration
-to hang a row on, and inventing one for them was rejected — the table is
-three lines and the surface is deliberately closed.
+**The built-in method surface performs no effect.** `runes()`, `bytes()`,
+`len`, `close`, `hash`, `compare` and `message` have no declaration to hang
+a row on, and none of them does io.
 
 **A closure is held to its own row.** `fn(n: i32) !{} { println(n) }` is an
 error. Calling a closure still contributes nothing to its caller, so a
@@ -1520,10 +1517,8 @@ Still open, deliberately out of v1:
 - **Function values.** Calling a closure or an `fn`-typed parameter
   contributes nothing, so higher-order functions under-report until effect
   polymorphism (the row variables above) gives them something to say.
-  `spawn` carries `!{ io, alloc }` as a stand-in for its task's effects for
+  `spawn` carries `!{ io }` as a stand-in for its task's effects for
   exactly this reason.
-- **Closure creation.** A capturing closure allocates its environment in
-  the native tiers, and that is not counted as `alloc`.
 - **Module-level `var` initializers.** They run before `main`, outside any
   signature, so no row covers them and they are unconstrained. Whatever
   `@comptime` settles for module-level evaluation is where this is
@@ -1801,7 +1796,7 @@ language's and still hold on every tier.
   hands back an uninitialized value whose first read panics — the runtime
   shadow of the definite-assignment rule that will catch it statically.
 - **alloc'd memory is zero-filled**, by the allocator's contract
-  ("Allocators ride on the `alloc` effect"). Reading a field before
+  ("Allocators are explicit parameters"). Reading a field before
   writing it reads zero, and nothing detects it; the check belongs in a
   quarantining allocator, not in every block.
 - **Panics do not run defers.** A panic aborts the process; there is no

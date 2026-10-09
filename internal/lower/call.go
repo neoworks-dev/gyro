@@ -202,9 +202,6 @@ func (f *funcLowerer) prepareUserCall(call *ast.CallExpr, resolved *sema.CallInf
 		args = append(args, f.methodReceiver(selector.X, resolved.Method))
 	}
 	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
-	if f.l.allocates(decl) {
-		args = append(args, f.currentAllocator())
-	}
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 }
 
@@ -294,11 +291,6 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 		args = append(args, f.nativeReceiver(selector.X))
 	}
 	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
-	// An intrinsic that declares alloc is handed the allocator like any
-	// Gyro function, whether or not the runtime behind it reads it yet.
-	if f.l.allocates(decl) {
-		args = append(args, f.currentAllocator())
-	}
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 }
 
@@ -396,14 +388,11 @@ func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDec
 }
 
 // prepareMemIntrinsic lowers the mem intrinsics the compiler answers
-// itself: the current allocator, and the layout of a type. It returns nil
+// itself: the layout of a type. It returns nil
 // for the ones the runtime supplies — panic and the raw heap calls —
 // which lower as ordinary natives.
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
-	case "allocator":
-		value := f.currentAllocator()
-		return func() string { return value }
 	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -568,11 +557,6 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		Params: []metals.Param{{Name: "e", Type: &metals.Named{Name: "error"}}},
 		Result: metals.TStr,
 	}
-	// A message method that allocates is handed the heap: this dispatch
-	// is reached from the runtime's own rendering, where no allocator is
-	// in scope.
-	fn.Body = append(fn.Body, &metals.Call{Dst: allocatorLocal, Callee: f.l.heapFunc()})
-
 	sw := &metals.Switch{X: "tag"}
 	sw.Cases = append(sw.Cases, metals.SwitchCase{Value: 0, Body: []metals.Instr{
 		&metals.VariantField{Dst: "native", X: "e", Variant: 0, Index: 0},
@@ -596,12 +580,8 @@ func (f *funcLowerer) ensureErrorMessage() string {
 			)
 			receiver = "cell"
 		}
-		args := []string{receiver}
-		if f.l.allocates(method.Decl) {
-			args = append(args, allocatorLocal)
-		}
 		body = append(body,
-			&metals.Call{Dst: "msg", Callee: callee, Args: args},
+			&metals.Call{Dst: "msg", Callee: callee, Args: []string{receiver}},
 			&metals.Return{Val: "msg"},
 		)
 		sw.Cases = append(sw.Cases, metals.SwitchCase{Value: index, Body: body})

@@ -7,8 +7,8 @@ in reverse order of registration. A loop body's defers run every iteration.
 
 ```gyro
 fn sum_pair(a: i32, b: i32): i32 {
-  var node = alloc<Node>()
-  defer free(node)
+  var node = alloc<Node>(heap())
+  defer free(heap(), node)
 
   node.value = a + b
   if node.value < 0 {
@@ -20,7 +20,7 @@ fn sum_pair(a: i32, b: i32): i32 {
 
 Two details that are easy to get wrong, and that every tier is held to:
 
-- **Arguments are captured at registration**, not at exit. `defer free(p)`
+- **Arguments are captured at registration**, not at exit. `defer free(heap(), p)`
   frees the pointer `p` held when the `defer` ran, not whatever `p` was
   reassigned to afterwards.
 - **The block is the unit, not the function.** A `defer` inside a `for` body
@@ -41,21 +41,22 @@ return.
 
 ## The leak analysis
 
-A sema pass tracks each `alloc<T>()` and **warns** when one can reach the
-end of its block with nothing having freed or taken it. Warnings, not
-errors, so process-lifetime patterns are not blocked.
+A sema pass tracks each allocation from the process heap, `alloc<T>(heap())`,
+and **warns** when one can reach the end of its block with nothing having
+freed or taken it. Warnings, not errors, so process-lifetime patterns are
+not blocked.
 
-An allocation made below a `with` statement is not tracked at all: the
-block chose an allocator for what follows, and what that allocator hands
-out is the allocator's to reclaim ([chapter 4.5](ch04-05-allocators.md)).
-That is the arena idiom, and it warns about nothing:
+An allocation from any other allocator is not tracked at all: an arena
+reclaims what it handed out, and so does an allocator the function was
+passed, so the analysis cannot say the block is lost
+([chapter 4.5](ch04-05-allocators.md)). That is the arena idiom, and it
+warns about nothing:
 
 ```gyro
-var arena = Arena::new(4096)
+var arena = Arena::new(heap(), 4096)
 defer arena.free()
-with arena.allocator()
 
-var node = alloc<Node>()     // the arena's; no free, no warning
+var node = alloc<Node>(arena.allocator())   // the arena's; no free, no warning
 ```
 
 An allocation is **settled** by `free`, and equally by anything that hands
@@ -74,7 +75,7 @@ ownership where it was.
 // The allocation escapes through the return value, so ownership moves to
 // the caller and no warning is reported here.
 export fn make_node(value: i32): *Node {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = value
   node.next = null
   return node
@@ -89,15 +90,15 @@ brace:
 
 ```gyro
 fn g(cond: bool) {
-  var node = alloc<Node>()   // warns: the early return loses it
+  var node = alloc<Node>(heap())   // warns: the early return loses it
   if cond {
     return
   }
-  free(node)
+  free(heap(), node)
 }
 ```
 
-`defer free(node)` immediately after the allocation is the fix, and is the
+`defer free(heap(), node)` immediately after the allocation is the fix, and is the
 idiom for a reason: it settles every exit at once.
 
 ## What it does not see
@@ -110,5 +111,6 @@ written out by hand and warns about nothing.
 It also says nothing about library types. `Array<T>`, `String` and `Map<K, V>`
 own heap buffers and are freed with `free()`; forgetting one leaks, silently,
 today. And the runtime itself leaks by design in v1: strings, closure
-environments and futures are never reclaimed, and none of them yet come
-from the allocator a `with` chose ([appendix G](appendix-g-known-gaps.md)).
+environments and futures are never reclaimed, and all of them come from the
+process heap rather than an allocator you chose
+([appendix G](appendix-g-known-gaps.md)).

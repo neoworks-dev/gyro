@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/gyro-lang/gyro/internal/ast"
-	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
@@ -90,9 +89,6 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		// block exit, which is exactly where the leak analysis looks.
 		c.expr(s.Call)
 
-	case *ast.WithStmt:
-		c.withStmt(s)
-
 	case *ast.SendStmt:
 		c.sendStmt(s)
 
@@ -107,25 +103,6 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		// `continue` goes back to the loop head, so nothing below it runs.
 		c.flow.reachable = false
 	}
-}
-
-// withStmt checks `with expr`: the expression has to be an Allocator, and
-// from here to the end of the block every allocation is that allocator's
-// to reclaim, so the leak analysis stops tracking them.
-func (c *checker) withStmt(s *ast.WithStmt) {
-	got := c.expr(s.Allocator)
-	if got != nil && got != types.Unknown && !isAllocatorType(got) {
-		c.errorHintf(s.Offset, []string{
-			"with takes the value to hand every call below it: heap(), arena.allocator(), or an Allocator of your own",
-		}, "with needs an Allocator, not %s", types.Default(got))
-	}
-	c.withDepth++
-}
-
-// isAllocatorType reports the mem module's Allocator struct.
-func isAllocatorType(t types.Type) bool {
-	strct, ok := t.(*types.Struct)
-	return ok && strct.Name == "Allocator" && strct.Module == stdlib.Path("mem")
 }
 
 // selectStmt runs exactly one arm, so what survives is what every arm
@@ -240,7 +217,7 @@ func (c *checker) localVar(decl *ast.VarDecl) {
 		c.receiveGuard(declared[0], declared[1], decl.Names[1].Name)
 	}
 
-	// `var node = alloc<Node>()` makes this block responsible for it.
+	// `var node = alloc<Node>(heap())` makes this block responsible for it.
 	if c.allocationCall(decl.Value) && len(declared) == 1 && declared[0] != nil {
 		declared[0].holdsAllocation = true
 		c.trackAllocation(declared[0], decl.Offset, decl.Names[0].Name)

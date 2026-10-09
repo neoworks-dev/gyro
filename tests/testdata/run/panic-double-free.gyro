@@ -1,15 +1,15 @@
 //gyro:skip the heap frees for real and detects nothing; a double free is a quarantining allocator's to catch, and none is written yet (appendix G)
 //gyro:panic double free
 
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 
 struct Node {
   value: i32
 }
 
 fn main() {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = 1
-  free(node)
-  free(node)
+  free(heap(), node)
+  free(heap(), node)
 }

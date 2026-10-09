@@ -377,7 +377,7 @@ func (p *Parser) parseResultList() []ast.Type {
 }
 
 // parseEffectRow parses the effect annotation that follows a signature:
-// `!{}`, `!{ io, alloc }`, `!e`, or `!{ io, ..e }`. An entry written `&xs`
+// `!{}`, `!{ io, &xs }`, `!e`, or `!{ io, ..e }`. An entry written `&xs`
 // is a borrow rather than an effect, naming the parameter the result views.
 func (p *Parser) parseEffectRow() *ast.EffectRow {
 	if !p.at(token.Bang) {

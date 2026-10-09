@@ -109,9 +109,6 @@ const (
 	EExternDeclaration Code = "E0613"
 	EExternSignature   Code = "E0614"
 
-	// Allocators
-	EWithNotAllocator Code = "E0615"
-
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -279,21 +276,19 @@ var explanations = map[Code]explanation{
 	EUnnamedBorrow: {"returned view is not named in the row",
 		"T[] and string are views over storage they do not own, so a function\nreturning one states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
 	EUnnamedEffect: {"effect is not named in the row",
-		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io, and a row without alloc promises\nno allocation. This body performs a concrete effect its row does not\nname. Name the effect — !{ io }, !{ alloc } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow, its effects are inferred from its body, in whatever module that\nbody lives. An intrinsic has no body to infer from, so a rowless one is\nassumed to do everything. String interpolation builds new text, which\nallocates.\n\nBecause inference reaches that far, the effect is often performed several\ncalls below the one reported, in another file. The frames under the error\nare the route to it: one per hop quoting the call it made, the last\nnaming what performs it."},
+		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io. This body performs a concrete effect\nits row does not name. Name the effect — !{ io } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow, its effects are inferred from its body, in whatever module that\nbody lives. An intrinsic has no body to infer from, so a rowless one is\nassumed to do everything.\n\nBecause inference reaches that far, the effect is often performed several\ncalls below the one reported, in another file. The frames under the error\nare the route to it: one per hop quoting the call it made, the last\nnaming what performs it."},
 	EUnknownEffect: {"row names something that is not an effect",
-		"The effect vocabulary is closed: io and alloc are the concrete\neffects, and a &name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
+		"The effect vocabulary is closed: io is the one concrete effect, and a\n&name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
 	EExternDeclaration: {"@extern is on the wrong kind of declaration",
 		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
 	EExternSignature: {"type cannot cross to C",
 		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
-	EWithNotAllocator: {"with needs an Allocator",
-		"with expr hands the allocator to every call in the rest of the block,\nso the expression has to be one: heap() from mem, arena.allocator(), or\nan Allocator a program built from a procedure and a data pointer.\n\nA function whose row names alloc receives the allocator its caller was\nusing; with is how the caller chooses it."},
 	EEscapingLocalView: {"view outlives the storage behind it",
 		"The storage belongs to this frame — an array literal, or a buffer this\nfunction owns — and the caller outlives the frame, so the view it gets\nback points at memory that is gone.\n\nReturn an owning Array<T> or String, or take the storage as a parameter\nand name it in the row."},
 	WSpawnRace: {"spawned closure shares a reference with its spawner",
 		"A closure captures by copy, which is safe for a value and not for a\nreference: copying a *T copies the pointer, and copying a T[] copies a\npointer and a length over storage it does not own. Both threads then\nreach the same memory with nothing ordering them.\n\nHand the binding over with fn[move x](), or share through a channel or a\nMutex. A channel capture is never reported, since carrying work between\nthreads is what it is for.\n\nThis does not prove the absence of a race: a pointer reached through a\nstruct field, or two spawns over one channel, are both invisible here."},
 	WPossibleLeak: {"allocation reaches the end of its block unfreed",
-		"Memory is manual: alloc<T>() is released by free, usually as a defer\nbeside the allocation. Returning it, sending it, passing it to a call or\nmoving it into a closure all hand it on and end the question here.\n\nThis is a warning because an arena and a process-lifetime allocation\nfree nothing on purpose."},
+		"Memory is manual: alloc<T>(heap()) is released by free, usually as a defer\nbeside the allocation. Returning it, sending it, passing it to a call or\nmoving it into a closure all hand it on and end the question here.\n\nThis is a warning because a process-lifetime allocation frees nothing on\npurpose. Only allocations from the process heap are followed: a block from\nan arena, or from an allocator the function was handed, is that\nallocator's to reclaim."},
 }
 
 // Explain returns the title and body registered for a code.

@@ -230,6 +230,10 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
     memmove(to, from, (size_t)bytes);
 }
 
+/* The address `bytes` past base: how an allocator that carves one block
+ * into many names where each one starts. */
+void *gy_offset(void *base, int64_t bytes) { return (char *)base + bytes; }
+
 /* panic ends the process with the message, the way an index out of range
  * does: the same abort, reached from Gyro. */
 void gy_panic(const gy_str *message) { gy_abort(message); }

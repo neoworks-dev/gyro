@@ -1,5 +1,5 @@
 import { println } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 
 struct Node {
   value: i32
@@ -17,7 +17,7 @@ fn length(head: *Node): i32 {
 }
 
 fn link(value: i32, next: *Node?): *Node {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = value
   node.next = next
   return node
@@ -27,7 +27,7 @@ fn release(head: *Node?) {
   var current = head
   while current != null {
     var next = current.next
-    free(current)
+    free(heap(), current)
     current = next
   }
 }

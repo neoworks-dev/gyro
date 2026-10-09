@@ -5,20 +5,21 @@ collector, no ownership system that moves values for you, and no
 destructors — and there is a static analysis that tells you when an
 allocation is about to be lost.
 
-- `alloc<T>()` returns `*T`, `free(p)` releases it. Both are imported, from
-  the `mem` module, and both go through the **allocator** the function was
-  handed ([chapter 4.5](ch04-05-allocators.md)).
+- `alloc<T>(a)` returns `*T` from the **allocator** `a`, and `free(a, p)`
+  releases it to the same one. Both are imported from the `mem` module,
+  and the allocator is an ordinary argument written at the call
+  ([chapter 4.5](ch04-05-allocators.md)); `heap()` is the process heap.
 - `&x` takes an address, `*p` dereferences.
 - `defer expr` runs a call at block exit ([chapter 4.2](ch04-02-leaks-and-defer.md)).
 - A sema pass **warns** when an allocation can reach the end of its block
   with nothing having freed or taken it.
 
 ```gyro
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 
 fn f(): i32 {
-  var node = alloc<Node>()
-  defer free(node)
+  var node = alloc<Node>(heap())
+  defer free(heap(), node)
   return node.value
 }
 ```
@@ -41,7 +42,7 @@ export fn free_chain(head: *Node) {
     // `current` is narrowed to *Node inside the check, so the field access
     // needs no unwrapping.
     var next = current.next
-    free(current)
+    free(heap(), current)
     current = next
   }
 }
@@ -96,12 +97,12 @@ Not checked, and worth knowing:
 
 ## `alloc` is not how most programs get memory
 
-Most programs never write `alloc<T>()`. Growing storage is `Array<T>`, text
+Most programs never write `alloc<T>(a)`. Growing storage is `Array<T>`, text
 is `String`, and both own a buffer and are freed with `free()`
 ([chapter 8](ch08-01-array.md)). `alloc` is for the cases where a program
 lays out its own nodes — a tree, a list, an allocator of its own.
 
-Memory from `alloc<T>()` is **zero-filled**: that is the allocator's
+Memory from `alloc<T>(heap())` is **zero-filled**: that is the allocator's
 contract ([chapter 4.5](ch04-05-allocators.md)), because an allocator
 reuses memory and what its last owner left there is not the new owner's
 to see. Reading a field before writing it is still a mistake — a zero
@@ -113,11 +114,11 @@ capture list can say:
 
 ```gyro
 export fn defer_release(value: i32): fn() {
-  var node = alloc<Node>()
+  var node = alloc<Node>(heap())
   node.value = value
 
   return fn[move node]() {
-    free(node)
+    free(heap(), node)
   }
 }
 ```

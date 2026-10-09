@@ -1,5 +1,5 @@
 import { println } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 
 struct Node {
   value: i32
@@ -7,11 +7,11 @@ struct Node {
 }
 
 fn main() {
-  var head = alloc<Node>()
+  var head = alloc<Node>(heap())
   head.value = 1
   head.next = null
 
-  var second = alloc<Node>()
+  var second = alloc<Node>(heap())
   second.value = 2
   second.next = null
   head.next = second
@@ -21,7 +21,7 @@ fn main() {
   while current != null {
     total += current.value
     var next = current.next
-    free(current)
+    free(heap(), current)
     current = next
   }
   println(total)

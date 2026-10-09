@@ -149,7 +149,7 @@ export struct Window {}
 @extern("SDL2")
 export fn SDL_CreateWindow(
   title: string, x: i32, y: i32, w: i32, h: i32, flags: u32,
-): Window? !{ io, alloc }
+): Window? !{ io }
 ```
 
 ### What it costs
@@ -177,13 +177,13 @@ Because there is no boundary here, the restrictions above do not apply.
 **Pointers cross**, so out-parameters work:
 
 ```gyro
-import { alloc, free } from "mem"
+import { alloc, free, heap } from "mem"
 import { divmod } from "./mathlib.c"
 
-var whole = alloc<i32>()
-var rest = alloc<i32>()
-defer free(whole)
-defer free(rest)
+var whole = alloc<i32>(heap())
+var rest = alloc<i32>(heap())
+defer free(heap(), whole)
+defer free(heap(), rest)
 divmod(47, 10, whole, rest)
 println(*whole)
 ```
@@ -271,11 +271,11 @@ cannot go into an `any`. Printing one prints the word `code`. It works in
 both directions and by both routes: C's loop can run a Gyro function it was
 handed, and a pointer C returns can be called from Gyro.
 
-A function that allocates takes an allocator as a hidden parameter
-([chapter 4.5](ch04-05-allocators.md)), and C has no way to pass one. So
-`&f` on such a function is the address of a thunk that supplies the
-process heap and calls `f`: a callback allocates from the heap, whatever
-`with` was in force where its address was taken.
+A function that allocates takes an `Allocator` as an ordinary parameter
+([chapter 4.5](ch04-05-allocators.md)), so `&f` on one is an ordinary code
+pointer whose type has that parameter in it. C has no way to pass an
+`Allocator`, so a callback C is to call is written without one, and gets
+the allocator it needs from wherever the program keeps it.
 
 ## Which route to use
 

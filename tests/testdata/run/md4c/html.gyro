@@ -14,7 +14,7 @@
 // upstream share one struct.
 
 import { Array, from_utf8 } from "stdlib"
-import { alloc } from "mem"
+import { alloc, heap } from "mem"
 import * as md from "./md4c"
 import * as entity from "./entity"
 
@@ -43,7 +43,7 @@ fn url_safe(byte: u8): bool {
 }
 
 export fn Render::new(): *Render {
-  var render = alloc<Render>()
+  var render = alloc<Render>(heap())
   render.out = Array<u8>::new()
   render.image_nesting_level = 0
 

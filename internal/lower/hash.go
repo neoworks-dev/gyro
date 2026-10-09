@@ -156,15 +156,7 @@ func (b *hashBuilder) part(reg string, t types.Type) string {
 	dst := b.reg("h")
 	if method := hashMethodOf(t); method != nil {
 		callee := b.l.ensureFunc(method.Decl, ownerBindings(method.Decl, t))
-		args := []string{reg}
-		if b.l.allocates(method.Decl) {
-			// A synthesized hash has no allocator in scope, so a hash
-			// method that allocates gets the heap.
-			heap := b.reg("heap")
-			b.emit(&metals.Call{Dst: heap, Callee: b.l.heapFunc()})
-			args = append(args, heap)
-		}
-		b.emit(&metals.Call{Dst: dst, Callee: callee, Args: args})
+		b.emit(&metals.Call{Dst: dst, Callee: callee, Args: []string{reg}})
 		return dst
 	}
 	b.emit(&metals.Call{Dst: dst, Callee: b.l.hashFor(t), Args: []string{reg}})

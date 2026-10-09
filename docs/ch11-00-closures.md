@@ -43,8 +43,8 @@ println(scale(5))      // 15
 The capture list exists for exactly one purpose: **transferring ownership**.
 
 ```gyro
-var node = alloc<Node>()
-var release = fn[move node]() { free(node) }   // ownership moves in
+var node = alloc<Node>(heap())
+var release = fn[move node]() { free(heap(), node) }   // ownership moves in
 ```
 
 `fn[move node]` moves the binding into the closure, which is what lets the
@@ -138,14 +138,9 @@ applies to a `fn` type and to a parenthesized tuple result.
 
 A capturing closure's environment is real heap storage — a record the
 lowering allocates and the closure carries a pointer to. Nothing frees it
-today, it does not yet come from the current allocator
-([appendix G](appendix-g-known-gaps.md)), and creating one is not
-currently counted as `alloc` by the effect checker
-([chapter 12](ch12-00-effect-rows.md)).
+today, and it comes from the process heap rather than from an allocator
+the program chose ([appendix G](appendix-g-known-gaps.md)).
 
-A closure whose body allocates captures the **allocator** current where
-the closure is written, exactly as it captures any other local, so calling
-it later allocates from that one ([chapter 4.5](ch04-05-allocators.md)).
-That capture is what lets a function value be called from a `!{}`
-context without a row travelling with it: the value carries what its
-body needs.
+A closure that allocates does so from an `Allocator` it captured like any
+other local, or was handed as a parameter ([chapter 4.5](ch04-05-allocators.md)).
+Nothing is captured on its behalf.

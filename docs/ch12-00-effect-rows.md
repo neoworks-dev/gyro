@@ -2,13 +2,13 @@
 
 A signature may carry an **effect row** describing what the function does
 and what its result borrows. Both kinds of entry are checked: the concrete
-effects `io` and `alloc` against what the body performs, and the borrow
+effect `io` against what the body performs, and the borrow
 entries against what the result views.
 
 ```gyro
 fn add(a: i32, b: i32): i32                       // no row: unconstrained
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io, alloc }
+export fn load(p: string): (string, error?) !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e     // effect-polymorphic
 @gpu fn kernel(a: *f32) !{}                       // empty row
 ```
@@ -22,25 +22,16 @@ The row goes after the result type, and it is the last thing in a signature.
 
 A function that writes **any** row — even one holding only borrows —
 promises that its body performs no concrete effect the row does not name. A
-row without `io` promises no io; a row without `alloc` promises that the
-body never touches the allocator.
+row without `io` promises no io.
 
-## `alloc` is a parameter
+## Allocation is not an effect
 
-`alloc` means **uses the allocator**: allocating, freeing, resizing, or
-calling anything that does. A function whose row names `alloc` — written
-or inferred — receives the allocator its caller was using, as a trailing
-parameter the compiler passes for it, and a function whose row does not
-receives nothing ([chapter 4.5](ch04-05-allocators.md)). So `!{ alloc }`
-is not only a claim about the body; it is what puts an allocator within
-the body's reach, and `free` carries it for the same reason `alloc` does:
-a block goes back to the allocator that handed it out.
-
-What receives the parameter is a Gyro function, a closure's lifted body
-through its captures, and a runtime intrinsic that declares `alloc`. A
-foreign function never does: an `@extern` or a `.c` import runs over its
-own `malloc`, and `alloc` on such a declaration says only that it
-allocates, not that it takes ours.
+There is no effect for allocating. A function allocates when it is handed
+an `Allocator` as a parameter ([chapter 4.5](ch04-05-allocators.md)), and
+that is visible in its signature without a row to say it again. So `!{}`
+says nothing about allocation: `alloc` and `free` carry it, a function
+that takes an `Allocator` may be `!{}`, and so may `Array<T>::push`, which
+grows its buffer.
 
 A function with **no** row is unconstrained, exported or not. A row is how a
 signature *states* an interface; it is never the only way to know what a
@@ -52,12 +43,12 @@ fn quiet(n: i32) !{} {
   println(n)         // error: println does io, which the row does not name
 }
 
-fn loud(n: i32) !{ io, alloc } {
-  println("n = #{n}")   // fine: the row names both effects
+fn loud(n: i32) !{ io } {
+  println("n = #{n}")   // fine: the row names io
 }
 ```
 
-**The vocabulary is closed.** `io` and `alloc` are the concrete effects and
+**The vocabulary is closed.** `io` is the one concrete effect and
 `&name` is a borrow entry; anything else in a row is an error rather than an
 entry that quietly promises nothing.
 
@@ -70,19 +61,14 @@ What a body performs is judged from its sources:
   whatever module that body lives in, transitively. A rowless import is
   read, not assumed.
 - **An intrinsic** — a declaration with no body anywhere — is the one thing
-  that cannot be read. Without a row it is assumed to do `io` and `alloc`,
+  that cannot be read. Without a row it is assumed to do `io`,
   which is why every intrinsic in the standard library writes one, down to
   `Array<T>::get(self, index: usize): T !{}`.
-- **String interpolation** `#{...}` builds new text, which allocates.
-- **The built-in method surface** answers for itself: `runes()` and
-  `bytes()` copy into new storage and so do `alloc`; `len`, `close`, `hash`,
-  `compare` and `message` do nothing.
+- **The built-in method surface** performs no effect: `runes()`, `bytes()`,
+  `len`, `close`, `hash`, `compare` and `message` do no io.
 - **The standard library states rows on its surface**: `println` is
-  `!{ io }`, `Array<T>::push` is `!{ alloc }` (it may grow the buffer),
-  `read_all` is `!{ io, alloc }`, and `mem`'s `alloc`, `free` and
-  `allocator` are all `!{ alloc }`.
-- **A `with` statement is not an effect.** Choosing an allocator for the
-  rest of a block says nothing about whether the function uses one.
+  `!{ io }`, `Array<T>::push` is `!{}` (it may grow the buffer),
+  `read_all` is `!{ io }`, and `mem`'s `alloc` and `free` are `!{}`.
 
 A generic body's effects are judged per instantiation, like its borrows: a
 rowless generic callee is read through its instantiations and contributes
@@ -266,14 +252,11 @@ become one mechanism.
 - a row variable (`!e`, `!{ io, ..e }`) leaves the row **open and
   unchecked**
 - *calling* a function value — a closure or an `fn` parameter — contributes
-  nothing to the caller; the value captured the allocator its body needs
-  when it was made ([chapter 11](ch11-00-closures.md))
-- creating a capturing closure is not counted as `alloc`, even though the
-  environment is real storage
+  nothing to the caller ([chapter 11](ch11-00-closures.md))
 - module-level `var` initializers run before `main`, outside any row, over
   the process heap
 - channel operations and `Mutex` carry no effect
-- `spawn` declares `!{ io, alloc }`, which covers starting the thread and
+- `spawn` declares `!{ io }`, which covers starting the thread and
   stands in for the task's own effects until a row can travel with a
   function value
 

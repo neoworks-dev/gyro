@@ -134,7 +134,7 @@ type Arg struct {
 	Spread bool
 }
 
-// EffectRow is the `!{ io, alloc }` annotation on a signature.
+// EffectRow is the `!{ io, &xs }` annotation on a signature.
 //
 // A declared row is a complete statement: sema checks the body against the
 // concrete effects it names and against its borrow entries. An absent row
@@ -417,17 +417,6 @@ type DeferStmt struct {
 
 func (d *DeferStmt) Pos() int  { return d.Offset }
 func (d *DeferStmt) stmtNode() {}
-
-// WithStmt is `with expr`: the allocator every call in the rest of the
-// enclosing block is handed. The expression is evaluated once, where it
-// is written, and the outer allocator is back when the block ends.
-type WithStmt struct {
-	Offset    int
-	Allocator Expr
-}
-
-func (w *WithStmt) Pos() int  { return w.Offset }
-func (w *WithStmt) stmtNode() {}
 
 // SendStmt is `ch <- value`. Sending is always a statement, never an
 // expression, which is what lets the parser tell `ch <- v` apart from the

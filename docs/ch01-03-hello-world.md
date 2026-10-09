@@ -80,9 +80,8 @@ chapters unpack:
 ```gyro
 import { println } from "stdlib"
 
-// The row is a complete statement of what greet does: println is io, and
-// building the interpolated text allocates.
-fn greet(name: string) !{ io, alloc } {
+// The row is a complete statement of what greet does: println is io.
+fn greet(name: string) !{ io } {
   println("Hello, #{name}!")
 }
 
@@ -103,7 +102,7 @@ fn main() {
 
 `#{...}` interpolates any Gyro expression into a string. `var` and `const`
 bind, `: i32` annotates and is optional where the type is inferable, and
-`!{ io, alloc }` is an effect row — a promise about what the body does,
+`!{ io }` is an effect row — a promise about what the body does,
 checked against the body. Effect rows are optional; a function with no row
 is unconstrained. [Chapter 12](ch12-00-effect-rows.md) is where they get
 their own treatment.

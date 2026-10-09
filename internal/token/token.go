@@ -95,7 +95,6 @@ const (
 	Break
 	Continue
 	Defer
-	With
 	Async
 	Await
 	Chan
@@ -191,7 +190,6 @@ var kindNames = map[Kind]string{
 	Break:      "break",
 	Continue:   "continue",
 	Defer:      "defer",
-	With:       "with",
 	Async:      "async",
 	Await:      "await",
 	Chan:       "chan",
@@ -235,7 +233,6 @@ var keywords = map[string]Kind{
 	"break":    Break,
 	"continue": Continue,
 	"defer":    Defer,
-	"with":     With,
 	"async":    Async,
 	"await":    Await,
 	"chan":     Chan,
