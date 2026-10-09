@@ -33,7 +33,7 @@ var codes = map[string]diag.Code{
 	"a format value can only be passed as an argument, because it cannot outlive the statement it is written in":   diag.EFormatEscapes,
 	"a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in": diag.EFormatEscapes,
 	"a closure cannot capture a format value, because it cannot outlive the statement it is written in":            diag.EFormatEscapes,
-	"string interpolation builds a Format, which stdlib declares; this program does not load stdlib":               diag.EFormatEscapes,
+	"string interpolation builds a Format, which mem declares; this program does not load mem":                     diag.EFormatEscapes,
 
 	// Unions. One storage with several names for it, and nothing records
 	// which is live — which is what decides both what may be a member and
@@ -236,6 +236,6 @@ var codes = map[string]diag.Code{
 	// Iteration
 	"a range is not a value; `..` only appears in for..in":                                                      diag.ERangeMisuse,
 	"a range needs matching integer endpoints, got %s and %s":                                                   diag.ERangeMisuse,
-	"a string does not iterate directly; use .runes() for code points":                                          diag.EIterationMisuse,
+	"a string does not iterate directly; use .runes(a) for code points":                                         diag.EIterationMisuse,
 	"%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type with next(*self): (T, bool)": diag.EIterationMisuse,
 }

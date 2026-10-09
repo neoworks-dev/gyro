@@ -2,6 +2,7 @@
 // three tiers cannot drift apart in what they tell the user.
 import { println } from "stdlib"
 import { open, write_file, append_file, remove, read_dir, exists } from "fs"
+import { heap } from "mem"
 
 fn main() {
   const missing = "/tmp/gyro-fs-nowhere"
@@ -23,7 +24,7 @@ fn main() {
   if removeErr != null {
     println(removeErr.message())
   }
-  var _, listErr = read_dir(missing)
+  var _, listErr = read_dir(heap(), missing)
   if listErr != null {
     println(listErr.message())
   }

@@ -69,6 +69,56 @@ _Noreturn void gy_abort(const gy_str *message) {
 
 _Noreturn static void gy_abort_c(const char *message) { gy_abort(gy_str_c(message)); }
 
+/* ------------------------------------------------------------------ */
+/* Allocators. mem's Allocator is a procedure and a data pointer; a   */
+/* container records the one it was made with and goes through it for */
+/* every block it owns. Mode is a Gyro enum, a one-word tag that      */
+/* crosses a call by address like any aggregate, so the procedure     */
+/* takes a pointer to the tag: Alloc, Free, FreeAll, Resize in that   */
+/* order. A block from Alloc or Resize is zero-filled.                 */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    void *(*proc)(void *data, const int64_t *mode, uint64_t size, uint64_t align, void *old,
+                  uint64_t old_size);
+    void *data;
+} gy_allocator;
+
+enum { GY_MODE_ALLOC = 0, GY_MODE_FREE = 1, GY_MODE_FREE_ALL = 2, GY_MODE_RESIZE = 3 };
+
+/* 16 is the largest alignment a Gyro type asks for, and the runtime does
+ * not know the element's, so every block asks for it. */
+#define GY_ALLOC_ALIGN 16
+
+/* Out of memory panics with the size, the way alloc<T>() does. */
+static void *gy_allocator_get(const gy_allocator *a, int64_t mode, size_t size, void *old,
+                              size_t old_size) {
+    void *block = a->proc(a->data, &mode, size, GY_ALLOC_ALIGN, old, old_size);
+    if (block == NULL) {
+        char buf[96];
+        snprintf(buf, sizeof buf, "allocation of %zu bytes failed", size);
+        gy_abort_c(buf);
+    }
+    return block;
+}
+
+static void gy_allocator_put(const gy_allocator *a, void *old, size_t old_size) {
+    int64_t mode = GY_MODE_FREE;
+    a->proc(a->data, &mode, 0, 0, old, old_size);
+}
+
+static gy_str *gy_str_alloc_in(const gy_allocator *a, int64_t len) {
+    gy_str *s = gy_allocator_get(a, GY_MODE_ALLOC, sizeof(gy_str) + (size_t)len + 1, NULL, 0);
+    s->len = len;
+    return s;
+}
+
+static gy_str *gy_str_from_in(const gy_allocator *a, const char *text, size_t len) {
+    gy_str *s = gy_str_alloc_in(a, (int64_t)len);
+    memcpy(s->bytes, text, len);
+    return s;
+}
+
 _Noreturn void gy_abort_bounds(int64_t index, int64_t length) {
     char buf[96];
     snprintf(buf, sizeof buf, "index %" PRId64 " out of range for length %" PRId64, index, length);
@@ -501,8 +551,8 @@ int64_t gy_str_compare(const gy_str *a, const gy_str *b) {
  * same bytes it already holds. It still copies: a string is immutable and
  * shared, and a slice is neither. gy_str_runes below decodes instead,
  * because a rune is four bytes and UTF-8 is not. */
-void gy_str_bytes(void **out, const gy_str *s) {
-    char *bytes = malloc((size_t)s->len + 1);
+void gy_str_bytes(void **out, const gy_str *s, const gy_allocator *a) {
+    char *bytes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len + 1, NULL, 0);
     memcpy(bytes, s->bytes, (size_t)s->len);
     out[0] = bytes;
     out[1] = (void *)s->len;
@@ -510,10 +560,10 @@ void gy_str_bytes(void **out, const gy_str *s) {
 
 /* gy_from_utf8 is the other direction, and the bytes are the bytes. The
  * copy is what makes the result own what it holds. */
-const gy_str *gy_from_utf8(const void **slice) {
+const gy_str *gy_from_utf8(const gy_allocator *a, const void **slice) {
     const char *elems = (const char *)slice[0];
     int64_t len = (int64_t)slice[1];
-    gy_str *out = gy_str_alloc(len);
+    gy_str *out = gy_str_alloc_in(a, len);
     memcpy(out->bytes, elems, (size_t)len);
     return out;
 }
@@ -564,8 +614,8 @@ void gy_ffi_handle_opt(void *out, void *handle) {
 
 /* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
  * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
-void gy_str_runes(void *out, const gy_str *s) {
-    int32_t *runes = malloc((size_t)s->len * 4 + 4);
+void gy_str_runes(void *out, const gy_str *s, const gy_allocator *a) {
+    int32_t *runes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len * 4 + 4, NULL, 0);
     int64_t count = 0;
     int64_t i = 0;
     while (i < s->len) {
@@ -854,7 +904,7 @@ void gy_open(int64_t *out, const gy_str *path) {
 }
 
 /* out: tuple<str, opt<error>> */
-void gy_read_all(int64_t *out, gy_file *file) {
+void gy_read_all(int64_t *out, const gy_allocator *a, gy_file *file) {
     char *cpath = gy_cstr(file->name);
     FILE *stream = fopen(cpath, "rb");
     if (stream == NULL) {
@@ -869,7 +919,7 @@ void gy_read_all(int64_t *out, gy_file *file) {
     fseek(stream, 0, SEEK_END);
     long size = ftell(stream);
     fseek(stream, 0, SEEK_SET);
-    gy_str *content = gy_str_alloc(size);
+    gy_str *content = gy_str_alloc_in(a, size);
     if (size > 0 && fread(content->bytes, 1, (size_t)size, stream) != (size_t)size) {
         content->len = 0;
     }
@@ -940,7 +990,7 @@ int64_t gy_exists(const gy_str *path) {
 /* ------------------------------------------------------------------ */
 
 /* out: opt<str> = { flag, value } — flag 0 when the variable is unset. */
-void gy_env(int64_t *out, const gy_str *name) {
+void gy_env(int64_t *out, const gy_allocator *a, const gy_str *name) {
     char *cname = malloc((size_t)name->len + 1);
     memcpy(cname, name->bytes, (size_t)name->len);
     cname[name->len] = 0;
@@ -952,12 +1002,12 @@ void gy_env(int64_t *out, const gy_str *name) {
         return;
     }
     out[0] = 1;
-    out[1] = (int64_t)gy_str_c(value);
+    out[1] = (int64_t)gy_str_from_in(a, value, strlen(value));
 }
 
 /* Reads stdin to end of file. One shot: a second call finds the stream
  * drained and returns "". */
-gy_str *gy_read_stdin(void) {
+gy_str *gy_read_stdin(const gy_allocator *a) {
     size_t cap = 4096;
     size_t len = 0;
     char *buf = malloc(cap);
@@ -969,7 +1019,7 @@ gy_str *gy_read_stdin(void) {
             buf = realloc(buf, cap);
         }
     }
-    gy_str *out = gy_str_from(buf, len);
+    gy_str *out = gy_str_from_in(a, buf, len);
     free(buf);
     return out;
 }
@@ -977,7 +1027,7 @@ gy_str *gy_read_stdin(void) {
 /* out: opt<str> = { flag, value } — flag 0 at end of file. The line comes
  * back without its terminator, and a last line with no newline still
  * comes back. */
-void gy_readline(int64_t *out) {
+void gy_readline(int64_t *out, const gy_allocator *a) {
     char *line = NULL;
     size_t cap = 0;
     ssize_t got = getline(&line, &cap, stdin);
@@ -991,7 +1041,7 @@ void gy_readline(int64_t *out) {
         got--;
     }
     out[0] = 1;
-    out[1] = (int64_t)gy_str_from(line, (size_t)got);
+    out[1] = (int64_t)gy_str_from_in(a, line, (size_t)got);
     free(line);
 }
 
@@ -1045,10 +1095,24 @@ typedef struct {
     int64_t elemSize;
     int64_t count;
     int64_t capacity;
+    int64_t hint; /* the capacity with_capacity asked for, used at the first growth */
     int freed;
+    gy_allocator alloc; /* where every block this array owns comes from */
 } gy_array;
 
-void *gy_array_new(void) { return calloc(1, sizeof(gy_array)); }
+/* The header comes from the array's own allocator too, and stays after
+ * free so that a second free is caught rather than read through. */
+void *gy_array_new(const gy_allocator *a) {
+    gy_array *arr = gy_allocator_get(a, GY_MODE_ALLOC, sizeof(gy_array), NULL, 0);
+    arr->alloc = *a;
+    return arr;
+}
+
+void *gy_array_with_capacity(const gy_allocator *a, int64_t capacity) {
+    gy_array *arr = gy_array_new(a);
+    arr->hint = capacity;
+    return arr;
+}
 
 static void gy_array_check(gy_array *a) {
     if (a->freed) {
@@ -1060,8 +1124,13 @@ void gy_array_push(gy_array *a, const void *elem, int64_t elemSize) {
     gy_array_check(a);
     a->elemSize = elemSize;
     if (a->count == a->capacity) {
-        a->capacity = a->capacity == 0 ? 8 : a->capacity * 2;
-        a->data = realloc(a->data, (size_t)(a->capacity * elemSize));
+        int64_t grown = a->capacity * 2;
+        if (a->capacity == 0) {
+            grown = a->hint > 8 ? a->hint : 8;
+        }
+        a->data = gy_allocator_get(&a->alloc, GY_MODE_RESIZE, (size_t)(grown * elemSize), a->data,
+                                   (size_t)(a->capacity * elemSize));
+        a->capacity = grown;
     }
     memcpy(a->data + a->count * elemSize, elem, (size_t)elemSize);
     a->count++;
@@ -1125,7 +1194,9 @@ void gy_array_free(gy_array *a) {
         gy_abort_c("double free of an Array");
     }
     a->freed = 1;
-    free(a->data);
+    if (a->data != NULL) {
+        gy_allocator_put(&a->alloc, a->data, (size_t)(a->capacity * a->elemSize));
+    }
     a->data = NULL;
 }
 
@@ -1144,14 +1215,14 @@ static int gy_name_compare(const void *a, const void *b) {
 }
 
 /* out: tuple<handle, opt<error>> = { handle, flag, tag, message } */
-void gy_read_dir(int64_t *out, const gy_str *path) {
+void gy_read_dir(int64_t *out, const gy_allocator *a, const gy_str *path) {
     char *cpath = gy_cstr(path);
     DIR *dir = opendir(cpath);
     free(cpath);
     if (dir == NULL) {
         gy_str *reason = gy_errno_str(errno);
         gy_str *prefix = gy_concat3("open ", path, ": ");
-        out[0] = (int64_t)gy_array_new();
+        out[0] = (int64_t)gy_array_new(a);
         gy_write_error(out + 1, gy_str_concat(prefix, reason));
         return;
     }
@@ -1167,14 +1238,14 @@ void gy_read_dir(int64_t *out, const gy_str *path) {
             capacity = capacity == 0 ? 16 : capacity * 2;
             names = realloc(names, capacity * sizeof(gy_str *));
         }
-        names[count++] = gy_str_c(entry->d_name);
+        names[count++] = gy_str_from_in(a, entry->d_name, strlen(entry->d_name));
     }
     closedir(dir);
     if (count > 0) {
         qsort(names, count, sizeof(gy_str *), gy_name_compare);
     }
 
-    gy_array *entries = gy_array_new();
+    gy_array *entries = gy_array_new(a);
     for (size_t i = 0; i < count; i++) {
         gy_array_push(entries, &names[i], 8);
     }

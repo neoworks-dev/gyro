@@ -635,7 +635,7 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 		}
 	}
 
-	// The compiler's own surface wins: len and runes are part of the type,
+	// The compiler's own surface wins: len and compare are part of the type,
 	// and an extension may not shadow them.
 	if method := builtinMethod(t, name); method != nil {
 		return method, nil, nil
@@ -647,7 +647,7 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 }
 
 // builtinMethod is the method surface of the built-in types, which needs no
-// import: close on channels, len on the sliceable types, runes on strings,
+// import: close on channels, len on the sliceable types,
 // compare on the ordered primitives, hash on the hashable ones, message on
 // error.
 func builtinMethod(t types.Type, name string) *types.Method {
@@ -682,12 +682,6 @@ func builtinMethod(t types.Type, name string) *types.Method {
 		switch {
 		case t.Kind == types.StringKind && name == "len":
 			return valueMethod(&types.Func{Result: types.USize})
-		case t.Kind == types.StringKind && name == "runes":
-			return valueMethod(&types.Func{Result: &types.Slice{Elem: types.Rune}})
-		// bytes() views the string's storage; runes() decodes it into new
-		// storage. Only the first borrows.
-		case t.Kind == types.StringKind && name == "bytes":
-			return valueMethod(&types.Func{Result: &types.Slice{Elem: types.Uint8}})
 		// Strings order lexicographically by byte, which is the order
 		// their code points are in. compare is spelled the same way it is
 		// on the numeric primitives so a generic body can call it either

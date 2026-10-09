@@ -15,27 +15,28 @@
 // is exactly one regex port: the one whose 76 match results the corpus
 // compares against the C original's.
 
-import { println, eprintln, Array } from "stdlib"
+import { println, eprintln, Array, bytes } from "stdlib"
 import { monotonic } from "time"
 import * as regex from "../../../testdata/run/regex/regex"
+import { heap } from "mem"
 
 const ROUNDS: i64 = 5000
 
 fn texts(): Array<u8[]> {
-  var table = Array<u8[]>::new()
-  table.push("%JxLLcVx8wxrjsj".bytes())
-  table.push("=KbvUQjsj".bytes())
-  table.push("^uDnoZjsj".bytes())
-  table.push("UzZbjsj".bytes())
-  table.push("zLa_FTEjsj".bytes())
-  table.push("\"mw3p8_Ojsj".bytes())
-  table.push("abcdefghijklmnopqrstuvwxyz0123456789".bytes())
-  table.push("the quick brown fox jumps over the lazy dog".bytes())
+  var table = Array<u8[]>::new(heap())
+  table.push("%JxLLcVx8wxrjsj".bytes(heap()))
+  table.push("=KbvUQjsj".bytes(heap()))
+  table.push("^uDnoZjsj".bytes(heap()))
+  table.push("UzZbjsj".bytes(heap()))
+  table.push("zLa_FTEjsj".bytes(heap()))
+  table.push("\"mw3p8_Ojsj".bytes(heap()))
+  table.push("abcdefghijklmnopqrstuvwxyz0123456789".bytes(heap()))
+  table.push("the quick brown fox jumps over the lazy dog".bytes(heap()))
   return table
 }
 
 fn main() {
-  var pattern = regex::compile(".?\\w+jsj$".bytes())
+  var pattern = regex::compile(".?\\w+jsj$".bytes(heap()))
   var table = texts()
 
   var start = monotonic()

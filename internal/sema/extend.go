@@ -17,7 +17,7 @@ import (
 // `string` with `trim`; importing both is the collision Gyro already
 // reports, and importing one is unambiguous.
 //
-// The compiler's own surface — len, runes, bytes, close, compare,
+// The compiler's own surface — len, close, compare,
 // message — stays import-free. Those are part of the type rather than
 // additions to it, and they win over an extension of the same name.
 

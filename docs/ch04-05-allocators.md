@@ -172,13 +172,38 @@ var counted = Allocator{ proc: &counting, data: &counter as anyptr }
 var node = make_node(counted, 1)       // counter.allocs is now 1
 ```
 
+## Containers remember theirs
+
+`Array<T>`, `Map<K, V>` and `String` take an allocator when they are made
+and record it. Everything they own afterwards comes from it: `push` and
+`insert` grow through it, and `free` hands the storage back to it, with no
+allocator argument to get wrong:
+
+```gyro
+var arena = Arena::new(heap(), 4096)
+defer arena.free()
+
+var words = Array<string>::new(arena.allocator())   // records the arena
+words.push("one")                                   // grows from the arena
+words.free()                                        // gives back to the arena
+```
+
+An allocator is recorded once, at construction, so growing a buffer from one
+allocator and freeing it to another cannot be written. A struct that holds
+a container holds the allocator with it.
+
+The functions that build new text from a borrowed one — `bytes`, `runes`,
+`from_utf8`, `text`, `split`, `substring`, `trim`, `repeat`, `join`,
+`sprintf`, and the readers in `os` and `fs` — take the allocator as an
+ordinary argument instead, because the result is a block from it that the
+caller owns ([chapter 8.2](ch08-02-strings.md)).
+
 ## What honours the allocator today
 
-`alloc`, `free`, `Arena`, `format` and everything written over them. The runtime's
-own storage — an `Array<T>`'s buffer, the text the string methods
-build, a closure's environment, a future — still comes from the
-process heap, because those take no allocator to honour
-([appendix G](appendix-g-known-gaps.md)). So does a `to_string`, `hash` or
+`alloc`, `free`, `Arena`, `format`, `Array<T>`, `Map<K, V>`, `String`, and
+the text and readers listed above. What still comes from the process heap:
+the text of a `Format` piece that is not a string, a closure's environment,
+a future, a channel, the message of an error the runtime reports (a failed
+`open`, a `to_i32` that does not parse), and a `to_string`, `hash` or
 `message` the compiler calls on its own behalf while printing, hashing or
-rendering an error. Containers that take an allocator and remember it, so
-that growing and freeing agree by construction, are where this goes next.
+rendering an error ([appendix G](appendix-g-known-gaps.md)).

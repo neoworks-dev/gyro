@@ -3,17 +3,18 @@
 //gyro:args --verbose input.txt
 
 import { println, join, starts_with } from "stdlib"
+import { heap } from "mem"
 
 fn main(args: string[]) {
   println(args.len())
   for arg in args {
     println(arg)
   }
-  println(join(args, " "))
+  println(join(heap(), args, " "))
 
   var flags = 0
   for arg in args {
-    if arg.starts_with("--") {
+    if arg.starts_with(heap(), "--") {
       flags += 1
     }
   }

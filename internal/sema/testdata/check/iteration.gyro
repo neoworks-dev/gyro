@@ -19,7 +19,7 @@ fn sources(xs: i32[], fixed: i32[4], ch: chan<string>) {
 fn badSources(x: i32, s: string, a: i32, b: i64) {
   for v in x {                   //~ not iterable
   }
-  for v in s {                   //~ use .runes()
+  for v in s {                   //~ use .runes(a)
   }
   for v in a..b {                //~ matching integer endpoints
   }

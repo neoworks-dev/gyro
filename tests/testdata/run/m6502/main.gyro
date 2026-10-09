@@ -18,6 +18,8 @@
 import { printf } from "fmt"
 import * as m6502 from "./m6502"
 import * as tests from "./tests"
+import { heap } from "mem"
+import { bytes } from "stdlib"
 
 // The most memory locations any one test names. Upstream's states list
 // the bytes the instruction reads and writes, which for the widest
@@ -186,7 +188,7 @@ fn main() {
 
   var i: usize = 0
   while i < 151 {
-    var bytes = tests::CASES[i].bytes()
+    var bytes = tests::CASES[i].bytes(heap())
     var cursor: usize = 0
     var count = 0
     var ok = 0

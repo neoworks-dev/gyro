@@ -1377,7 +1377,7 @@ func anyPayload(t types.Type) bool {
 	case *types.Struct:
 		// A Format borrows its statement's frame, and an any can be
 		// carried anywhere.
-		if t.Name == "Format" && t.Module == stdlib.Path("stdlib") {
+		if t.Name == "Format" && t.Module == stdlib.Path("mem") {
 			return false
 		}
 		return !isRuntimeHandle(t) && !holdsUnion(t, map[*types.Struct]bool{})

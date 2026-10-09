@@ -40,6 +40,7 @@
 //     with an `if` and an `else`.
 
 import { Array } from "stdlib"
+import { heap } from "mem"
 
 // ---------------------------------------------------------------------------
 // The status register
@@ -328,7 +329,7 @@ export struct Cpu {
 }
 
 export fn Cpu::new(): Cpu {
-  var ram = Array<u8>::with_capacity(65536)
+  var ram = Array<u8>::with_capacity(heap(), 65536)
   for i in 0..65536 {
     ram.push(0)
   }

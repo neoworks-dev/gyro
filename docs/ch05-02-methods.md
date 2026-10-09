@@ -51,11 +51,12 @@ scope:
 
 ```gyro
 import { trim, split } from "stdlib"
+import { heap } from "mem"
 
-var clean = line.trim()      // works because `trim` was imported
+var clean = line.trim(heap())      // works because `trim` was imported
 ```
 
-That is what keeps extensions out of universe scope. `line.trim()` works
+That is what keeps extensions out of universe scope. `line.trim(heap())` works
 because `trim` is in scope here, not because some module somewhere declared
 it. Two modules may both extend `string` with `trim`; importing both is the
 duplicate-name collision Gyro already reports, and importing one is

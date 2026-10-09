@@ -1,13 +1,20 @@
 # 8.1. `Array<T>`
 
-`Array<T>` owns a heap buffer, grows, and is freed explicitly. It is the
+`Array<T>` owns a buffer, grows, and is freed explicitly. It is the
 counterpart to `T[]`, which borrows and cannot grow
 ([chapter 4.4](ch04-04-slices-and-views.md)).
 
+An array is made with an allocator and **remembers it**
+([chapter 4.5](ch04-05-allocators.md)). Its header and its buffer come from
+that allocator, `push` grows the buffer through it, and `free` hands the
+buffer back to it. Nothing after `new` names an allocator, which is what
+keeps an array from being freed to one it did not come from.
+
 ```gyro
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
-var buf = Array<i32>::new()
+var buf = Array<i32>::new(heap())
 defer buf.free()
 
 buf.push(4)
@@ -20,9 +27,9 @@ println(buf[0])         // 4
 
 | method | row | notes |
 | --- | --- | --- |
-| `Array<T>::new(): Array<T>` | `!{}` | |
-| `Array<T>::with_capacity(capacity: usize): Array<T>` | `!{}` | |
-| `push(*self, value: T)` | `!{}` | may grow the buffer |
+| `Array<T>::new(a: Allocator): Array<T>` | `!{}` | records `a` |
+| `Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T>` | `!{}` | records `a`; the first buffer holds `capacity` elements |
+| `push(*self, value: T)` | `!{}` | may grow the buffer, from the recorded allocator |
 | `pop(*self): (T, bool)` | `!{}` | the flag reports whether there was one |
 | `get(self, index: usize): T` | `!{}` | a **copy** of the element; bounds-checked |
 | `set(*self, index: usize, value: T)` | `!{}` | |
@@ -30,7 +37,7 @@ println(buf[0])         // 4
 | `len(self): usize` | `!{}` | |
 | `is_empty(self): bool` | `!{}` | ordinary Gyro over `len` |
 | `slice(self): T[]` | `!{ &self }` | a view of the array's own elements |
-| `free(*self)` | `!{}` | |
+| `free(*self)` | `!{}` | returns the buffer to the recorded allocator |
 
 `Array<T>` is a runtime-backed handle: the declarations have no bodies, so
 each tier implements them ([chapter 7](ch07-00-modules.md)). `is_empty` is
@@ -42,7 +49,7 @@ runtime.
 `xs[i]` is a **place**, not a value:
 
 ```gyro
-var xs = Array<Point>::new()
+var xs = Array<Point>::new(heap())
 defer xs.free()
 xs.push(Point{ x: 1, y: 2 })
 
@@ -96,11 +103,14 @@ for value in buf.slice() {
 
 ## Freeing
 
-`free()` releases the buffer. There are no destructors, so this is a call
-you write — usually as a `defer` on the line after construction:
+`free()` returns the buffer to the allocator the array was made with. The
+header stays behind, so a second `free` is still caught. There are no
+destructors, so this is a call you write — usually as a `defer` on the line
+after construction. An array made in an arena needs none, because the arena
+takes everything back at once:
 
 ```gyro
-var out = Array<i32>::new()
+var out = Array<i32>::new(heap())
 defer out.free()
 ```
 
@@ -108,7 +118,7 @@ An `Array<T>` returned from a function is the caller's to free:
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new()
+  var out = Array<i32>::new(heap())
   for value in values {
     out.push(f(value))
   }

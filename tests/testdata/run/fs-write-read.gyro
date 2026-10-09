@@ -2,6 +2,7 @@
 // append_file extends, remove deletes, and exists reports each state.
 import { print, println } from "stdlib"
 import { open, read_all, write_file, append_file, remove, exists } from "fs"
+import { heap } from "mem"
 
 fn read_back(path: string): string {
   var file, err = open(path)
@@ -9,7 +10,7 @@ fn read_back(path: string): string {
     return ""
   }
   defer file.close()
-  var text, readErr = read_all(file)
+  var text, readErr = read_all(heap(), file)
   if readErr != null {
     return ""
   }

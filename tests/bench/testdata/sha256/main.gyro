@@ -14,12 +14,13 @@
 import { println, eprintln, Array } from "stdlib"
 import { monotonic } from "time"
 import * as sha256 from "../../../testdata/run/crypto/sha256"
+import { heap } from "mem"
 
 const SIZE: i64 = 4096
 const ROUNDS: i64 = 1000
 
 fn main() {
-  var buffer = Array<u8>::with_capacity(SIZE as usize)
+  var buffer = Array<u8>::with_capacity(heap(), SIZE as usize)
   for var i: i64 = 0; i < SIZE; i += 1 {
     buffer.push(((i * 31 + 7) & 0xff) as u8)
   }

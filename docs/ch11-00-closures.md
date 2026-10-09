@@ -75,7 +75,7 @@ keyword** is a rule the language applies to itself.
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new()
+  var out = Array<i32>::new(heap())
   for value in values {
     out.push(f(value))
   }

@@ -271,7 +271,7 @@ var explanations = map[Code]explanation{
 	ERangeMisuse: {"range in the wrong place",
 		"`..` builds the range of a for..in loop and is not a value."},
 	EIterationMisuse: {"value does not iterate",
-		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes()."},
+		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes(a), which decodes it into a block from the allocator a."},
 	EPrivateField: {"field is private to its module",
 		"Field visibility is explicit; construct the value with an associated\nfunction instead."},
 	EBadBorrowSource: {"borrow does not name a view parameter",

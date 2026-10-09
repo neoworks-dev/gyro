@@ -7,10 +7,11 @@
 
 import { println, Array } from "stdlib"
 import { match_text } from "./regex"
+import { heap } from "mem"
 
 // (should match, pattern, text, expected match length)
 fn vectors(): Array<(bool, string, string, i64)> {
-  var cases = Array<(bool, string, string, i64)>::new()
+  var cases = Array<(bool, string, string, i64)>::new(heap())
   cases.push((true,  "\\d", "5", 1))
   cases.push((true,  "\\w+", "hej", 3))
   cases.push((true,  "\\s", "\t \n", 1))

@@ -275,7 +275,7 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	if module != nil && module.Path == stdlib.Path("math") {
 		return f.prepareMathIntrinsic(call, decl)
 	}
-	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && decl.Name == "show" {
+	if module != nil && module.Path == stdlib.Path("mem") && decl.Owner == "" && decl.Name == "show" {
 		return f.prepareShow(call)
 	}
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
@@ -454,22 +454,6 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 			f.emit(&metals.Len{Dst: out, X: value})
 			return out
 		}
-
-	case "runes":
-		value := f.lowerExpr(recv, nil)
-		f.l.ensureImport("string::runes", &metals.FnType{
-			Params: []metals.Type{metals.TStr},
-			Result: &metals.SliceOf{Elem: metals.TRune},
-		})
-		return f.emitCall("string::runes", []string{value}, &types.Slice{Elem: types.Rune}, false)
-
-	case "bytes":
-		value := f.lowerExpr(recv, nil)
-		f.l.ensureImport("string::bytes", &metals.FnType{
-			Params: []metals.Type{metals.TStr},
-			Result: &metals.SliceOf{Elem: metals.TUint8},
-		})
-		return f.emitCall("string::bytes", []string{value}, &types.Slice{Elem: types.Uint8}, false)
 
 	case "compare":
 		left := f.lowerExpr(recv, nil)

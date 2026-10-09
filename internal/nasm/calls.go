@@ -466,9 +466,9 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 		case "compare":
 			return nativePlan{symbol: "gy_str_compare", args: values(0, 1)}
 		case "runes":
-			return nativePlan{symbol: "gy_str_runes", sret: true, args: values(0)}
+			return nativePlan{symbol: "gy_str_runes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
 		case "bytes":
-			return nativePlan{symbol: "gy_str_bytes", sret: true, args: values(0)}
+			return nativePlan{symbol: "gy_str_bytes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
 		}
 	}
 	g.fail("no native mapping for @%s", name)
@@ -494,7 +494,7 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "spawn":
 		return nativePlan{symbol: "gy_spawn", args: values(0)}
 	case "from_utf8":
-		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0)}}
+		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0), pointerTo(1)}}
 
 	// The floor of every allocator: the process heap, and the abort an
 	// allocator reaches for when a request cannot be met.
@@ -542,7 +542,7 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "open":
 		return nativePlan{symbol: "gy_open", sret: true, args: values(0)}
 	case "read_all":
-		return nativePlan{symbol: "gy_read_all", sret: true, args: values(0)}
+		return nativePlan{symbol: "gy_read_all", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
 	case "write_file":
 		return nativePlan{symbol: "gy_write_file", sret: true, args: values(0, 1)}
 	case "append_file":
@@ -550,7 +550,7 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "remove":
 		return nativePlan{symbol: "gy_remove", sret: true, args: values(0)}
 	case "read_dir":
-		return nativePlan{symbol: "gy_read_dir", sret: true, args: values(0)}
+		return nativePlan{symbol: "gy_read_dir", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
 	case "exists":
 		return nativePlan{symbol: "gy_exists", args: values(0)}
 	case "get":
@@ -562,11 +562,11 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "sleep":
 		return nativePlan{symbol: "gy_sleep", args: values(0)}
 	case "env":
-		return nativePlan{symbol: "gy_env", sret: true, args: values(0)}
+		return nativePlan{symbol: "gy_env", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
 	case "read_stdin":
-		return nativePlan{symbol: "gy_read_stdin"}
+		return nativePlan{symbol: "gy_read_stdin", args: []planArg{pointerTo(0)}}
 	case "readline":
-		return nativePlan{symbol: "gy_readline", sret: true}
+		return nativePlan{symbol: "gy_readline", sret: true, args: []planArg{pointerTo(0)}}
 	case "exit":
 		return nativePlan{symbol: "gy_exit", args: values(0)}
 	case "write_byte":
@@ -580,8 +580,10 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 
 func (g *generator) arrayPlan(name, method string, sig *metals.FnType) nativePlan {
 	switch method {
-	case "new", "with_capacity":
-		return nativePlan{symbol: "gy_array_new"}
+	case "new":
+		return nativePlan{symbol: "gy_array_new", args: []planArg{pointerTo(0)}}
+	case "with_capacity":
+		return nativePlan{symbol: "gy_array_with_capacity", args: []planArg{pointerTo(0), {index: 1}}}
 	case "push":
 		return nativePlan{
 			symbol: "gy_array_push",

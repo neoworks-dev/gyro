@@ -1,7 +1,8 @@
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var values = Array<i32>::new()
+  var values = Array<i32>::new(heap())
   defer values.free()
   values.push(1)
   values.push(2)

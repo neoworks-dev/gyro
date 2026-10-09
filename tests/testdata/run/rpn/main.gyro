@@ -61,6 +61,7 @@ import { readline } from "os"
 import { words_of } from "./text"
 import { Calc } from "./machine"
 import { run } from "./interp"
+import { heap } from "mem"
 
 fn main() {
   println("rpn — reverse Polish, with variables and words. \"help\" lists them.")
@@ -70,7 +71,7 @@ fn main() {
 
   while !calc.done {
     print("> ")
-    var line = readline()
+    var line = readline(heap())
     if line == null {
       break
     }

@@ -28,7 +28,7 @@ Two details that are easy to get wrong, and that every tier is held to:
 
 ```gyro
 for line in lines.slice() {
-  var parts = line.split(" ")
+  var parts = line.split(heap(), " ")
   defer parts.free()
   ...
 }

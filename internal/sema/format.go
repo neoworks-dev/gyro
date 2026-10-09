@@ -12,9 +12,9 @@ import (
 // ever an argument: bound, returned, stored or captured, it would carry the
 // borrow past the end.
 
-// noteFormat records stdlib's Format once that module is being checked.
+// noteFormat records mem's Format once that module is being checked.
 func (c *checker) noteFormat(tree *ast.File) {
-	if c.modulePath != stdlib.Path("stdlib") {
+	if c.modulePath != stdlib.Path("mem") {
 		return
 	}
 	for _, decl := range tree.Decls {
@@ -37,7 +37,7 @@ func (c *checker) formatLiteral(e *ast.StringLit) types.Type {
 		}
 	}
 	if c.program.format == nil {
-		c.errorf(e.Offset, "string interpolation builds a Format, which stdlib declares; this program does not load stdlib")
+		c.errorf(e.Offset, "string interpolation builds a Format, which mem declares; this program does not load mem")
 		return types.Unknown
 	}
 	return c.program.format

@@ -3,6 +3,7 @@
 // that calls compare works at T = string as it does at T = i32.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn max<T>(a: T, b: T): T !{ &a, &b } {
   if a.compare(b) > 0 {
@@ -35,7 +36,7 @@ fn main() {
   println(max("pear", "apple"))
   println(max(3, 7))
 
-  var names = Array<string>::new()
+  var names = Array<string>::new(heap())
   defer names.free()
   names.push("pear")
   names.push("apple")

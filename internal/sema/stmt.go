@@ -780,7 +780,7 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		return types.Unknown
 	}
 	if basic, ok := t.(*types.Basic); ok && basic.Kind == types.StringKind {
-		c.errorf(e.Pos(), "a string does not iterate directly; use .runes() for code points")
+		c.errorf(e.Pos(), "a string does not iterate directly; use .runes(a) for code points")
 		return types.Unknown
 	}
 

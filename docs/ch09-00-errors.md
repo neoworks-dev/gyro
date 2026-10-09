@@ -121,6 +121,7 @@ Everything fallible in the bundled modules returns the same shape:
 ```gyro
 import { open, read_all } from "fs"
 import { to_i32 } from "convert"
+import { heap } from "mem"
 
 fn load_config(path: string): (string, error?) {
   var handle, err = open(path)
@@ -129,7 +130,7 @@ fn load_config(path: string): (string, error?) {
   }
   defer handle.close()
 
-  var contents, read_err = read_all(handle)
+  var contents, read_err = read_all(heap(), handle)
   if read_err != null {
     return "", read_err
   }

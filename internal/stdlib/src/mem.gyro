@@ -5,8 +5,6 @@
 // pointer, an ordinary value, and a function allocates exactly when it is
 // handed one as a parameter.
 
-import { Format } from "stdlib"
-
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
 export enum Mode {
@@ -187,6 +185,37 @@ export fn Arena::free_all(*self) !{} {
 export fn Arena::free(*self) !{} {
   self.parent.proc(self.parent.data, Mode::Free, 0, 0, self.base, self.capacity)
 }
+
+// Format is what a string literal containing #{} is: its pieces, the
+// literal text and the values in the holes, each wrapped as an any. It is
+// built in the caller's frame and borrows what it names, which is why
+// sema lets it be passed as an argument and nothing else.
+//
+// The printers take one like any other value and stream it, by calling the
+// stream_ functions in stdlib; format below builds it into an allocator.
+// It lives here rather than in stdlib because stdlib imports Allocator from
+// mem, and format needs both.
+export struct Format {
+  pieces: any[]
+}
+
+export fn Format::len(self): usize !{} {
+  return self.pieces.len()
+}
+
+// piece is the value a hole held, or a literal segment as a string.
+export fn Format::piece(self, index: usize): any !{} {
+  return self.pieces[index]
+}
+
+// text shows a piece the way println would.
+export fn Format::text(self, index: usize): string !{} {
+  return show(self.pieces[index])
+}
+
+// show renders an any the way println shows it. The compiler supplies it,
+// since only lowering knows which types the program ever wrapped.
+fn show(piece: any): string !{}
 
 // ---------------------------------------------------------------------------
 // Formatting into an allocator

@@ -4,16 +4,17 @@
 
 import { println, eprintln, String } from "stdlib"
 import { monotonic } from "time"
+import { heap } from "mem"
 
 fn main() {
   var start = monotonic()
-  var out = String::new()
+  var out = String::new(heap())
   defer out.free()
   for var i = 0; i < 2000000; i += 1 {
     out.push("gyro")
     out.push("-")
   }
-  var text = out.text()
+  var text = out.text(heap())
   var stop = monotonic()
 
   println(text.len())

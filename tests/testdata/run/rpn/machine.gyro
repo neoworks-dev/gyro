@@ -7,7 +7,7 @@
 
 import { println, Array, Map, String, join } from "stdlib"
 import { CalcError } from "./error"
-import { format, heap } from "mem"
+import { heap, format } from "mem"
 
 export struct Calc {
   stack: Array<f64>
@@ -23,11 +23,11 @@ export struct Calc {
 
 export fn Calc::new(): Calc {
   return Calc{
-    stack: Array<f64>::new(),
-    vars: Map<string, f64>::new(),
-    var_names: Array<string>::new(),
-    words: Map<string, Array<string>>::new(),
-    word_names: Array<string>::new(),
+    stack: Array<f64>::new(heap()),
+    vars: Map<string, f64>::new(heap()),
+    var_names: Array<string>::new(heap()),
+    words: Map<string, Array<string>>::new(heap()),
+    word_names: Array<string>::new(heap()),
     done: false,
   }
 }
@@ -100,7 +100,7 @@ export fn Calc::clear(*self) {
 
 // snapshot copies the stack so a failed line can be undone.
 export fn Calc::snapshot(self): Array<f64> {
-  var copy = Array<f64>::with_capacity(self.stack.len())
+  var copy = Array<f64>::with_capacity(heap(), self.stack.len())
   for value in self.stack.slice() {
     copy.push(value)
   }
@@ -117,7 +117,7 @@ export fn Calc::show(self) {
     println("(empty)")
     return
   }
-  var out = String::new()
+  var out = String::new(heap())
   defer out.free()
 
   var i: usize = 0
@@ -128,7 +128,7 @@ export fn Calc::show(self) {
     out.push(format(heap(), "#{self.stack.get(i)}"))
     i += 1
   }
-  println(out.text())
+  println(out.text(heap()))
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ export fn Calc::forget(*self, name: string): bool {
   body.free()
   var _ = self.words.remove(name)
 
-  var kept = Array<string>::new()
+  var kept = Array<string>::new(heap())
   for existing in self.word_names.slice() {
     if existing != name {
       kept.push(existing)
@@ -207,7 +207,7 @@ export fn Calc::list_words(self) {
   for name in self.word_names.slice() {
     var body = self.words.get(name)
     if body != null {
-      println(": #{name} #{join(body.slice(), " ")} ;")
+      println(": #{name} #{join(heap(), body.slice(), " ")} ;")
     }
   }
 }

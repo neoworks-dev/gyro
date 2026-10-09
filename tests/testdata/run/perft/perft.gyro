@@ -40,8 +40,8 @@
 //     instructions per variation and the other a pass over the mask, and
 //     on a tree-walking interpreter that difference was a second.
 
-import { Array } from "stdlib"
-import { format, heap } from "mem"
+import { Array, bytes } from "stdlib"
+import { heap, format } from "mem"
 
 // ---------------------------------------------------------------------------
 // Board squares. a8 is 0 and h1 is 63, so a rank walked with `rank * 8 +
@@ -245,19 +245,19 @@ const CASTLING_RIGHTS: i32[64] = [
 const BISHOP_STRIDE: i32 = 512
 const ROOK_STRIDE: i32 = 4096
 
-var pawn_attacks = Array<u64>::new()    // [side * 64 + square]
-var knight_attacks = Array<u64>::new()  // [square]
-var king_attacks = Array<u64>::new()    // [square]
-var bishop_masks = Array<u64>::new()    // [square]
-var rook_masks = Array<u64>::new()      // [square]
-var bishop_attacks = Array<u64>::new()  // [square * 512 + magic index]
-var rook_attacks = Array<u64>::new()    // [square * 4096 + magic index]
+var pawn_attacks = Array<u64>::new(heap())    // [side * 64 + square]
+var knight_attacks = Array<u64>::new(heap())  // [square]
+var king_attacks = Array<u64>::new(heap())    // [square]
+var bishop_masks = Array<u64>::new(heap())    // [square]
+var rook_masks = Array<u64>::new(heap())      // [square]
+var bishop_attacks = Array<u64>::new(heap())  // [square * 512 + magic index]
+var rook_attacks = Array<u64>::new(heap())    // [square * 4096 + magic index]
 
 // One move buffer for the whole search: ply `p` owns
 // [p * 256, p * 256 + 256). C gives every node its own `int moves[256]`
 // on the stack, which a Gyro local cannot be without a 256-element
 // literal to initialize it from.
-var move_stack = Array<i32>::new()
+var move_stack = Array<i32>::new(heap())
 
 // ---------------------------------------------------------------------------
 // Leaper attack masks
@@ -605,7 +605,7 @@ export fn parse_fen(fen: string): Board {
     castle: 0,
   }
 
-  var text = fen.bytes()
+  var text = fen.bytes(heap())
   var at: usize = 0
 
   for rank in 0..8 {

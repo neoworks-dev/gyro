@@ -4,6 +4,7 @@
 
 import { println, eprintln, Array } from "stdlib"
 import { monotonic } from "time"
+import { heap } from "mem"
 
 struct Particle {
   x: i64
@@ -13,7 +14,7 @@ struct Particle {
 }
 
 fn main() {
-  var world = Array<Particle>::new()
+  var world = Array<Particle>::new(heap())
   defer world.free()
   for var i: i64 = 0; i < 512; i += 1 {
     world.push(Particle{ x: i, y: -i, vx: 1, vy: 2 })

@@ -2,8 +2,8 @@
 // not yet text. println streams them, format builds them into an
 // allocator, and a function that takes a Format passes it on.
 
-import { println, print, Format } from "stdlib"
-import { format, heap, Arena } from "mem"
+import { println, print } from "stdlib"
+import { format, heap, Arena, Format } from "mem"
 
 struct Point {
   x: i32

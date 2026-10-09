@@ -46,8 +46,9 @@
 //     pairs upstream keeps (the merged-line buffers, the attribute
 //     builds, the mark pointer stack) are simply allocations here.
 
-import { Array } from "stdlib"
+import { Array, bytes } from "stdlib"
 import * as unicode from "./unicode"
+import { heap } from "mem"
 
 // ---------------------------------------------------------------------------
 // The public surface: what a renderer is handed
@@ -99,9 +100,9 @@ export struct Attribute {
   export offsets: Array<i64>
 }
 
-var NO_TEXT: Array<u8> = Array<u8>::new()
-var NO_TYPES: Array<TextKind> = Array<TextKind>::new()
-var NO_OFFSETS: Array<i64> = Array<i64>::new()
+var NO_TEXT: Array<u8> = Array<u8>::new(heap())
+var NO_TYPES: Array<TextKind> = Array<TextKind>::new(heap())
+var NO_OFFSETS: Array<i64> = Array<i64>::new(heap())
 
 export fn Attribute::absent(): Attribute {
   return Attribute{ text: NO_TEXT, types: NO_TYPES, offsets: NO_OFFSETS }
@@ -715,7 +716,7 @@ fn Ctx::lookup_line(self, off: i64, lines_off: i64, n_lines: i64): i64 {
 // merge_lines copies [beg, end) out of the document, replacing each line
 // break with one character, and hands back storage of its own.
 fn Ctx::merge_lines(self, beg: i64, end: i64, lines_off: i64, replacement: u8): Array<u8> {
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   var line_index: i64 = 0
   var off = beg
 
@@ -742,7 +743,7 @@ fn Ctx::merge_lines(self, beg: i64, end: i64, lines_off: i64, replacement: u8): 
 // document, which the port needs wherever md4c would have passed a pointer
 // into it.
 fn Ctx::copy_range(self, beg: i64, end: i64): Array<u8> {
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   for var off = beg; off < end; off += 1 {
     out.push(self.ch(off))
   }
@@ -825,9 +826,9 @@ fn build_attribute(source: u8[], beg: i64, size: i64, keep_escapes: bool): Attri
     return Attribute::absent()
   }
 
-  var text = Array<u8>::new()
-  var types = Array<TextKind>::new()
-  var offsets = Array<i64>::new()
+  var text = Array<u8>::new(heap())
+  var types = Array<TextKind>::new(heap())
+  var offsets = Array<i64>::new(heap())
 
   var raw_off = beg
   var limit = beg + size
@@ -1532,7 +1533,7 @@ fn is_mark_char(c: u8): bool {
 }
 
 fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
-  var last_closers = Array<i64>::new()
+  var last_closers = Array<i64>::new(heap())
   for var i: i64 = 0; i < CODESPAN_MARK_MAXLEN; i += 1 {
     last_closers.push(0)
   }
@@ -2692,7 +2693,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
           var dest_size = closer.beg - opener.end
 
           if (opener.flags & MARK_AUTOLINK_MISSING_MAILTO) != 0 {
-            var buffer = Array<u8>::new()
+            var buffer = Array<u8>::new(heap())
             for var i: i64 = 0; i < 7; i += 1 {
               buffer.push(MAILTO[i as usize])
             }
@@ -2815,12 +2816,12 @@ struct NameTable {
 }
 
 fn build_tags(): NameTable {
-  var text = Array<u8>::new()
-  var beg = Array<i64>::new()
-  var end = Array<i64>::new()
+  var text = Array<u8>::new(heap())
+  var beg = Array<i64>::new(heap())
+  var end = Array<i64>::new(heap())
   for name in TAG_NAMES {
     beg.push(text.len() as i64)
-    for byte in name.bytes() {
+    for byte in name.bytes(heap()) {
       text.push(byte)
     }
     end.push(text.len() as i64)
@@ -4039,7 +4040,7 @@ fn Ctx::process_doc(*self) {
 
 export fn parse(text: u8[], parser: Parser) {
   var size = text.len() as i64
-  var stacks = Array<i64>::new()
+  var stacks = Array<i64>::new(heap())
   for var i: i64 = 0; i < N_OPENER_STACKS; i += 1 {
     stacks.push(-1)
   }
@@ -4057,7 +4058,7 @@ export fn parse(text: u8[], parser: Parser) {
     size: size,
     parser: parser,
 
-    marks: Array<Mark>::new(),
+    marks: Array<Mark>::new(heap()),
     n_marks: 0,
     opener_stacks: stacks,
 
@@ -4074,18 +4075,18 @@ export fn parse(text: u8[], parser: Parser) {
     last_img_beg: 0,
     last_img_end: 0,
 
-    titles: Array<Array<u8>>::new(),
+    titles: Array<Array<u8>>::new(heap()),
 
-    blocks: Array<Block>::new(),
+    blocks: Array<Block>::new(heap()),
     n_blocks: 0,
-    lines: Array<Line>::new(),
+    lines: Array<Line>::new(heap()),
     n_lines: 0,
     current_block: -1,
 
-    containers: Array<Container>::new(),
+    containers: Array<Container>::new(heap()),
     n_containers: 0,
 
-    ref_defs: Array<RefDef>::new(),
+    ref_defs: Array<RefDef>::new(heap()),
     max_ref_def_output: 16 * capped,
 
     code_fence_length: 0,

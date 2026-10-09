@@ -3,10 +3,11 @@ package lower
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
-// A string literal with a #{} in it is a Format: stdlib's struct holding
+// A string literal with a #{} in it is a Format: mem's struct holding
 // one any per piece, the literal text and each value in a hole. Wrapping
 // into an any is a variant constructor and the pieces sit in an array in
 // this frame, so building one allocates nothing.
@@ -17,7 +18,7 @@ import (
 
 func (l *lowerer) isFormat(t types.Type) bool {
 	strct, ok := t.(*types.Struct)
-	return ok && strct.Name == "Format" && strct.Module == l.stdlib.Path
+	return ok && strct.Name == "Format" && strct.Module == stdlib.Path("mem")
 }
 
 func (f *funcLowerer) evalStringLit(e *ast.StringLit) string {

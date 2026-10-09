@@ -65,8 +65,8 @@ goes:
   the allocator it is given and returns a `string`.
 
 ```gyro
-import { println, Format } from "stdlib"
-import { format, heap } from "mem"
+import { println } from "stdlib"
+import { format, heap, Format } from "mem"
 
 fn log(message: Format) !{ io } {
   println(message)
@@ -113,7 +113,7 @@ printf("%-6s has %2d items, %d%% of %x\n", "cart", 3, 40, 255)
 | --- | --- |
 | `printf(format, args: ...any)` | to stdout |
 | `eprintf(format, args: ...any)` | to stderr |
-| `sprintf(format, args: ...any): string` | returns the text |
+| `sprintf(a: Allocator, format, args: ...any): string` | returns the text, built from `a` |
 
 The verbs:
 

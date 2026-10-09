@@ -48,7 +48,7 @@ list from its path and is an ordinary identifier everywhere else, so
 are no predeclared functions.
 
 Operations on built-in types are *methods* on those types, so `ch.close()`,
-`xs.len()` and `s.runes()` need no import, while `println`, `alloc` and
+`xs.len()` and `s.len()` need no import, while `println`, `alloc` and
 `spawn` do. Extension methods sit on the imported side of that line: they
 are module-scope names that happen to take a receiver
 ([chapter 5.2](ch05-02-methods.md)).

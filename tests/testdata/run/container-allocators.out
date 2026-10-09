@@ -1,0 +1,10 @@
+allocs=1 resizes=0 frees=0
+allocs=1 resizes=3 frees=0
+allocs=1 resizes=3 frees=1
+allocs=2 resizes=4 frees=1
+allocs=2 resizes=4 frees=2
+allocs=11 resizes=5 frees=2
+100
+4950
+2
+3

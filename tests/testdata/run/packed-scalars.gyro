@@ -5,6 +5,7 @@
 // walks them.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 struct Mixed {
   flag: bool
@@ -49,7 +50,7 @@ fn main() {
 
   // A dynamic Array stores what a slice of it borrows, so its elements
   // are the same bytes at the same stride.
-  var small = Array<i8>::new()
+  var small = Array<i8>::new(heap())
   small.push(0 - 5)
   small.push(120)
   println(small.get(0))
@@ -58,13 +59,13 @@ fn main() {
   println(borrowed[0])
   small.free()
 
-  var floats = Array<f32>::new()
+  var floats = Array<f32>::new(heap())
   floats.push(0.25)
   println(floats.get(0))
   floats.free()
 
   // A tuple of a narrow element and a flag, which is what a pop answers.
-  var popped = Array<u8>::new()
+  var popped = Array<u8>::new(heap())
   popped.push(200)
   var got, ok = popped.pop()
   println(got)

@@ -18,17 +18,18 @@ import {
   sum_of_none, sum_of_two, sum_of_five,
   forwarded, walked_twice, promoted, through_a_pointer,
 } from "./fmt.c"
+import { heap } from "mem"
 
 // The rendered bytes come back one at a time, because the C side has no
 // allocator to hand out a string with.
 fn rendered(length: i32): string {
-  var text = String::new()
+  var text = String::new(heap())
   var i = 0
   while i < length {
     text.push_rune(rendered_at(i) as rune)
     i = i + 1
   }
-  return text.text()
+  return text.text(heap())
 }
 
 fn main() {

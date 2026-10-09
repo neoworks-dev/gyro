@@ -261,7 +261,6 @@ func basicMemberItems(basic *types.Basic) []completionItem {
 	case basic.Kind == types.StringKind:
 		return []completionItem{
 			{Label: "len", Kind: completionKindMethod, Detail: "fn(): usize"},
-			{Label: "runes", Kind: completionKindMethod, Detail: "fn(): rune[]"},
 		}
 	case types.IsNumeric(basic) || basic.Kind == types.RuneKind:
 		return []completionItem{

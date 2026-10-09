@@ -3,7 +3,7 @@
 // the call that argument sits on.
 
 import { println, Array } from "stdlib"
-import { format, heap } from "mem"
+import { heap, format } from "mem"
 
 fn each<T>(xs: T[], visit: fn(T)) {
   for x in xs {
@@ -27,13 +27,13 @@ fn twice<T>(f: fn(T): T, x: T): T !{ &x } {
 }
 
 fn main() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   defer xs.free()
   xs.push(1)
   xs.push(2)
   each(xs.slice(), fn(v) println(v))
 
-  var labels = Array<string>::new()
+  var labels = Array<string>::new(heap())
   defer labels.free()
   map_into(xs.slice(), &labels, fn(v) format(heap(), "<#{v}>"))
   each(labels.slice(), fn(v) println(v))

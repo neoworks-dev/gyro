@@ -13,6 +13,7 @@ representation.
 
 ```gyro
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 export struct Stack {
   export capacity: i32
@@ -20,7 +21,7 @@ export struct Stack {
 }
 
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, items: Array<i32>::new() }
+  return Stack{ capacity: capacity, items: Array<i32>::new(heap()) }
 }
 
 export fn Stack::push(*self, value: i32) {
@@ -204,7 +205,7 @@ for expressions. It buffers the whole token stream, which makes the bounded
 backtracking needed to tell `a < b` from `f<T>(x)` a matter of resetting an
 index. Three ambiguities shaped the design:
 
-- **`f<T>(x)` versus `a < b`**, and `Array<i32>::new()` with it — resolved by
+- **`f<T>(x)` versus `a < b`**, and `Array<i32>::new(heap())` with it — resolved by
   a speculative parse that commits only when the angle brackets close.
 - **`ch <- v` versus `x < -1`** — the lexer scans `<-` greedily and the
   parser splits it back apart in binary-operator position. Sends are

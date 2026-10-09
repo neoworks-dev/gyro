@@ -2,31 +2,32 @@
 // bytes() method. Its UTF-8 encoder is Gyro too.
 
 import { println, String } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var s = String::of("hello")
+  var s = String::of(heap(), "hello")
   defer s.free()
   s.push(", ")
   s.push("world")
   s.push_rune('!')
-  println(s.text())
+  println(s.text(heap()))
   println(s.len())
 
   // Each encoded length, and the replacement a bad code point becomes.
-  var wide = String::new()
+  var wide = String::new(heap())
   defer wide.free()
   wide.push_rune('a')
   wide.push_rune('é')
   wide.push_rune('€')
   wide.push_rune('𝄞')
-  println(wide.text())
+  println(wide.text(heap()))
   println(wide.len())
 
   // to_string means a String prints as its text.
   println(s)
 
-  var empty = String::new()
+  var empty = String::new(heap())
   defer empty.free()
   println(empty.len())
-  println("[#{empty.text()}]")
+  println("[#{empty.text(heap())}]")
 }

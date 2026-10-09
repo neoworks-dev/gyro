@@ -16,7 +16,7 @@ import {
   binary, compare, unary, stack_word, constant,
 } from "./builtins"
 import { save, read_source } from "./persist"
-import { format, heap } from "mem"
+import { heap, format } from "mem"
 
 // How deep one word may call another. A word that calls itself is legal
 // and useful right up to the point where it does not stop, and this is
@@ -93,7 +93,7 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
     return i, CalcError{ text: format(heap(), "#{name} is a number and cannot be a word") }
   }
 
-  var body = Array<string>::new()
+  var body = Array<string>::new(heap())
   var closed = false
   while i < words.len() {
     var part = words[i]
@@ -199,7 +199,7 @@ fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
   if err != null {
     return err
   }
-  var lines = source.split("\n")
+  var lines = source.split(heap(), "\n")
   defer lines.free()
 
   for line in lines.slice() {
@@ -233,12 +233,12 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
   if is_compare(word) {
     return compare(calc, word)
   }
-  if word.starts_with(">") && word.len() > 1 {
+  if word.starts_with(heap(), ">") && word.len() > 1 {
     var value, err = calc.pop(word)
     if err != null {
       return err
     }
-    calc.store(word.substring(1, word.len()), value)
+    calc.store(word.substring(heap(), 1, word.len()), value)
     return null
   }
 

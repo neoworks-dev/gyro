@@ -1,9 +1,10 @@
 //gyro:panic double free
 
 import { Array } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   xs.free()
   xs.free()
 }
