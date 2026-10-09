@@ -38,6 +38,7 @@ const (
 	EDecoratorPlace   Code = "E0215"
 	EAssignmentForm   Code = "E0216"
 	ERangeForm        Code = "E0217"
+	EFuncModifier     Code = "E0218"
 
 	// Modules and imports
 	EModuleNotFound   Code = "E0301"
@@ -112,6 +113,10 @@ const (
 	// Format values
 	EFormatEscapes Code = "E0616"
 
+	// Unsafe code
+	EUnsafeOperation Code = "E0618"
+	EVouchGyro       Code = "E0619"
+
 	// Closures
 	EKeepNotFunction Code = "E0617"
 
@@ -151,7 +156,9 @@ var explanations = map[Code]explanation{
 	EUnterminatedStmt: {"statement did not end",
 		"Statements end at a newline; the tokens after it belong to no\nstatement. A statement continues across a newline only inside\nbrackets or after an operator."},
 	EImportForm: {"malformed import",
-		"An import is `import { name } from \"path\"` or `import * as name from\n\"path\"`. Gyro has no default exports, so there is no default import."},
+		"An import is `import { name } from \"path\"` or `import * as name from\n\"path\"`, with `safe` after `import` to vouch for the names (see E0619).\nGyro has no default exports, so there is no default import."},
+	EFuncModifier: {"a function is unsafe or safe, not both",
+		"`unsafe fn` is unsafe to call; `safe fn` may do unchecked things and is\nsafe to call. A function is one or the other, or neither."},
 	EGenericBounds: {"generic parameters take no bounds",
 		"Generics are duck-typed: a body is checked against every instantiation,\nso a bound would restate what the body already requires."},
 	ECaptureForm: {"malformed capture list",
@@ -287,6 +294,10 @@ var explanations = map[Code]explanation{
 		"The effect vocabulary is closed: io is the one concrete effect, and a\n&name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
 	EExternDeclaration: {"@extern is on the wrong kind of declaration",
 		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
+	EUnsafeOperation: {"unsafe operation in a plain fn",
+		"Some operations rely on something the compiler cannot check: calling an\nunsafe fn, calling a C function the import does not vouch for, calling an\n@extern function not written `safe`, and reading a union member, since\nnothing records which member was written last.\n\nOnly an unsafe fn or a safe fn may do them. Mark the function `safe fn`\nwhen it upholds what the operation needs, so that its callers need not\nknow; mark it `unsafe fn` to leave that to its callers. Unsafe is not an\neffect and does not appear in a row."},
+	EVouchGyro: {"import safe of a Gyro module",
+		"`import safe { parse } from \"./lib.c\"` says that calling the C\nfunctions it binds is safe, which nothing in a C file can say for itself.\nA Gyro function already says whether it is unsafe to call, so vouching for\none from the importing side would let any file override its author."},
 	EKeepNotFunction: {"keep and release take a function value",
 		"A closure's environment lives in the frame that wrote it, and keep copies\nit into an allocator by reading the size every environment starts with.\nOnly a fn value has an environment; a code pointer, a struct or a number\ndoes not, so there is nothing to copy."},
 	EExternSignature: {"type cannot cross to C",

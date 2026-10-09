@@ -24,12 +24,16 @@ type callee struct {
 	variantEnum *types.Enum
 	variant     *types.Variant
 
+	// vouched is set when the import that bound the callee vouches for it.
+	vouched bool
+
 	bad bool
 }
 
 func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 	c.allowFormat(call)
 	target := c.resolveCallee(call)
+	c.checkUnsafeCall(call.Pos(), target)
 
 	if target.variant != nil {
 		return c.constructVariant(call, target)
@@ -108,7 +112,7 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 		return callee{bad: true}
 	}
 	if sym.fn != nil {
-		return callee{name: fun.Name, method: sym.fn}
+		return callee{name: fun.Name, method: sym.fn, vouched: sym.vouched}
 	}
 	// The narrowed type, not the declared one: a `code(...)?` checked
 	// against null is callable on the path where it is not.
@@ -196,7 +200,7 @@ func (c *checker) calleeFromPathee(offset int, p pathee) callee {
 			c.errorf(offset, "%s takes a receiver; call it on a value: value.%s(...)", p.method.Name, p.method.Name)
 			return callee{bad: true}
 		}
-		return callee{name: p.method.Name, method: p.method, ownerParams: p.ownerParams, ownerArgs: p.ownerArgs}
+		return callee{name: p.method.Name, method: p.method, ownerParams: p.ownerParams, ownerArgs: p.ownerArgs, vouched: p.vouched}
 	}
 	if fn, ok := p.valueType.(*types.Func); ok {
 		return callee{name: "the function", fnType: fn}
@@ -712,6 +716,9 @@ type pathee struct {
 	// inferred from the call.
 	ownerArgs []types.Type
 	ownerName string
+	// vouched is set for a function reached through a namespace import
+	// that vouches.
+	vouched bool
 
 	variantEnum *types.Enum
 	variant     *types.Variant
@@ -779,7 +786,7 @@ func (c *checker) namespacePathee(path *ast.Path, ns *symbol) pathee {
 		}
 		c.recordRef(path, entry.decl)
 		if entry.fn != nil {
-			return pathee{method: entry.fn}
+			return pathee{method: entry.fn, vouched: ns.vouched || entry.vouched}
 		}
 		return pathee{valueType: entry.typ}
 	}

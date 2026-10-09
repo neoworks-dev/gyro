@@ -51,7 +51,9 @@ func compileForeign(path, source string) (*metals.Module, error) {
 }
 
 // header renders a foreign module's exports as Gyro declarations without
-// bodies. Only the exports are visible: whatever else the module defines
+// bodies. Each is an `unsafe fn`: nothing about the C behind it is
+// knowable, and an `import safe` is what vouches for the ones a program
+// uses. Only the exports are visible: whatever else the module defines
 // is its own business, exactly as for a Gyro module.
 //
 // A named type an export mentions is declared here too, as a Gyro struct
@@ -130,7 +132,7 @@ func header(module *metals.Module) (string, error) {
 		if fn.Async {
 			prefix = "async "
 		}
-		fmt.Fprintf(&decls, "export %sfn %s(%s)%s\n", prefix, fn.Name, strings.Join(params, ", "), result)
+		fmt.Fprintf(&decls, "export unsafe %sfn %s(%s)%s\n", prefix, fn.Name, strings.Join(params, ", "), result)
 	}
 
 	var out strings.Builder

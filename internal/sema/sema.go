@@ -88,6 +88,11 @@ type symbol struct {
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
+	// vouched marks an import written `import safe`: the importer says
+	// calling what it binds is safe, which a foreign function is not
+	// otherwise. It travels with the symbol, so a re-export of a vouched
+	// name stays vouched.
+	vouched bool
 }
 
 // Exports is what one module offers its importers.
@@ -179,6 +184,9 @@ type funcContext struct {
 	// vacuous when it is not, so whether the source or the result is a view
 	// cannot be judged from the declaration.
 	generic bool
+	// trusted marks an unsafe fn or a safe fn, whose body may do
+	// unchecked things. A closure inside it shares the context.
+	trusted bool
 }
 
 // checker holds the state of one module's check.
@@ -246,6 +254,15 @@ type checker struct {
 	// to, which is how `alloc` is told from a local function of that name.
 	importPaths map[string]string
 
+	// foreign holds the import specifiers that resolved to a module
+	// another language produced, which is the only kind `import safe`
+	// has anything to vouch for.
+	foreign map[string]bool
+
+	// unionWrites holds the selectors that store into a union member, which
+	// is safe where reading one is not.
+	unionWrites map[*ast.SelectorExpr]int
+
 	// formatOK holds the expressions standing where a format value may:
 	// a call's argument, or the base of a selector.
 	formatOK map[ast.Expr]bool
@@ -286,6 +303,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		flow:            newFlow(),
 		guarded:         map[*symbol][]*symbol{},
 		importPaths:     map[string]string{},
+		foreign:         map[string]bool{},
+		unionWrites:     map[*ast.SelectorExpr]int{},
 		reportedLeaks:   map[*symbol]bool{},
 		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
 		formatOK:        map[ast.Expr]bool{},
@@ -305,12 +324,15 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	for i, module := range prog.Modules {
 		imports := map[string]*Exports{}
 		paths := map[string]string{}
+		foreign := map[string]bool{}
 		for specifier, dependency := range module.Deps {
 			imports[specifier] = computed[dependency]
 			paths[specifier] = dependency.Path
+			foreign[specifier] = dependency.Foreign != nil
 		}
 		c := newChecker(p, module.File, module.Path, imports)
 		c.importPaths = paths
+		c.foreign = foreign
 		computed[module] = c.run(module.Tree)
 		checkers[i] = c
 	}
@@ -474,12 +496,21 @@ func bundledIntrinsic(modulePath, name string) string {
 func (c *checker) collectImport(imp *ast.Import) {
 	exports := c.imports[imp.Path]
 
+	// Vouching is a statement about C, whose functions nothing in Gyro
+	// can read. A Gyro module's functions already say what they are.
+	if imp.Safe && exports != nil && !c.foreign[imp.Path] {
+		c.errorHintf(imp.Offset, []string{
+			"a Gyro function says whether it is unsafe to call; only a C file's functions need an import to vouch for them",
+		}, "import safe vouches for a C file's functions; %q is a Gyro module", imp.Path)
+	}
+
 	if imp.Wildcard != "" {
 		c.declareSymbol(imp.Wildcard, &symbol{
 			kind:    symNamespace,
 			offset:  imp.Offset,
 			decl:    imp,
 			exports: exports,
+			vouched: imp.Safe,
 		})
 	}
 
@@ -489,7 +520,7 @@ func (c *checker) collectImport(imp *ast.Import) {
 			bound = name.Alias
 		}
 
-		local := &symbol{kind: symImport, offset: name.Offset, decl: imp, typ: types.Unknown}
+		local := &symbol{kind: symImport, offset: name.Offset, decl: imp, typ: types.Unknown, vouched: imp.Safe}
 		local.intrinsic = bundledIntrinsic(c.importPaths[imp.Path], name.Name)
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
@@ -501,6 +532,8 @@ func (c *checker) collectImport(imp *ast.Import) {
 				local.decl = entry.decl
 				local.typ = entry.typ
 				local.fn = entry.fn
+				// A name already vouched for stays so through a re-export.
+				local.vouched = local.vouched || entry.vouched
 			}
 		}
 		c.declareSymbol(bound, local)

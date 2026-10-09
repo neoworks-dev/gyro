@@ -4,6 +4,12 @@
 // The model is chapter 4.5: an allocator is a procedure and a data
 // pointer, an ordinary value, and a function allocates exactly when it is
 // handed one as a parameter.
+//
+// The raw memory underneath is the unsafe module's. The functions here that
+// use it are safe fns: each vouches that what it hands out is a block of the
+// size and alignment asked for, or null, and that nothing else gets through.
+
+import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, with_env } from "unsafe"
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -27,27 +33,14 @@ export fn align<T>(): usize !{}
 // range does.
 export fn panic(message: string) !{}
 
-// The process heap, which every allocator bottoms out in. These carry no
-// row because they are the floor rather than the allocator: heap() wraps
-// them into one.
-export fn raw_alloc(size: usize, align: usize): anyptr? !{}
-export fn raw_free(pointer: anyptr) !{}
-export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
-export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
-
-// offset is the address `bytes` past base, which is how Arena says where
-// each block it carves out of its buffer starts. It is private: pointer
-// arithmetic is not part of the language's surface.
-fn offset(base: anyptr, bytes: usize): anyptr !{}
-
 // alloc answers one zero-filled T from a, and panics with the size when a
 // cannot supply it.
-export fn alloc<T>(a: Allocator): *T !{} {
+export safe fn alloc<T>(a: Allocator): *T !{} {
   var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
   if block == null {
     panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
   }
-  return block as *T
+  return cast<T>(block)
 }
 
 // A call to panic ends the block for the checker, so `if p == null {
@@ -62,7 +55,7 @@ export fn free<T>(a: Allocator, pointer: *T) !{} {
 // The heap
 // ---------------------------------------------------------------------------
 
-fn heap_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
+safe fn heap_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
   match mode {
     Mode::Alloc: {
       return raw_alloc(size, align)
@@ -114,7 +107,7 @@ export fn Arena::new(a: Allocator, capacity: usize): Arena !{} {
 
 // take carves the next block out of the buffer, aligned, zeroed, or
 // answers null when the arena is full. It does not grow.
-fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
+safe fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
   var start = self.used
   if align > 1 {
     var over = start % align
@@ -131,18 +124,18 @@ fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
   }
   var block = offset(self.base, start)
   for i in 0..width {
-    var byte = offset(block, i) as *u8
+    var byte = cast<u8>(offset(block, i))
     *byte = 0
   }
   self.used = start + width
   return block
 }
 
-fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
+safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
   if data == null {
     return null
   }
-  var arena = data as *Arena
+  var arena = cast<Arena>(data)
   match mode {
     Mode::Alloc: {
       return arena.take(size, align)
@@ -275,24 +268,20 @@ export fn format(a: Allocator, value: Format): string !{} {
 // ---------------------------------------------------------------------------
 
 // A closure's environment is a record in the frame that wrote it, and its
-// first word is the record's size in bytes. env_of answers the address of a
-// fn value's environment, null when it has none; with_env answers the same
-// code over another. They are private, like offset: raw memory is not part
-// of the language's surface.
-fn env_of<F>(f: F): anyptr? !{}
-fn with_env<F>(f: F, env: anyptr?): F !{}
+// first word is the record's size in bytes; env_of and with_env, from
+// unsafe, read and replace it.
 
 // keep copies a closure's environment out of the frame into a, for a
 // closure that has to live longer than the function that wrote it. A closure
 // with no environment is returned as it is, and nothing is allocated.
-export fn keep<F>(a: Allocator, f: F): F !{} {
+export safe fn keep<F>(a: Allocator, f: F): F !{} {
   var env = env_of(f)
   if env == null {
     // Rebuilt rather than returned as it is: returning the parameter
     // would read, to the borrow analysis, as a view of it.
     return with_env(f, null)
   }
-  var size = *(env as *usize)
+  var size = *cast<usize>(env)
   var block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
   if block == null {
     panic(format(heap(), "allocation of #{size} bytes failed"))
@@ -303,12 +292,12 @@ export fn keep<F>(a: Allocator, f: F): F !{} {
 
 // release gives back the environment keep copied into a. It takes only a
 // closure keep returned, and the allocator it was kept in.
-export fn release<F>(a: Allocator, f: F) !{} {
+export safe fn release<F>(a: Allocator, f: F) !{} {
   var env = env_of(f)
   if env == null {
     return
   }
-  a.proc(a.data, Mode::Free, 0, 0, env, *(env as *usize))
+  a.proc(a.data, Mode::Free, 0, 0, env, *cast<usize>(env))
 }
 
 // ---------------------------------------------------------------------------
@@ -324,11 +313,11 @@ struct Job {
   body: fn()
 }
 
-fn run(data: anyptr?) !{ io } {
+safe fn run(data: anyptr?) !{ io } {
   if data == null {
     return
   }
-  var job = data as *Job
+  var job = cast<Job>(data)
   var body = job.body
   body()
   release(job.a, body)

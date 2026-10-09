@@ -766,6 +766,11 @@ func (c *checker) codePointer(offset int, decl *ast.FuncDecl, signature types.Ty
 		c.errorf(offset, "%s is variadic, and a code pointer carries no argument pack", decl.Name)
 		return types.Unknown
 	}
+	// A pointer to an unsafe function would let any caller reach it
+	// without the context a call asks for.
+	if isUnsafeDecl(decl) {
+		c.requireTrusted(offset, "&%s makes a pointer to an unsafe function; this function is a plain fn", decl.Name)
+	}
 	return &types.Code{Params: sig.Params, Result: sig.Result}
 }
 
@@ -1049,7 +1054,20 @@ func (c *checker) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) types.Type 
 func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
 	c.formatOK[e.X] = true
 	base := c.expr(e.X)
-	return c.selectField(e.NameOffset, base, e.Name, true)
+	field := c.selectField(e.NameOffset, base, e.Name, true)
+
+	// Nothing records which member of a union is live, so a read is the
+	// program's claim that the bytes are this member's.
+	holder := base
+	if pointer, ok := holder.(*types.Pointer); ok {
+		holder = pointer.Elem
+	}
+	if union, ok := holder.(*types.Union); ok {
+		if member := union.MemberNamed(e.Name); member != nil && !c.isUnionStore(e, member.Type) {
+			c.requireTrusted(e.NameOffset, "reading the union member %s is unsafe; this function is a plain fn", e.Name)
+		}
+	}
+	return field
 }
 
 // selectField resolves field access through pointers, reporting nullable
@@ -1318,14 +1336,10 @@ func (c *checker) castExpr(e *ast.CastExpr) types.Type {
 		return target
 	}
 
-	// `as` is also how an address forgets its type and gets it back.
-	// Forgetting is free; the other way is the program's claim about
-	// what is at the address, which is the same claim C's cast makes and
-	// the same one the evaluator checks at runtime.
+	// `as` is also how an address forgets its type. Forgetting is free.
+	// Getting the type back is the program's claim about what is at the
+	// address, so it is not a cast: it is `cast` from the `unsafe` module.
 	if isAnyPtr(target) && isAnyPtrCastable(value) {
-		return target
-	}
-	if isAnyPtr(value) && isAnyPtrCastable(target) {
 		return target
 	}
 
@@ -1342,10 +1356,9 @@ func isAnyPtr(t types.Type) bool {
 	return ok && basic.Kind == types.AnyPtrKind
 }
 
-// isAnyPtrCastable reports the other side of an anyptr cast: a pointer,
-// or an anyptr again. Nothing else is an address — an integer is not one
-// here, because a pointer that came from arithmetic is the thing this
-// language does not have.
+// isAnyPtrCastable reports what an address may forget its type from: a
+// pointer, or an anyptr again. An integer is not an address; making one
+// into a pointer is `ptr_from_int` in the `unsafe` module.
 func isAnyPtrCastable(t types.Type) bool {
 	if _, ok := t.(*types.Pointer); ok {
 		return true
@@ -1602,7 +1615,8 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 			if savedFn != nil {
 				selfType = savedFn.selfType
 			}
-			c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType}
+			c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType,
+				trusted: savedFn != nil && savedFn.trusted}
 
 			if e.Body != nil {
 				// A closure runs at a time this analysis cannot pin down, so its

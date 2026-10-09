@@ -47,6 +47,13 @@ var codes = map[string]diag.Code{
 	"@extern union %s: @extern marks an opaque pointer, and a union is declared to be read into": diag.EUnionDeclaration,
 	"%s cannot be a union member: %s":                                                            diag.EUnionMember,
 
+	// Unsafe code. Calls to unsafe functions and reads of union members
+	// are the unchecked operations; a plain fn may do neither.
+	"%s is unsafe to call; this function is a plain fn":                      diag.EUnsafeOperation,
+	"reading the union member %s is unsafe; this function is a plain fn":     diag.EUnsafeOperation,
+	"&%s makes a pointer to an unsafe function; this function is a plain fn": diag.EUnsafeOperation,
+	"import safe vouches for a C file's functions; %q is a Gyro module":      diag.EVouchGyro,
+
 	// A name that resolves to the wrong kind of thing
 	"%s is a type, not a value":                                                             diag.EWrongKind,
 	"%s is a type, not a function":                                                          diag.EWrongKind,

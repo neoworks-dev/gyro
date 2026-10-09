@@ -71,7 +71,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *Import:
-		p.line("Import %s from %q", bindingClause(n.Wildcard, n.Names), n.Path)
+		p.line("Import %s%s from %q", safeMark(n.Safe), bindingClause(n.Wildcard, n.Names), n.Path)
 
 	case *ExportDecl:
 		clause := "{" + nameListString(n.Names) + "}"
@@ -91,7 +91,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *FuncDecl:
-		p.line("Func %s%s%s%s%s", exportMark(n.Exported), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
+		p.line("Func %s%s%s%s%s%s", exportMark(n.Exported), trustMark(n), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		p.decorators(n.Decorators)
 		if n.Recv != nil {
@@ -575,6 +575,23 @@ func ownerString(fn *FuncDecl) string {
 		return ""
 	}
 	return fn.Owner + typeParamString(fn.OwnerParams) + "::"
+}
+
+func trustMark(fn *FuncDecl) string {
+	switch {
+	case fn.Unsafe:
+		return "unsafe "
+	case fn.Safe:
+		return "safe "
+	}
+	return ""
+}
+
+func safeMark(safe bool) string {
+	if safe {
+		return "safe "
+	}
+	return ""
 }
 
 func asyncMark(async bool) string {
