@@ -726,8 +726,49 @@ call), and keeps the value two words.
 
 **Not here.** Containers that remember the allocator they grew from are
 issue #49, so `Array<T>`, `String` and the text the string methods build
-still come from the process heap. Closures that capture are issue #93, and
+still come from the process heap. Closures that capture are issue #93 (now done), and
 formatting text with `#{}` is issue #92.
+
+### A closure's environment lives in its frame, and keep copies it out *(new)*
+
+**Status: decided, done.** A closure that captures something stores its
+environment, a record of the captured values, in the stack frame of the
+function that wrote it, like a local struct. Writing a closure allocates
+nothing. The `fn` value stays two words, the code and a pointer to the
+record; a closure that captures nothing, and a named function taken as a
+value, have a null pointer. Every record begins with a header word holding
+its size in bytes, so `keep(a, f)` in `mem` can copy it without knowing its
+static type: it allocates that many bytes from `a`, copies, and answers a
+value with the same code and the new record. `release(a, f)` gives the copy
+back, and both do nothing for a null environment. They are ordinary Gyro
+over two private `mem` intrinsics that read a `fn` value's environment word
+and rebuild one around another; neither is exported, because a public
+raw-memory surface is a separate design. `F` must be a function type, which
+sema checks with a diagnostic. `spawn` takes an allocator, keeps the
+closure it is given, and the thread releases it when the closure returns;
+it moved to `mem` for the same import-cycle reason: `mem` already imports
+`stdlib`, and `spawn` needs `Allocator`.
+
+The closure then borrows the frame exactly as a slice of an array literal
+does, so the existing provenance analysis rejects returning one and `keep`
+is what ends the borrow. Objective-C blocks are the precedent: a block
+literal is on the stack and `Block_copy` moves it to the heap.
+
+**The gap it inherits.** A frame closure stored in a struct field or
+pushed into a container is the problem of a slice outliving its memory
+(#58), and nothing here adds machinery for it. A closure written in a loop
+body and pushed without `keep` shares one record across iterations. It is
+recorded in appendix G and kept in the corpus as a skipped case.
+
+**Rejected: heap environments that nothing frees.** It is the hidden
+allocation explicit allocators exist to remove, and a long-running program
+leaks one record per closure written. **Rejected: Zig-style closures that
+cannot capture.** It loses `map`, `filter` and `fold` with a captured
+value, which is most of what closures are used for. **Rejected: a literal
+syntax for allocating closures.** `spawn` receives a value, so a function
+that copies a closure is needed anyway, and a second way to say the same
+thing is worse than one. **Not here:** futures and channels keep using the
+process heap (#51).
 
 ### Storage is C's layout, and there is only one *(new)*
 

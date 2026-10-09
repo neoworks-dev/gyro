@@ -603,10 +603,13 @@ answers 16, which is self-consistent and is not C's ABI.
 %f = fn.ref @f
 %c = closure @lifted, %env    ; binds the env as @lifted's first parameter;
                               ; %c's type drops that parameter. %env is a
-                              ; ptr<record>, never a record value: the
-                              ; closure outlives the frame that built it,
-                              ; and a function value has one word to carry
-                              ; its environment in.
+                              ; ptr<record>, never a record value: a
+                              ; function value has one word to carry its
+                              ; environment in. Where the record lives is
+                              ; the producer's: Gyro's lowering puts it in
+                              ; the writing function's frame (a slot), and
+                              ; a closure that captures nothing is a
+                              ; plain fn.ref with no environment at all.
 %p = code.ref @f              ; the address alone, as a one-word code(...)
 %r = call.indirect %f(%a)     ; through either a fn value or a code pointer
 return %v                     ; plain `return` for a void function

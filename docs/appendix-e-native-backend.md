@@ -130,7 +130,10 @@ in `rax`/`xmm0`. Two refinements:
 
 A closure's environment is an ordinary first parameter; `call.indirect`
 tests the fn value's `env` word at runtime and emits the argument setup
-both ways.
+both ways. A `fn` value is two words, `{ code, env }`, and the environment
+Gyro's lowering passes is a record in the writing function's frame whose
+first word is its own size in bytes; `mem`'s `keep` reads and rewrites the
+`env` word through that layout.
 
 ## Register allocation
 
@@ -246,7 +249,7 @@ Obligations beyond the obvious:
   to.
 - **Memory.** `new` is a zero-filled allocation behind a header whose
   magic makes `free` detect double frees. Nothing else is ever freed:
-  strings, closure environments and futures leak by design in v1
+  strings and futures leak by design in v1
   (recorded as open). Use-after-free and read-of-uninitialized are
   *not* detected: the runtime frees for real and libc reuses the bytes,
   and poisoning storage on the hot path has no cheap equivalent

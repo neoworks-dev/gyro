@@ -13,15 +13,21 @@ This chapter is the first.
 
 ## `spawn`
 
-`spawn` starts a call on another thread. It is an ordinary stdlib function
-taking a closure, **not grammar** — the closure is what carries the
-arguments across:
+`spawn` starts a call on another thread. It is an ordinary function from
+`mem` taking an allocator and a closure, **not grammar** — the closure is
+what carries the arguments across:
 
 ```gyro
-import { spawn } from "stdlib"
+import { heap, spawn } from "mem"
 
-spawn(fn() produce(values, 10))
+spawn(heap(), fn() produce(values, 10))
 ```
+
+A thread outlives the function that started it, so `spawn` calls
+`keep(a, body)` ([chapter 11](ch11-00-closures.md)) to copy the closure's
+environment out of the caller's frame into `a`, and the thread releases it
+to `a` when the closure returns. The allocator therefore has to be one that
+can be used from another thread.
 
 `@concurrent(threads = N)` configures a parallel region as a decorator on a
 function.
@@ -68,10 +74,10 @@ Handing a reference to `spawn` that way **warns**:
 
 ```gyro
 var node = alloc<Node>(heap())
-spawn(fn() { node.value = 1 })      // warns: both threads reach node
+spawn(heap(), fn() { node.value = 1 })      // warns: both threads reach node
 
-spawn(fn[move node]() { ... })      // fine: the binding goes with it
-spawn(fn() { ch <- 1 })             // fine: a channel is built for this
+spawn(heap(), fn[move node]() { ... })      // fine: the binding goes with it
+spawn(heap(), fn() { ch <- 1 })             // fine: a channel is built for this
 ```
 
 A channel capture is never reported, since carrying work between threads is

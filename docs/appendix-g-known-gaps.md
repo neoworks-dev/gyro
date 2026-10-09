@@ -11,14 +11,20 @@ attached — a skip is a program that will fail the day the gap closes
 ## Blocking real applications
 
 - **Memory reclamation.** Every `#{}`, `split` and `text()` allocates and
-  nothing frees it. Strings, closure environments and futures leak by design
-  in v1. Fine for a program that exits; fatal for a server. The allocator
+  nothing frees it. Strings and futures leak by design in v1. Fine for a program that exits; fatal for a server. The allocator
   model ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
   `alloc<T>(a)` and `free(a, p)` honour it today, but the runtime's own
   storage does not yet: an `Array<T>`'s buffer, the text `#{}` and the string
-  methods build, a closure's environment, a future and a channel all come
+  methods build, a future and a channel all come
   from the process heap. Containers that take an allocator and remember it
   is what closes this.
+- **A frame closure can outlive its frame through a container.** A
+  closure's environment lives in the frame that wrote it and the borrow
+  analysis rejects returning one, but it does not follow one into a struct
+  field or an `Array`: that is the same hole a slice of an array literal has
+  (issue #58). A closure written in a loop body and pushed without `keep`
+  leaves every element sharing one record. The corpus keeps it as
+  `closure-loop-push.gyro`, skipped with that reason.
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 
