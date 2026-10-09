@@ -50,8 +50,9 @@ println("max is #{MAX}, half of that is #{MAX / 2}")
 ```
 
 Escape the sequence as `\#{` to write it literally. Interpolation builds new
-text, so it **allocates** — a function that interpolates needs `alloc` in
-its effect row ([chapter 12](ch12-00-effect-rows.md)).
+text, which comes from the process heap. That is not an effect, so a
+function that interpolates needs nothing in its effect row
+([chapter 12](ch12-00-effect-rows.md)).
 
 ## `printf`, in the `fmt` module
 

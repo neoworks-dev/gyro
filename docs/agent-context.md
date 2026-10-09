@@ -355,7 +355,7 @@ none should be weakened casually.
 | analysis             | file         | what it does                                                             |
 | -------------------- | ------------ | ------------------------------------------------------------------------ |
 | definite assignment  | `assign.go`  | flow-sensitive; `var x: i32` tracked until every path to a read wrote it |
-| leak warnings        | `leak.go`    | an `alloc<T>()` reaching a block's end unfreed (W0701)                   |
+| leak warnings        | `leak.go`    | an `alloc<T>(heap())` reaching a block's end unfreed (W0701)                   |
 | spawn races          | `race.go`    | a spawned closure capturing a `*T` or `T[]` (W0801)                      |
 | borrows              | `borrow.go`  | provenance of views, written into effect rows                            |
 | match exhaustiveness | `pattern.go` | enums must be covered or end in `_`                                      |
@@ -536,17 +536,16 @@ struct an opaque handle is having no fields, not the module it lives in.
 Modules: `stdlib`, `mem`, `fs`, `net`, `convert`, `time`, `os`, `fmt`.
 
 Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
-`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`/`size`/
-`align`/`panic` and `raw_alloc`/`raw_free`/`raw_resize`,
+`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `size`/
+`align`/`panic`/`offset` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close`, `to_i32`/`to_f64`, `net::get`.
 
 Written in Gyro: `String` (on `Array<u8>`), its UTF-8 encoder, and the
 text methods — `split`, `trim`, `contains`, `starts_with`, `ends_with`,
 `index_of`, `substring`, `repeat`; `mem`'s `alloc`, `free`, `heap` and
-`Arena` over the allocator procedure (chapter 4.5 — a function whose row
-names `alloc` receives the allocator as a trailing parameter the
-lowering adds, `with expr` rebinds it for the rest of a block, and `mem`
-is loaded into every program). `join(parts, sep)` stays a function
+`Arena` over the allocator procedure (chapter 4.5 — an allocator is an
+ordinary `Allocator` parameter, and a function allocates exactly when it
+takes one). `join(parts, sep)` stays a function
 because its receiver would be the slice. `fmt` is entirely Gyro too:
 `printf`/`sprintf`/`eprintf` walk the format string over an `...any` pack
 and read each argument with a `match`, so the whole formatter is one
@@ -583,7 +582,7 @@ heap — linking gives each its own.
   nothing frees it. Fine for a CLI that exits; fatal for a server. The
   allocator model (chapter 4.5) is in for `alloc`/`free`/`Arena`; the
   runtime's own storage (`Array`, strings, closure environments,
-  futures, channels) does not yet take the allocator it is handed.
+  futures, channels) does not yet take an allocator.
 - no sorting
 - **FFI has two gaps left** — `@extern` carries primitives, `string`,
   slices, structs by value and opaque handles. No callback and no
@@ -664,8 +663,7 @@ and `as` goes both ways), and a callback crossing in both directions
   written in Gyro over chapter 4.5, which does not exist yet.
 - views through a pointer are untraceable
 - effect rows under-report where a row cannot travel: calling a function
-  value contributes nothing, and creating a capturing closure is not
-  counted as `alloc`
+  value contributes nothing
 
 Settled since: float division by zero and NaN ordering (IEEE for the
 operators, a total order for `compare`), `<<` overflow (a shift never

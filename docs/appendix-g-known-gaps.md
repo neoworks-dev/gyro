@@ -14,11 +14,11 @@ attached — a skip is a program that will fail the day the gap closes
   nothing frees it. Strings, closure environments and futures leak by design
   in v1. Fine for a program that exits; fatal for a server. The allocator
   model ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
-  `alloc<T>()` and `free` honour it today, but the runtime's own storage
-  does not yet: an `Array<T>`'s buffer, the text `#{}` and the string
+  `alloc<T>(a)` and `free(a, p)` honour it today, but the runtime's own
+  storage does not yet: an `Array<T>`'s buffer, the text `#{}` and the string
   methods build, a closure's environment, a future and a channel all come
-  from the process heap whatever `with` is in force. Routing them through
-  the allocator they are handed is what closes this.
+  from the process heap. Containers that take an allocator and remember it
+  is what closes this.
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 
@@ -28,7 +28,7 @@ attached — a skip is a program that will fail the day the gap closes
 | --- | --- |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
 | `@comptime` evaluation | typed, not evaluated |
-| effect rows | `io` and `alloc` are checked against declared rows; row variables, function values and spawn/channel effects are not ([chapter 12](ch12-00-effect-rows.md)) |
+| effect rows | `io` is checked against declared rows; row variables, function values and spawn/channel effects are not ([chapter 12](ch12-00-effect-rows.md)) |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` and `=>` | reserved tokens, unused |
 | `syntaxfn` parser extensions | designed, not parsed |
@@ -57,8 +57,7 @@ attached — a skip is a program that will fail the day the gap closes
   ([chapter 4.4](ch04-04-slices-and-views.md)).
 - **Views through a pointer are untraceable** by the borrow analysis.
 - **Effect rows under-report** where a row cannot travel: calling a function
-  value contributes nothing, and creating a capturing closure is not counted
-  as `alloc`.
+  value contributes nothing.
 
 ## Foreign functions
 

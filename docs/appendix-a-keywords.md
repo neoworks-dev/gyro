@@ -11,7 +11,7 @@ enum   return  if      elif    else
 while  for     in      match   break
 continue defer async   await   chan
 select import  as      export  self
-with   true    false   null    _
+true   false   null    _
 ```
 
 `_` is in the list because it is not a name: it discards.

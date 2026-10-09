@@ -381,9 +381,9 @@ store %p, %v
 
 `new` and `free` are the runtime's heap, and they are what the runtime's
 own cells — a closure environment, a boxed `any` — are made of. Gyro's
-`alloc<T>()` is not one of them: it is an ordinary call through the
-procedure an allocator value carries, and the allocator itself reaches a
-function as an ordinary trailing parameter the producer added
+`alloc<T>(a)` is not one of them: it is an ordinary call through the
+procedure the allocator value `a` carries, and the allocator reaches a
+function as an ordinary parameter, declared like any other
 ([chapter 4.5](ch04-05-allocators.md)). The format has no allocator
 concept to verify, on purpose — a producer that wants one declares a
 record and passes it.

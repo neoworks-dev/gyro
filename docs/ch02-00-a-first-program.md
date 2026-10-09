@@ -77,7 +77,7 @@ exactly what you want for a value created every iteration
 
 Leave one of those `free` calls out and the program still runs. Nothing
 detects the leak at run time yet; the compiler's leak analysis warns about
-`alloc<T>()`, not about library types that own storage.
+`alloc<T>(heap())`, not about library types that own storage.
 
 ## Counting
 

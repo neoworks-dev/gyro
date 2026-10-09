@@ -55,16 +55,16 @@ export fn eprintln<T>(value: T) !{ io }
 Threads:
 
 ```gyro
-export fn spawn(task: fn()) !{ io, alloc }
+export fn spawn(task: fn()) !{ io }
 ```
 
 `Array<T>` — owns its buffer, grows, freed explicitly
 ([chapter 8.1](ch08-01-array.md)):
 
 ```gyro
-export fn Array<T>::new(): Array<T> !{ alloc }
-export fn Array<T>::with_capacity(capacity: usize): Array<T> !{ alloc }
-export fn Array<T>::push(*self, value: T) !{ alloc }
+export fn Array<T>::new(): Array<T> !{}
+export fn Array<T>::with_capacity(capacity: usize): Array<T> !{}
+export fn Array<T>::push(*self, value: T) !{}
 export fn Array<T>::pop(*self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
 export fn Array<T>::set(*self, index: usize, value: T) !{}
@@ -78,52 +78,52 @@ export fn Array<T>::free(*self) !{}
 Text ([chapter 8.2](ch08-02-strings.md)):
 
 ```gyro
-export fn from_utf8(bytes: u8[]): string !{ alloc }
+export fn from_utf8(bytes: u8[]): string !{}
 
-export fn String::new(): String !{ alloc }
-export fn String::with_capacity(capacity: usize): String !{ alloc }
-export fn String::of(text: string): String !{ alloc }
-export fn String::push(*self, text: string) !{ alloc }
-export fn String::push_rune(*self, value: rune) !{ alloc }
+export fn String::new(): String !{}
+export fn String::with_capacity(capacity: usize): String !{}
+export fn String::of(text: string): String !{}
+export fn String::push(*self, text: string) !{}
+export fn String::push_rune(*self, value: rune) !{}
 export fn String::len(self): usize !{}
-export fn String::text(self): string !{ alloc }
-export fn String::to_string(self): string !{ alloc }
+export fn String::text(self): string !{}
+export fn String::to_string(self): string !{}
 export fn String::free(*self) !{}
 ```
 
 Extension methods on `string`, which have to be imported to be callable:
 
 ```gyro
-export fn string::starts_with(self, prefix: string): bool !{ alloc }
-export fn string::ends_with(self, suffix: string): bool !{ alloc }
-export fn string::index_of(self, needle: string): usize? !{ alloc }
-export fn string::contains(self, needle: string): bool !{ alloc }
-export fn string::substring(self, from: usize, to: usize): string !{ alloc }
-export fn string::trim(self): string !{ alloc }
-export fn string::split(self, sep: string): Array<string> !{ alloc }
-export fn string::repeat(self, times: i32): string !{ alloc }
+export fn string::starts_with(self, prefix: string): bool !{}
+export fn string::ends_with(self, suffix: string): bool !{}
+export fn string::index_of(self, needle: string): usize? !{}
+export fn string::contains(self, needle: string): bool !{}
+export fn string::substring(self, from: usize, to: usize): string !{}
+export fn string::trim(self): string !{}
+export fn string::split(self, sep: string): Array<string> !{}
+export fn string::repeat(self, times: i32): string !{}
 
-export fn join(parts: string[], sep: string): string !{ alloc }
+export fn join(parts: string[], sep: string): string !{}
 ```
 
 `Map<K, V>` ([chapter 8.3](ch08-03-map.md)):
 
 ```gyro
-export fn Map<K, V>::new(): Map<K, V> !{ alloc }
-export fn Map<K, V>::insert(*self, key: K, value: V) !{ alloc }
+export fn Map<K, V>::new(): Map<K, V> !{}
+export fn Map<K, V>::insert(*self, key: K, value: V) !{}
 export fn Map<K, V>::get(self, key: K): V? !{}
 export fn Map<K, V>::contains(self, key: K): bool !{}
 export fn Map<K, V>::remove(*self, key: K): bool !{}
 export fn Map<K, V>::len(self): usize !{}
 export fn Map<K, V>::is_empty(self): bool !{}
-export fn Map<K, V>::keys(self): Array<K> !{ alloc }
+export fn Map<K, V>::keys(self): Array<K> !{}
 export fn Map<K, V>::free(*self) !{}
 ```
 
 Mutexes ([chapter 13.1](ch13-01-threads.md)):
 
 ```gyro
-export fn Mutex<T>::new(value: T): Mutex<T> !{ alloc }
+export fn Mutex<T>::new(value: T): Mutex<T> !{}
 export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
 export fn MutexGuard<T>::get(self): T !{}
 export fn MutexGuard<T>::set(*self, value: T) !{}
@@ -134,9 +134,11 @@ export fn MutexGuard<T>::unlock(*self) !{}
 
 The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
 `free`, `heap` and `Arena` are ordinary Gyro over the procedure an
-`Allocator` carries; `allocator`, `size`, `align`, `panic` and the three
-`raw_` functions are the intrinsics under them, and the `raw_` three are
-the process heap itself, which is why they carry no row.
+`Allocator` carries; `size`, `align`, `panic`, `copy_bytes`, `offset` and
+the three `raw_` functions are the intrinsics under them. The `raw_` three
+are the process heap itself. `offset` answers the address `bytes` past
+`base`, which is how an allocator that carves one block into many says
+where each piece starts.
 
 ```gyro
 export enum Mode { Alloc, Free, FreeAll, Resize }
@@ -146,11 +148,10 @@ export struct Allocator {
   export data: anyptr?
 }
 
-export fn allocator(): Allocator !{ alloc }
 export fn heap(): Allocator !{}
 
-export fn alloc<T>(): *T !{ alloc }
-export fn free<T>(pointer: *T) !{ alloc }
+export fn alloc<T>(a: Allocator): *T !{}
+export fn free<T>(a: Allocator, pointer: *T) !{}
 export fn size<T>(): usize !{}
 export fn align<T>(): usize !{}
 
@@ -159,12 +160,14 @@ export fn panic(message: string) !{}
 export fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export fn raw_free(pointer: anyptr) !{}
 export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
+export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
+export fn offset(base: anyptr, bytes: usize): anyptr !{}
 
 export struct Arena { ... }
-export fn Arena::new(capacity: usize): Arena !{ alloc }
+export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
 export fn Arena::allocator(*self): Allocator !{}
 export fn Arena::free_all(*self) !{}
-export fn Arena::free(*self) !{ alloc }
+export fn Arena::free(*self) !{}
 ```
 
 `panic` aborts the process with the message, the way an index out of
@@ -180,9 +183,9 @@ Entirely ordinary Gyro over an `...any` pack
 ([chapter 14.2](ch14-02-printing.md)):
 
 ```gyro
-export fn printf(format: string, args: ...any) !{ io, alloc }
-export fn eprintf(format: string, args: ...any) !{ io, alloc }
-export fn sprintf(format: string, args: ...any): string !{ alloc }
+export fn printf(format: string, args: ...any) !{ io }
+export fn eprintf(format: string, args: ...any) !{ io }
+export fn sprintf(format: string, args: ...any): string !{}
 ```
 
 ### `fs`
@@ -190,14 +193,14 @@ export fn sprintf(format: string, args: ...any): string !{ alloc }
 ```gyro
 export struct File {}
 
-export fn open(path: string): (File, error?) !{ io, alloc }
-export fn read_all(file: File): (string, error?) !{ io, alloc }
+export fn open(path: string): (File, error?) !{ io }
+export fn read_all(file: File): (string, error?) !{ io }
 export fn File::close(*self) !{ io }
 
 export fn write_file(path: string, text: string): error? !{ io }
 export fn append_file(path: string, text: string): error? !{ io }
 export fn remove(path: string): error? !{ io }
-export fn read_dir(path: string): (Array<string>, error?) !{ io, alloc }
+export fn read_dir(path: string): (Array<string>, error?) !{ io }
 export fn exists(path: string): bool !{ io }
 ```
 
@@ -209,9 +212,9 @@ sorted, without `.` and `..`.
 ### `os`
 
 ```gyro
-export fn env(name: string): string? !{ io, alloc }
-export fn read_stdin(): string !{ io, alloc }
-export fn readline(): string? !{ io, alloc }
+export fn env(name: string): string? !{ io }
+export fn read_stdin(): string !{ io }
+export fn readline(): string? !{ io }
 export fn exit(code: i32) !{ io }
 ```
 
@@ -268,8 +271,8 @@ Three definitions differ from C's library **on purpose**:
 ### `convert`
 
 ```gyro
-export fn to_i32(text: string): (i32, error?) !{ alloc }
-export fn to_f64(text: string): (f64, error?) !{ alloc }
+export fn to_i32(text: string): (i32, error?) !{}
+export fn to_f64(text: string): (f64, error?) !{}
 ```
 
 Both allocate, because the failure carries a message.
@@ -277,7 +280,7 @@ Both allocate, because the failure carries a message.
 ### `net`
 
 ```gyro
-export async fn get(url: string): (string, error?) !{ io, alloc }
+export async fn get(url: string): (string, error?) !{ io }
 ```
 
 ## What is runtime-backed and what is Gyro

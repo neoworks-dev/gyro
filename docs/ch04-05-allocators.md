@@ -1,22 +1,28 @@
 # 4.5. Allocators
 
-Every allocation a Gyro program makes is made by an **allocator**, and a
-function that allocates is handed one. Which one it is handed is decided by
-its caller, and the caller decides with one statement. Nothing about this
-is hidden state: the allocator is a parameter, the effect row is what says
-a function takes it, and the row is checked ([chapter 12](ch12-00-effect-rows.md)).
+Every allocation a Gyro program makes goes through an **allocator**, and
+an allocator is an ordinary value. A function that allocates takes one as
+a parameter, and the caller writes which one at the call. Nothing about it
+is hidden: there is no ambient allocator, no effect that decides who
+receives one, and no statement that swaps it for a stretch of code. If a
+function takes an `Allocator`, it allocates; if it does not, it does not.
 
 ```gyro
-import { alloc, Arena } from "mem"
+import { alloc, heap, Allocator, Arena } from "mem"
+
+fn make_node(a: Allocator, value: i32): *Node {
+  var node = alloc<Node>(a)
+  node.value = value
+  return node
+}
 
 fn build_tree(depth: i32): i32 {
-  var arena = Arena::new(65536)
+  var arena = Arena::new(heap(), 65536)
   defer arena.free()
 
-  with arena.allocator()
-  var root = make_node(depth)       // every alloc<T>() below is the arena's
+  var root = make_node(arena.allocator(), depth)   // the arena's, as written
   ...
-}                                    // and arena.free() takes them all back
+}                                                  // and arena.free() takes them all back
 ```
 
 ## An allocator is a value
@@ -45,167 +51,134 @@ The procedure is `(data, mode, size, align, old, old_size)`. An
 allocator that cannot do a mode — an arena does not free one block, a
 heap has nothing to free all at once — answers with nothing for `Free`
 and `FreeAll`, and with a fresh block for `Resize`. Null from `Alloc` or
-`Resize` means the request cannot be met, and `alloc<T>()` panics on it
-with the size in the message rather than handing back a pointer that is
-not one.
+`Resize` means the request cannot be met.
 
 A block from `Alloc` is **zero-filled**. That is part of the contract
 because an allocator reuses memory, and what the last owner left in it
 is not the new owner's to see.
 
-## Which allocator a function uses
-
-A function has exactly one allocator at a time: the one it received. It
-is reachable by name:
+## `alloc` and `free`
 
 ```gyro
-import { allocator } from "mem"
-
-fn build(): *Node !{ alloc } {
-  var current = allocator()      // the allocator build was handed
-  ...
-}
+export fn alloc<T>(a: Allocator): *T
+export fn free<T>(a: Allocator, pointer: *T)
 ```
 
-`allocator()` is an ordinary import with the row `!{ alloc }`, and that
-row is what puts the allocator in the function's hands: **a function
-whose row names `alloc` receives an allocator**, as a parameter the
-compiler passes for you. Rows are inferred when unstated, so a function
-that never writes a row and calls `alloc<T>()` receives one all the same,
-and a function that writes `!{}` never does. That is the whole mechanism;
-[chapter 12](ch12-00-effect-rows.md) has the rules.
+`alloc<T>(a)` asks `a` for one zero-filled `T`. When `a` answers null it
+panics, with the size in the message, rather than handing back a pointer
+that is not one. `free(a, p)` returns the block to `a`, and it has to be
+the allocator the block came from: the call says which one, so a reader
+can check that the two match. `size<T>()` and `align<T>()` answer what C's
+`sizeof` and `_Alignof` would.
 
-`alloc<T>()` and `free(p)` are written in Gyro over that allocator, which
-is why both carry `!{ alloc }` — `free` has to hand the block back to the
-allocator that gave it out, so it uses the allocator the same way `alloc`
-does. `size<T>()` and `align<T>()` answer what C's `sizeof` and
-`_Alignof` would.
-
-## `with` changes it for the rest of the block
-
-```gyro
-with arena.allocator()
-```
-
-`with expr` is a statement. From that line to the end of the enclosing
-`{ }`, every call that takes an allocator is handed this one, blocks
-inside included. When the block ends the outer allocator is back, the
-way a `defer` is the block's and not the function's
-([chapter 4.2](ch04-02-leaks-and-defer.md)). The expression must be an
-`Allocator`, and it is evaluated once, where it is written.
-
-```gyro
-fn parse(line: string) {
-  var scratch = Arena::new(4096)
-  defer scratch.free()
-
-  var kept = Array<string>::new()           // the caller's allocator
-  {
-    with scratch.allocator()
-    var parts = line.split(" ")             // the arena's
-    kept.push(parts.get(0))
-  }
-  ...                                        // the caller's again
-}
-```
-
-Two `with` statements in one block are fine: the second replaces the
-first for what follows it. A `with` inside a loop body is the body's, so
-it applies to the rest of each iteration and is evaluated each time.
-
-`with` is not an effect. Writing one says nothing about what the
-function itself does; the function that *uses* the allocator is the one
-whose row says so.
+Neither is an effect ([chapter 12](ch12-00-effect-rows.md)). A function
+that takes an `Allocator` shows it in its signature, and a function that
+does not take one cannot reach any allocator but the process heap.
 
 ## Where the first one comes from
 
-`main` receives the process heap, and so does every module-level
-initializer ([chapter 3.1](ch03-01-variables-and-constants.md)). The
-heap is `heap()` from `mem`, reachable from anywhere with no row at all:
-it is a value, and making one allocates nothing.
+The process heap is `heap()` from `mem`. It is a value, and making one
+allocates nothing, so it can be written wherever an allocator is needed:
 
 ```gyro
 import { heap } from "mem"
 
-fn keep(text: string): String !{ alloc } {
-  with heap()
-  return String::of(text)       // outlives whatever arena the caller is in
+fn keep(value: i32): *Node {
+  return make_node(heap(), value)   // outlives whatever arena the caller is in
 }
 ```
 
-## Closures capture it
+Every other allocator is built from one that already exists, which is why
+nothing here needs a special start-up rule: `main` calls `heap()` like
+anyone else.
 
-A closure that allocates captures the allocator the way it captures any
-other local: by copy, at creation. Calling the closure later allocates
-from *that* allocator, wherever the call happens. This is what carries an
-allocator into a `spawn`, and it is why calling a function value needs no
-row: the value already holds everything it needs.
+## Passing it on
+
+An allocator travels the way any value does. A function that builds
+something out of several parts takes the allocator once and hands it to
+each piece, and the choice the caller made reaches all of them:
 
 ```gyro
-var arena = Arena::new(4096)
-defer arena.free()
-
-with arena.allocator()
-var make = fn(n: i32): *Node {     // captures the arena's allocator
-  var node = alloc<Node>()
-  node.value = n
-  return node
+fn make_pair(a: Allocator, left: i32, right: i32): *Node {
+  var first = make_node(a, left)
+  first.next = make_node(a, right)
+  return first
 }
 ```
 
-A named function that allocates, taken as a value (`var f = build`),
-closes over the allocator current where it was taken, for the same
-reason.
+A struct that allocates over its life holds the allocator it was built
+with, the way `Arena` does below. That is also what keeps a `free` honest:
+the value that owns a block keeps the allocator that gave it out.
 
-Where no allocator is current — a closure written inside a function
-whose row has no `alloc`, or a module initializer — the heap is what
-there is, and that is what the closure captures.
+`&make_node` is an ordinary code pointer ([chapter 15](ch15-00-c-interop.md)),
+and the `Allocator` is one of its parameters like any other. A C library
+that calls a callback back cannot pass an `Allocator`, so a callback it
+runs is written without one and reaches its allocator some other way, the
+same as any state a callback needs.
 
-An allocator is not thread-safe unless it says so. An `Arena` is not,
-and a closure that carries one to another thread has to be the only
-thing using it.
-
-## `&f` on an allocating function
-
-`&build` is a code pointer ([chapter 15](ch15-00-c-interop.md)), one
-word with nowhere to hold an allocator. A C library that calls it back
-cannot pass one either. So the address taken is a small thunk that
-supplies the process heap and calls `build`: an allocating callback
-allocates from the heap, whatever `with` was in force where its address
-was taken.
+An allocator is not thread-safe unless it says so. An `Arena` is not, and
+an arena handed to another thread has to be the only thing using it.
 
 ## `Arena`
 
-An arena hands out blocks from one buffer and frees them all at once.
-It is ordinary Gyro in `mem`, written over the same `Allocator` a program
+An arena hands out blocks from one buffer and frees them all at once. It
+is ordinary Gyro in `mem`, written over the same `Allocator` a program
 could write for itself:
 
 ```gyro
-export fn Arena::new(capacity: usize): Arena !{ alloc }
-export fn Arena::allocator(*self): Allocator !{}
-export fn Arena::free_all(*self) !{}
-export fn Arena::free(*self) !{ alloc }
+export fn Arena::new(a: Allocator, capacity: usize): Arena
+export fn Arena::allocator(*self): Allocator
+export fn Arena::free_all(*self)
+export fn Arena::free(*self)
 ```
 
-`new` takes its buffer from the allocator current where it is called,
-so an arena inside an arena is an ordinary thing to build. `allocator()`
-is the value to hand to `with`; it points at the arena, so the arena has
-to stay where it is for as long as that value is in use. `free_all`
-resets the arena and every block it handed out is gone at once. `free`
-returns the buffer to the allocator `new` took it from.
+`new` takes its buffer from `a` and records `a`, so an arena inside an
+arena is an ordinary thing to build, and `free` returns the buffer to the
+allocator it came from without being told which. `allocator()` is the
+value to pass to whatever should allocate from the arena; it points at the
+arena, so the arena has to stay where it is for as long as that value is in
+use. `free_all` resets the arena and every block it handed out is gone at
+once.
 
 An arena answers `Free` by doing nothing, and `Resize` by allocating a
 fresh block and copying. It does not grow: an `Alloc` past its capacity
-answers null, and `alloc<T>()` panics.
+answers null, and `alloc<T>(arena.allocator())` panics with the size.
+
+## Writing one
+
+Anything with the right shape is an allocator. This one counts what
+reaches it and leaves the work to the heap:
+
+```gyro
+struct Counter {
+  allocs: i32
+}
+
+fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
+            old: anyptr?, old_size: usize): anyptr? {
+  if data == null {
+    return null
+  }
+  var counter = data as *Counter
+  if mode == Mode::Alloc {
+    counter.allocs += 1
+  }
+  var h = heap()
+  return h.proc(h.data, mode, size, align, old, old_size)
+}
+
+var counter = Counter{ allocs: 0 }
+var counted = Allocator{ proc: &counting, data: &counter as anyptr }
+var node = make_node(counted, 1)       // counter.allocs is now 1
+```
 
 ## What honours the allocator today
 
-`alloc<T>()`, `free`, `Arena` and everything written over them. The
-runtime's own storage — an `Array<T>`'s buffer, the text `#{}` and the
-string methods build, a closure's environment, a future — still comes
-from the process heap and is not yet routed through the allocator it was
-handed ([appendix G](appendix-g-known-gaps.md)). So does a `to_string`,
-`hash` or `message` the compiler calls on its own behalf while printing,
-hashing or rendering an error: those run on the heap, since nothing
-chose an allocator for them. `Array<T>` recording its allocator, and
-text coming out of the current one, is where this goes next.
+`alloc`, `free`, `Arena` and everything written over them. The runtime's
+own storage — an `Array<T>`'s buffer, the text `#{}` and the string
+methods build, a closure's environment, a future — still comes from the
+process heap, because those take no allocator to honour
+([appendix G](appendix-g-known-gaps.md)). So does a `to_string`, `hash` or
+`message` the compiler calls on its own behalf while printing, hashing or
+rendering an error. Containers that take an allocator and remember it, so
+that growing and freeing agree by construction, are where this goes next.

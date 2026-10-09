@@ -104,11 +104,11 @@ A signature may carry an effect row after the result:
 
 ```gyro
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io, alloc }
+export fn load(p: string): (string, error?) !{ io }
 fn first(xs: i32[]): i32[] !{ &xs }
 ```
 
-A row states what the body does (`io`, `alloc`) and what the result borrows
+A row states what the body does (`io`) and what the result borrows
 (`&name`). A function with **no** row is unconstrained; a function *with* a
 row promises the row is complete. A function returning `T[]` or `string`
 needs a `&` entry in practice, because a view never owns what it points at.
