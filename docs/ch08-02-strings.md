@@ -13,13 +13,30 @@ These are part of the type and need no import:
 | method | what it does |
 | --- | --- |
 | `len(): usize` | counts **bytes** |
-| `runes(): rune[]` | code points, as a copy |
-| `bytes(): u8[]` | the bytes, as a copy |
 | `compare(other): i32` | lexicographic by byte |
 
-`runes()` and `bytes()` **copy**, and therefore borrow nothing — a string is
-immutable and shared while a slice is neither, and a rune is four bytes
-where UTF-8 is not. That is why they carry `!{}` and no `&` entry.
+## Copying out: `runes` and `bytes`
+
+`runes` and `bytes` are extension methods from `stdlib`, and they take the
+allocator the copy is made from:
+
+| method | what it does |
+| --- | --- |
+| `runes(a: Allocator): rune[]` | code points, as a copy |
+| `bytes(a: Allocator): u8[]` | the bytes, as a copy |
+
+```gyro
+import { runes } from "stdlib"
+import { heap } from "mem"
+
+for r in text.runes(heap()) { ... }
+```
+
+Both **copy**, and therefore borrow nothing — a string is immutable and
+shared while a slice is neither, and a rune is four bytes where UTF-8 is
+not. That is why they carry `!{}` and no `&` entry. The copy is a block
+from `a`, so in an arena it is reclaimed with the arena; from `heap()` it
+is not reclaimed, because a slice has no way to hand its block back.
 
 Indexing a string with `[]` is not a thing: bytes and code points are
 different questions, and each has a method that answers it.
@@ -42,23 +59,30 @@ an effect: a function that interpolates needs nothing in its row.
 
 ```gyro
 import { println, String } from "stdlib"
+import { heap } from "mem"
 
-var out = String::new()
+var out = String::new(heap())
 defer out.free()
 out.push("hello")
 out.push_rune('!')
-println(out.text())
+println(out.text(heap()))
 ```
+
+A `String` is made with an allocator and records it, as an `Array<T>`
+does ([chapter 8.1](ch08-01-array.md)): `push` grows its bytes from it,
+and `free` returns them to it. `text` builds the `string` it hands back
+from the allocator it is passed, which need not be the one the builder
+uses.
 
 | method | notes |
 | --- | --- |
-| `String::new()`, `String::with_capacity(n)`, `String::of(text)` | |
+| `String::new(a)`, `String::with_capacity(a, n)`, `String::of(a, text)` | record `a` |
 | `push(*self, text: string)` | appends bytes |
 | `push_rune(*self, value: rune)` | encodes one code point as UTF-8 |
 | `len(self): usize` | bytes |
-| `text(self): string` | reads the buffer back out |
-| `to_string(self): string` | same, and what printing uses |
-| `free(*self)` | |
+| `text(self, a: Allocator): string` | reads the buffer back out into a block from `a` |
+| `to_string(self): string` | same from the process heap, and what printing uses |
+| `free(*self)` | returns the bytes to the recorded allocator |
 
 `String` is ordinary Gyro over `Array<u8>`. `push_rune` is a UTF-8 encoder
 written in the language, and a surrogate or out-of-range value becomes
@@ -68,33 +92,39 @@ U+FFFD — matching what `runes()` produces for an invalid sequence.
 
 `split`, `trim`, `contains`, `starts_with`, `ends_with`, `index_of`,
 `substring` and `repeat` are extension methods on `string`, written in Gyro,
-and **have to be imported**:
+and **have to be imported**. Each takes the allocator it builds from as its
+first argument after the receiver, because each one copies bytes out
+(`bytes`) or builds text (`split`, `trim`, `substring`, `repeat`), and a
+function allocates exactly when it is handed an allocator:
 
 ```gyro
 import { split, trim, starts_with } from "stdlib"
+import { heap } from "mem"
 
-var clean = line.trim()
-if clean.starts_with("#") { continue }
-var parts = clean.split(" ")
+var clean = line.trim(heap())
+if clean.starts_with(heap(), "#") { continue }
+var parts = clean.split(heap(), " ")
 defer parts.free()
 ```
 
-`split` returns an owning `Array<string>` — free it. `index_of` returns
+`split` returns an owning `Array<string>` made from the allocator it was
+passed — free it. `index_of` returns
 `usize?`, so a miss is a null you have to check
 ([chapter 4.3](ch04-03-nullability.md)).
 
-`join(parts, sep)` stays a plain function rather than an extension, because
-its receiver would be the slice rather than a string.
+`join(a, parts, sep)` stays a plain function rather than an extension,
+because its receiver would be the slice rather than a string.
 
-The whole of this layer is built on `Array<u8>`, `bytes()` and one
-intrinsic, `from_utf8(bytes: u8[]): string`. A bundled module is only a
+The whole of this layer is built on `Array<u8>`, `bytes` and one
+intrinsic, `from_utf8(a: Allocator, bytes: u8[]): string`. A bundled module is only a
 declaration stub where a declaration has no body — and here almost nothing
 is.
 
 ## Two costs, known and accepted
 
-- **`from_utf8` and `text()` copy.** Building text allocates, and nothing
-  frees those allocations yet ([appendix G](appendix-g-known-gaps.md)).
+- **`from_utf8` and `text` copy.** The result is a block from the allocator
+  passed in, and a `string` cannot hand it back, so text from `heap()` is
+  not reclaimed ([appendix G](appendix-g-known-gaps.md)).
 - **A returned `string` field borrows its struct.** `string` is a view, so
   an accessor handing one back has to say so:
 

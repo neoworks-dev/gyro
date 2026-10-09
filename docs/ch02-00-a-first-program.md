@@ -13,9 +13,10 @@ Nothing here is explained in full. Each step links to the chapter that does.
 ```gyro
 import { println } from "stdlib"
 import { read_stdin } from "os"
+import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin()
+  var text = read_stdin(heap())
   println("read #{text.len()} bytes")
 }
 ```
@@ -35,16 +36,17 @@ import because it is part of the type rather than a name in scope.
 ```gyro
 import { println, split, trim } from "stdlib"
 import { read_stdin } from "os"
+import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin()
+  var text = read_stdin(heap())
 
   var words = 0
-  var lines = text.split("\n")
+  var lines = text.split(heap(), "\n")
   defer lines.free()
 
   for line in lines.slice() {
-    var parts = line.trim().split(" ")
+    var parts = line.trim(heap()).split(heap(), " ")
     defer parts.free()
     for word in parts.slice() {
       if word.len() > 0 {
@@ -85,18 +87,19 @@ detects the leak at run time yet; the compiler's leak analysis warns about
 import { println, Array, Map, split, trim } from "stdlib"
 import { read_stdin } from "os"
 import { printf } from "fmt"
+import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin()
+  var text = read_stdin(heap())
 
-  var counts = Map<string, i32>::new()
+  var counts = Map<string, i32>::new(heap())
   defer counts.free()
 
-  var lines = text.split("\n")
+  var lines = text.split(heap(), "\n")
   defer lines.free()
 
   for line in lines.slice() {
-    var words = line.trim().split(" ")
+    var words = line.trim(heap()).split(heap(), " ")
     defer words.free()
 
     for word in words.slice() {

@@ -66,7 +66,7 @@ printf("%-6s has %2d items, %d%% of %x\n", "cart", 3, 40, 255)
 | --- | --- |
 | `printf(format, args: ...any)` | to stdout |
 | `eprintf(format, args: ...any)` | to stderr |
-| `sprintf(format, args: ...any): string` | returns the text |
+| `sprintf(a: Allocator, format, args: ...any): string` | returns the text, built from `a` |
 
 The verbs:
 

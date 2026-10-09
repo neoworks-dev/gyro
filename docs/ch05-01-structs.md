@@ -33,7 +33,7 @@ functions:
 
 ```gyro
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new() }
+  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
 }
 ```
 
@@ -99,7 +99,7 @@ fn bad(): i32[] {
 }
 ```
 
-A heap buffer does not. `Stack{ items: Array<i32>::new() }` holds storage
+A heap buffer does not. `Stack{ items: Array<i32>::new(heap()) }` holds storage
 that outlives the frame, and lending a view of it is fine — provided the row
 says whose it is ([chapter 12](ch12-00-effect-rows.md)).
 

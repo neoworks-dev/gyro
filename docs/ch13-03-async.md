@@ -7,7 +7,7 @@ closure.
 
 ```gyro
 export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-  var bodies = Array<string>::new()
+  var bodies = Array<string>::new(heap())
 
   for url in urls {
     var body, err = await get(url)

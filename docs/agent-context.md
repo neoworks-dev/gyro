@@ -306,7 +306,7 @@ belongs here, not in `internal/token`.
 ### No universe scope
 
 If a name is not part of the formal syntax, it must be imported.
-`println` is imported. `ch.close()`, `xs.len()`, `s.runes()`, `s.bytes()`
+`println` is imported. `ch.close()`, `xs.len()` and `s.len()`
 are methods on built-in types and need none — they are part of the type.
 
 **Do not add predeclared functions.**
@@ -319,7 +319,7 @@ ordinary Gyro. Any module may write one.
 The rule that keeps this out of universe scope: an extension is **not
 attached to the type**. It is a module-scope name under its own method
 name, exported and imported like a function, callable exactly where that
-name is in scope. `line.trim()` works because `trim` was imported.
+name is in scope. `line.trim(heap())` works because `trim` was imported.
 
 That also disposes of coherence without traits: two modules may each
 define `string::trim`; importing both is the duplicate-name error Gyro
@@ -578,11 +578,12 @@ heap — linking gives each its own.
 
 **Blocking real applications:**
 
-- **memory reclamation** — every `#{}`, `split`, `text()` allocates and
-  nothing frees it. Fine for a CLI that exits; fatal for a server. The
-  allocator model (chapter 4.5) is in for `alloc`/`free`/`Arena`; the
-  runtime's own storage (`Array`, strings, closure environments,
-  futures, channels) does not yet take an allocator.
+- **memory reclamation** — every `#{}` allocates and nothing frees it.
+  Fine for a CLI that exits; fatal for a server. The allocator model
+  (chapter 4.5) is in for `alloc`/`free`/`Arena`, the containers and the
+  text functions; the runtime's other storage (`#{}` text, closure
+  environments, futures, channels, runtime error messages) does not yet
+  take an allocator.
 - no sorting
 - **FFI has two gaps left** — `@extern` carries primitives, `string`,
   slices, structs by value and opaque handles. No callback and no
@@ -744,6 +745,7 @@ A real program that works end to end:
 import { println, eprintln, Array, String, join } from "stdlib"
 import { split, trim, starts_with } from "stdlib"
 import { open, read_all } from "fs"
+import { heap } from "mem"
 
 fn main(args: string[]) {
   if args.len() < 2 {
@@ -757,15 +759,15 @@ fn main(args: string[]) {
   }
   defer file.close()
 
-  var text, readErr = read_all(file)
+  var text, readErr = read_all(heap(), file)
   if readErr != null { return }
 
-  var lines = text.split("\n")
+  var lines = text.split(heap(), "\n")
   defer lines.free()
   for line in lines.slice() {
-    var clean = line.trim()
-    if clean.len() == 0 || clean.starts_with("#") { continue }
-    println(clean.split(" ").get(0))
+    var clean = line.trim(heap())
+    if clean.len() == 0 || clean.starts_with(heap(), "#") { continue }
+    println(clean.split(heap(), " ").get(0))
   }
 }
 ```

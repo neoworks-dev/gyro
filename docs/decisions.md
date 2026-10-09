@@ -393,7 +393,7 @@ runtime).
 is neither declared, imported, nor formal syntax is an error.
 
 There is no universe scope and no predeclared functions. `println` is
-imported; `ch.close()`, `xs.len()` and `s.runes()` are methods on
+imported; `ch.close()`, `xs.len()` and `s.len()` are methods on
 built-in types, so they need no import and introduce no implicit names.
 
 This rule has already changed one decision: `spawn` was a keyword until
@@ -725,9 +725,68 @@ procedure is Odin's, wraps cleanly (a tracking allocator forwards one
 call), and keeps the value two words.
 
 **Not here.** Containers that remember the allocator they grew from are
-issue #49, so `Array<T>`, `String` and the text the string methods build
-still come from the process heap. Closures that capture are issue #93, and
-formatting text with `#{}` is issue #92.
+the next entry. Closures that capture are issue #93, and formatting text
+with `#{}` is issue #92.
+
+### Containers remember their allocator *(new)*
+
+**Status: decided; `Array<T>`, `Map<K, V>` and `String` do, as do the
+functions that build text.** `Array<T>::new(a)` and
+`Array<T>::with_capacity(a, n)` take an `Allocator` and record it in the
+array's header. The header itself, the buffer, every growth of it and its
+release go through the recorded allocator's procedure, with `Alloc`,
+`Resize` and `Free`, so `push` and `free` take no allocator and cannot
+disagree. `Map<K, V>::new(a)` and `String::new(a)` record theirs the same
+way, in a field beside the arrays they are written over.
+
+**Why record it.** An explicit allocator on `push` and `free` would repeat
+the failure the previous entry removed: nothing at the call site checks
+that the allocator a buffer grew from is the one it is freed to. Recording
+it once, where the container is made, puts the choice in one place a
+reader can see and makes the mismatch unwritable.
+
+**The functions that build text take one.** `from_utf8`, `bytes`, `runes`,
+`String::text`, `split`, `substring`, `trim`, `repeat`, `join`, `sprintf`
+and the readers `env`, `read_stdin`, `readline`, `read_all` and `read_dir`
+allocate a result the caller owns and has no container to record it in, so
+the allocator is an argument, first after the receiver. The predicates that
+copy a string to compare it (`starts_with`, `ends_with`, `index_of`,
+`contains`) take one for the same reason, since a function allocates
+exactly when it is handed one. `bytes` and `runes` stop being part of the
+type and become extensions of `string` in `stdlib`, imported like `trim`,
+because the compiler's own surface has no way to name `Allocator` and an
+ordinary declaration does.
+
+**`Array<T>` stays in the runtime.** It could be Gyro, but a slice
+cannot be built from a pointer and a length, so `slice()` and indexing
+need the runtime's handle. What moves is the memory: `rt.c` calls the
+recorded procedure where it used to call `malloc`, `realloc` and `free`.
+The procedure takes its mode by address, because a Gyro enum crosses a
+call like an aggregate.
+
+**The header stays after `free`.** It is a block from the same allocator
+and is not returned, so that a second `free` is caught instead of read
+through a freed block. From `heap()` that is a leak of one header, as it
+always was; in an arena it is reclaimed with the rest.
+
+**What still uses the process heap.** The text `#{}` builds (#92), the
+message of an error the runtime reports, and a `to_string`, `hash` or
+`message` the compiler calls on its own behalf while printing or hashing
+(#92 and #3). `printf` and `eprintf` format through `heap()` because they
+print what they build.
+
+**The leak analysis does not follow containers.** An `Array` that comes
+from `heap()` and is never freed does not warn, as before: the analysis
+tracks `alloc<T>(heap())` and nothing else, and widening it to every
+container would warn about each array a function returns. This is
+conservative, and may be revisited once the library hands out fewer
+long-lived containers.
+
+**Rejected: an allocator argument on `push` and `free`** (Zig's managed
+containers, unmanaged). It is what #91 removed. **Rejected: moving
+`Array<T>` into Gyro** for now, for the slice reason above.
+**Rejected: allocating the header from the process heap** so that `free`
+could release it, since the container would then use two allocators.
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -1114,8 +1173,8 @@ which optimizes for the rare intentional case.
 in a module named `os`, as three intrinsics:
 
 ```gyro
-export fn env(name: string): string?
-export fn read_stdin(): string
+export fn env(a: Allocator, name: string): string?
+export fn read_stdin(a: Allocator): string
 export fn exit(code: i32)
 ```
 

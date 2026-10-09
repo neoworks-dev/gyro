@@ -226,7 +226,7 @@ fn bad(): i32[] {
 }
 ```
 
-A heap buffer does not — `Stack{ items: Array<i32>::new() }` holds storage
+A heap buffer does not — `Stack{ items: Array<i32>::new(heap()) }` holds storage
 that outlives the frame, and lending a view of it is fine.
 
 What is tracked here is **provenance, not lifetime**: where a view came

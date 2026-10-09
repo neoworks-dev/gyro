@@ -18,7 +18,7 @@ care which.
 ```gyro
 fn total(values: i32[]): i32 { ... }   // borrows
 
-var buf = Array<i32>::new()
+var buf = Array<i32>::new(heap())
 defer buf.free()
 buf.push(4)
 

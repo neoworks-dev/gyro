@@ -58,12 +58,13 @@ Threads:
 export fn spawn(task: fn()) !{ io }
 ```
 
-`Array<T>` — owns its buffer, grows, freed explicitly
-([chapter 8.1](ch08-01-array.md)):
+`Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
+`Allocator` from `mem` and records it, and `push` and `free` go through
+the recorded one ([chapter 8.1](ch08-01-array.md)):
 
 ```gyro
-export fn Array<T>::new(): Array<T> !{}
-export fn Array<T>::with_capacity(capacity: usize): Array<T> !{}
+export fn Array<T>::new(a: Allocator): Array<T> !{}
+export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{}
 export fn Array<T>::push(*self, value: T) !{}
 export fn Array<T>::pop(*self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
@@ -78,15 +79,17 @@ export fn Array<T>::free(*self) !{}
 Text ([chapter 8.2](ch08-02-strings.md)):
 
 ```gyro
-export fn from_utf8(bytes: u8[]): string !{}
+export fn from_utf8(a: Allocator, bytes: u8[]): string !{}
+export fn string::bytes(self, a: Allocator): u8[] !{}
+export fn string::runes(self, a: Allocator): rune[] !{}
 
-export fn String::new(): String !{}
-export fn String::with_capacity(capacity: usize): String !{}
-export fn String::of(text: string): String !{}
+export fn String::new(a: Allocator): String !{}
+export fn String::with_capacity(a: Allocator, capacity: usize): String !{}
+export fn String::of(a: Allocator, text: string): String !{}
 export fn String::push(*self, text: string) !{}
 export fn String::push_rune(*self, value: rune) !{}
 export fn String::len(self): usize !{}
-export fn String::text(self): string !{}
+export fn String::text(self, a: Allocator): string !{}
 export fn String::to_string(self): string !{}
 export fn String::free(*self) !{}
 ```
@@ -94,22 +97,22 @@ export fn String::free(*self) !{}
 Extension methods on `string`, which have to be imported to be callable:
 
 ```gyro
-export fn string::starts_with(self, prefix: string): bool !{}
-export fn string::ends_with(self, suffix: string): bool !{}
-export fn string::index_of(self, needle: string): usize? !{}
-export fn string::contains(self, needle: string): bool !{}
-export fn string::substring(self, from: usize, to: usize): string !{}
-export fn string::trim(self): string !{}
-export fn string::split(self, sep: string): Array<string> !{}
-export fn string::repeat(self, times: i32): string !{}
+export fn string::starts_with(self, a: Allocator, prefix: string): bool !{}
+export fn string::ends_with(self, a: Allocator, suffix: string): bool !{}
+export fn string::index_of(self, a: Allocator, needle: string): usize? !{}
+export fn string::contains(self, a: Allocator, needle: string): bool !{}
+export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{}
+export fn string::trim(self, a: Allocator): string !{}
+export fn string::split(self, a: Allocator, sep: string): Array<string> !{}
+export fn string::repeat(self, a: Allocator, times: i32): string !{}
 
-export fn join(parts: string[], sep: string): string !{}
+export fn join(a: Allocator, parts: string[], sep: string): string !{}
 ```
 
 `Map<K, V>` ([chapter 8.3](ch08-03-map.md)):
 
 ```gyro
-export fn Map<K, V>::new(): Map<K, V> !{}
+export fn Map<K, V>::new(a: Allocator): Map<K, V> !{}
 export fn Map<K, V>::insert(*self, key: K, value: V) !{}
 export fn Map<K, V>::get(self, key: K): V? !{}
 export fn Map<K, V>::contains(self, key: K): bool !{}
@@ -184,7 +187,7 @@ Entirely ordinary Gyro over an `...any` pack
 ```gyro
 export fn printf(format: string, args: ...any) !{ io }
 export fn eprintf(format: string, args: ...any) !{ io }
-export fn sprintf(format: string, args: ...any): string !{}
+export fn sprintf(a: Allocator, format: string, args: ...any): string !{}
 ```
 
 ### `fs`
@@ -193,13 +196,13 @@ export fn sprintf(format: string, args: ...any): string !{}
 export struct File {}
 
 export fn open(path: string): (File, error?) !{ io }
-export fn read_all(file: File): (string, error?) !{ io }
+export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
 export fn File::close(*self) !{ io }
 
 export fn write_file(path: string, text: string): error? !{ io }
 export fn append_file(path: string, text: string): error? !{ io }
 export fn remove(path: string): error? !{ io }
-export fn read_dir(path: string): (Array<string>, error?) !{ io }
+export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io }
 export fn exists(path: string): bool !{ io }
 ```
 
@@ -211,9 +214,9 @@ sorted, without `.` and `..`.
 ### `os`
 
 ```gyro
-export fn env(name: string): string? !{ io }
-export fn read_stdin(): string !{ io }
-export fn readline(): string? !{ io }
+export fn env(a: Allocator, name: string): string? !{ io }
+export fn read_stdin(a: Allocator): string !{ io }
+export fn readline(a: Allocator): string? !{ io }
 export fn exit(code: i32) !{ io }
 ```
 

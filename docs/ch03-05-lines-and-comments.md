@@ -14,7 +14,7 @@ one of `return`, `break`, `continue`, `self`, `true`, `false`, `null`, `_`.
 signature-only declaration:
 
 ```gyro
-fn Array<T>::new(): Array<T>
+fn Array<T>::new(a: Allocator): Array<T>
 fn find(): *Node?
 ```
 
