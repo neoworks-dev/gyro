@@ -112,6 +112,11 @@
 
 "export" @keyword.modifier
 
+[
+  "unsafe"
+  "safe"
+] @keyword.modifier
+
 "move" @keyword.modifier
 
 [

@@ -807,3 +807,123 @@ export union Value {
           (named_type
             (type_identifier))
           (int_literal))))))
+
+==================
+unsafe and safe functions
+==================
+
+unsafe fn danger(p: anyptr): i32 !{}
+export safe fn vouched() {}
+safe async fn later() {}
+@extern("m")
+safe fn sqrt(x: f64): f64 !{}
+unsafe fn Cell::peek(self): i32 {}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (effect_row))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block))
+  (function_declaration
+    (decorator
+      (identifier)
+      (arguments
+        (string_literal
+          (string_content))))
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (effect_row))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (receiver))
+    (named_type
+      (type_identifier))
+    (block)))
+
+==================
+safe imports
+==================
+
+import safe { parse } from "./cJSON.c"
+import safe * as lib from "./lib.c"
+import { safe, unsafe } from "m"
+
+---
+
+(source_file
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (import_declaration
+    (identifier)
+    (string_literal
+      (string_content)))
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier))
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content))))
+
+==================
+unsafe and safe are names elsewhere
+==================
+
+fn t(unsafe: i32, safe: i32): i32 {
+  var x = unsafe + safe
+  return x
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (return_statement
+        (identifier)))))

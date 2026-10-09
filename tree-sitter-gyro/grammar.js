@@ -111,8 +111,15 @@ module.exports = grammar({
       'import',
       choice(
         field('path', $.string_literal),
-        seq($.import_list, 'from', field('path', $.string_literal)),
-        seq('*', 'as', field('alias', $.identifier), 'from', field('path', $.string_literal)),
+        // `safe` vouches for the names a C file's import binds. It is a
+        // contextual word here and an ordinary identifier elsewhere.
+        seq(
+          optional('safe'),
+          choice(
+            seq($.import_list, 'from', field('path', $.string_literal)),
+            seq('*', 'as', field('alias', $.identifier), 'from', field('path', $.string_literal)),
+          ),
+        ),
       ),
     ),
 
@@ -153,6 +160,9 @@ module.exports = grammar({
     function_declaration: $ => seq(
       repeat($.decorator),
       optional('export'),
+      // `unsafe fn` is unsafe to call; `safe fn` may do unchecked things and
+      // vouches for its callers. Both are contextual words before `fn`.
+      optional(choice('unsafe', 'safe')),
       optional('async'),
       'fn',
       choice($._function_owner, $._function_plain_name),
