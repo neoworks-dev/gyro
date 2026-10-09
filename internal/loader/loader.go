@@ -193,7 +193,7 @@ func (s *loadState) addForeign(path, source string, from *Module, offset int) *M
 			// The generated text is Gyro, so the ordinary parser reads
 			// it; a failure here would be this compiler's bug, and the
 			// diagnostics say so by pointing into generated source.
-			module.Tree = parser.ParseFile(module.File, s.bag)
+			module.Tree = parser.ParseForeign(module.File, s.bag)
 			s.order = append(s.order, module)
 			return module
 		}

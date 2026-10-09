@@ -156,6 +156,12 @@ func (p *Parser) parseDecl() ast.Decl {
 
 	exported := p.accept(token.Export)
 
+	if p.foreign && p.at(token.Ident) && p.tok().Text == "union" {
+		decl := p.parseUnionDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
+	}
+
 	switch p.kind() {
 	case token.Fn, token.Async:
 		fn := p.parseFuncDecl()
@@ -163,10 +169,6 @@ func (p *Parser) parseDecl() ast.Decl {
 		return fn
 	case token.Struct:
 		decl := p.parseStructDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
-		return decl
-	case token.Union:
-		decl := p.parseUnionDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
 	case token.Enum:
@@ -456,15 +458,12 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 	return decl
 }
 
-// parseUnionDecl parses `union Name { member: T ... }`.
-//
-// It takes no type parameters. A union is one storage the widest member
-// fits in, and a parameter would make that size depend on an argument —
-// which is expressible, but a union exists to be C's, and C has no
-// generic ones for it to be.
+// parseUnionDecl parses `union Name { member: T ... }`, which only a
+// foreign module's generated header contains. It takes no type
+// parameters: a union is C's, and C has no generic ones.
 func (p *Parser) parseUnionDecl() *ast.UnionDecl {
 	decl := &ast.UnionDecl{Offset: p.offset()}
-	p.expect(token.Union)
+	p.next() // the contextual word `union`
 	decl.Name, _ = p.expectIdent()
 
 	p.expect(token.LBrace)

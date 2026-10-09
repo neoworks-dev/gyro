@@ -39,14 +39,6 @@ var codes = map[string]diag.Code{
 	"this returns a closure that borrows this frame": diag.EEscapingLocalView,
 	"%s takes a function value; %s is not one":       diag.EKeepNotFunction,
 
-	// Unions. One storage with several names for it, and nothing records
-	// which is live — which is what decides both what may be a member and
-	// what a literal may say.
-	"union %s declares no members; a union is storage, and there would be none":                  diag.EUnionDeclaration,
-	"the member %s is declared twice":                                                            diag.EUnionDeclaration,
-	"@extern union %s: @extern marks an opaque pointer, and a union is declared to be read into": diag.EUnionDeclaration,
-	"%s cannot be a union member: %s":                                                            diag.EUnionMember,
-
 	// A name that resolves to the wrong kind of thing
 	"%s is a type, not a value":                                                             diag.EWrongKind,
 	"%s is a type, not a function":                                                          diag.EWrongKind,

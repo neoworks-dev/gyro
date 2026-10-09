@@ -619,7 +619,6 @@ func (c *checker) checkDecls(tree *ast.File) {
 			c.checkExternStruct(d)
 		case *ast.UnionDecl:
 			c.checkDecorators(d.Decorators)
-			c.checkUnionDecl(d)
 		case *ast.EnumDecl:
 			c.checkDecorators(d.Decorators)
 		case *ast.VarDecl:

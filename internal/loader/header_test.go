@@ -136,10 +136,8 @@ export fn @outer(%o: %Outer) -> i32 {
 	}
 }
 
-// A union has a Gyro spelling now, and it is the reason `union` is in
-// the language: a C library handing one out was previously unimportable
-// as a type, so every member had to be read through a function written
-// for the purpose.
+// A union has a spelling in the generated text, which is how a C library
+// handing one out is importable as a type. Gyro itself declares none.
 func TestHeaderDeclaresAUnion(t *testing.T) {
 	text := generated(t, `
 module "cc:mixed"
