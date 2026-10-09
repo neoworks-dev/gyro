@@ -619,8 +619,9 @@ heap — linking gives each its own.
 - **A variadic function cannot cross into Gyro**: a `...` says nothing
   about what a call passes, so there is nothing for the far side to
   check. Nor can a C `enum`: Gyro's is a tagged sum. A `union` does
-  cross — Gyro declares one now, so `headerGen` writes
-  `export union Name { ... }`.
+  cross: Gyro cannot declare one, so `headerGen` writes
+  `export union Name { ... }` into generated text that only
+  `parser.ParseForeign` reads as a declaration.
   `headerGen` in `internal/loader/foreign.go` **skips** an export it
   cannot spell rather than failing the module, so one such helper does
   not make a whole C library unimportable; naming a skipped one is an

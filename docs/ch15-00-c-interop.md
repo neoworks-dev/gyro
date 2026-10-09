@@ -196,10 +196,23 @@ keep and not look inside.
 A C pointer is nullable where Gyro's is not, so dereferencing one that is
 null **aborts with a message** where C leaves it undefined.
 
-A C `union` crosses as a Gyro `union` — same members, same storage, one
-declaration ([chapter 5.1](ch05-01-structs.md)) — which is what `union` is
-in the language for. A C `enum` does not: Gyro's is a tagged sum and the
-two are different things.
+A C `union` crosses as the type C declared: every member at offset zero,
+the size of the widest member at the strictest member's alignment. Gyro has
+no `union` declaration of its own, so this is the only way one reaches a
+program. It can be held, passed, and built with a literal that names
+exactly one member (`Value{ i: 42 }`); members are written and read by
+name, and writing one is writing the same storage as the others.
+
+**Nothing records which member is live**, which decides what else it does:
+`==` and hashing have nothing to derive from, so a union is not a `Map`
+key, and a struct holding one inherits both refusals. Printing one prints
+the word `union`, and it cannot go into an `any`. Reading a member other
+than the one last written reinterprets the bytes exactly as C does,
+except across members that share an initial sequence, which is the read
+every C tagged union is built on and which C defines.
+
+A C `enum` does not cross: Gyro's is a tagged sum and the two are different
+things.
 
 An export the generated header cannot spell is left out rather than made an
 error, so one unspellable helper does not make a library unimportable;

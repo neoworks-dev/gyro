@@ -28,7 +28,7 @@
 
 # Structuring data
 
-- [5.1. Structs and unions](ch05-01-structs.md)
+- [5.1. Structs](ch05-01-structs.md)
 - [5.2. Methods](ch05-02-methods.md)
 - [6.1. Enums](ch06-01-enums.md)
 - [6.2. Match](ch06-02-match.md)

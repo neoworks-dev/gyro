@@ -6,8 +6,8 @@ These are reserved: they are tokens the lexer produces, and none may be used
 as an identifier.
 
 ```text
-var    const   fn      struct  union
-enum   return  if      elif    else
+var    const   fn      struct  enum
+return  if      elif    else
 while  for     in      match   break
 continue defer async   await   chan
 select import  as      export  self
