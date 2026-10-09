@@ -4,26 +4,27 @@
 // there is no second heap to copy into.
 
 import { println } from "stdlib"
+import { cast } from "unsafe"
 
 // An out-parameter. frexp answers the fraction and writes the exponent
 // through the caller's `int *`.
 @extern("m")
-fn frexp(value: f64, exponent: *i32): f64 !{}
+safe fn frexp(value: f64, exponent: *i32): f64 !{}
 
 // A callback, and `void *` at both ends of it. qsort is the API that
 // motivated every part of this: it takes the base as an address, the
 // stride as a byte count, and a comparator it calls per pair.
 @extern("c")
-fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
+safe fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
 
 @extern("c")
-fn memcpy(to: anyptr, from: anyptr, size: usize): anyptr !{}
+safe fn memcpy(to: anyptr, from: anyptr, size: usize): anyptr !{}
 
 // C calls this one, on C's terms: two addresses into the array it was
 // handed, and a sign for the answer.
-fn ascending(a: anyptr, b: anyptr): i32 {
-  var left = a as *i32
-  var right = b as *i32
+safe fn ascending(a: anyptr, b: anyptr): i32 {
+  var left = cast<i32>(a)
+  var right = cast<i32>(b)
   if *left < *right {
     return 0 - 1
   }

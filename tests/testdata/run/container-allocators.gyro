@@ -5,6 +5,7 @@
 
 import { println, Array, Map } from "stdlib"
 import { heap, Allocator, Arena, Mode } from "mem"
+import { cast } from "unsafe"
 
 struct Counter {
   allocs: i32
@@ -13,11 +14,11 @@ struct Counter {
 }
 
 // Counts what reaches it and leaves the work to the heap.
-fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? {
+safe fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? {
   if data == null {
     return null
   }
-  var counter = data as *Counter
+  var counter = cast<Counter>(data)
   match mode {
     Mode::Alloc: {
       counter.allocs += 1

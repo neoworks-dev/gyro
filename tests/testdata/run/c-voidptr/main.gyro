@@ -12,7 +12,7 @@
 // which is what a C library hands out anyway.
 
 import { println } from "stdlib"
-import {
+import safe {
   cell_kind, cell_int, cell_x, cell_y, cell_is_null, same_address,
   sum_via_callback, round_trip, void_pointer_size,
 } from "./store.c"

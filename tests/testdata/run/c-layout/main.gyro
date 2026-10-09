@@ -9,7 +9,7 @@
 // spare bit pattern rather than beside it.
 
 import { println } from "stdlib"
-import {
+import safe {
   pointer_size, char_pointer_size, pair_size, node_size, node_stride,
   table_is_clear, fill_table, table_entry, tag_walk, data_offsets,
 } from "./layout.c"

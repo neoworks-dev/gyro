@@ -13,7 +13,7 @@
 // entitled to. Every C event loop is built on it.
 
 import { println } from "stdlib"
-import {
+import safe {
   events_load, event_kind, event_code, event_pressed, event_x, event_y,
   events_total, event_size, key_size, move_size,
   reassign_round_trip, stride_is_one_union, first_member_initialized,

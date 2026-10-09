@@ -8,12 +8,12 @@
 // which is what a program had to do while Gyro could not spell the type.
 
 import { println } from "stdlib"
-import {
+import safe {
   Value, Boxed,
   make_int, int_of, store_double, boxed, kind_of, value_size, boxed_size,
 } from "./value.c"
 
-fn main() {
+safe fn main() {
   // The size is the widest member's at the strictest member's
   // alignment, and Gyro lays it out the same way — which is the claim
   // this case is really making.

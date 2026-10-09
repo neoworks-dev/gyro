@@ -33,13 +33,15 @@ struct Queued {
   event: Event
 }
 
-// A union takes methods like any other declared type.
-fn Event::tag(self): i32 {
+// A union takes methods like any other declared type. Reading a member is
+// unsafe, since nothing says which one is live; every function below that
+// reads one is a safe fn, the author vouching that the tag is checked first.
+safe fn Event::tag(self): i32 {
   return self.kind
 }
 
 // Through a pointer, which is how a real event loop is handed one.
-fn dispatch(e: *Event): i32 {
+safe fn dispatch(e: *Event): i32 {
   if e.kind == 1 {
     return e.key.code
   }
@@ -50,11 +52,11 @@ fn dispatch(e: *Event): i32 {
 }
 
 // By value: the bytes copy, and which member they mean copies with them.
-fn code_of(e: Event): i32 {
+safe fn code_of(e: Event): i32 {
   return e.key.code
 }
 
-fn main() {
+safe fn main() {
   // A literal sets exactly one member, because there is room for one.
   var e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
   println(e.key.code)

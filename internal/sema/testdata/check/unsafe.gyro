@@ -1,0 +1,148 @@
+// Unsafe code is marked on functions. An unsafe fn is unsafe to call, a
+// safe fn may do unchecked things and vouches for its callers, and a plain
+// fn may do neither. Nothing here is an effect: no row mentions it.
+
+import { cast, offset, ptr_from_int, raw_alloc } from "unsafe"
+
+struct Cell {
+  value: i32
+}
+
+union Word {
+  i: i64
+  f: f64
+  bytes: u8[8]
+}
+
+union Wrapper {
+  inner: Word
+  whole: u64
+}
+
+// An extern is unsafe to call unless the declaration says otherwise.
+@extern("m")
+fn cos(x: f64): f64 !{}
+
+@extern("m")
+safe fn sin(x: f64): f64 !{}
+
+@extern("m")
+unsafe fn tan(x: f64): f64 !{}
+
+// ---------------------------------------------------------------------
+// The three kinds
+
+unsafe fn danger(p: anyptr): i32 {
+  return cast<Cell>(p).value
+}
+
+safe fn vouched(p: anyptr): i32 {
+  return danger(p)
+}
+
+fn plain(p: anyptr): i32 {
+  return danger(p)               //~ E0618 danger is unsafe to call; this function is a plain fn
+                                 //~^ help: mark this function `safe fn` if it upholds what the operation needs, so that callers need not
+                                 //~^^ help: mark it `unsafe fn` to leave that to its callers instead
+}
+
+// An unsafe fn calls another, and a safe fn is callable from anywhere.
+unsafe fn chained(p: anyptr): i32 {
+  return danger(p)
+}
+
+fn callsVouched(p: anyptr): i32 {
+  return vouched(p)
+}
+
+// Methods are marked the same way.
+unsafe fn Cell::peek(self, p: anyptr): i32 {
+  return danger(p)
+}
+
+safe fn Cell::look(self, p: anyptr): i32 {
+  return danger(p)
+}
+
+fn methods(c: Cell, p: anyptr): i32 {
+  var a = c.look(p)
+  var b = c.peek(p)              //~ E0618 peek is unsafe to call; this function is a plain fn
+  return a + b
+}
+
+// ---------------------------------------------------------------------
+// The unsafe module
+
+fn primitives(p: anyptr, n: usize) {
+  var a = cast<Cell>(p)          //~ E0618 cast is unsafe to call; this function is a plain fn
+  var b = ptr_from_int<Cell>(n)  //~ E0618 ptr_from_int is unsafe to call; this function is a plain fn
+  var c = offset(p, n)           //~ E0618 offset is unsafe to call; this function is a plain fn
+  var d = raw_alloc(8, 8)        //~ E0618 raw_alloc is unsafe to call; this function is a plain fn
+}
+
+safe fn contained(p: anyptr, n: usize): i32 {
+  var a = cast<Cell>(offset(p, n))
+  var b = ptr_from_int<Cell>(n)
+  return a.value + b.value
+}
+
+// ---------------------------------------------------------------------
+// @extern
+
+fn externs(x: f64): f64 {
+  var a = sin(x)
+  var b = cos(x)                 //~ E0618 cos is unsafe to call; this function is a plain fn
+  var c = tan(x)                 //~ E0618 tan is unsafe to call; this function is a plain fn
+  return a + b + c
+}
+
+// ---------------------------------------------------------------------
+// Unions
+
+fn reads(w: Word, wrapped: Wrapper, p: *Word): i64 {
+  var a = w.i                    //~ E0618 reading the union member i is unsafe; this function is a plain fn
+  var b = wrapped.inner.i        //~ E0618 reading the union member inner is unsafe; this function is a plain fn
+                                 //~^ E0618 reading the union member i is unsafe; this function is a plain fn
+  var c = p.f                    //~ E0618 reading the union member f is unsafe; this function is a plain fn
+  return a
+}
+
+fn writes(w: *Word, wrapped: *Wrapper) {
+  var made = Word{ i: 1 }
+  w.f = 2.5
+  w.bytes[3] = 1
+  wrapped.inner.i = 4
+  wrapped.whole = 5
+  made.i = 6
+}
+
+fn updates(w: *Word) {
+  w.i += 1                       //~ E0618 reading the union member i is unsafe; this function is a plain fn
+}
+
+// ---------------------------------------------------------------------
+// Closures are part of the function they are written in.
+
+safe fn closed(p: anyptr): i32 {
+  var read = fn(): i32 { return danger(p) }
+  return read()
+}
+
+fn open(p: anyptr): i32 {
+  var read = fn(): i32 { return danger(p) }  //~ E0618 danger is unsafe to call; this function is a plain fn
+  return read()
+}
+
+// ---------------------------------------------------------------------
+// A pointer to an unsafe function is a way round the call.
+
+fn pointers() {
+  var a = &danger                //~ E0618 &danger makes a pointer to an unsafe function; this function is a plain fn
+  var b = &vouched
+}
+
+// unsafe and safe are contextual: they are still names.
+fn names(unsafe: i32, safe: i32): i32 {
+  var unsafe_two = unsafe + safe
+  return unsafe_two
+}

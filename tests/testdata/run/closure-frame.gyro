@@ -5,18 +5,19 @@
 
 import { println } from "stdlib"
 import { Allocator, Arena, Mode, heap, keep, release } from "mem"
+import { cast } from "unsafe"
 
 struct Counter {
   allocs: i32
   frees: i32
 }
 
-fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
+safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
             old: anyptr?, old_size: usize): anyptr? {
   if data == null {
     return null
   }
-  var counter = data as *Counter
+  var counter = cast<Counter>(data)
   if mode == Mode::Alloc {
     counter.allocs += 1
   }

@@ -13,7 +13,7 @@
 // names, cannot do at all.
 
 import { println } from "stdlib"
-import {
+import safe {
   area, perimeter, describe, scaled_area, bump, counter_value,
 } from "./area.c"
 

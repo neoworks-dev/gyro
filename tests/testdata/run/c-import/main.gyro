@@ -13,7 +13,7 @@
 
 import { println } from "stdlib"
 import { alloc, free, heap } from "mem"
-import { add, clamp, fib, gcd, mean_of_range, divmod, hypot_squared, char_wraps } from "./mathlib.c"
+import safe { add, clamp, fib, gcd, mean_of_range, divmod, hypot_squared, char_wraps } from "./mathlib.c"
 
 fn main() {
   println(add(2, 3))

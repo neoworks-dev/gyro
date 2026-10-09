@@ -1,0 +1,80 @@
+// The unsafe module's primitives, contained in safe fns. A packet is four
+// bytes laid out the way C lays them out, so an address plus a byte count
+// names a field; each function here that does that arithmetic vouches that
+// the count stays inside the packet, and main, a plain fn, calls them freely.
+
+import { println } from "stdlib"
+import { alloc, free, heap } from "mem"
+import { cast, offset, ptr_from_int, ptr_to_int } from "unsafe"
+
+struct Packet {
+  tag: u8
+  low: u8
+  high: u8
+  last: u8
+}
+
+// byte_at reads the byte `index` bytes into the packet: the packet's
+// address forgets its type, moves, and gets a byte's type back.
+safe fn byte_at(p: *Packet, index: usize): u8 {
+  return *cast<u8>(offset(p as anyptr, index))
+}
+
+safe fn set_byte(p: *Packet, index: usize, value: u8) {
+  *cast<u8>(offset(p as anyptr, index)) = value
+}
+
+// address_of is the packet's address as an integer, and through_integer
+// makes a pointer of it again: the pointer a kernel makes from a number it
+// was told.
+safe fn address_of(p: *Packet): usize {
+  return ptr_to_int(p as anyptr)
+}
+
+safe fn through_integer(p: *Packet): *Packet {
+  return ptr_from_int<Packet>(address_of(p))
+}
+
+safe fn byte_at_address(address: usize): u8 {
+  return *ptr_from_int<u8>(address)
+}
+
+// An @extern is unsafe to call unless it is written safe: sqrt cannot be
+// misused, strlen reads through an address it is trusted to be handed.
+@extern("m")
+safe fn sqrt(value: f64): f64 !{}
+
+@extern("c")
+fn strlen(text: string): usize !{}
+
+safe fn length_of(text: string): usize {
+  return strlen(text)
+}
+
+fn main() {
+  var p = alloc<Packet>(heap())
+  defer free(heap(), p)
+  p.tag = 7
+  p.low = 16
+  p.high = 32
+  p.last = 255
+
+  println(byte_at(p, 0))
+  println(byte_at(p, 1))
+  println(byte_at(p, 2))
+  println(byte_at(p, 3))
+
+  set_byte(p, 2, 99)
+  println(p.high)
+
+  var again = through_integer(p)
+  println(again.tag)
+  println(address_of(again) == address_of(p))
+  again.low = 17
+  println(p.low)
+
+  println(byte_at_address(address_of(p) + 3))
+
+  println(sqrt(2.25))
+  println(length_of("unsafe"))
+}

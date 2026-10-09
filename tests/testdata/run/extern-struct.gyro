@@ -15,7 +15,7 @@ struct Div {
 }
 
 @extern("c")
-fn div(numerator: i32, denominator: i32): Div !{}
+safe fn div(numerator: i32, denominator: i32): Div !{}
 
 // struct in_addr, whose one member is the address in network order. The
 // literal below is 127.0.0.1 as a little-endian machine holds it.
@@ -24,7 +24,7 @@ struct InAddr {
 }
 
 @extern("c", symbol = "inet_ntoa")
-fn address_text(addr: InAddr): string !{}
+safe fn address_text(addr: InAddr): string !{}
 
 // A struct wide enough that C returns it through a hidden pointer rather
 // than in registers, so the other half of the ABI is exercised too.

@@ -34,11 +34,13 @@ union Nested {
   whole: u64
 }
 
-fn Value::as_int(self): i64 {
+safe fn Value::as_int(self): i64 {
   return self.i
 }
 
-fn shapes() {
+// Reading a member needs an unsafe context (see unsafe.gyro); writing one,
+// and writing a literal, do not.
+safe fn shapes() {
   var v = Value{ i: 1 }
   var read = v.i
   v.f = 2.5

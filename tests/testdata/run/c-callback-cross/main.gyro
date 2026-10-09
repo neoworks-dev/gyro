@@ -12,7 +12,7 @@
 // pointer C handed back is the same address read the other way.
 
 import { println } from "stdlib"
-import {
+import safe {
   Rule, count_kept, fold, fold_or, rule_size, apply_rule, adder,
   round_trip,
 } from "./filter.c"

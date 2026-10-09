@@ -13,10 +13,18 @@
 // that the evaluator checks it and C never could.
 
 import { println } from "stdlib"
-import {
+import { cast } from "unsafe"
+import safe {
   Cell, erase, read_through, keep, held, kept, nothing, same,
   address_size,
 } from "./store.c"
+
+// Giving an address its type back is the program's claim about what is
+// there, so it is unsafe; this function vouches for the one place it is
+// made.
+safe fn value_at(address: anyptr): i32 {
+  return cast<Cell>(address).value
+}
 
 fn main() {
   // An address costs a word whatever it addresses.
@@ -34,7 +42,7 @@ fn main() {
     println("nothing came back")
     return
   }
-  println((raw as *Cell).value)
+  println(value_at(raw))
 
   // Held by a library that was never told what it is holding.
   keep(0, &a as anyptr)
@@ -46,7 +54,7 @@ fn main() {
     println("slot 0 is empty")
     return
   }
-  println((first as *Cell).value)
+  println(value_at(first))
 
   // Identity, which is all a program can ask about an address it knows
   // nothing else about.
