@@ -1,7 +1,8 @@
 // A union is one storage with several names for it. Every member begins
 // where the union does, so it is the size of the widest one and writing
-// a member unwrites the others — and nothing records which member is
-// live, which is what a union is and what everything below follows from.
+// a member unwrites the others, and nothing records which member is
+// live. Gyro does not declare one; this one is C's, and arrives through
+// the import with the members C gave it.
 //
 // The shape it exists for is the tagged union every C message queue is
 // built on: a discriminant, and a family of structs that begin with it.
@@ -9,31 +10,11 @@
 // `e.kind` answers whichever member was written last.
 
 import { println } from "stdlib"
+import {
+  Event, KeyEvent, MouseEvent, Queued, event_kind, queued_at,
+} from "./event.c"
 
-struct KeyEvent {
-  kind: i32
-  code: i32
-}
-
-struct MouseEvent {
-  kind: i32
-  x: i32
-  y: i32
-}
-
-union Event {
-  kind: i32
-  key: KeyEvent
-  mouse: MouseEvent
-}
-
-// A struct may hold one, and the fields beside it are ordinary fields.
-struct Queued {
-  at: i32
-  event: Event
-}
-
-// A union takes methods like any other declared type.
+// A union takes methods like any other imported type.
 fn Event::tag(self): i32 {
   return self.kind
 }

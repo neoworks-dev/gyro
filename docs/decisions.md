@@ -1025,72 +1025,46 @@ by a speculative parse that commits only when the brackets close and a call
 follows. Type arguments live on path segments, since `Array<i32>::new`
 parameterizes a non-final segment.
 
-### Gyro declares unions, and they are C's *(new)*
+### Gyro does not declare unions *(new)*
 
-**Status: decided.** `union Name { member: T ... }` is one storage with
-several names for it: every member at offset zero, the size the widest
-member's, and nothing recording which is live. METALS has had the shape
-since the C front end needed it ("A union is a shape, not a record whose
-fields coincide"); this is the surface, and it is what makes a C `union`
-importable as a type rather than only reachable through accessors written
-for the purpose.
+**Status: decided.** There is no `union` declaration in Gyro, and `union`
+is an ordinary identifier. A C `union` still arrives through an `import`
+of a `.c` file, as the type C declared: every member at offset zero, the
+size the widest member's, nothing recording which is live. Values of it
+can be held, passed, built with a literal that names one member, and have
+members written and read. It keeps its own `types.Union`, so equality,
+hashing, printing and `any` refuse it by not having a case, exactly as
+before.
 
-**It is a separate declaration and a separate `types.Union`, not a
-`struct` with a flag.** The same rejection the IR made, for the same
-reason plus one: in the type layer a distinct type means every switch
-that does not mention it refuses by *not having a case*. Equality,
-hashing, printing, `any` and the runtime boundary all fall out that way,
-which is the safe direction — a struct-with-a-flag permits by default and
-has to remember to ask.
+**The principle: METALS supports everything C needs, and Gyro's surface
+only gets a feature when Gyro code has to write it.** A union was added to
+the surface so that a C union could be imported as a type, but the
+import never needed Gyro to be able to *declare* one; it needed Gyro to be
+able to *name* one. METALS has the shape ("A union is a shape, not a
+record whose fields coincide"), and the loader's generated header, which
+is the only text that declares an imported type, is the one place the
+parser still reads the word. A Gyro program has no use for an untagged
+union of its own: its sum type is the tagged `enum`, which knows its
+variant, prints, compares, and cannot be read wrong. The `SDL_Event` out
+parameter that the old chapter used as the reason to have one is a struct
+with the same size and alignment, because Gyro only ever needs the bytes
+and the tag.
 
-**What it does not derive, and why that is one reason.** Nothing records
-which member the storage means, so `==` has no question to answer,
-`hash` has nothing to hash, an `any` could not give the concrete value
-back, and printing would have to guess. Printing therefore prints the
-word `union` — decided in the lowering so all three tiers say it, the
-same arrangement `anyptr` and `code` already have. A struct holding a
-union inherits every refusal, because field-wise derivation has nothing
-to derive from the part.
+**Rejected: keeping the declaration because C has it.** C having a
+feature is a reason for METALS and the C front end to have it, not for the
+language a Gyro programmer writes. The declaration came with a checker for
+what may be a member, a rule about literals and a chapter of caveats, all
+of it guarding a construct whose only user was the import.
 
-**A member is bytes.** Reading a member that was never written
-reinterprets what is there — C's own rule — but a Gyro value whose
-meaning the runtime keeps *beside* the bytes turns that into the runtime
-following a number as if it were its own object. So a `string` (a
-pointer to Gyro's header), a slice (a pointer and a length it trusts), an
-`Array<T>` (a runtime handle), an enum (a tag that must name a variant),
-a nullable (a flag that must match its payload), a channel, a future, a
-`fn` and a tuple are all refused, each with its reason. A **raw pointer
-is a member**, deliberately: `union { i: i64, p: *Node }` is what half of
-C's tagged unions are, Gyro's pointers are unmanaged, and nothing about a
-`*T` is kept anywhere but in the bytes.
+**What went with it.** The `@extern union`, empty union, duplicate member
+and "cannot be a union member" diagnostics, which only ever described a
+Gyro-written declaration. The members of an imported union are C's types
+and need no such check. Reading a member requiring an unsafe context is a
+separate decision.
 
-**A literal names exactly one member**, which is C's rule for a braced
-initializer and not the struct literal's "every field exactly once". The
-positional form is refused outright: position does not say which member,
-and one storage has room for one.
-
-**Not generic.** The size is the widest member's, and a type parameter
-would make that depend on an argument. C, which is what a union exists to
-be, has no generic ones.
-
-**Always storage, never a register.** Reaching a member is `field.ptr`,
-which needs an address, so a union local is a slot and a literal is a
-cell written through and read back. There could not be a "make a union
-from a member" instruction: which member a value holds is not something
-the value carries.
-
-**The case against unions got weaker, and this is narrower than it was.**
-cJSON's union became an enum with payloads and read better than the
-original — so the chapter says to use an enum, and names the two cases
-that an enum cannot cover: C's layout, and the tagged-union idiom where
-the discriminant lives *inside* the storage. `SDL_Event` is the second,
-and it is why `@extern` carries a union too.
-
-Falling out of it, and worth its own line: **a fixed-size array member
-now has a Gyro spelling in a generated header**, so `struct { char
-name[16]; }` crosses. Only when the element spells as one word — Gyro
-reads `*u8[8]` as a pointer to an array, so an array of pointers is left
-unspelled rather than written down wrong.
+The fixed-size array member that now has a spelling in a generated header
+stays: `struct { char name[16]; }` crosses when the element spells as one
+word, since Gyro reads `*u8[8]` as a pointer to an array.
 
 ### A struct literal requires every field to be visible
 
@@ -3065,8 +3039,7 @@ one — a linked C library reads it C's own way, and there is no copy to
 have nothing in it (see "A native boundary is representation, not
 memory").
 
-Gyro declares one of its own now, with the same rules; see "Gyro
-declares unions, and they are C's".
+Gyro declares none of its own; see "Gyro does not declare unions".
 
 On the C side a tag names a struct or a union in one namespace, so
 `struct P` beside `union P` is an error rather than two types — which is

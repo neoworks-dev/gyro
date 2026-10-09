@@ -33,6 +33,10 @@ type Parser struct {
 	// header of an if, while, for or match, where the brace must open the
 	// body instead. Rust solves the same ambiguity the same way.
 	noStructLit bool
+	// foreign marks the text the loader generates from a foreign module's
+	// exports. It alone may declare a union: a union is a C type, and a
+	// Gyro program only ever receives one through an import.
+	foreign bool
 }
 
 // Parse parses one source file. It returns a file even when errors were
@@ -56,6 +60,20 @@ func ParseFile(file *diag.File, bag *diag.Bag) *ast.File {
 		file:   file,
 		bag:    bag,
 		tokens: lexer.Tokens(file, bag),
+	}
+	return parser.parseFile()
+}
+
+// ParseForeign parses the Gyro text generated from a foreign module's
+// exports. It is ParseFile plus the one declaration a Gyro program cannot
+// write, the union, so that a C union arrives as the type C declared.
+func ParseForeign(file *diag.File, bag *diag.Bag) *ast.File {
+	bag.Track(file)
+	parser := &Parser{
+		file:    file,
+		bag:     bag,
+		tokens:  lexer.Tokens(file, bag),
+		foreign: true,
 	}
 	return parser.parseFile()
 }

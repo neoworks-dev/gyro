@@ -10,9 +10,9 @@
 // library it links from, and the compiler links -lSDL2 because the
 // program says so.
 //
-// It reads events, which is what unions and out-parameters were for. An
-// SDL_Event is a 56-byte union of event structs that all begin with the
-// same u32 tag, and `SDL_PollEvent` fills one through a pointer — so the
+// It reads events through an out-parameter. An SDL_Event is 56 bytes of
+// event structs that all begin with the same u32 tag, and
+// `SDL_PollEvent` fills one through a pointer — so the
 // window's close button ends the run, instead of a fixed time doing it.
 //
 // It is the one example the suite does not run: it would open a window on
@@ -87,15 +87,15 @@ fn SDL_RenderCopy(renderer: Renderer, texture: Texture, source: Rect?, target: R
 @extern("SDL2")
 fn SDL_RenderPresent(renderer: Renderer) !{ io }
 
-// SDL_Event is a union of every event struct SDL has, and they all begin
-// with the same u32 tag — which is what makes reading `kind` out of one
-// defined however it was filled in. Only the tag is read here, so the
-// rest is declared as the storage it is: 56 bytes at eight-byte
-// alignment, which is what `sizeof(SDL_Event)` and `_Alignof(SDL_Event)`
-// say. Getting either wrong would let SDL write past the end.
-union Event {
+// SDL_Event is a C union of every event struct SDL has, and they all begin
+// with the same u32 tag. Only the tag is read here, so the rest is
+// declared as the storage it is: 56 bytes at eight-byte alignment, which
+// is what `sizeof(SDL_Event)` and `_Alignof(SDL_Event)` say. Getting
+// either wrong would let SDL write past the end.
+struct Event {
   kind: u32
-  storage: u64[7]
+  reserved: u32
+  storage: u64[6]
 }
 
 const SDL_QUIT: u32 = 256
@@ -207,10 +207,8 @@ fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
 // stops responding otherwise, which is what SDL_PumpEvents used to be
 // here for.
 //
-// `event.kind` is read whatever member SDL filled in, which is defined
-// because every member begins with that same u32 — the one cross-member
-// read C entitles a program to, and the reason a tagged union works at
-// all ([chapter 5.1](../docs/ch05-01-structs.md)).
+// `event.kind` is read whatever event SDL filled in, because every one
+// begins with that same u32.
 fn quit_requested(event: *Event): bool {
   var quit = false
   while SDL_PollEvent(event) != 0 {
@@ -268,7 +266,7 @@ fn main() {
   var frames = 0
 
   var started = SDL_GetTicks()
-  var event = Event{ kind: 0 }
+  var event = Event{ kind: 0, reserved: 0, storage: [0, 0, 0, 0, 0, 0] }
 
   while SDL_GetTicks() - started < DURATION {
     var angle = (SDL_GetTicks() - started) as f64 / 900.0

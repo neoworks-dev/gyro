@@ -1,13 +1,7 @@
 /* A C union crossing into Gyro as a type rather than behind an
- * accessor. Until Gyro could declare a union, this header was
- * unspellable: `declarable` refused any type that was not a record, so a
- * library handing out a union could be called but its type could not be
- * named, and every member had to be read through a C function written
- * for the purpose.
- *
- * Now the generated header writes `export union Value { ... }` and the
- * Gyro side reads and writes members directly, on the same storage the C
- * side lays out. */
+ * accessor. The generated header declares the union for the checker, and
+ * the Gyro side reads and writes members directly, on the same storage
+ * the C side lays out. */
 
 #include "value.h"
 

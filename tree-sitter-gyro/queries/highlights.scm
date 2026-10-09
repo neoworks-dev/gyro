@@ -101,7 +101,6 @@
 
 [
   "struct"
-  "union"
   "enum"
 ] @keyword.type
 

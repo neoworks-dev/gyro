@@ -56,7 +56,7 @@ attached — a skip is a program that will fail the day the gap closes
   place for that check now is an allocator: one that quarantines freed
   blocks and poisons them is ordinary Gyro over
   [chapter 4.5](ch04-05-allocators.md), and is not written yet.
-- **Type punning is not diagnosed.** Reading across two union members that
+- **Type punning is not diagnosed.** Reading across two members of a C union that
   share no common initial sequence, or reading a struct's storage as
   bytes, reinterprets whatever is there. It is undefined in C too, `char *`
   aliasing included, and the information needed to catch it — which member
@@ -100,8 +100,8 @@ Refused by name rather than mistranslated:
 - **A variadic C function cannot cross into Gyro**: a `...` says nothing
   about what a call passes, so there is nothing for the far side to check.
   Nor can a C `enum`: Gyro's is a tagged sum and the two are different
-  things. A `union` crosses as a Gyro `union`
-  ([chapter 5.1](ch05-01-structs.md)). An export the generated header cannot
+  things. A `union` crosses as the type C declared
+  ([chapter 15](ch15-00-c-interop.md)). An export the generated header cannot
   spell is **skipped** rather than failing the module, and naming a skipped
   one is an error at the import — as is an array of anything whose Gyro
   spelling is not one word, since `*u8[8]` reparses as a pointer to an

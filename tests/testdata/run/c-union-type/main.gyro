@@ -1,11 +1,11 @@
 // A C union named in Gyro. There is one type here, not two that agree:
 // the C front end declares `%Value` as a METALS union, the generated
-// header spells it `export union Value`, and the linker resolves the two
+// header declares it for the checker, and the linker resolves the two
 // sides to one declaration.
 //
-// This is what a union in the surface language was for. The `c-union`
-// case beside this one drives the same idea through accessor functions,
-// which is what a program had to do while Gyro could not spell the type.
+// Gyro cannot declare a union, so this is the only way one reaches a
+// program. The `c-union` case beside this one drives the same idea
+// through accessor functions.
 
 import { println } from "stdlib"
 import {

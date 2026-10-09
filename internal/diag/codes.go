@@ -84,8 +84,6 @@ const (
 	EVariadicParam       Code = "E0524"
 	EBadSpread           Code = "E0525"
 	ENoAddress           Code = "E0526"
-	EUnionDeclaration    Code = "E0527"
-	EUnionMember         Code = "E0528"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -230,10 +228,6 @@ var explanations = map[Code]explanation{
 		"== is derived for types whose fields all derive it; ordering is\nnumeric, and everything else spells it a.compare(b)."},
 	EPatternNeverMatches: {"pattern can never match",
 		"The pattern's type is not the subject's, so the arm is dead."},
-	EUnionDeclaration: {"malformed union declaration",
-		"A union is one storage with several names for it, so it declares at\nleast one member and never the same name twice."},
-	EUnionMember: {"value cannot be a union member",
-		"A union member is bytes. Nothing records which member is live, so\nreading one that was never written reinterprets whatever is there — and\na value the runtime tracks beside its bytes (a string, a slice, an\nArray, an enum's tag, a nullable's flag) does not survive that."},
 	EIndexNotUsize: {"index is not usize",
 		"Lengths and indexes are usize and never mix with signed arithmetic\nimplicitly."},
 	EConditionNotBool: {"condition is not bool",

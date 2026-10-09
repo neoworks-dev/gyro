@@ -82,7 +82,6 @@ const (
 	Const
 	Fn
 	Struct
-	Union
 	Enum
 	Return
 	If
@@ -177,7 +176,6 @@ var kindNames = map[Kind]string{
 	Const:      "const",
 	Fn:         "fn",
 	Struct:     "struct",
-	Union:      "union",
 	Enum:       "enum",
 	Return:     "return",
 	If:         "if",
@@ -220,7 +218,6 @@ var keywords = map[string]Kind{
 	"const":    Const,
 	"fn":       Fn,
 	"struct":   Struct,
-	"union":    Union,
 	"enum":     Enum,
 	"return":   Return,
 	"if":       If,

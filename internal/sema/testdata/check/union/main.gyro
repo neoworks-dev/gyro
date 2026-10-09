@@ -1,0 +1,58 @@
+// A union is one storage with several names for it, and nothing records
+// which of them is live. It comes from C through the import, and that
+// single fact decides what a literal may say and which derived
+// operations exist at all.
+
+import { Value, Nested, Pair, make_value, make_nested, make_pair } from "./value.c"
+
+fn Value::as_int(self): i64 {
+  return self.i
+}
+
+fn shapes() {
+  var v = Value{ i: 1 }
+  var read = v.i
+  v.f = 2.5
+  var method = v.as_int()
+
+  var n = Nested{ whole: 3 }
+  var through = n.inner.i
+}
+
+// ---------------------------------------------------------------------
+// The literal
+
+fn literals() {
+  var none = Value{}            //~ E0508 a union literal sets exactly one member, not 0
+                                //~^ help: the members share one storage, so writing one is writing all of it
+
+  var both = Value{ i: 1, f: 2.5 }  //~ E0508 a union literal sets exactly one member, not 2
+
+  var positional = Value{ 1 }   //~ E0508 a union literal names the member it sets; position would not say which
+                                //~^ help: name the member: Value{ i: ... }
+
+  var wrong = Value{ nope: 1 }  //~ E0405 Value has no member nope
+}
+
+// ---------------------------------------------------------------------
+// What a union does not derive
+
+fn derived(a: Value, b: Value) {
+  var same = a == b             //~ E0511 cannot compare Value with Value
+  var boxed = a as any          //~ E0509 an any cannot hold Value
+}
+
+// A struct holding one inherits both refusals: field-wise derivation has
+// nothing to derive from the member set.
+struct Holder {
+  value: Value
+}
+
+fn inherited(a: Holder, b: Holder) {
+  var same = a == b             //~ E0511 cannot compare Holder with Holder
+  var boxed = a as any          //~ E0509 an any cannot hold Holder
+}
+
+fn missing(v: Value) {
+  var gone = v.nope             //~ E0405 Value has no field or method nope
+}

@@ -437,6 +437,31 @@ func TestFromIsContextual(t *testing.T) {
 	}
 }
 
+// A Gyro program cannot declare a union, so `union` is an ordinary
+// identifier there. Only the text generated for a foreign module reads it
+// as a declaration, because a union is C's and arrives through an import.
+func TestUnionIsDeclaredOnlyByForeignText(t *testing.T) {
+	if got, want := dumpOf(t, "fn t() {\n  var union = 1\n}\n"),
+		"File test.gyro Func t Body: Block Var union Value: Lit int literal 1"; got != want {
+		t.Errorf("a variable named union\n got: %s\nwant: %s", got, want)
+	}
+
+	var bag diag.Bag
+	Parse("test.gyro", "union Bits {\n  whole: i32\n}\n", &bag)
+	if !bag.HasErrors() {
+		t.Error("a Gyro program declared a union")
+	}
+
+	bag = diag.Bag{}
+	tree := ParseForeign(diag.NewFile("foreign.gyro", "export union Bits {\n  export whole: i32\n}\n"), &bag)
+	if bag.HasErrors() || len(tree.Decls) != 1 {
+		t.Fatalf("generated text did not parse: %v", bag.Items())
+	}
+	if _, ok := tree.Decls[0].(*ast.UnionDecl); !ok {
+		t.Errorf("generated text declared %T, want a union", tree.Decls[0])
+	}
+}
+
 func TestDefaultImportIsRejected(t *testing.T) {
 	// There are no default exports, so a bare name has nothing to bind to.
 	var bag diag.Bag
