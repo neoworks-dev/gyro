@@ -4,6 +4,7 @@
 // through before the call.
 
 import { println, Array, String } from "stdlib"
+import { heap } from "mem"
 
 fn fill(values: *Array<i32>, upto: i32) {
   for i in 0..upto {
@@ -25,14 +26,14 @@ fn shout(out: *String, text: string) {
 }
 
 fn main() {
-  var values = Array<i32>::new()
+  var values = Array<i32>::new(heap())
   defer values.free()
   fill(&values, 5)
   println(values.len())
   println(total(&values))
 
-  var message = String::new()
+  var message = String::new(heap())
   defer message.free()
   shout(&message, "hello")
-  println(message.text())
+  println(message.text(heap()))
 }

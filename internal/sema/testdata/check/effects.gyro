@@ -4,7 +4,8 @@
 // v1. Allocation is not an effect: a function allocates when it is handed
 // an Allocator, and that shows in its parameters.
 
-import { println, Array } from "stdlib"
+import { println, Array, runes } from "stdlib"
+import { heap } from "mem"
 
 fn quiet(n: i32) !{} {
   println(n)             //~ E0611 println does io, which the row does not name
@@ -108,7 +109,7 @@ fn allocating(n: i32) !{ alloc } {   //~ E0612 alloc is not an effect
 // surface answers for itself, and it performs no io.
 fn count(text: string): i32 !{} {
   var seen = 0
-  for point in text.runes() {
+  for point in text.runes(heap()) {
     seen += 1
   }
   return seen

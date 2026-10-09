@@ -3,9 +3,10 @@
 // tells the two apart.
 
 import { println, Map } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var seats = Map<string, i32?>::new()
+  var seats = Map<string, i32?>::new(heap())
   defer seats.free()
 
   seats.insert("ada", 3)

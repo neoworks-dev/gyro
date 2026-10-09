@@ -580,7 +580,13 @@ func (l *lowerer) ensureNativeImport(name string, decl *ast.FuncDecl, sig *types
 	}
 	lowered := l.metalsFnType(sig)
 	if decl.Recv != nil {
-		lowered.Params = append([]metals.Type{&metals.Handle{}}, lowered.Params...)
+		// A runtime object is a handle; an extension of a built-in type
+		// takes the value itself as its receiver.
+		receiver := metals.Type(&metals.Handle{})
+		if builtin, ok := types.Builtin[decl.Owner]; ok {
+			receiver = l.metalsType(builtin)
+		}
+		lowered.Params = append([]metals.Type{receiver}, lowered.Params...)
 	}
 	l.imports[name] = lowered
 }

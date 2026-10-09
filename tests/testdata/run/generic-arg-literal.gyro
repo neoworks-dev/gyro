@@ -9,9 +9,10 @@
 // and 260 in an i32.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var wide = Array<u64>::new()
+  var wide = Array<u64>::new(heap())
   wide.push(7)
   wide.push(18446744073709551615)
   var one: u64 = 1
@@ -19,7 +20,7 @@ fn main() {
   println(wide.get(1) +% one)
   wide.free()
 
-  var bytes = Array<u8>::new()
+  var bytes = Array<u8>::new(heap())
   bytes.push(250)
   println(bytes.get(0) +% 10)
   bytes.set(0, 200)
@@ -28,7 +29,7 @@ fn main() {
 
   // A value no i32 could hold, which is only legal because the element
   // type is what the literal has to fit.
-  var offsets = Array<i64>::new()
+  var offsets = Array<i64>::new(heap())
   offsets.push(4294967296)
   println(offsets.get(0) + 1)
   offsets.free()

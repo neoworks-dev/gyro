@@ -5,9 +5,10 @@
 
 import { println, eprintln, Array } from "stdlib"
 import { monotonic } from "time"
+import { heap } from "mem"
 
 fn main() {
-  var values = Array<i64>::new()
+  var values = Array<i64>::new(heap())
   defer values.free()
   for var i: i64 = 0; i < 1024; i += 1 {
     values.push(i)

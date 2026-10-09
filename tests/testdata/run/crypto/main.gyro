@@ -15,10 +15,11 @@
 // kilobytes, because this runs on a tree-walking interpreter as well as
 // on two native backends. reference.c uses the same count.
 
-import { repeat } from "stdlib"
+import { repeat, bytes } from "stdlib"
 import { printf } from "fmt"
 import * as md5 from "./md5"
 import * as sha256 from "./sha256"
+import { heap } from "mem"
 
 const REPEATS: i64 = 1000
 
@@ -31,8 +32,8 @@ fn show(algorithm: string, label: string, digest: u8[]) {
 }
 
 fn both(label: string, message: string) {
-  show("md5", label, md5::sum(message.bytes()))
-  show("sha256", label, sha256::sum(message.bytes()))
+  show("md5", label, md5::sum(message.bytes(heap())))
+  show("sha256", label, sha256::sum(message.bytes(heap())))
 }
 
 fn main() {
@@ -45,19 +46,19 @@ fn main() {
   // md5_test.c adds its third message in two chunks, to show that a
   // context accepts more than one update.
   var ctx = md5::init()
-  ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes())
-  ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes())
+  ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes(heap()))
+  ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes(heap()))
   show("md5", "two-chunk", ctx.final())
 
   // sha256_test.c's repeated-update vector, at a tenth of a percent of
   // its length.
-  show("sha256", "repeated", sha256::sum_repeated("aaaaaaaaaa".bytes(), REPEATS))
+  show("sha256", "repeated", sha256::sum_repeated("aaaaaaaaaa".bytes(heap()), REPEATS))
 
   // The padding boundaries: 55 and 56 bytes bracket the branch in
   // `final`, 63 and 64 bracket the block that `update` flushes on its
   // own, and 0 and 70 are the ends.
   for length in 0..71 {
-    var message = "a".repeat(length)
+    var message = "a".repeat(heap(), length)
     both("#{length}", message)
   }
 }

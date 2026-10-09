@@ -23,6 +23,7 @@
 //gyro:skip it opens a window and reports a frame rate, neither of which a golden can hold
 
 import { println, eprintln, Array } from "stdlib"
+import { heap } from "mem"
 
 // ---------------------------------------------------------------------
 // SDL2
@@ -254,7 +255,7 @@ fn main() {
   defer SDL_DestroyTexture(texture)
 
   // One frame's worth of storage, reused every frame.
-  var pixels = Array<u32>::with_capacity((WIDTH * HEIGHT) as usize)
+  var pixels = Array<u32>::with_capacity(heap(), (WIDTH * HEIGHT) as usize)
   defer pixels.free()
   for i in 0..(WIDTH * HEIGHT) {
     pixels.push(0)

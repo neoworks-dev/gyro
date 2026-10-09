@@ -6,7 +6,8 @@
 // verb may print comes from `match`, which is the only way to get a
 // concrete type back out of an `any`.
 
-import { Array, from_utf8, print, eprintln } from "stdlib"
+import { Array, from_utf8, bytes, print, eprintln } from "stdlib"
+import { Allocator, heap } from "mem"
 
 // The verbs:
 //
@@ -21,9 +22,11 @@ import { Array, from_utf8, print, eprintln } from "stdlib"
 // Between the % and the verb: an optional `-` to left-align, an optional
 // `0` to pad with zeros instead of spaces, and an optional decimal width.
 // `%-4d`, `%02x` and `%8s` all mean what they do in C.
-export fn sprintf(format: string, args: ...any): string !{} {
-  var out = Array<u8>::new()
-  var body = format.bytes()
+//
+// The text is built in blocks from `a`, and the result is a block from it.
+export fn sprintf(a: Allocator, format: string, args: ...any): string !{} {
+  var out = Array<u8>::new(a)
+  var body = format.bytes(a)
   var next: usize = 0
 
   var i: usize = 0
@@ -41,24 +44,24 @@ export fn sprintf(format: string, args: ...any): string !{} {
       continue
     }
     if next >= args.len() {
-      push_text(out, "%!(MISSING)")
+      push_text(a, out, "%!(MISSING)")
       continue
     }
-    push_text(out, pad(render(args[next], spec.verb), spec))
+    push_text(a, out, pad(a, render(a, args[next], spec.verb), spec))
     next += 1
   }
 
-  var text = from_utf8(out.slice())
+  var text = from_utf8(a, out.slice())
   out.free()
   return text
 }
 
 export fn printf(format: string, args: ...any) !{ io } {
-  print(sprintf(format, args...))
+  print(sprintf(heap(), format, args...))
 }
 
 export fn eprintf(format: string, args: ...any) !{ io } {
-  eprintln(sprintf(format, args...))
+  eprintln(sprintf(heap(), format, args...))
 }
 
 // The byte values the format language spells out, named once so the
@@ -69,8 +72,8 @@ const zero_digit: u8 = 48
 const nine_digit: u8 = 57
 const space: u8 = 32
 
-fn push_text(out: Array<u8>, text: string) !{} {
-  for byte in text.bytes() {
+fn push_text(a: Allocator, out: Array<u8>, text: string) !{} {
+  for byte in text.bytes(a) {
     out.push(byte)
   }
 }
@@ -116,7 +119,7 @@ fn read_spec(body: u8[], from: usize): (Spec, usize) {
 // pad widens a rendered value to the spec's width. It returns its
 // argument unchanged when nothing has to be added, which is why the row
 // says the result may view it.
-fn pad(text: string, spec: Spec): string !{ &text } {
+fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
   var width = text.len()
   if width >= spec.width {
     return text
@@ -127,18 +130,18 @@ fn pad(text: string, spec: Spec): string !{ &text } {
     filler = space
   }
 
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(a)
   if spec.left {
-    push_text(out, text)
+    push_text(a, out, text)
   }
   for i in 0..((spec.width - width) as i32) {
     out.push(filler)
   }
   if !spec.left {
-    push_text(out, text)
+    push_text(a, out, text)
   }
 
-  var result = from_utf8(out.slice())
+  var result = from_utf8(a, out.slice())
   out.free()
   return result
 }
@@ -151,11 +154,11 @@ fn pad(text: string, spec: Spec): string !{ &text } {
 // the any holds falls back to the value's own representation rather than
 // panicking: a format string is data, and a mismatch in it should not
 // take the program down.
-fn render(value: any, verb: u8): string !{} {
+fn render(a: Allocator, value: any, verb: u8): string !{} {
   if verb == 120 || verb == 88 {
     var n, ok = as_unsigned(value)
     if ok {
-      return hex(n, verb == 88)
+      return hex(a, n, verb == 88)
     }
     return "#{value}"
   }
@@ -199,27 +202,27 @@ fn widen(value: i64): u64 {
   return 18446744073709551615 - ((-(value + 1)) as u64)
 }
 
-fn hex(value: u64, upper: bool): string !{} {
+fn hex(a: Allocator, value: u64, upper: bool): string !{} {
   if value == 0 {
     return "0"
   }
 
   // The digits come out least significant first, so they are collected
   // and then walked backwards.
-  var digits = Array<u8>::new()
+  var digits = Array<u8>::new(a)
   var n = value
   while n > 0 {
     digits.push(hex_digit((n & 15) as u8, upper))
     n = n >> 4
   }
 
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(a)
   for var i = digits.len(); i > 0; i -= 1 {
     out.push(digits.get(i - 1))
   }
   digits.free()
 
-  var text = from_utf8(out.slice())
+  var text = from_utf8(a, out.slice())
   out.free()
   return text
 }

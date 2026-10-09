@@ -22,7 +22,8 @@
 // every intermediate product below 2^63 and makes the digit string nine
 // characters per limb.
 
-import { Array, String, from_utf8 } from "stdlib"
+import { Array, String, from_utf8, bytes } from "stdlib"
+import { heap } from "mem"
 
 const BASE: u64 = 1000000000
 const TWO64: f64 = 18446744073709551616.0
@@ -90,7 +91,7 @@ export fn absolute(x: f64): f64 {
 // ---------------------------------------------------------------------------
 
 fn from_u64(value: u64): Array<u64> {
-  var limbs = Array<u64>::new()
+  var limbs = Array<u64>::new(heap())
   var rest = value
   while rest > 0 {
     limbs.push(rest % BASE)
@@ -151,7 +152,7 @@ fn digit_string(limbs: Array<u64>): string {
     top -= 1
   }
 
-  var out = String::new()
+  var out = String::new(heap())
   var head = limbs.get(top - 1)
   if head == 0 {
     out.push("0")
@@ -171,7 +172,7 @@ fn digit_string(limbs: Array<u64>): string {
     push_limb(out, limbs.get(i - 1))
   }
 
-  var text = out.text()
+  var text = out.text(heap())
   out.free()
   return text
 }
@@ -214,7 +215,7 @@ export fn decimal_of(x: f64): (string, i64) {
 // Ties round to even, which is what glibc does with the default rounding
 // mode, and the expansion is exact, so a tie really is a tie.
 fn round_to(digits: u8[], precision: usize): (Array<u8>, bool) {
-  var kept = Array<u8>::new()
+  var kept = Array<u8>::new(heap())
   for var i: usize = 0; i < precision; i += 1 {
     if i < digits.len() {
       kept.push(digits[i])
@@ -312,13 +313,13 @@ fn push_range(out: String, kept: Array<u8>, from: usize, to: usize) {
 // the %e form when the exponent leaves the window, the positional form
 // otherwise, and trailing zeros dropped either way.
 export fn format_g(digits: string, exponent: i64, negative: bool, precision: usize): string {
-  var kept, carried = round_to(digits.bytes(), precision)
+  var kept, carried = round_to(digits.bytes(heap()), precision)
   var scientific = exponent
   if carried {
     scientific += 1
   }
 
-  var out = String::new()
+  var out = String::new(heap())
   if negative {
     out.push("-")
   }
@@ -352,7 +353,7 @@ export fn format_g(digits: string, exponent: i64, negative: bool, precision: usi
   }
 
   kept.free()
-  var text = out.text()
+  var text = out.text(heap())
   out.free()
   return text
 }

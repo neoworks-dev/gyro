@@ -3,6 +3,7 @@
 // parameter is a value and copies instead.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn bump(xs: i32[]) {
   xs[0] = 99
@@ -29,7 +30,7 @@ fn main() {
   println(xs[0])
 
   // The same holds through an owning Array's view.
-  var owned = Array<i32>::new()
+  var owned = Array<i32>::new(heap())
   defer owned.free()
   owned.push(4)
   owned.push(5)

@@ -1,11 +1,12 @@
 // fs — declarations only; the runtime supplies the bodies.
 
 import { Array } from "stdlib"
+import { Allocator } from "mem"
 
 export struct File {}
 
 export fn open(path: string): (File, error?) !{ io }
-export fn read_all(file: File): (string, error?) !{ io }
+export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
 export fn File::close(*self) !{ io }
 
 // The one-shot operations take a path, not a handle: each opens, acts and
@@ -15,7 +16,10 @@ export fn write_file(path: string, text: string): error? !{ io }
 export fn append_file(path: string, text: string): error? !{ io }
 export fn remove(path: string): error? !{ io }
 
+// read_all and read_dir build what they return from `a`: the text, or the
+// array of names and the names in it.
+//
 // read_dir lists an existing directory's entry names, sorted, without
 // "." and "..".
-export fn read_dir(path: string): (Array<string>, error?) !{ io }
+export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io }
 export fn exists(path: string): bool !{ io }

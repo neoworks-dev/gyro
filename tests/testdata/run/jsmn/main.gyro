@@ -14,9 +14,10 @@
 // test_partial_string, the small-pool sweep of test_array_nomem, and
 // test_input_length's parse of a prefix with garbage after it.
 
-import { println, Array, String, from_utf8 } from "stdlib"
+import { println, Array, String, from_utf8, bytes } from "stdlib"
 import { printf } from "fmt"
 import * as jsmn from "./jsmn"
+import { heap } from "mem"
 
 const POOL: i64 = 128
 
@@ -33,8 +34,8 @@ fn kind_name(kind: jsmn::Kind): string {
 // visible renders the input on one line, so a case with a newline in it
 // does not break the table.
 fn visible(text: string): string {
-  var out = String::new()
-  for byte in text.bytes() {
+  var out = String::new(heap())
+  for byte in text.bytes(heap()) {
     if byte == '\n' as u8 {
       out.push("\\n")
     } elif byte == '\t' as u8 {
@@ -51,16 +52,16 @@ fn visible(text: string): string {
 // span is the text a token covers, which is what the C test compares
 // against for strings and primitives.
 fn span(js: u8[], token: jsmn::Token): string {
-  var bytes = Array<u8>::new()
+  var raw = Array<u8>::new(heap())
   var i = token.start
   while i < token.end && i < js.len() as i64 {
     if i >= 0 {
-      bytes.push(js[i as usize])
+      raw.push(js[i as usize])
     }
     i += 1
   }
-  var text = from_utf8(bytes.slice())
-  bytes.free()
+  var text = from_utf8(heap(), raw.slice())
+  raw.free()
   return text
 }
 
@@ -74,8 +75,8 @@ fn show(js: u8[], tokens: Array<jsmn::Token>, count: i64) {
 }
 
 fn parse(label: string) {
-  var js = label.bytes()
-  var tokens = Array<jsmn::Token>::new()
+  var js = label.bytes(heap())
+  var tokens = Array<jsmn::Token>::new(heap())
   var parser = jsmn::init()
   var result = parser.parse(js, tokens, POOL, false)
   printf("%-46s -> %d\n", visible(label), result)
@@ -86,8 +87,8 @@ fn parse(label: string) {
 }
 
 fn count(label: string) {
-  var js = label.bytes()
-  var tokens = Array<jsmn::Token>::new()
+  var js = label.bytes(heap())
+  var tokens = Array<jsmn::Token>::new(heap())
   var parser = jsmn::init()
   var result = parser.parse(js, tokens, 0, true)
   printf("%-46s -> %d\n", visible(label), result)
@@ -95,14 +96,14 @@ fn count(label: string) {
 }
 
 fn prefix(text: string, length: i64): u8[] {
-  var bytes = Array<u8>::new()
-  var all = text.bytes()
+  var raw = Array<u8>::new(heap())
+  var all = text.bytes(heap())
   var i: i64 = 0
   while i < length && i < all.len() as i64 {
-    bytes.push(all[i as usize])
+    raw.push(all[i as usize])
     i += 1
   }
-  return bytes.slice()
+  return raw.slice()
 }
 
 fn main() {
@@ -143,14 +144,14 @@ fn main() {
 
   println("-- partial string")
   var partial = "{\"x\": \"va\\\\ue\", \"y\": \"value y\"}"
-  var total = partial.bytes().len() as i64
+  var total = partial.bytes(heap()).len() as i64
   for var i: i64 = 1; i <= total; i += 1 {
-    var tokens = Array<jsmn::Token>::new()
+    var tokens = Array<jsmn::Token>::new(heap())
     var parser = jsmn::init()
     var result = parser.parse(prefix(partial, i), tokens, 5, false)
     printf("  length %2d -> %d\n", i, result)
     if result >= 0 {
-      show(partial.bytes(), tokens, result)
+      show(partial.bytes(heap()), tokens, result)
     }
     tokens.free()
   }
@@ -158,9 +159,9 @@ fn main() {
   println("-- small pools")
   var nomem = "  [ 1, true, [123, \"hello\"]]"
   for var pool: i64 = 0; pool < 6; pool += 1 {
-    var tokens = Array<jsmn::Token>::new()
+    var tokens = Array<jsmn::Token>::new(heap())
     var parser = jsmn::init()
-    var result = parser.parse(nomem.bytes(), tokens, pool, false)
+    var result = parser.parse(nomem.bytes(heap()), tokens, pool, false)
     printf("  pool %d -> %d\n", pool, result)
     tokens.free()
   }
@@ -171,7 +172,7 @@ fn main() {
 
   println("-- input length")
   var truncated = "{\"a\": 0}garbage"
-  var tokens = Array<jsmn::Token>::new()
+  var tokens = Array<jsmn::Token>::new(heap())
   var parser = jsmn::init()
   var result = parser.parse(prefix(truncated, 8), tokens, 10, false)
   printf("  first 8 bytes -> %d\n", result)

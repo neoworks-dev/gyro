@@ -10,6 +10,7 @@
 import { println, eprintln } from "stdlib"
 import { to_i32 } from "convert"
 import { open, read_all } from "fs"
+import { heap } from "mem"
 
 export struct RangeError {
   export value: i32
@@ -43,7 +44,7 @@ fn load_config(path: string): (string, error?) {
   }
   defer handle.close()
 
-  var contents, read_err = read_all(handle)
+  var contents, read_err = read_all(heap(), handle)
   if read_err != null {
     return "", read_err
   }

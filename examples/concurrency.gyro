@@ -6,6 +6,7 @@
 
 import { println, spawn, Mutex, Array } from "stdlib"
 import { get } from "net"
+import { heap } from "mem"
 
 // --- channels -------------------------------------------------------------
 
@@ -68,7 +69,7 @@ fn sum_shared(values: i32[]) {
 // Takes a borrowed view of the urls and returns an owning Array the caller
 // is responsible for freeing.
 export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-  var bodies = Array<string>::new()
+  var bodies = Array<string>::new(heap())
 
   for url in urls {
     var body, err = await get(url)

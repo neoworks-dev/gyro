@@ -1,0 +1,100 @@
+// A container records the allocator it was made with. Growing and freeing
+// go through that allocator and take none of their own, so the pair cannot
+// disagree. The first half counts the requests that reach a user-written
+// allocator; the second runs an Array and a Map entirely inside an arena.
+
+import { println, Array, Map } from "stdlib"
+import { heap, Allocator, Arena, Mode } from "mem"
+
+struct Counter {
+  allocs: i32
+  resizes: i32
+  frees: i32
+}
+
+// Counts what reaches it and leaves the work to the heap.
+fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? {
+  if data == null {
+    return null
+  }
+  var counter = data as *Counter
+  match mode {
+    Mode::Alloc: {
+      counter.allocs += 1
+    }
+    Mode::Free: {
+      counter.frees += 1
+    }
+    Mode::FreeAll: {
+    }
+    Mode::Resize: {
+      counter.resizes += 1
+    }
+  }
+  var h = heap()
+  return h.proc(h.data, mode, size, align, old, old_size)
+}
+
+fn show(counter: *Counter) {
+  println("allocs=#{counter.allocs} resizes=#{counter.resizes} frees=#{counter.frees}")
+}
+
+fn main() {
+  var counter = Counter{ allocs: 0, resizes: 0, frees: 0 }
+  var counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
+
+  // new takes the array's header from the allocator: one Alloc, and no
+  // buffer yet.
+  var xs = Array<i32>::new(counting)
+  show(&counter)
+
+  // The first push takes a buffer of 8 elements, the ninth doubles it to
+  // 16 and the seventeenth to 32: three Resize requests for twenty pushes.
+  for i in 0..20 {
+    xs.push(i)
+  }
+  show(&counter)
+
+  // free returns the buffer to the recorded allocator. The header stays, so
+  // a second free is still caught.
+  xs.free()
+  show(&counter)
+
+  // with_capacity reserves up front: the one buffer is the only Resize.
+  var ys = Array<i32>::with_capacity(counting, 40)
+  for i in 0..20 {
+    ys.push(i)
+  }
+  show(&counter)
+  ys.free()
+  show(&counter)
+
+  // A Map makes its bucket table and one array per bucket when it is made:
+  // nine headers, and one buffer for the table.
+  var ages = Map<string, i32>::new(counting)
+  show(&counter)
+  ages.free()
+
+  // Inside an arena nothing is ever returned one block at a time, and the
+  // arena takes everything back at once.
+  var arena = Arena::new(heap(), 8192)
+  defer arena.free()
+
+  var zs = Array<i32>::new(arena.allocator())
+  var total = 0
+  for i in 0..100 {
+    zs.push(i)
+    total += i
+  }
+  println(zs.len())
+  println(total)
+  zs.free()
+
+  arena.free_all()
+  var table = Map<string, i32>::new(arena.allocator())
+  table.insert("a", 1)
+  table.insert("b", 2)
+  table.insert("a", 3)
+  println(table.len())
+  println(table.get("a"))
+}

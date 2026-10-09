@@ -4,6 +4,7 @@
 // counts below are safe goldens across all three tiers.
 
 import { println, Map } from "stdlib"
+import { heap } from "mem"
 
 struct Point {
   x: i32
@@ -11,7 +12,7 @@ struct Point {
 }
 
 fn main() {
-  var ages = Map<string, i32>::new()
+  var ages = Map<string, i32>::new(heap())
   println(ages.is_empty())
   ages.insert("ada", 36)
   ages.insert("grace", 45)
@@ -30,7 +31,7 @@ fn main() {
   println(ages.len())
 
   // Struct keys hash the way == compares: equal points collide on purpose.
-  var walls = Map<Point, string>::new()
+  var walls = Map<Point, string>::new(heap())
   walls.insert(Point{ x: 1, y: 2 }, "north")
   walls.insert(Point{ x: 1, y: 2 }, "south")
   println(walls.len())
@@ -40,7 +41,7 @@ fn main() {
   }
 
   // Push the map through several growths and read everything back.
-  var squares = Map<i32, i32>::new()
+  var squares = Map<i32, i32>::new(heap())
   for i in 0..100 {
     squares.insert(i, i * i)
   }

@@ -31,10 +31,11 @@
 //   * The allocation-failure cases, which install a malloc that returns
 //     NULL. `alloc` does not fail in Gyro.
 
-import { println, print, Array, String, from_utf8 } from "stdlib"
+import { println, print, Array, String, from_utf8, bytes } from "stdlib"
 import { printf } from "fmt"
 import * as cjson from "./cjson"
 import * as inputs from "./inputs"
+import { heap } from "mem"
 
 // ---------------------------------------------------------------------------
 // Rendering helpers
@@ -60,8 +61,8 @@ fn type_name(item: *cjson::Node?): string {
 // everything else as \xNN, so a control character or a UTF-8 sequence in a
 // parsed string cannot break the table.
 fn visible(text: string): string {
-  var out = String::new()
-  for byte in text.bytes() {
+  var out = String::new(heap())
+  for byte in text.bytes(heap()) {
     if byte == '\\' as u8 {
       out.push("\\\\")
     } elif byte >= 32 && byte < 127 {
@@ -72,7 +73,7 @@ fn visible(text: string): string {
       out.push_rune(hex_digit(byte & 15) as rune)
     }
   }
-  var result = out.text()
+  var result = out.text(heap())
   out.free()
   return result
 }
@@ -166,11 +167,11 @@ fn tree_depth(item: *cjson::Node?): i32 {
 }
 
 fn repeated(byte: u8, times: i32): string {
-  var out = String::new()
+  var out = String::new(heap())
   for i in 0..times {
     out.push_rune(byte as rune)
   }
-  var result = out.text()
+  var result = out.text(heap())
   out.free()
   return result
 }
@@ -352,11 +353,11 @@ fn print_string_case(label: string, text: string) {
 fn section_print_string() {
   println("== print_string")
   print_string_case("empty", "")
-  var ascii = String::new()
+  var ascii = String::new(heap())
   for i in 1..127 {
     ascii.push_rune(i as rune)
   }
-  print_string_case("ascii 1..126", ascii.text())
+  print_string_case("ascii 1..126", ascii.text(heap()))
   ascii.free()
   print_string_case("utf8", "ü猫慕")
   print_string_case("quotes and slashes", "a\"b\\c/d")
@@ -648,7 +649,7 @@ fn section_lookup() {
 
 fn section_predicates() {
   println("== predicates")
-  var nodes = Array<*cjson::Node>::new()
+  var nodes = Array<*cjson::Node>::new(heap())
   nodes.push(cjson::create_null())
   nodes.push(cjson::create_true())
   nodes.push(cjson::create_false())

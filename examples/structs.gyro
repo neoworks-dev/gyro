@@ -6,6 +6,7 @@
 // There is no universe scope: Array is a stdlib type, so it is imported
 // like anything else that is not part of the formal syntax.
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 export struct Stack {
   export capacity: i32
@@ -16,7 +17,7 @@ export struct Stack {
 
 // An associated function: no receiver, called as Stack::new(..).
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new() }
+  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
 }
 
 // `self` borrows and never copies the receiver, however large it is.

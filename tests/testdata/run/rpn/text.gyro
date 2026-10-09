@@ -1,6 +1,7 @@
 // Turning a line into words, and deciding which words are numbers.
 
-import { Array, split } from "stdlib"
+import { Array, split, bytes } from "stdlib"
+import { heap } from "mem"
 
 export fn is_digit(byte: u8): bool {
   return byte >= '0' as u8 && byte <= '9' as u8
@@ -10,7 +11,7 @@ export fn is_digit(byte: u8): bool {
 // ordinary word would allocate a parse failure on its way to being
 // recognised as a word.
 export fn is_number(word: string): bool {
-  var bytes = word.bytes()
+  var bytes = word.bytes(heap())
   if bytes.len() == 0 {
     return false
   }
@@ -30,15 +31,15 @@ export fn is_number(word: string): bool {
 // words_of splits a line on spaces, drops what runs of them leave behind,
 // and stops at a `#`, which comments out the rest of the line.
 export fn words_of(line: string): Array<string> {
-  var parts = line.split(" ")
+  var parts = line.split(heap(), " ")
   defer parts.free()
 
-  var out = Array<string>::new()
+  var out = Array<string>::new(heap())
   for part in parts.slice() {
     if part.len() == 0 {
       continue
     }
-    if part.bytes()[0] == '#' as u8 {
+    if part.bytes(heap())[0] == '#' as u8 {
       break
     }
     out.push(part)

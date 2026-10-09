@@ -31,7 +31,8 @@
 // C read whatever the static array held from the previous call. This
 // port rejects the pattern instead.
 
-import { Array } from "stdlib"
+import { Array, bytes } from "stdlib"
+import { heap } from "mem"
 
 // The C module is fixed-size and says so in its README; the limits are
 // part of its behaviour (an over-long pattern fails to compile), so they
@@ -134,8 +135,8 @@ fn match_dot(c: u8): bool {
 // ---------------------------------------------------------------------------
 
 export fn compile(pattern: u8[]): Pattern {
-  var nodes = Array<Node>::new()
-  var classes = Array<u8>::new()
+  var nodes = Array<Node>::new(heap())
+  var classes = Array<u8>::new(heap())
   // The C buffer fills from index 1 so that match_class can look one
   // byte back from the start of a class; the spare byte is that lookback.
   classes.push(0)
@@ -465,7 +466,7 @@ export fn matchp(pattern: Pattern, text: u8[]): (i64, i64) {
 
 // match_text is the one-shot form: compile, match, release.
 export fn match_text(pattern: string, text: string): (i64, i64) {
-  var compiled = compile(pattern.bytes())
+  var compiled = compile(pattern.bytes(heap()))
   defer compiled.free()
-  return matchp(compiled, text.bytes())
+  return matchp(compiled, text.bytes(heap()))
 }

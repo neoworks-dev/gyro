@@ -8,6 +8,7 @@
 // what you want when a copy is what you want.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 struct Point {
   x: i32
@@ -19,7 +20,7 @@ fn bump(p: *i32) {
 }
 
 fn main() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   defer xs.free()
   xs.push(1)
   xs.push(2)
@@ -46,7 +47,7 @@ fn main() {
 
   // A struct element is mutated in place, where `get` would answer with
   // a copy and the assignment would reach nothing.
-  var ps = Array<Point>::new()
+  var ps = Array<Point>::new(heap())
   defer ps.free()
   ps.push(Point{ x: 1, y: 2 })
   ps.push(Point{ x: 3, y: 4 })

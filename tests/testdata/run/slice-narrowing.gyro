@@ -9,6 +9,7 @@
 
 import { println } from "stdlib"
 import { Array } from "stdlib"
+import { heap } from "mem"
 
 fn total(xs: i32[]): i32 {
   var sum = 0
@@ -65,7 +66,7 @@ fn main() {
   // An Array<T> narrows through the view it already hands out, so the
   // window borrows its buffer rather than copying it: a write through
   // the window is what the array holds.
-  var grown = Array<i32>::new()
+  var grown = Array<i32>::new(heap())
   defer grown.free()
   grown.push(1)
   grown.push(2)

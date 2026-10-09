@@ -5,9 +5,10 @@
 //gyro:panic index 3 out of range for length 2
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn main() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   defer xs.free()
   xs.push(1)
   xs.push(2)

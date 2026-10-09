@@ -15,9 +15,10 @@
 // is exactly one jsmn port: the one whose token tables the corpus
 // compares against the C original's.
 
-import { println, eprintln, Array } from "stdlib"
+import { println, eprintln, Array, bytes } from "stdlib"
 import { monotonic } from "time"
 import * as jsmn from "../../../testdata/run/jsmn/jsmn"
+import { heap } from "mem"
 
 const POOL: i64 = 128
 const ROUNDS: i64 = 20000
@@ -38,8 +39,8 @@ fn kind_code(kind: jsmn::Kind): u64 {
 }
 
 fn main() {
-  var js = DOCUMENT.bytes()
-  var tokens = Array<jsmn::Token>::new()
+  var js = DOCUMENT.bytes(heap())
+  var tokens = Array<jsmn::Token>::new(heap())
 
   var start = monotonic()
   var acc: u64 = 0

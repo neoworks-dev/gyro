@@ -229,6 +229,6 @@ var codes = map[string]diag.Code{
 	// Iteration
 	"a range is not a value; `..` only appears in for..in":                                                      diag.ERangeMisuse,
 	"a range needs matching integer endpoints, got %s and %s":                                                   diag.ERangeMisuse,
-	"a string does not iterate directly; use .runes() for code points":                                          diag.EIterationMisuse,
+	"a string does not iterate directly; use .runes(a) for code points":                                         diag.EIterationMisuse,
 	"%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type with next(*self): (T, bool)": diag.EIterationMisuse,
 }

@@ -1,9 +1,10 @@
 // The bundled stubs are real signatures, not opaque names.
 
 import { println, Array } from "stdlib"
+import { heap } from "mem"
 
 fn used() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   xs.push(4)
   var n: usize = xs.len()
   println(n)
@@ -11,7 +12,7 @@ fn used() {
 }
 
 fn misused() {
-  var xs = Array<i32>::new()
+  var xs = Array<i32>::new(heap())
   xs.push("four")                //~ cannot use string as i32
   xs.free()
 }

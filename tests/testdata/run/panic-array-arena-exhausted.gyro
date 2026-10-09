@@ -1,0 +1,21 @@
+//gyro:panic allocation of 256 bytes failed
+// An array grows through the allocator it was made with, and an arena does
+// not grow: the header takes 64 bytes of a 256-byte arena, the first
+// buffer of 8 i64 takes 64 more, the second of 16 takes 128, and the
+// seventeenth push asks for 256 more than the arena has left.
+
+import { println, Array } from "stdlib"
+import { heap, Arena } from "mem"
+
+fn main() {
+  var arena = Arena::new(heap(), 256)
+  defer arena.free()
+
+  var xs = Array<i64>::new(arena.allocator())
+  for i in 0..16 {
+    xs.push(i as i64)
+  }
+  println(xs.len())
+  xs.push(16)
+  println(xs.len())
+}

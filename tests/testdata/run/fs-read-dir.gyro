@@ -3,6 +3,7 @@
 // its own prefix, and cleans up after itself.
 import { println, starts_with } from "stdlib"
 import { write_file, remove, read_dir } from "fs"
+import { heap } from "mem"
 
 fn main() {
   var third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
@@ -10,12 +11,12 @@ fn main() {
   var second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
   println(first == null && second == null && third == null)
 
-  var names, err = read_dir("/tmp")
+  var names, err = read_dir(heap(), "/tmp")
   if err != null {
     return
   }
   for name in names.slice() {
-    if name.starts_with("gyro-fs-listing-") {
+    if name.starts_with(heap(), "gyro-fs-listing-") {
       println(name)
     }
   }

@@ -10,15 +10,16 @@
 import { String, join } from "stdlib"
 import { open, read_all, write_file } from "fs"
 import { Calc } from "./machine"
+import { heap } from "mem"
 
 export fn save(calc: *Calc, path: string): error? {
-  var out = String::new()
+  var out = String::new(heap())
   defer out.free()
 
   for name in calc.word_list() {
     var body = calc.body_of(name)
     if body != null {
-      out.push(": #{name} #{join(body.slice(), " ")} ;\n")
+      out.push(": #{name} #{join(heap(), body.slice(), " ")} ;\n")
     }
   }
   for name in calc.var_list() {
@@ -27,7 +28,7 @@ export fn save(calc: *Calc, path: string): error? {
       out.push("#{value} >#{name}\n")
     }
   }
-  return write_file(path, out.text())
+  return write_file(path, out.text(heap()))
 }
 
 export fn read_source(path: string): (string, error?) {
@@ -36,5 +37,5 @@ export fn read_source(path: string): (string, error?) {
     return "", err
   }
   defer file.close()
-  return read_all(file)
+  return read_all(heap(), file)
 }

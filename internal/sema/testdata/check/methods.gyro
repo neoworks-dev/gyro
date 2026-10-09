@@ -1,5 +1,7 @@
 // Method calls, the built-in method surface, and the type of self.
 
+import { heap } from "mem"
+import { runes } from "stdlib"
 struct Stack {
   top: i32
 }
@@ -39,7 +41,7 @@ fn throughPointers(s: *Stack) {
 // The built-in surface needs no import.
 fn builtins(ch: chan<i32>, xs: i32[], s: string, a: i32, b: i32, e: error): usize {
   ch.close()
-  for r in s.runes() {
+  for r in s.runes(heap()) {
     var x: rune = r
   }
   var ordered = a.compare(b)

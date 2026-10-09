@@ -13,7 +13,7 @@
 // the five of them share one renderer the way the five function pointers
 // upstream share one struct.
 
-import { Array, from_utf8 } from "stdlib"
+import { Array, from_utf8, bytes } from "stdlib"
 import { alloc, heap } from "mem"
 import * as md from "./md4c"
 import * as entity from "./entity"
@@ -44,10 +44,10 @@ fn url_safe(byte: u8): bool {
 
 export fn Render::new(): *Render {
   var render = alloc<Render>(heap())
-  render.out = Array<u8>::new()
+  render.out = Array<u8>::new(heap())
   render.image_nesting_level = 0
 
-  var map = Array<u8>::new()
+  var map = Array<u8>::new(heap())
   for var byte: i64 = 0; byte < 256; byte += 1 {
     var flags: u8 = 0
     if byte == 34 || byte == 38 || byte == 39 || byte == 60 || byte == 62 {
@@ -73,7 +73,7 @@ fn Render::verbatim(*self, text: u8[], beg: i64, end: i64) {
 }
 
 fn Render::literal(*self, text: string) {
-  for byte in text.bytes() {
+  for byte in text.bytes(heap()) {
     self.out.push(byte)
   }
 }
@@ -83,7 +83,7 @@ fn Render::number(*self, value: i64) {
     self.out.push(48)
     return
   }
-  var digits = Array<u8>::new()
+  var digits = Array<u8>::new(heap())
   var rest = value
   while rest > 0 {
     digits.push((48 + rest % 10) as u8)
@@ -175,7 +175,7 @@ fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
 // utf8_codepoint writes one code point, substituting U+FFFD for anything
 // out of range, for a surrogate, and for NUL.
 fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
-  var bytes = Array<u8>::new()
+  var bytes = Array<u8>::new(heap())
 
   if codepoint <= 0x7f {
     bytes.push(codepoint as u8)
@@ -196,7 +196,7 @@ fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
   if codepoint > 0 && codepoint <= 0x10ffff && (codepoint < 0xd800 || codepoint > 0xdfff) {
     self.append(how, bytes.slice(), 0, bytes.len() as i64)
   } else {
-    var replacement = Array<u8>::new()
+    var replacement = Array<u8>::new(heap())
     replacement.push(0xef)
     replacement.push(0xbf)
     replacement.push(0xbd)
@@ -238,11 +238,11 @@ fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
     return
   }
 
-  var name = Array<u8>::new()
+  var name = Array<u8>::new(heap())
   for var i = beg; i < end; i += 1 {
     name.push(data[i as usize])
   }
-  var first, second, known = entity::lookup(from_utf8(name.slice()))
+  var first, second, known = entity::lookup(from_utf8(heap(), name.slice()))
   name.free()
 
   if known {
@@ -316,7 +316,7 @@ fn starts_with_language(lang: md::Attribute): bool {
     return false
   }
   var i: i64 = 0
-  for byte in prefix.bytes() {
+  for byte in prefix.bytes(heap()) {
     if lang.text.get(i as usize) != byte {
       return false
     }
@@ -487,7 +487,7 @@ export fn render_html(input: u8[]): Array<u8> {
   // pointer, so the one input that needs trimming is the one that gets
   // copied.
   if size >= 3 && input[0] == 0xef && input[1] == 0xbb && input[2] == 0xbf {
-    var trimmed = Array<u8>::new()
+    var trimmed = Array<u8>::new(heap())
     for var i: i64 = 3; i < size; i += 1 {
       trimmed.push(input[i as usize])
     }

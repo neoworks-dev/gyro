@@ -1,5 +1,6 @@
 import { println } from "stdlib"
 import { printf, sprintf, eprintf } from "fmt"
+import { heap } from "mem"
 
 struct Point {
   x: i32
@@ -15,7 +16,7 @@ fn main() {
   printf("values %v %v %v\n", true, 3.5, Point{ x: 1, y: 2 })
   printf("missing %s %s\n", "one")
   printf("no arguments at all\n")
-  println(sprintf("negatives %d %x", -7, -1))
-  println(sprintf("widths %x %x", 255 as u8, 65535 as u16))
+  println(sprintf(heap(), "negatives %d %x", -7, -1))
+  println(sprintf(heap(), "widths %x %x", 255 as u8, 65535 as u16))
   eprintf("to stderr: %d", 1)
 }

@@ -57,7 +57,7 @@
 //     `Array<u8>`. What survives is the failure return, which the depth
 //     limit and a raw node with no text still produce.
 
-import { Array, String, from_utf8 } from "stdlib"
+import { Array, String, from_utf8, bytes } from "stdlib"
 import { alloc, free, heap } from "mem"
 import { to_f64 } from "convert"
 import * as dtoa from "./dtoa"
@@ -333,7 +333,7 @@ fn Buffer::here(self, index: i64): u8 {
 }
 
 // keyword compares the bytes at the offset against a literal, spelled out
-// byte by byte because `text.bytes()` copies: reading a keyword through a
+// byte by byte because `text.bytes(heap())` copies: reading a keyword through a
 // string would allocate three times per parsed value.
 fn Buffer::keyword4(self, a: u8, b: u8, c: u8, d: u8): bool {
   return self.here(0) == a && self.here(1) == b && self.here(2) == c && self.here(3) == d
@@ -432,7 +432,7 @@ fn number_prefix(bytes: u8[], from: i64, limit: i64): i64 {
 // mantissa of nothing but zeros is zero, a positive decimal exponent is an
 // overflow to infinity, and anything else underflowed.
 fn saturate(text: string): f64 {
-  var bytes = text.bytes()
+  var bytes = text.bytes(heap())
   var i: usize = 0
   var negative = false
   if i < bytes.len() && (bytes[i] == '+' as u8 || bytes[i] == '-' as u8) {
@@ -506,13 +506,13 @@ fn parse_double(text: string): f64 {
 }
 
 fn slice_text(bytes: u8[], from: i64, length: i64): string {
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   for var i = from; i < from + length; i += 1 {
     if i >= 0 && i < bytes.len() as i64 {
       out.push(bytes[i as usize])
     }
   }
-  var text = from_utf8(out.slice())
+  var text = from_utf8(heap(), out.slice())
   out.free()
   return text
 }
@@ -639,11 +639,11 @@ fn terminated(bytes: Array<u8>): string {
   while stop < bytes.len() && bytes.get(stop) != 0 {
     stop += 1
   }
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   for var i: usize = 0; i < stop; i += 1 {
     out.push(bytes.get(i))
   }
-  var text = from_utf8(out.slice())
+  var text = from_utf8(heap(), out.slice())
   out.free()
   return text
 }
@@ -682,7 +682,7 @@ fn parse_string(item: *Node, input: *Buffer): bool {
     return false
   }
 
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   while pointer < end {
     if input.at(pointer) != '\\' as u8 {
       out.push(input.at(pointer))
@@ -740,7 +740,7 @@ fn Printer::byte(*self, value: u8) {
 }
 
 fn Printer::text(*self, value: string) {
-  for byte in value.bytes() {
+  for byte in value.bytes(heap()) {
     self.out.push(byte)
   }
 }
@@ -810,7 +810,7 @@ fn print_string_text(text: string?, output: *Printer): bool {
     return true
   }
 
-  var bytes = text.bytes()
+  var bytes = text.bytes(heap())
   output.byte('"' as u8)
   for var i: usize = 0; i < bytes.len(); i += 1 {
     var byte = bytes[i]
@@ -1149,8 +1149,8 @@ fn print_object(item: *Node, output: *Printer): bool {
 // buffer_of copies the text into a byte array with one NUL after it, which
 // is the buffer C hands the parser when the caller supplied a C string.
 fn buffer_of(text: string): Array<u8> {
-  var content = Array<u8>::new()
-  for byte in text.bytes() {
+  var content = Array<u8>::new(heap())
+  for byte in text.bytes(heap()) {
     content.push(byte)
   }
   content.push(0)
@@ -1203,7 +1203,7 @@ export fn parse_with_length_opts(text: string, length: i64,
 }
 
 export fn parse_with_opts(text: string, require_null_terminated: bool): (*Node?, i64) {
-  return parse_with_length_opts(text, (text.bytes().len() as i64) + 1, require_null_terminated)
+  return parse_with_length_opts(text, (text.bytes(heap()).len() as i64) + 1, require_null_terminated)
 }
 
 export fn parse_with_length(text: string, length: i64): (*Node?, i64) {
@@ -1223,13 +1223,13 @@ fn render(item: *Node?, format: bool): string? {
   if item == null {
     return null
   }
-  var out = Array<u8>::new()
+  var out = Array<u8>::new(heap())
   var printer = Printer{ out: out, depth: 0, format: format }
   if !print_value(item, &printer) {
     out.free()
     return null
   }
-  var text = from_utf8(out.slice())
+  var text = from_utf8(heap(), out.slice())
   out.free()
   return text
 }
@@ -1287,8 +1287,8 @@ fn lower(byte: u8): u8 {
 }
 
 fn same_text(a: string, b: string): bool {
-  var left = a.bytes()
-  var right = b.bytes()
+  var left = a.bytes(heap())
+  var right = b.bytes(heap())
   if left.len() != right.len() {
     return false
   }
@@ -1301,8 +1301,8 @@ fn same_text(a: string, b: string): bool {
 }
 
 fn same_text_folded(a: string, b: string): bool {
-  var left = a.bytes()
-  var right = b.bytes()
+  var left = a.bytes(heap())
+  var right = b.bytes(heap())
   if left.len() != right.len() {
     return false
   }
