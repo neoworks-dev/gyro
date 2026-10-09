@@ -138,7 +138,6 @@ module.exports = grammar({
     _declaration: $ => choice(
       $.function_declaration,
       $.struct_declaration,
-      $.union_declaration,
       $.enum_declaration,
       $.variable_declaration,
       $.export_declaration,
@@ -223,17 +222,6 @@ module.exports = grammar({
       'struct',
       field('name', alias($.identifier, $.type_identifier)),
       optional(field('type_parameters', $.type_parameters)),
-      field('body', $.field_declaration_list),
-    ),
-
-    // One storage with several names for it. No type parameters: a union
-    // is the size of its widest member, and a parameter would make that
-    // depend on an argument.
-    union_declaration: $ => seq(
-      repeat($.decorator),
-      optional('export'),
-      'union',
-      field('name', alias($.identifier, $.type_identifier)),
       field('body', $.field_declaration_list),
     ),
 

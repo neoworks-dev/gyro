@@ -20,10 +20,6 @@
         "named": true
       },
       {
-        "type": "union_declaration",
-        "named": true
-      },
-      {
         "type": "variable_declaration",
         "named": true
       }
@@ -2396,42 +2392,6 @@
     }
   },
   {
-    "type": "union_declaration",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "field_declaration_list",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type_identifier",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "decorator",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "variable_declaration",
     "named": true,
     "fields": {
@@ -2893,10 +2853,6 @@
   {
     "type": "type_identifier",
     "named": true
-  },
-  {
-    "type": "union",
-    "named": false
   },
   {
     "type": "var",
