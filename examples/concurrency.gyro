@@ -6,6 +6,7 @@
 
 import { println, spawn, Mutex, Array } from "stdlib"
 import { get } from "net"
+import { format, heap } from "mem"
 
 // --- channels -------------------------------------------------------------
 
@@ -29,7 +30,7 @@ fn consume(values: chan<i32>, done: chan<bool>) {
 // without a wrapper struct. Closing when there is nothing more to send is
 // what lets the receiver tell "no value yet" from "no value ever".
 fn fetch_into(url: string, results: chan<(string, error?)>) {
-  results <- ("stub body for #{url}", null)
+  results <- (format(heap(), "stub body for #{url}"), null)
   results.close()
 }
 

@@ -1,11 +1,12 @@
 import { println, eprintln } from "stdlib"
+import { format, heap } from "mem"
 
 struct TooBig {
   limit: i32
 }
 
 fn TooBig::message(self): string {
-  return "value above #{self.limit}"
+  return format(heap(), "value above #{self.limit}")
 }
 
 fn check(v: i32): (i32, error?) {

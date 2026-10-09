@@ -3,13 +3,14 @@
 
 import { println } from "stdlib"
 import { to_i32 } from "convert"
+import { format, heap } from "mem"
 
 struct RangeError {
   export value: i32
 }
 
 fn RangeError::message(self): string {
-  return "value #{self.value} is out of range"
+  return format(heap(), "value #{self.value} is out of range")
 }
 
 fn parse_port(text: string): (i32, error?) {

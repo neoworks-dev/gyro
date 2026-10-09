@@ -7,6 +7,7 @@
 // concrete type back out of an `any`.
 
 import { Array, from_utf8, print, eprintln } from "stdlib"
+import { format, heap } from "mem"
 
 // The verbs:
 //
@@ -157,16 +158,16 @@ fn render(value: any, verb: u8): string !{ alloc } {
     if ok {
       return hex(n, verb == 88)
     }
-    return "#{value}"
+    return format(heap(), "#{value}")
   }
   if verb == 99 {
     var n, ok = as_unsigned(value)
     if ok {
-      return "#{(n as u32) as rune}"
+      return format(heap(), "#{(n as u32) as rune}")
     }
-    return "#{value}"
+    return format(heap(), "#{value}")
   }
-  return "#{value}"
+  return format(heap(), "#{value}")
 }
 
 // as_unsigned reads an integer of any width out of an any, as the bit

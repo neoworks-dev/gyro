@@ -16,6 +16,7 @@
 
 import { printf } from "fmt"
 import * as chess from "./perft"
+import { format, heap } from "mem"
 
 // The six standard perft positions. The first three are the Chess
 // Programming Wiki's "Position 1" (the initial position), kiwipete —
@@ -59,10 +60,10 @@ fn divide(name: string, fen: string, depth: i32) {
 // Long algebraic: source, target, and the promotion piece when there is
 // one.
 fn move_name(move: i32): string {
-  var text = "#{chess::square_name(chess::move_source(move))}#{chess::square_name(chess::move_target(move))}"
+  var text = format(heap(), "#{chess::square_name(chess::move_source(move))}#{chess::square_name(chess::move_target(move))}")
   var promoted = chess::move_promoted(move)
   if promoted != 0 {
-    return "#{text}#{chess::promoted_letter(promoted)}"
+    return format(heap(), "#{text}#{chess::promoted_letter(promoted)}")
   }
   return text
 }

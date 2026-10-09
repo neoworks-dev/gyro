@@ -48,10 +48,10 @@ written out as itself:
 
 ```gyro
 var text = match v {
-  (i32, string)(pair): "pair #{pair.0}"
-  i32[](xs):           "#{xs.len()} numbers"
+  (i32, string)(pair): format(heap(), "pair #{pair.0}")
+  i32[](xs):           format(heap(), "#{xs.len()} numbers")
   i32[3](fixed):       "three numbers"
-  *Node(node):         "node #{node.value}"
+  *Node(node):         format(heap(), "node #{node.value}")
   _:                   "something else"
 }
 ```

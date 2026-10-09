@@ -2,18 +2,19 @@
 // carries the type itself: `(i32, string)(pair)`, `i32[](xs)`, `*Node(n)`.
 
 import { println } from "stdlib"
+import { format, heap } from "mem"
 
 struct Node { value: i32 }
 
 fn kind(v: any): string {
   return match v {
-    (i32, string)(pair): "tuple #{pair.0}/#{pair.1}"
-    (i32, i32)(pair):    "int pair #{pair.0}/#{pair.1}"
-    i32[3](a):           "i32[3] holding #{a[0]}"
-    i32[](xs):           "i32 slice of #{xs.len()}"
-    string[](ss):        "string slice of #{ss.len()}"
-    *Node(n):            "pointer to #{n.value}"
-    i32(n):              "i32 #{n}"
+    (i32, string)(pair): format(heap(), "tuple #{pair.0}/#{pair.1}")
+    (i32, i32)(pair):    format(heap(), "int pair #{pair.0}/#{pair.1}")
+    i32[3](a):           format(heap(), "i32[3] holding #{a[0]}")
+    i32[](xs):           format(heap(), "i32 slice of #{xs.len()}")
+    string[](ss):        format(heap(), "string slice of #{ss.len()}")
+    *Node(n):            format(heap(), "pointer to #{n.value}")
+    i32(n):              format(heap(), "i32 #{n}")
     _:                   "other"
   }
 }

@@ -19,7 +19,7 @@ Declare `to_string`:
 
 ```gyro
 export fn Version::to_string(self): string {
-  return "v#{self.major}.#{self.minor}"
+  return format(heap(), "v#{self.major}.#{self.minor}")
 }
 ```
 

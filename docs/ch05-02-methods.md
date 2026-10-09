@@ -41,7 +41,7 @@ Methods on a generic type name the parameter in the qualifier:
 
 ```gyro
 export fn string::shout(self): string {
-  return "#{self}!"
+  return format(heap(), "#{self}!")
 }
 ```
 

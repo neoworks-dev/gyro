@@ -16,6 +16,7 @@ import {
   binary, compare, unary, stack_word, constant,
 } from "./builtins"
 import { save, read_source } from "./persist"
+import { format, heap } from "mem"
 
 // How deep one word may call another. A word that calls itself is legal
 // and useful right up to the point where it does not stop, and this is
@@ -45,14 +46,14 @@ export fn run(calc: *Calc, words: string[], depth: i32): error? {
       continue
     }
     if word == "else" || word == "then" {
-      return CalcError{ text: "#{word} without a matching if" }
+      return CalcError{ text: format(heap(), "#{word} without a matching if") }
     }
     if word == ";" {
       return CalcError{ text: "; without a definition to end" }
     }
     if word == "save" || word == "load" || word == "forget" {
       if i >= words.len() {
-        return CalcError{ text: "#{word} wants a name" }
+        return CalcError{ text: format(heap(), "#{word} wants a name") }
       }
       var argument = words[i]
       i += 1
@@ -89,7 +90,7 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
   var name = words[at]
   var i = at + 1
   if is_number(name) {
-    return i, CalcError{ text: "#{name} is a number and cannot be a word" }
+    return i, CalcError{ text: format(heap(), "#{name} is a number and cannot be a word") }
   }
 
   var body = Array<string>::new()
@@ -105,7 +106,7 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
   }
   if !closed {
     body.free()
-    return i, CalcError{ text: "the definition of #{name} has no ;" }
+    return i, CalcError{ text: format(heap(), "the definition of #{name} has no ;") }
   }
   calc.define(name, body)
   return i, null
@@ -180,7 +181,7 @@ fn find_branch(words: string[], at: usize): (usize, usize, error?) {
 fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
   if word == "forget" {
     if !calc.forget(argument) {
-      return CalcError{ text: "there is no word \"#{argument}\" to forget" }
+      return CalcError{ text: format(heap(), "there is no word \"#{argument}\" to forget") }
     }
     return null
   }
@@ -275,7 +276,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
   var body = calc.body_of(word)
   if body != null {
     if depth >= MAX_DEPTH {
-      return CalcError{ text: "#{word} calls too deep (#{MAX_DEPTH} words)" }
+      return CalcError{ text: format(heap(), "#{word} calls too deep (#{MAX_DEPTH} words)") }
     }
     return run(calc, body.slice(), depth + 1)
   }
@@ -286,7 +287,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
     return null
   }
 
-  return CalcError{ text: "unknown word \"#{word}\"" }
+  return CalcError{ text: format(heap(), "unknown word \"#{word}\"") }
 }
 
 export fn print_help() {

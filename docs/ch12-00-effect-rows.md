@@ -52,8 +52,8 @@ fn quiet(n: i32) !{} {
   println(n)         // error: println does io, which the row does not name
 }
 
-fn loud(n: i32) !{ io, alloc } {
-  println("n = #{n}")   // fine: the row names both effects
+fn loud(n: i32) !{ io } {
+  println("n = #{n}")   // fine: the row names io, and interpolation adds nothing
 }
 ```
 

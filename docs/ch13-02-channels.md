@@ -14,7 +14,7 @@ how a worker reports a fallible result without a wrapper struct:
 
 ```gyro
 fn fetch_into(url: string, results: chan<(string, error?)>) {
-  results <- ("stub body for #{url}", null)
+  results <- (format(heap(), "stub body for #{url}"), null)
   results.close()
 }
 ```

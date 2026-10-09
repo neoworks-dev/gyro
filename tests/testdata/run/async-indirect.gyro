@@ -3,6 +3,7 @@
 // rather than a callee symbol, since there is none.
 
 import { println } from "stdlib"
+import { format, heap } from "mem"
 
 async fn work(n: i32): i32 {
   return n * 2
@@ -13,7 +14,7 @@ async fn scale(factor: f64, n: i32): f64 {
 }
 
 async fn describe(n: i32): (string, error?) {
-  return "n=#{n}", null
+  return format(heap(), "n=#{n}"), null
 }
 
 async fn main() {

@@ -64,8 +64,8 @@ path, and nothing gets one: when a spelling changes it changes everywhere,
 and the old one is deleted rather than deprecated.
 
 It runs CLI tools today. It is not usable for anything long-running, because
-nothing reclaims memory yet: every string interpolation, `split` and
-`text()` allocates and nothing frees it.
+nothing reclaims memory yet: `split` and
+`text()` allocate and nothing frees them.
 [Appendix G](appendix-g-known-gaps.md) is the honest list of what is missing.
 
 ## Where the rest of this book goes
