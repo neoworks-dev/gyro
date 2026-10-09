@@ -30,13 +30,17 @@ different questions, and each has a method that answers it.
 println("max is #{MAX}, half of that is #{MAX / 2}")
 ```
 
-`#{expr}` takes arbitrary Gyro and prints it the way `println` would, which
+`#{expr}` takes arbitrary Gyro and shows it the way `println` would, which
 means a struct prints as its derived representation and an `any` prints as
 whatever is inside it ([chapter 14.2](ch14-02-printing.md)). Escape the
 sequence as `\#{`.
 
-Interpolation **allocates** — it builds new text — which is why a function
-that interpolates needs `alloc` in its effect row.
+A literal with a `#{}` is not a `string`: it is a `Format`, which records
+its pieces and allocates nothing. `println` streams it; `format(a, ...)`
+from `mem` builds it into the allocator `a` and hands back a `string`.
+Because it borrows what it names, a `Format` can only be passed as an
+argument and never kept ([chapter 14.2](ch14-02-printing.md)). A literal
+without a `#{}` is a plain `string` in module storage.
 
 ## Building text
 

@@ -73,7 +73,9 @@ What a body performs is judged from its sources:
   that cannot be read. Without a row it is assumed to do `io` and `alloc`,
   which is why every intrinsic in the standard library writes one, down to
   `Array<T>::get(self, index: usize): T !{}`.
-- **String interpolation** `#{...}` builds new text, which allocates.
+- **String interpolation** `#{...}` contributes nothing: it builds a
+  `Format`, which records its pieces and allocates nothing
+  ([chapter 14.2](ch14-02-printing.md)).
 - **The built-in method surface** answers for itself: `runes()` and
   `bytes()` copy into new storage and so do `alloc`; `len`, `close`, `hash`,
   `compare` and `message` do nothing.

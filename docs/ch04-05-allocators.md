@@ -201,8 +201,8 @@ answers null, and `alloc<T>()` panics.
 ## What honours the allocator today
 
 `alloc<T>()`, `free`, `Arena` and everything written over them. The
-runtime's own storage — an `Array<T>`'s buffer, the text `#{}` and the
-string methods build, a closure's environment, a future — still comes
+runtime's own storage — an `Array<T>`'s buffer, the text the string
+methods build, a closure's environment, a future — still comes
 from the process heap and is not yet routed through the allocator it was
 handed ([appendix G](appendix-g-known-gaps.md)). So does a `to_string`,
 `hash` or `message` the compiler calls on its own behalf while printing,

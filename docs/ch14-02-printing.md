@@ -28,7 +28,7 @@ displacement rule `hash` has: write your own and the derived one steps
 aside, along with the responsibility for keeping it sensible
 ([chapter 5.2](ch05-02-methods.md)).
 
-## The three printers
+## The printers
 
 From `stdlib`:
 
@@ -36,22 +36,65 @@ From `stdlib`:
 | --- | --- |
 | `print(value)` | stdout, no newline |
 | `println(value)` | stdout, newline |
+| `eprint(value)` | stderr, no newline |
 | `eprintln(value)` | stderr, newline |
 
-Each is generic over one value, so `println` takes anything.
+Each is generic over one value, so `println` takes anything — a `Format`
+included.
 
 ## Interpolation
 
-`#{expr}` embeds arbitrary Gyro in a string literal, printing the result the
+`#{expr}` embeds arbitrary Gyro in a string literal, showing the result the
 way `println` would:
 
 ```gyro
 println("max is #{MAX}, half of that is #{MAX / 2}")
 ```
 
-Escape the sequence as `\#{` to write it literally. Interpolation builds new
-text, so it **allocates** — a function that interpolates needs `alloc` in
-its effect row ([chapter 12](ch12-00-effect-rows.md)).
+Escape the sequence as `\#{` to write it literally.
+
+A literal with a `#{}` in it is **not a `string`**. It is a `Format`, a value
+that records its pieces — the literal text between the holes and the values
+in them — and allocates nothing. Whatever receives it decides where the text
+goes:
+
+- **Streamed.** `print`, `println` and `eprintln` write the pieces one after
+  another. A whole `println` is one unit on the terminal, so two threads
+  printing at once do not tear a line apart.
+- **Allocated.** `format(allocator, value)` from `mem` builds the text into
+  the allocator it is given and returns a `string`.
+
+```gyro
+import { println, Format } from "stdlib"
+import { format, heap } from "mem"
+
+fn log(message: Format) !{ io } {
+  println(message)
+}
+
+log("listening on port #{port}")
+var line = format(heap(), "#{i}. #{title}")
+```
+
+A plain literal with no `#{}` stays a `string`, as it always was.
+
+**A format value borrows what it names, so it cannot outlive the statement
+it is written in.** The rule that keeps it there is short: a `Format` — an
+interpolated literal, or a parameter of that type — may only appear as an
+argument to a call. It cannot be bound to a name, returned, stored in a
+field, array or channel, captured by a closure, or wrapped into an `any`,
+and each of those is an error. Passing it on is fine, which is what lets
+`log` above hand its message to `println`.
+
+A `Format` is not a `string`. Using one where text is wanted, as in
+`var s: string = "#{x}"`, is a type error whose help points at `format`. It
+has two methods for code that writes pieces out itself, `len(self): usize`
+and `piece(self, index: usize): any`.
+
+Streaming allocates nothing for the format value itself. A piece whose type
+has a `to_string`, or a composite with a derived representation, is still
+rendered to text before it is written, exactly as `println` of that value
+alone would.
 
 ## `printf`, in the `fmt` module
 
