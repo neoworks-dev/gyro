@@ -1942,6 +1942,11 @@ a function value has one word to carry its environment in, and a closure
 outlives the frame that built it, so the environment has to be heap
 storage. The rule was always real and only the verifier did not know it.
 
+*Amended by "A closure's environment lives in its frame, and keep copies it
+out":* the pointer rule stands, but the environment no longer has to be heap
+storage. Gyro's lowering points it into the writing function's frame, and
+what the pointer addresses is the producer's to keep alive.
+
 This is the first thing a second producer found, and it is the argument
 for having one.
 
