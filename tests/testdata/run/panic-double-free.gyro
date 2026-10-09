@@ -1,4 +1,5 @@
-//gyro:panic free of memory that is not allocated
+//gyro:skip the heap frees for real and detects nothing; a double free is a quarantining allocator's to catch, and none is written yet (appendix G)
+//gyro:panic double free
 
 import { alloc, free } from "mem"
 

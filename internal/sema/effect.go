@@ -1,10 +1,12 @@
 package sema
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/diag"
 )
 
 // Concrete-effect checking. A declared effect row is a complete statement
@@ -28,6 +30,79 @@ import (
 // effectSet is the concrete-effect lattice: two bits.
 type effectSet struct {
 	io, alloc bool
+}
+
+// effectHop is one call on the route between the callee a diagnostic names
+// and the body that performs the effect. callee is empty when the hop is a
+// string interpolation rather than a call.
+type effectHop struct {
+	caller string
+	callee string
+	pos    diag.Position
+}
+
+// effectFacts is what a body does and why: the set, and for each effect the
+// route that reaches something performing it, nearest call first.
+//
+// The route is what the signature cannot show. A row is violated by a call
+// the body makes, but the effect can arrive many calls below it, in another
+// module, and inference is what found it — so without the route a reader is
+// told their `!{}` is wrong and left to search for the `println`.
+//
+// An empty route means the callee performs the effect itself, or states it
+// in a row, and the message already names it.
+type effectFacts struct {
+	set   effectSet
+	io    []effectHop
+	alloc []effectHop
+}
+
+// note records what one effect source contributes, prefixing the source's
+// own route with the hop that reaches it. The first route found for an
+// effect is the one kept: inference walks a body in source order, so the
+// choice is stable across runs rather than shortest.
+func (f *effectFacts) note(below effectFacts, hop effectHop) {
+	if below.set.io && !f.set.io {
+		f.io = append([]effectHop{hop}, below.io...)
+	}
+	if below.set.alloc && !f.set.alloc {
+		f.alloc = append([]effectHop{hop}, below.alloc...)
+	}
+	f.set = f.set.union(below.set)
+}
+
+// effectRoute is one explanation: the single effect it carries, and the
+// calls that carry it.
+type effectRoute struct {
+	effect effectSet
+	hops   []effectHop
+}
+
+// routes are the explanations to print for the effects a row failed to
+// name. Two effects that arrive along the same calls are explained once.
+func (f effectFacts) routes(missing effectSet) []effectRoute {
+	var out []effectRoute
+	if missing.io && len(f.io) > 0 {
+		out = append(out, effectRoute{effect: effectSet{io: true}, hops: f.io})
+	}
+	if missing.alloc && len(f.alloc) > 0 {
+		if len(out) == 0 || !sameRoute(out[0].hops, f.alloc) {
+			out = append(out, effectRoute{effect: effectSet{alloc: true}, hops: f.alloc})
+		}
+	}
+	return out
+}
+
+func sameRoute(a, b []effectHop) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (e effectSet) union(other effectSet) effectSet {
@@ -165,7 +240,7 @@ func (c *checker) checkBody(body ast.Stmt, row *ast.EffectRow, calls map[*ast.Ca
 			if allowed.alloc {
 				return
 			}
-			c.reportEffect(source.Offset, reported, row, effectSet{alloc: true},
+			c.reportEffect(source.Offset, reported, row, effectSet{alloc: true}, nil,
 				"this string interpolation allocates, which the row does not name")
 		case *ast.CallExpr:
 			resolved := calls[source]
@@ -173,30 +248,65 @@ func (c *checker) checkBody(body ast.Stmt, row *ast.EffectRow, calls map[*ast.Ca
 				return
 			}
 			performed, opaque := c.callEffects(resolved, nil)
-			missing := performed.minus(allowed)
+			missing := performed.set.minus(allowed)
 			if missing.empty() {
 				return
 			}
 			if opaque {
-				c.reportEffect(source.Offset, reported, row, missing,
+				c.reportEffect(source.Offset, reported, row, missing, nil,
 					"%s is an intrinsic with no row, so it may do %s", resolved.Method.Name, everyEffect)
 				return
 			}
-			c.reportEffect(source.Offset, reported, row, missing,
+			c.reportEffect(source.Offset, reported, row, missing, performed.routes(missing),
 				"%s does %s, which the row does not name", resolved.Method.Name, missing)
 		}
 	})
 }
 
-func (c *checker) reportEffect(offset int, reported map[string]bool, row *ast.EffectRow, missing effectSet, format string, args ...any) {
+func (c *checker) reportEffect(offset int, reported map[string]bool, row *ast.EffectRow, missing effectSet, routes []effectRoute, format string, args ...any) {
 	key := strconv.Itoa(offset) + "|" + missing.String()
 	if reported[key] {
 		return
 	}
 	reported[key] = true
-	c.errorHintf(offset, []string{
-		"name it in the row: " + suggestedRow(row, missing),
-	}, format, args...)
+	c.bag.Add(diag.Diagnostic{
+		Severity: diag.SeverityError,
+		Code:     codes[format],
+		Pos:      c.file.Position(offset),
+		Message:  fmt.Sprintf(format, args...),
+		Related:  effectSpans(routes),
+		Help:     []string{"name it in the row: " + suggestedRow(row, missing)},
+	})
+}
+
+// effectSpans renders the routes as the related frames under a diagnostic:
+// one per hop, quoting the call that makes it in the body it sits in, the
+// last of them naming what performs the effect.
+//
+// A frame rather than a note because the route exists for code the reader
+// cannot see from the call being reported — often in another module — and a
+// frame shows that line instead of asking them to take a position on trust.
+// A callee that performs the effect itself has no route and no frames: the
+// message already names it.
+func effectSpans(routes []effectRoute) []diag.Span {
+	var spans []diag.Span
+	for _, route := range routes {
+		for i, hop := range route.hops {
+			label := hop.caller + " calls " + hop.callee
+			if hop.callee == "" {
+				label = hop.caller + " interpolates a string"
+			}
+			if i == len(route.hops)-1 {
+				if hop.callee == "" {
+					label += ", which allocates"
+				} else {
+					label += ", which does " + route.effect.String()
+				}
+			}
+			spans = append(spans, diag.Span{Pos: hop.pos, Label: label})
+		}
+	}
+	return spans
 }
 
 // suggestedRow renders the declared row with the missing effects added, so
@@ -228,26 +338,26 @@ func suggestedRow(row *ast.EffectRow, missing effectSet) string {
 // and that function's own effects reach the root through its own frame.
 type effectInference struct {
 	active map[*ast.FuncDecl]bool
-	done   map[*ast.FuncDecl]effectSet
+	done   map[*ast.FuncDecl]effectFacts
 }
 
 // effectsOf answers what a same-module function's body does. Only the root
 // of a traversal is memoized program-wide: a set computed below a cut cycle
 // is exact for the root but may be partial for the functions under it.
-func (c *checker) effectsOf(decl *ast.FuncDecl) effectSet {
+func (c *checker) effectsOf(decl *ast.FuncDecl) effectFacts {
 	if memoized, ok := c.program.inferredEffects[decl]; ok {
 		return memoized
 	}
 	state := &effectInference{
 		active: map[*ast.FuncDecl]bool{},
-		done:   map[*ast.FuncDecl]effectSet{},
+		done:   map[*ast.FuncDecl]effectFacts{},
 	}
 	inferred := c.inferEffects(decl, state)
 	c.program.inferredEffects[decl] = inferred
 	return inferred
 }
 
-func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effectSet {
+func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effectFacts {
 	if memoized, ok := c.program.inferredEffects[decl]; ok {
 		return memoized
 	}
@@ -255,23 +365,29 @@ func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effec
 		return done
 	}
 	if state.active[decl] {
-		return effectSet{}
+		return effectFacts{}
 	}
 	state.active[decl] = true
 
-	var inferred effectSet
+	var inferred effectFacts
+	name := effectDeclName(decl)
 	for _, calls := range c.bodyResolutions(decl) {
 		walkEffectStmt(decl.Body, func(source ast.Expr) {
 			switch source := source.(type) {
 			case *ast.StringLit:
-				inferred.alloc = true
+				inferred.note(effectFacts{set: effectSet{alloc: true}},
+					effectHop{caller: name, pos: c.declPos(decl, source.Offset)})
 			case *ast.CallExpr:
 				resolved := calls[source]
 				if resolved == nil || resolved.Method == nil {
 					return
 				}
 				performed, _ := c.callEffects(resolved, state)
-				inferred = inferred.union(performed)
+				inferred.note(performed, effectHop{
+					caller: name,
+					callee: resolved.Method.Name,
+					pos:    c.declPos(decl, source.Offset),
+				})
 			}
 		})
 	}
@@ -279,6 +395,26 @@ func (c *checker) inferEffects(decl *ast.FuncDecl, state *effectInference) effec
 	delete(state.active, decl)
 	state.done[decl] = inferred
 	return inferred
+}
+
+// effectDeclName is how a route names the body a hop sits in: the method
+// spelling for a method, so `Stack::push calls ...` is not just `push`.
+func effectDeclName(decl *ast.FuncDecl) string {
+	if decl.Owner != "" {
+		return decl.Owner + "::" + decl.Name
+	}
+	return decl.Name
+}
+
+// declPos resolves an offset inside a declaration's body against the file
+// that body lives in, which is not the file being checked once inference
+// has reached through an import.
+func (c *checker) declPos(decl *ast.FuncDecl, offset int) diag.Position {
+	env := c.program.envs[decl]
+	if env == nil || env.file == nil {
+		return diag.Position{}
+	}
+	return env.file.Position(offset)
 }
 
 // bodyResolutions are the call maps a body is read through. A plain body
@@ -312,16 +448,16 @@ func (c *checker) bodyResolutions(decl *ast.FuncDecl) []map[*ast.CallExpr]*CallI
 // is read, wherever it lives; an intrinsic has no body to read, so a
 // rowless one contributes every concrete effect. A built-in method answers
 // from the fixed table.
-func (c *checker) callEffects(resolved *CallInfo, state *effectInference) (effectSet, bool) {
+func (c *checker) callEffects(resolved *CallInfo, state *effectInference) (effectFacts, bool) {
 	decl := resolved.Method.Decl
 	if decl == nil {
-		return builtinEffects(resolved.Method.Name), false
+		return effectFacts{set: builtinEffects(resolved.Method.Name)}, false
 	}
 	if declared, closed := declaredEffects(decl.Effects); closed {
-		return declared, false
+		return effectFacts{set: declared}, false
 	}
 	if decl.Body == nil {
-		return everyEffect, true
+		return effectFacts{set: everyEffect}, true
 	}
 	if state == nil {
 		return c.effectsOf(decl), false
@@ -338,6 +474,84 @@ func builtinEffects(name string) effectSet {
 		return effectSet{alloc: true}
 	}
 	return effectSet{}
+}
+
+// ---------------------------------------------------------------------------
+// Recording effects for the lowering
+// ---------------------------------------------------------------------------
+
+// recordModuleEffects writes what every function and closure of the module
+// does into Info. This is what the lowering reads to decide who receives
+// an allocator: a function whose effects hold alloc, and a closure whose
+// body reaches it.
+func (c *checker) recordModuleEffects(tree *ast.File) {
+	for _, decl := range tree.Decls {
+		d, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		set := c.signatureEffects(d)
+		c.program.info.Effects[d] = Effects{IO: set.io, Alloc: set.alloc}
+		if d.Body == nil {
+			continue
+		}
+		for _, closure := range closuresIn(d.Body) {
+			if c.closureAllocates(d, closure) {
+				c.program.info.ClosureAllocates[closure] = true
+			}
+		}
+	}
+}
+
+// signatureEffects is what a call to the declaration contributes, seen
+// from the declaration itself: the same answer callEffects gives a call
+// site, so caller and callee never disagree about the allocator.
+func (c *checker) signatureEffects(decl *ast.FuncDecl) effectSet {
+	if declared, closed := declaredEffects(decl.Effects); closed {
+		return declared
+	}
+	if decl.Body == nil {
+		return everyEffect
+	}
+	return c.effectsOf(decl).set
+}
+
+// closureAllocates reports whether a closure needs the allocator: its own
+// body reaches alloc, or a closure nested in it does, since the inner one
+// can only capture what the outer one holds. A closed row the closure
+// writes answers for its own body, the way a function's does.
+func (c *checker) closureAllocates(decl *ast.FuncDecl, closure *ast.ClosureExpr) bool {
+	body := closure.Body
+	if body == nil {
+		body = &ast.Block{Stmts: []ast.Stmt{&ast.ExprStmt{X: closure.BodyExpr}}}
+	}
+	for _, nested := range closuresIn(body) {
+		if c.closureAllocates(decl, nested) {
+			return true
+		}
+	}
+	if declared, closed := declaredEffects(closure.Effects); closed {
+		return declared.alloc
+	}
+	allocates := false
+	for _, calls := range c.bodyResolutions(decl) {
+		walkEffectStmt(body, func(source ast.Expr) {
+			switch source := source.(type) {
+			case *ast.StringLit:
+				allocates = true
+			case *ast.CallExpr:
+				resolved := calls[source]
+				if resolved == nil || resolved.Method == nil {
+					return
+				}
+				performed, _ := c.callEffects(resolved, nil)
+				if performed.set.alloc {
+					allocates = true
+				}
+			}
+		})
+	}
+	return allocates
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +626,8 @@ func walkEffectStmt(stmt ast.Stmt, visit func(source ast.Expr)) {
 		walkEffectStmt(s.Body, visit)
 	case *ast.DeferStmt:
 		walkEffectExpr(s.Call, visit)
+	case *ast.WithStmt:
+		walkEffectExpr(s.Allocator, visit)
 	case *ast.SendStmt:
 		walkEffectExpr(s.Chan, visit)
 		walkEffectExpr(s.Value, visit)

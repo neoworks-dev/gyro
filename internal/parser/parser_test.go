@@ -754,6 +754,7 @@ func TestForms(t *testing.T) {
 		"fn t() {\n  for v in 0..10 {\n  }\n}\n",
 		"fn t() {\n  while a < b {\n    break\n  }\n}\n",
 		"fn t() {\n  defer free(p)\n}\n",
+		"fn t() {\n  with arena.allocator()\n  var p = alloc<Node>()\n}\n",
 		"fn t() {\n  spawn(fn() worker(ch))\n}\n",
 		"fn t() {\n  var x = await f()\n}\n",
 		"fn t() {\n  var c = chan<i32>(64)\n}\n",

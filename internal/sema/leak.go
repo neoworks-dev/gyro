@@ -26,9 +26,11 @@ type allocSite struct {
 }
 
 // trackAllocation registers a local bound to an alloc call against the block
-// it was declared in.
+// it was declared in. Below a `with`, nothing is registered: the block
+// chose an allocator for what follows, and what it hands out is that
+// allocator's to reclaim, which is the arena idiom.
 func (c *checker) trackAllocation(sym *symbol, offset int, name string) {
-	if sym == nil || len(c.allocScopes) == 0 {
+	if sym == nil || len(c.allocScopes) == 0 || c.withDepth > 0 {
 		return
 	}
 	top := len(c.allocScopes) - 1
@@ -36,10 +38,13 @@ func (c *checker) trackAllocation(sym *symbol, offset int, name string) {
 }
 
 // pushAllocScope runs a block's statements with their own set of tracked
-// allocations, reporting the ones nothing settled when the block ends.
+// allocations, reporting the ones nothing settled when the block ends. A
+// `with` inside the block ends with it, so the outer count is restored.
 func (c *checker) pushAllocScope(walk func()) {
 	c.allocScopes = append(c.allocScopes, nil)
+	saved := c.withDepth
 	walk()
+	c.withDepth = saved
 
 	sites := c.allocScopes[len(c.allocScopes)-1]
 	c.allocScopes = c.allocScopes[:len(c.allocScopes)-1]

@@ -379,6 +379,15 @@ store %p, %v
 %p = ptr.cast %a -> ptr<T> ; the type put back, as the producer's claim
 ```
 
+`new` and `free` are the runtime's heap, and they are what the runtime's
+own cells — a closure environment, a boxed `any` — are made of. Gyro's
+`alloc<T>()` is not one of them: it is an ordinary call through the
+procedure an allocator value carries, and the allocator itself reaches a
+function as an ordinary trailing parameter the producer added
+([chapter 4.5](ch04-05-allocators.md)). The format has no allocator
+concept to verify, on purpose — a producer that wants one declares a
+record and passes it.
+
 `elem.ptr` is the array-to-pointer decay: an array's storage begins where
 its first element does, so it changes what a pointer points at and not
 where it points. It is separate from `ptr.offset` for exactly that

@@ -309,6 +309,7 @@ module.exports = grammar({
       $.for_statement,
       $.for_in_statement,
       $.defer_statement,
+      $.with_statement,
       $.select_statement,
       $.break_statement,
       $.continue_statement,
@@ -330,6 +331,8 @@ module.exports = grammar({
     continue_statement: $ => 'continue',
 
     defer_statement: $ => seq('defer', $._expression),
+
+    with_statement: $ => seq('with', field('allocator', $._expression)),
 
     send_statement: $ => seq(
       field('channel', $._expression),

@@ -1,0 +1,95 @@
+// Allocators ride on the alloc effect: a function whose row names alloc
+// is handed one, `with` chooses it for the rest of a block, and an arena
+// hands blocks out of one buffer and takes them all back at once.
+
+import { println } from "stdlib"
+import { alloc, free, allocator, heap, size, align, Arena } from "mem"
+
+struct Node {
+  value: i32
+  next: *Node?
+}
+
+// Rowless, allocates, so it receives the allocator its caller was using.
+fn make_node(value: i32): *Node {
+  var node = alloc<Node>()
+  node.value = value
+  node.next = null
+  return node
+}
+
+fn main() {
+  println(size<Node>())
+  println(align<Node>())
+  println(size<u8>())
+
+  var arena = Arena::new(256)
+  defer arena.free()
+
+  // Everything below the with comes out of the arena, and the arena is
+  // what reclaims it: no free, no warning.
+  var first: *Node
+  {
+    with arena.allocator()
+    first = make_node(1)
+    var second = make_node(2)
+    first.next = second
+    println(first.value + second.value)
+
+    // The block's allocator is the one allocator() answers with.
+    println(allocator().data == arena.allocator().data)
+  }
+
+  // The block ended, so this is the heap's again.
+  println(allocator().data == heap().data)
+  var kept = make_node(3)
+  defer free(kept)
+  println(kept.value)
+
+  // free_all resets the arena: the next block is the first block again.
+  arena.free_all()
+  with arena.allocator()
+  var again = make_node(4)
+  println(again == first)
+  println(again.value)
+
+  // A block from Alloc is zero-filled, even one reused after free_all.
+  var fresh = alloc<Node>()
+  println(fresh.value)
+  println(fresh.next == null)
+
+  // A closure captures the allocator current where it is written.
+  var build = fn(n: i32): *Node {
+    return make_node(n)
+  }
+  arena.free_all()
+  var built = build(5)
+  println(built == first)
+  println(built.value)
+
+  // So does a named allocating function taken as a value.
+  var named = make_node
+  arena.free_all()
+  println(named(6) == first)
+
+  // Its address is a thunk that supplies the heap: what it makes is not
+  // the arena's, and is freed to the heap.
+  arena.free_all()
+  var code = &make_node
+  var off = code(7)
+  println(off == first)
+  println(off.value)
+  {
+    with heap()
+    free(off)
+  }
+
+  // An arena inside an arena takes its buffer from the outer one.
+  var inner = Arena::new(64)
+  {
+    with inner.allocator()
+    var deep = make_node(8)
+    println(deep.value)
+  }
+  inner.free()
+}

@@ -12,7 +12,13 @@ attached — a skip is a program that will fail the day the gap closes
 
 - **Memory reclamation.** Every `#{}`, `split` and `text()` allocates and
   nothing frees it. Strings, closure environments and futures leak by design
-  in v1. Fine for a program that exits; fatal for a server.
+  in v1. Fine for a program that exits; fatal for a server. The allocator
+  model ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
+  `alloc<T>()` and `free` honour it today, but the runtime's own storage
+  does not yet: an `Array<T>`'s buffer, the text `#{}` and the string
+  methods build, a closure's environment, a future and a channel all come
+  from the process heap whatever `with` is in force. Routing them through
+  the allocator they are handed is what closes this.
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 
@@ -30,13 +36,14 @@ attached — a skip is a program that will fail the day the gap closes
 ## Safety holes
 
 - **Mutation rules are unchecked.**
-- **Use-after-free and uninitialized reads are undetected.** The runtime
-  frees for real and leaves storage as the allocator returned it. A METALS
-  evaluator used to poison freed and unwritten cells and abort on a read;
-  it is gone, and with it the only thing that caught either. It cannot
-  name a double free reliably either: the freeing routine writes its
-  poison and then hands the block to libc, which reuses those bytes, so
-  what is reported is `free of memory that is not allocated`.
+- **Use-after-free, double free and uninitialized reads are undetected.**
+  The heap frees for real, and a block from `alloc<T>()` is zero-filled,
+  so a field read before it is written reads zero rather than aborting. A
+  METALS evaluator used to poison freed and unwritten cells and abort on
+  a read; it is gone, and with it the only thing that caught either. The
+  place for that check now is an allocator: one that quarantines freed
+  blocks and poisons them is ordinary Gyro over
+  [chapter 4.5](ch04-05-allocators.md), and is not written yet.
 - **Type punning is not diagnosed.** Reading across two union members that
   share no common initial sequence, or reading a struct's storage as
   bytes, reinterprets whatever is there. It is undefined in C too, `char *`

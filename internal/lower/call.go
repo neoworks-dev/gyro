@@ -202,6 +202,9 @@ func (f *funcLowerer) prepareUserCall(call *ast.CallExpr, resolved *sema.CallInf
 		args = append(args, f.methodReceiver(selector.X, resolved.Method))
 	}
 	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
+	if f.l.allocates(decl) {
+		args = append(args, f.currentAllocator())
+	}
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 }
 
@@ -268,7 +271,9 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	}
 
 	if module != nil && module.Path == stdlib.Path("mem") {
-		return f.prepareMemIntrinsic(call, resolved, decl)
+		if prepared := f.prepareMemIntrinsic(call, resolved, decl); prepared != nil {
+			return prepared
+		}
 	}
 	if module != nil && module.Path == stdlib.Path("math") {
 		return f.prepareMathIntrinsic(call, decl)
@@ -289,6 +294,11 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 		args = append(args, f.nativeReceiver(selector.X))
 	}
 	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
+	// An intrinsic that declares alloc is handed the allocator like any
+	// Gyro function, whether or not the runtime behind it reads it yet.
+	if f.l.allocates(decl) {
+		args = append(args, f.currentAllocator())
+	}
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 }
 
@@ -385,35 +395,34 @@ func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDec
 	return nil
 }
 
+// prepareMemIntrinsic lowers the mem intrinsics the compiler answers
+// itself: the current allocator, and the layout of a type. It returns nil
+// for the ones the runtime supplies — panic and the raw heap calls —
+// which lower as ordinary natives.
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
-	case "alloc":
+	case "allocator":
+		value := f.currentAllocator()
+		return func() string { return value }
+	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
-			f.l.fail("@%s: alloc without a bound T", f.fn.Name)
+			f.l.fail("@%s: %s without a bound T", f.fn.Name, decl.Name)
 		}
-		elem := f.l.metalsType(bound)
-		return func() string {
-			out := f.newReg("p")
-			f.emit(&metals.New{Dst: out, Type: elem})
-			return out
+		lowered := f.l.metalsType(bound)
+		layout := metals.NewLayout(f.l.module, func(format string, args ...any) {
+			f.l.fail("@%s: %s: "+format, append([]any{f.fn.Name, decl.Name}, args...)...)
+		})
+		answer := layout.Size(lowered)
+		if decl.Name == "align" {
+			answer = layout.Align(lowered)
 		}
-	case "free":
-		ptr := f.lowerExpr(call.Args[0].Value, nil)
 		return func() string {
-			f.emit(&metals.Free{X: ptr})
-			return ""
-		}
-	case "size":
-		// The interpreter answers 8 for every type; the lowering bakes in
-		// the same placeholder until layout exists.
-		return func() string {
-			out := f.newReg("size")
-			f.emit(&metals.Const{Dst: out, Type: metals.TUsize, Value: "8"})
+			out := f.newReg(decl.Name)
+			f.emit(&metals.Const{Dst: out, Type: metals.TUsize, Value: strconv.Itoa(answer)})
 			return out
 		}
 	}
-	f.l.fail("@%s: unknown mem intrinsic %s", f.fn.Name, decl.Name)
 	return nil
 }
 
@@ -559,6 +568,10 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		Params: []metals.Param{{Name: "e", Type: &metals.Named{Name: "error"}}},
 		Result: metals.TStr,
 	}
+	// A message method that allocates is handed the heap: this dispatch
+	// is reached from the runtime's own rendering, where no allocator is
+	// in scope.
+	fn.Body = append(fn.Body, &metals.Call{Dst: allocatorLocal, Callee: f.l.heapFunc()})
 
 	sw := &metals.Switch{X: "tag"}
 	sw.Cases = append(sw.Cases, metals.SwitchCase{Value: 0, Body: []metals.Instr{
@@ -583,18 +596,22 @@ func (f *funcLowerer) ensureErrorMessage() string {
 			)
 			receiver = "cell"
 		}
+		args := []string{receiver}
+		if f.l.allocates(method.Decl) {
+			args = append(args, allocatorLocal)
+		}
 		body = append(body,
-			&metals.Call{Dst: "msg", Callee: callee, Args: []string{receiver}},
+			&metals.Call{Dst: "msg", Callee: callee, Args: args},
 			&metals.Return{Val: "msg"},
 		)
 		sw.Cases = append(sw.Cases, metals.SwitchCase{Value: index, Body: body})
 	}
 
-	fn.Body = []metals.Instr{
+	fn.Body = append(fn.Body,
 		&metals.VariantTag{Dst: "tag", X: "e"},
 		sw,
 		&metals.Abort{Message: "an error value carries an unknown variant"},
-	}
+	)
 	f.l.module.Funcs = append(f.l.module.Funcs, fn)
 	return name
 }

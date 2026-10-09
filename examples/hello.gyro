@@ -2,9 +2,10 @@
 
 import { println } from "stdlib"
 
-// The row is a complete statement of what greet does: println is io, and
-// building the interpolated text allocates.
-fn greet(name: string) !{ io, alloc } {
+// No effect row: what greet does is read out of its body, and out of the
+// bodies that body calls, in whatever module they live. A row is how a
+// function states an interface, not how the compiler finds out.
+fn greet(name: string) {
   println("Hello, #{name}!")
 }
 

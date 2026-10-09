@@ -6,7 +6,7 @@
 -- run editor/nvim/install.sh in the gyro repo to (re)do both. The language
 -- server is the compiler itself: `gyro lsp`.
 
-local REPO_ROOT = "/home/moritz/Documents/gyro-lang/gyro"
+local REPO_ROOT = "/home/moritz/Documents/neoworks/gyro-lang/gyro"
 
 return {
   name = "gyro",

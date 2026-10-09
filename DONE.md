@@ -1,6 +1,6 @@
 # Done
 
-What landed, newest first. `NEXT.md` carries only what is still open; an
+What landed, newest first. Open work is tracked as issues on `neoworks-dev/gyro`; an
 entry here that left something behind says where it went. The reasoning
 that outlived the work is in `docs/decisions.md` — this is the record of
 when, not the record of why.
@@ -79,7 +79,7 @@ and the corpus is where that is held.
   statements do: a label jumped to from earlier gets a `block` around
   what precedes it, one jumped to from later gets a `loop` around what
   follows, one that is both gets both. Two shapes are left over and they
-  are the relooper's — see `NEXT.md`.
+  are the relooper's — see #42.
 - **A program is as many files as it takes.** C has no way to say which
   `.c` defines a symbol, so the set is found rather than declared:
   `resolve.go` starts at the file Gyro imported and follows what it
@@ -413,7 +413,7 @@ Decided in one pass, and all of them implemented and recorded in
   evaluator's randomization and the native runtime's in-order poll are
   both conforming; a program that depends on the choice is wrong. This
   makes the recorded divergence a language property instead of a bug, and
-  leaves starvation as a runtime quality item (in `NEXT.md`).
+  leaves starvation as a runtime quality item (#41).
 - **A shift never panics.** `<<` drops the bits that leave the width, as
   `>>` always has. Corpus: `shift-edges.gyro`.
 - **Effects v1 edges**, decided together with the above and implemented:
@@ -483,7 +483,7 @@ Decided in one pass, and all of them implemented and recorded in
   extending the allocator to the caller-saved registers — which
   would need a live-across-call analysis and spill code at each call
   site — is not where the remaining gap is. It is inlining, which is now
-  the top codegen item in `NEXT.md`.
+  the top codegen item (#39).
 
 - **The lowering loads a whole aggregate to index one element.**
   Landed, and it took both this and the self-copy below with one
@@ -554,7 +554,7 @@ Decided in one pass, and all of them implemented and recorded in
 
 Real programs written by someone who had never heard of Gyro, run against
 their own test suites. What each one found is listed here because the
-finding is the point; the gaps still open are in `NEXT.md`. Clones live
+finding is the point; the gaps still open are issues. Clones live
 in `../c-ports/`, outside this repo.
 
 **tiny-regex-c** → `tests/testdata/run/regex/`. All 76 cases of its

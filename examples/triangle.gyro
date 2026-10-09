@@ -210,7 +210,7 @@ fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
 // because every member begins with that same u32 — the one cross-member
 // read C entitles a program to, and the reason a tagged union works at
 // all ([chapter 5.1](../docs/ch05-01-structs.md)).
-fn quit_requested(event: *Event): bool !{ io } {
+fn quit_requested(event: *Event): bool {
   var quit = false
   while SDL_PollEvent(event) != 0 {
     if event.kind == SDL_QUIT {

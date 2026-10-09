@@ -1,0 +1,214 @@
+// The SingleStepTests 65x02 suite, run against the Gyro port of Fake6502.
+//
+// Upstream (github.com/SingleStepTests/65x02, MIT) gives ten thousand
+// tests for each opcode: an initial CPU state including the bytes of
+// memory the instruction will touch, the final state it must reach, and
+// the bus cycles it took. `tests.gyro` holds the first ten of each of the
+// 151 documented opcodes, encoded by `gen_tests.py`, and this driver runs
+// every one of them and prints a line per opcode.
+//
+// A failing test names the field that disagreed rather than counting, so
+// a difference says which instruction and which flag.
+//
+// `../../../../c-ports/fake6502/gyro/reference.c` is the C driver over
+// the upstream `fake6502.h` that prints the same lines, reading the same
+// tests out of the `tests.h` beside it; `expected.out` is its output, so
+// the golden is the C original's answer rather than a hand-written one.
+
+import { printf } from "fmt"
+import * as m6502 from "./m6502"
+import * as tests from "./tests"
+
+// The most memory locations any one test names. Upstream's states list
+// the bytes the instruction reads and writes, which for the widest
+// addressing mode is a handful.
+const MAX_RAM: usize = 32
+
+const NO_ADDRESSES: u16[32] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]
+
+const NO_VALUES: u8[32] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]
+
+// One end of a test: the registers, and the memory that goes with them.
+struct State {
+  pc: u16
+  s: u8
+  a: u8
+  x: u8
+  y: u8
+  p: u8
+  n: usize
+  addresses: u16[32]
+  values: u8[32]
+}
+
+// ---------------------------------------------------------------------------
+// Reading the encoded tests
+// ---------------------------------------------------------------------------
+
+fn digit(byte: u8): u32 {
+  if byte <= '9' as u8 {
+    return (byte - ('0' as u8)) as u32
+  }
+  return ((byte - ('a' as u8)) as u32) + 10
+}
+
+fn hex(bytes: u8[], at: usize, width: usize): u32 {
+  var value: u32 = 0
+  for i in 0..width {
+    value = value * 16 + digit(bytes[at + i])
+  }
+  return value
+}
+
+// state reads one end of a test and answers with the offset just past it.
+fn state(bytes: u8[], at: usize): (State, usize) {
+  var count = hex(bytes, at + 14, 2) as usize
+  var addresses = NO_ADDRESSES
+  var values = NO_VALUES
+  var cursor = at + 16
+  for i in 0..count {
+    addresses[i] = hex(bytes, cursor, 4) as u16
+    values[i] = hex(bytes, cursor + 4, 2) as u8
+    cursor += 6
+  }
+  return State{
+    pc: hex(bytes, at, 4) as u16,
+    s: hex(bytes, at + 4, 2) as u8,
+    a: hex(bytes, at + 6, 2) as u8,
+    x: hex(bytes, at + 8, 2) as u8,
+    y: hex(bytes, at + 10, 2) as u8,
+    p: hex(bytes, at + 12, 2) as u8,
+    n: count,
+    addresses: addresses,
+    values: values,
+  }, cursor
+}
+
+// ---------------------------------------------------------------------------
+// Running one test
+// ---------------------------------------------------------------------------
+
+fn report(index: i32, field: string, got: u32, want: u32, width: usize) {
+  if width == 4 {
+    printf("    #%d %-8s got %04x want %04x\n", index, field, got, want)
+  } else {
+    printf("    #%d %-8s got %02x want %02x\n", index, field, got, want)
+  }
+}
+
+fn report_ram(index: i32, address: u16, got: u8, want: u8) {
+  printf("    #%d $%04x    got %02x want %02x\n", index, address, got, want)
+}
+
+// run loads the initial state, executes one instruction, and reports every
+// field the final state disagrees with. The cycle count is the length of
+// upstream's bus-cycle list; the emulator counts cycles rather than bus
+// accesses, so only the total is comparable.
+fn run(cpu: *m6502::Cpu, index: i32, before: State, after: State, cycles: u32): bool {
+  var ok = true
+
+  cpu.forget_touches()
+  for i in 0..before.n {
+    cpu.store(before.addresses[i], before.values[i])
+    cpu.touch(before.addresses[i])
+  }
+  cpu.pc = before.pc
+  cpu.sp = before.s
+  cpu.a = before.a
+  cpu.x = before.x
+  cpu.y = before.y
+  cpu.status = before.p
+
+  cpu.step()
+
+  if cpu.pc != after.pc {
+    report(index, "pc", cpu.pc as u32, after.pc as u32, 4)
+    ok = false
+  }
+  if cpu.sp != after.s {
+    report(index, "s", cpu.sp as u32, after.s as u32, 2)
+    ok = false
+  }
+  if cpu.a != after.a {
+    report(index, "a", cpu.a as u32, after.a as u32, 2)
+    ok = false
+  }
+  if cpu.x != after.x {
+    report(index, "x", cpu.x as u32, after.x as u32, 2)
+    ok = false
+  }
+  if cpu.y != after.y {
+    report(index, "y", cpu.y as u32, after.y as u32, 2)
+    ok = false
+  }
+  if cpu.status != after.p {
+    report(index, "p", cpu.status as u32, after.p as u32, 2)
+    ok = false
+  }
+  if cpu.clockticks != cycles {
+    report(index, "cycles", cpu.clockticks, cycles, 2)
+    ok = false
+  }
+  for i in 0..after.n {
+    var got = cpu.read(after.addresses[i])
+    if got != after.values[i] {
+      report_ram(index, after.addresses[i], got, after.values[i])
+      ok = false
+    }
+  }
+
+  // Hand the next test a clean machine: every address this one wrote,
+  // and every address either state named.
+  for i in 0..cpu.ntouched {
+    cpu.store(cpu.touched_at(i), 0)
+  }
+  for i in 0..before.n {
+    cpu.store(before.addresses[i], 0)
+  }
+  for i in 0..after.n {
+    cpu.store(after.addresses[i], 0)
+  }
+  return ok
+}
+
+fn main() {
+  var cpu = m6502::Cpu::new()
+  defer cpu.free()
+
+  var total = 0
+  var passed = 0
+
+  var i: usize = 0
+  while i < 151 {
+    var bytes = tests::CASES[i].bytes()
+    var cursor: usize = 0
+    var count = 0
+    var ok = 0
+
+    while cursor < bytes.len() {
+      var before, at = state(bytes, cursor)
+      var after, next = state(bytes, at)
+      var cycles = hex(bytes, next, 2)
+      cursor = next + 2
+      count += 1
+      if run(&cpu, count, before, after, cycles) {
+        ok += 1
+      }
+    }
+
+    printf("%02x %s %-4s %2d/%2d\n", tests::OPCODES[i], tests::MNEMONICS[i],
+           tests::MODES[i], ok, count)
+    total += count
+    passed += ok
+    i += 1
+  }
+
+  printf("151 opcodes, %d tests, %d passed, %d failed\n", total, passed,
+         total - passed)
+}

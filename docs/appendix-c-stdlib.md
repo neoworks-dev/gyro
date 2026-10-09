@@ -132,11 +132,47 @@ export fn MutexGuard<T>::unlock(*self) !{}
 
 ### `mem`
 
+The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
+`free`, `heap` and `Arena` are ordinary Gyro over the procedure an
+`Allocator` carries; `allocator`, `size`, `align`, `panic` and the three
+`raw_` functions are the intrinsics under them, and the `raw_` three are
+the process heap itself, which is why they carry no row.
+
 ```gyro
+export enum Mode { Alloc, Free, FreeAll, Resize }
+
+export struct Allocator {
+  export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+  export data: anyptr?
+}
+
+export fn allocator(): Allocator !{ alloc }
+export fn heap(): Allocator !{}
+
 export fn alloc<T>(): *T !{ alloc }
-export fn free<T>(pointer: *T) !{}
+export fn free<T>(pointer: *T) !{ alloc }
 export fn size<T>(): usize !{}
+export fn align<T>(): usize !{}
+
+export fn panic(message: string) !{}
+
+export fn raw_alloc(size: usize, align: usize): anyptr? !{}
+export fn raw_free(pointer: anyptr) !{}
+export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
+
+export struct Arena { ... }
+export fn Arena::new(capacity: usize): Arena !{ alloc }
+export fn Arena::allocator(*self): Allocator !{}
+export fn Arena::free_all(*self) !{}
+export fn Arena::free(*self) !{ alloc }
 ```
+
+`panic` aborts the process with the message, the way an index out of
+range does. It is a function rather than a keyword because a program that
+has decided to stop needs nothing from the grammar to say so — but the
+checker knows it does not return, so `if p == null { panic("...") }`
+narrows `p` below it exactly as a `return` would
+([chapter 4.3](ch04-03-nullability.md)).
 
 ### `fmt`
 
@@ -175,6 +211,7 @@ sorted, without `.` and `..`.
 ```gyro
 export fn env(name: string): string? !{ io, alloc }
 export fn read_stdin(): string !{ io, alloc }
+export fn readline(): string? !{ io, alloc }
 export fn exit(code: i32) !{ io }
 ```
 
@@ -182,6 +219,12 @@ export fn exit(code: i32) !{ io }
 file in one shot: a second call finds the stream drained and returns `""`.
 `exit` ends the process after flushing stdout and stderr — **deferred calls
 do not run**; exit is immediate, like a panic.
+
+`readline` takes the next line, without its terminator, and answers null at
+end of file — an empty line is `""`, the way an empty environment variable
+is, so absence is the null and nothing else. A final line with no newline
+still comes back. Both readers share the stream: a program may take a line
+and then drain what is left.
 
 ### `time`
 
@@ -240,13 +283,15 @@ export async fn get(url: string): (string, error?) !{ io, alloc }
 ## What is runtime-backed and what is Gyro
 
 Runtime intrinsics: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
-`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `alloc`/`free`/`size`,
+`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
+`align`, `panic` and `raw_alloc`/`raw_free`/`raw_resize`,
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
 `net::get`, the `os` and `time` surfaces. The `math` functions are METALS
 instructions.
 
 Ordinary Gyro: `String` and its UTF-8 encoder, every text method,
-`Map<K, V>`, `Array<T>::is_empty`, and all of `fmt`.
+`Map<K, V>`, `Array<T>::is_empty`, all of `fmt`, and `mem`'s `alloc`,
+`free`, `heap` and `Arena`.
 
 **Prefer Gyro.** Something with no interesting runtime requirement written
 into the C runtime instead is a second language to maintain it in, for

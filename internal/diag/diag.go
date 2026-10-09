@@ -115,14 +115,20 @@ func (b *Bag) Track(file *File) {
 }
 
 // Render draws every diagnostic as a code frame, separated by blank lines.
+// Each frame resolves against its own file, so a related span pointing into
+// another module quotes that module.
 func (b *Bag) Render(style Style) string {
 	var out strings.Builder
 	for _, item := range b.Items() {
-		out.WriteString(Render(item, b.files[item.Pos.File], style))
+		out.WriteString(Render(item, b.lookup, style))
 		out.WriteString("\n\n")
 	}
 	return out.String()
 }
+
+// lookup is the bag's Files resolver: the sources Track registered, and nil
+// for a file it never saw.
+func (b *Bag) lookup(name string) *File { return b.files[name] }
 
 func (b *Bag) Errorf(pos Position, format string, args ...any) {
 	b.Add(Diagnostic{

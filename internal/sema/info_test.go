@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/types"
@@ -13,6 +14,35 @@ import (
 // checkInfo checks src, requiring a clean bag, and returns the recorded
 // Info: what sema hands the backends and the language server.
 func checkInfo(t *testing.T, src string) *Info {
+	t.Helper()
+	info, _ := checkInfoProgram(t, src)
+	return info
+}
+
+// rootCalls is the recorded resolution of every call the root module
+// writes. Info covers the whole program, and every program carries the
+// bundled mem module, whose own calls are not the test's.
+func rootCalls(t *testing.T, src string) []*CallInfo {
+	t.Helper()
+	info, program := checkInfoProgram(t, src)
+	var calls []*CallInfo
+	for _, decl := range program.Root.Tree.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		walkEffectStmt(fn.Body, func(source ast.Expr) {
+			if call, ok := source.(*ast.CallExpr); ok {
+				if resolved := info.Calls[call]; resolved != nil {
+					calls = append(calls, resolved)
+				}
+			}
+		})
+	}
+	return calls
+}
+
+func checkInfoProgram(t *testing.T, src string) (*Info, *loader.Program) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "main.gyro")
@@ -29,16 +59,16 @@ func checkInfo(t *testing.T, src string) *Info {
 	for _, item := range bag.Items() {
 		t.Errorf("unexpected diagnostic: %s", item)
 	}
-	return info
+	return info, program
 }
 
 func TestInfoRecordsCalls(t *testing.T) {
-	info := checkInfo(t, "fn add(a: i32, b: i32): i32 {\n  return a + b\n}\n\nfn t(): i32 {\n  return add(1, 2)\n}\n")
+	calls := rootCalls(t, "fn add(a: i32, b: i32): i32 {\n  return a + b\n}\n\nfn t(): i32 {\n  return add(1, 2)\n}\n")
 
-	if len(info.Calls) != 1 {
-		t.Fatalf("recorded %d calls, want 1", len(info.Calls))
+	if len(calls) != 1 {
+		t.Fatalf("recorded %d calls, want 1", len(calls))
 	}
-	for _, resolved := range info.Calls {
+	for _, resolved := range calls {
 		if resolved.Method == nil || resolved.Method.Name != "add" {
 			t.Errorf("the call did not resolve to add: %+v", resolved)
 		}
@@ -49,6 +79,7 @@ func TestInfoRecordsCalls(t *testing.T) {
 			t.Errorf("the call's result is %s, want i32", resolved.Sig.Result)
 		}
 	}
+	info := checkInfo(t, "fn add(a: i32, b: i32): i32 {\n  return a + b\n}\n")
 	if len(info.Types) == 0 {
 		t.Errorf("no expression types were recorded")
 	}
@@ -82,12 +113,12 @@ func TestInfoRecordsInstances(t *testing.T) {
 }
 
 func TestInfoRecordsVariantConstruction(t *testing.T) {
-	info := checkInfo(t, "enum Shape {\n  Circle(f64),\n  Point,\n}\n\nfn t(): Shape {\n  return Shape::Circle(1.0)\n}\n")
+	calls := rootCalls(t, "enum Shape {\n  Circle(f64),\n  Point,\n}\n\nfn t(): Shape {\n  return Shape::Circle(1.0)\n}\n")
 
-	if len(info.Calls) != 1 {
-		t.Fatalf("recorded %d calls, want 1", len(info.Calls))
+	if len(calls) != 1 {
+		t.Fatalf("recorded %d calls, want 1", len(calls))
 	}
-	for _, resolved := range info.Calls {
+	for _, resolved := range calls {
 		if resolved.Enum == nil || resolved.Enum.Name != "Shape" {
 			t.Errorf("the construction did not resolve to Shape: %+v", resolved)
 		}

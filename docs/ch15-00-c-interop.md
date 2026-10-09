@@ -271,6 +271,12 @@ cannot go into an `any`. Printing one prints the word `code`. It works in
 both directions and by both routes: C's loop can run a Gyro function it was
 handed, and a pointer C returns can be called from Gyro.
 
+A function that allocates takes an allocator as a hidden parameter
+([chapter 4.5](ch04-05-allocators.md)), and C has no way to pass one. So
+`&f` on such a function is the address of a thunk that supplies the
+process heap and calls `f`: a callback allocates from the heap, whatever
+`with` was in force where its address was taken.
+
 ## Which route to use
 
 Use `@extern` when the library is a `.so` you are linking against.

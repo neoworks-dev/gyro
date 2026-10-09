@@ -24,6 +24,11 @@ import (
 //	return xs              //~ E0609 which the row does not name
 //	                       //~ help: say so in the row: !{ &xs }
 //
+// `note:` and `help:` claim the lines under a diagnostic; `span:` claims
+// one of its related frames, by the frame's label or by its location, so a
+// fixture can assert both what a frame says and that it points into another
+// file.
+//
 // A marker may claim a line other than its own with `^`, one per line
 // back, for a diagnostic that lands where a marker would not fit.
 //
@@ -79,7 +84,7 @@ type expectation struct {
 	// file is the base name of the fixture file the marker is written in.
 	file string
 	line int
-	// kind is "message", "note" or "help".
+	// kind is "message", "note", "help" or "span".
 	kind string
 	// code is the diag.Code the diagnostic must carry, or "" for any.
 	code string
@@ -120,6 +125,8 @@ func parseMarker(t *testing.T, file string, lineNumber int, marker string) expec
 		found.kind, marker = "help", strings.TrimSpace(rest)
 	} else if rest, ok := strings.CutPrefix(marker, "note:"); ok {
 		found.kind, marker = "note", strings.TrimSpace(rest)
+	} else if rest, ok := strings.CutPrefix(marker, "span:"); ok {
+		found.kind, marker = "span", strings.TrimSpace(rest)
 	}
 
 	if code, rest, ok := strings.Cut(marker, " "); ok && isDiagnosticCode(code) {
@@ -233,8 +240,22 @@ func satisfies(want expectation, item diag.Diagnostic) bool {
 		return containsText(item.Help, want.text)
 	case "note":
 		return containsText(item.Notes, want.text)
+	case "span":
+		return matchesSpan(item.Related, want.text)
 	}
 	return strings.Contains(item.Message, want.text)
+}
+
+// matchesSpan claims a related frame by what it says or by where it points.
+// The location is worth asserting on its own: a frame that resolves against
+// the wrong file still carries the right label.
+func matchesSpan(spans []diag.Span, want string) bool {
+	for _, span := range spans {
+		if strings.Contains(span.Label, want) || strings.Contains(span.Pos.String(), want) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsText(lines []string, want string) bool {

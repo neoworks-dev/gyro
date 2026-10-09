@@ -1,0 +1,40 @@
+// Saving and loading a session.
+//
+// What `save` writes is a program in the calculator's own language — the
+// definitions as definitions, the variables as a value and a store — so
+// loading one is running it, and there is no second format to keep in
+// step with the first. That is also why this module does not run
+// anything: it hands the text back and the interpreter runs it, which is
+// what keeps the two from importing each other.
+
+import { String, join } from "stdlib"
+import { open, read_all, write_file } from "fs"
+import { Calc } from "./machine"
+
+export fn save(calc: *Calc, path: string): error? {
+  var out = String::new()
+  defer out.free()
+
+  for name in calc.word_list() {
+    var body = calc.body_of(name)
+    if body != null {
+      out.push(": #{name} #{join(body.slice(), " ")} ;\n")
+    }
+  }
+  for name in calc.var_list() {
+    var value = calc.recall(name)
+    if value != null {
+      out.push("#{value} >#{name}\n")
+    }
+  }
+  return write_file(path, out.text())
+}
+
+export fn read_source(path: string): (string, error?) {
+  var file, err = open(path)
+  if err != null {
+    return "", err
+  }
+  defer file.close()
+  return read_all(file)
+}

@@ -10,7 +10,7 @@
 // dereferenced until it has been checked.
 
 import { println } from "stdlib"
-import { alloc, free } from "mem"
+import { alloc, free, Arena } from "mem"
 
 struct Node {
   value: i32
@@ -75,6 +75,20 @@ fn main() {
 
   var address = &head.value
   println(*address)
+
+  // Every allocation is made by an allocator, and `with` chooses one for
+  // the rest of the block. An arena hands blocks out of one buffer and
+  // takes them all back at once, so nothing below needs a free — and the
+  // leak analysis knows that.
+  var arena = Arena::new(1024)
+  defer arena.free()
+  {
+    with arena.allocator()
+    var scratch = make_node(3)
+    var tail = make_node(4)
+    scratch.next = tail
+    println(scratch.value + tail.value)
+  }
 
   // Overflow is a panic, not a wrap. Wrapping is spelled out where it is
   // wanted, as in a hash. Literals adapt to the context type; the typed

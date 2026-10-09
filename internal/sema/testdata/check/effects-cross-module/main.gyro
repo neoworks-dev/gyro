@@ -4,9 +4,13 @@
 
 import { shout, quiet, platform_log } from "./util"
 
+// The route runs off the end of this file, so the frame under the error
+// quotes util.gyro's line, not the line of that number in this file.
 fn inferred(message: string) !{} {
   shout(message)         //~ E0611 shout does io, which the row does not name
-                         //~^ help: name it in the row: !{ io }
+                         //~^ span: shout calls println, which does io
+                         //~^^ span: util.gyro:6:3
+                         //~^^^ help: name it in the row: !{ io }
 }
 
 fn stated(n: i32) !{} {

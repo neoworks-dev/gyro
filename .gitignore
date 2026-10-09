@@ -180,3 +180,5 @@ bin/
 
 # Binaries an example builds into the working directory
 /triangle
+.worktrees/
+book/

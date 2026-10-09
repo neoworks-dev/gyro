@@ -28,6 +28,9 @@ var codes = map[string]diag.Code{
 	"@extern's second argument is symbol = \"the_c_name\"":                                       diag.EExternDeclaration,
 	"%s cannot cross to C: %s":                                                                   diag.EExternSignature,
 
+	// Allocators. The statement that chooses one has to be handed one.
+	"with needs an Allocator, not %s": diag.EWithNotAllocator,
+
 	// Unions. One storage with several names for it, and nothing records
 	// which is live — which is what decides both what may be a member and
 	// what a literal may say.

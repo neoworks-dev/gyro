@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
@@ -89,6 +90,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		// block exit, which is exactly where the leak analysis looks.
 		c.expr(s.Call)
 
+	case *ast.WithStmt:
+		c.withStmt(s)
+
 	case *ast.SendStmt:
 		c.sendStmt(s)
 
@@ -103,6 +107,25 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		// `continue` goes back to the loop head, so nothing below it runs.
 		c.flow.reachable = false
 	}
+}
+
+// withStmt checks `with expr`: the expression has to be an Allocator, and
+// from here to the end of the block every allocation is that allocator's
+// to reclaim, so the leak analysis stops tracking them.
+func (c *checker) withStmt(s *ast.WithStmt) {
+	got := c.expr(s.Allocator)
+	if got != nil && got != types.Unknown && !isAllocatorType(got) {
+		c.errorHintf(s.Offset, []string{
+			"with takes the value to hand every call below it: heap(), arena.allocator(), or an Allocator of your own",
+		}, "with needs an Allocator, not %s", types.Default(got))
+	}
+	c.withDepth++
+}
+
+// isAllocatorType reports the mem module's Allocator struct.
+func isAllocatorType(t types.Type) bool {
+	strct, ok := t.(*types.Struct)
+	return ok && strct.Name == "Allocator" && strct.Module == stdlib.Path("mem")
 }
 
 // selectStmt runs exactly one arm, so what survives is what every arm
@@ -159,6 +182,17 @@ func (c *checker) exprStmt(s *ast.ExprStmt) {
 	if _, ok := t.(*types.Future); ok {
 		c.errorf(s.X.Pos(), "this async call does nothing until it is awaited")
 	}
+	// A panic ends the process, so nothing below it in the block runs:
+	// `if p == null { panic(...) }` narrows p the way a return would.
+	if c.isPanic(s) {
+		c.flow.reachable = false
+	}
+}
+
+// isPanic reports a statement that calls mem's panic.
+func (c *checker) isPanic(s ast.Stmt) bool {
+	expr, ok := s.(*ast.ExprStmt)
+	return ok && c.intrinsicCall(expr.X) == "panic"
 }
 
 func containsError(t types.Type) bool {
@@ -706,8 +740,8 @@ func (c *checker) ifStmt(s *ast.IfStmt) {
 
 	// An early exit makes the surviving branch's facts permanent:
 	// `if x == null { return }` leaves x narrowed below.
-	thenExits := blockTerminates(s.Then)
-	elseExits := s.Else != nil && stmtTerminates(s.Else)
+	thenExits := c.blockTerminates(s.Then)
+	elseExits := s.Else != nil && c.stmtTerminates(s.Else)
 	if thenExits && !elseExits {
 		c.persistFacts(facts.els)
 	}
@@ -716,24 +750,28 @@ func (c *checker) ifStmt(s *ast.IfStmt) {
 	}
 }
 
-func blockTerminates(b *ast.Block) bool {
+// blockTerminates reports a block that never falls out of its bottom: it
+// returns, branches, or panics.
+func (c *checker) blockTerminates(b *ast.Block) bool {
 	if len(b.Stmts) == 0 {
 		return false
 	}
-	return stmtTerminates(b.Stmts[len(b.Stmts)-1])
+	return c.stmtTerminates(b.Stmts[len(b.Stmts)-1])
 }
 
-func stmtTerminates(s ast.Stmt) bool {
+func (c *checker) stmtTerminates(s ast.Stmt) bool {
 	switch s := s.(type) {
 	case *ast.ReturnStmt, *ast.BranchStmt:
 		return true
+	case *ast.ExprStmt:
+		return c.isPanic(s)
 	case *ast.Block:
-		return blockTerminates(s)
+		return c.blockTerminates(s)
 	case *ast.IfStmt:
 		if s.Else == nil {
 			return false
 		}
-		return blockTerminates(s.Then) && stmtTerminates(s.Else)
+		return c.blockTerminates(s.Then) && c.stmtTerminates(s.Else)
 	}
 	return false
 }

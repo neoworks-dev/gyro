@@ -138,6 +138,14 @@ applies to a `fn` type and to a parenthesized tuple result.
 
 A capturing closure's environment is real heap storage — a record the
 lowering allocates and the closure carries a pointer to. Nothing frees it
-today ([appendix G](appendix-g-known-gaps.md)), and creating one is not
+today, it does not yet come from the current allocator
+([appendix G](appendix-g-known-gaps.md)), and creating one is not
 currently counted as `alloc` by the effect checker
 ([chapter 12](ch12-00-effect-rows.md)).
+
+A closure whose body allocates captures the **allocator** current where
+the closure is written, exactly as it captures any other local, so calling
+it later allocates from that one ([chapter 4.5](ch04-05-allocators.md)).
+That capture is what lets a function value be called from a `!{}`
+context without a row travelling with it: the value carries what its
+body needs.

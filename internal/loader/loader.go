@@ -81,8 +81,23 @@ func LoadFromSource(resolver Resolver, rootPath string, source string, bag *diag
 		modules:  map[string]*Module{},
 		loading:  map[string]bool{},
 	}
+	// Every program carries mem, whether or not it imports it: the
+	// allocator a function receives is a value of mem's Allocator type,
+	// and main starts on mem's heap, so the lowering needs both to exist
+	// before the root says a word about memory.
+	state.ensureBundled("mem")
 	root := state.add(absolute, source)
 	return &Program{Root: root, Modules: state.order}, nil
+}
+
+// ensureBundled loads a bundled module the program needs even when
+// nothing imports it. A later import of the same name finds it loaded.
+func (s *loadState) ensureBundled(name string) {
+	path, source, err := s.resolver.Resolve("", name)
+	if err != nil || s.modules[path] != nil {
+		return
+	}
+	s.add(path, source)
 }
 
 type loadState struct {

@@ -11,7 +11,7 @@ enum   return  if      elif    else
 while  for     in      match   break
 continue defer async   await   chan
 select import  as      export  self
-true   false   null    _
+with   true    false   null    _
 ```
 
 `_` is in the list because it is not a name: it discards.
@@ -52,7 +52,7 @@ method on a built-in type:
 | name | what it is |
 | --- | --- |
 | `println`, `print`, `eprintln` | imported from `stdlib` |
-| `alloc`, `free`, `size` | imported from `mem` |
+| `alloc`, `free`, `size`, `align`, `allocator`, `heap`, `Arena` | imported from `mem` |
 | `spawn` | imported from `stdlib` — a function taking a closure, not grammar |
 | `Array`, `String`, `Map`, `Mutex` | imported types |
 | `len`, `runes`, `bytes`, `close`, `compare`, `hash`, `message`, `to_string` | the built-in method surface |

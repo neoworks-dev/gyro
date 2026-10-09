@@ -57,6 +57,7 @@ signal that separates them ([chapter 8.3](ch08-03-map.md)).
 - `Map<K, V>::get` answers `V?`
 - `string::index_of` answers `usize?`
 - `os::env` answers `string?`
+- `os::readline` answers `string?`, null at end of file
 - a C function returning a pointer that may be `NULL`
   ([chapter 15](ch15-00-c-interop.md))
 - your own data structures: `next: *Node?` is how a list ends

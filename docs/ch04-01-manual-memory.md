@@ -6,7 +6,8 @@ destructors — and there is a static analysis that tells you when an
 allocation is about to be lost.
 
 - `alloc<T>()` returns `*T`, `free(p)` releases it. Both are imported, from
-  the `mem` module.
+  the `mem` module, and both go through the **allocator** the function was
+  handed ([chapter 4.5](ch04-05-allocators.md)).
 - `&x` takes an address, `*p` dereferences.
 - `defer expr` runs a call at block exit ([chapter 4.2](ch04-02-leaks-and-defer.md)).
 - A sema pass **warns** when an allocation can reach the end of its block
@@ -98,7 +99,14 @@ Not checked, and worth knowing:
 Most programs never write `alloc<T>()`. Growing storage is `Array<T>`, text
 is `String`, and both own a buffer and are freed with `free()`
 ([chapter 8](ch08-01-array.md)). `alloc` is for the cases where a program
-lays out its own nodes — a tree, a list, an arena.
+lays out its own nodes — a tree, a list, an allocator of its own.
+
+Memory from `alloc<T>()` is **zero-filled**: that is the allocator's
+contract ([chapter 4.5](ch04-05-allocators.md)), because an allocator
+reuses memory and what its last owner left there is not the new owner's
+to see. Reading a field before writing it is still a mistake — a zero
+`string` is not text — and nothing detects it
+([appendix G](appendix-g-known-gaps.md)).
 
 There is one more way to hand ownership on, and it is the only thing a
 capture list can say:

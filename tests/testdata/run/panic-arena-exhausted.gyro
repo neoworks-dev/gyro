@@ -1,0 +1,26 @@
+//gyro:panic allocation of 16 bytes failed
+// An arena does not grow: a request past its capacity answers null, and
+// alloc<T>() panics with the size rather than hand back a pointer that
+// is not one.
+
+import { println } from "stdlib"
+import { alloc, Arena } from "mem"
+
+struct Node {
+  value: i32
+  next: *Node?
+}
+
+fn main() {
+  var arena = Arena::new(40)
+  defer arena.free()
+  with arena.allocator()
+
+  var a = alloc<Node>()
+  var b = alloc<Node>()
+  a.value = 1
+  b.value = 2
+  println(a.value + b.value)
+  var c = alloc<Node>()
+  println(c.value)
+}

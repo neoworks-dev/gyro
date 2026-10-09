@@ -18,7 +18,47 @@ fn helper(n: i32) {
 
 fn indirect(n: i32) !{} {
   helper(n)              //~ E0611 helper does io, which the row does not name
-                         //~^ help: name it in the row: !{ io }
+                         //~^ span: helper calls println, which does io
+                         //~^^ help: name it in the row: !{ io }
+}
+
+// The effect can arrive any number of calls below the one the row is
+// checked at. Neither `shape` nor its signature shows the println, so the
+// frames under the error are the route inference walked to find it, each
+// quoting the call it made: without them the reader is told their row is
+// wrong and left to search for the reason.
+fn emit(message: string) {
+  println(message)
+}
+
+fn shape(message: string) {
+  emit(message)
+}
+
+fn deep(message: string) !{} {
+  shape(message)         //~ E0611 shape does io, which the row does not name
+                         //~^ span: shape calls emit
+                         //~^^ span: emit calls println, which does io
+                         //~^^^ help: name it in the row: !{ io }
+}
+
+// Two effects reaching one call by different routes are explained
+// separately: what allocates is not what prints.
+fn noisy(n: i32) {
+  println(n)
+}
+
+fn builder(n: i32): string {
+  return "n = #{n}"
+}
+
+fn both(n: i32) !{} {
+  noisy(n)               //~ E0611 noisy does io, which the row does not name
+                         //~^ span: noisy calls println, which does io
+                         //~^^ help: name it in the row: !{ io }
+  var text = builder(n)  //~ E0611 builder does alloc, which the row does not name
+                         //~^ span: builder interpolates a string, which allocates
+                         //~^^ help: name it in the row: !{ alloc }
 }
 
 // A borrow-only row still promises no concrete effects.

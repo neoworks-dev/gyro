@@ -56,12 +56,36 @@ func (s Style) paint(color, text string) string {
 	return color + text + ansiReset
 }
 
-// Render draws one diagnostic. file supplies the source line and may be nil.
-func Render(d Diagnostic, file *File, style Style) string {
+// Files resolves the name in a Position to the source it came from. A
+// diagnostic can point into more than one file — a related span names the
+// other declaration, which an import puts in another module — so rendering
+// resolves every frame by name rather than being handed one source. A name
+// the caller does not have resolves to nil, and that frame degrades to its
+// location instead of quoting a line out of the wrong file.
+type Files func(name string) *File
+
+// OneFile is the resolver for a caller that holds a single source. A frame
+// pointing anywhere else resolves to nil rather than to this file.
+func OneFile(file *File) Files {
+	return func(name string) *File {
+		if file == nil || file.Name != name {
+			return nil
+		}
+		return file
+	}
+}
+
+// Render draws one diagnostic. files may be nil, and may answer nil for any
+// name; either way the frame falls back to its location.
+func Render(d Diagnostic, files Files, style Style) string {
 	var b strings.Builder
 	b.WriteString(renderHeadline(d, style))
 
-	if file == nil || !d.Pos.IsValid() {
+	if files == nil || !d.Pos.IsValid() {
+		b.WriteString("\n --> " + d.Pos.String())
+		return b.String()
+	}
+	if files(d.Pos.File) == nil {
 		b.WriteString("\n --> " + d.Pos.String())
 		return b.String()
 	}
@@ -77,7 +101,7 @@ func Render(d Diagnostic, file *File, style Style) string {
 		length: d.Length,
 		label:  d.Label,
 		caret:  '^',
-	}, file, gutter, style))
+	}, files(d.Pos.File), gutter, style))
 
 	for _, related := range d.Related {
 		b.WriteString(renderFrame(frame{
@@ -85,7 +109,7 @@ func Render(d Diagnostic, file *File, style Style) string {
 			length: related.Length,
 			label:  related.Label,
 			caret:  '-',
-		}, file, gutter, style))
+		}, files(related.Pos.File), gutter, style))
 	}
 
 	b.WriteString(renderNotes(d, gutter, style))
@@ -115,6 +139,17 @@ type frame struct {
 }
 
 func renderFrame(f frame, file *File, gutter int, style Style) string {
+	// A frame whose source the caller does not hold still says where it is.
+	// Quoting the line out of whatever file happened to be at hand instead
+	// would print the wrong source under a correct-looking path.
+	if file == nil {
+		line := indent(gutter) + style.paint(ansiBlue, "--> ") + f.pos.String()
+		if f.label != "" {
+			line += " " + style.paint(ansiCyan, f.label)
+		}
+		return line + "\n"
+	}
+
 	source := file.Line(f.pos.Line)
 	if source == "" && f.pos.Column <= 1 {
 		return indent(gutter) + style.paint(ansiBlue, "--> ") + f.pos.String() + "\n"

@@ -496,6 +496,19 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "from_utf8":
 		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0)}}
 
+	// The floor of every allocator: the process heap, and the abort an
+	// allocator reaches for when a request cannot be met.
+	case "raw_alloc":
+		return nativePlan{symbol: "gy_raw_alloc", args: values(0, 1)}
+	case "raw_free":
+		return nativePlan{symbol: "gy_raw_free", args: values(0)}
+	case "raw_resize":
+		return nativePlan{symbol: "gy_raw_resize", args: values(0, 1, 2, 3)}
+	case "copy_bytes":
+		return nativePlan{symbol: "gy_copy_bytes", args: values(0, 1, 2)}
+	case "panic":
+		return nativePlan{symbol: "gy_panic", args: values(0)}
+
 	// The foreign boundary. Lowering emits these around every @extern
 	// call, so neither backend converts anything itself.
 	case "ffi.cstr":
@@ -540,6 +553,8 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_env", sret: true, args: values(0)}
 	case "read_stdin":
 		return nativePlan{symbol: "gy_read_stdin"}
+	case "readline":
+		return nativePlan{symbol: "gy_readline", sret: true}
 	case "exit":
 		return nativePlan{symbol: "gy_exit", args: values(0)}
 	case "write_byte":

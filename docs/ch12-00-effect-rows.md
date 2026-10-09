@@ -22,8 +22,25 @@ The row goes after the result type, and it is the last thing in a signature.
 
 A function that writes **any** row — even one holding only borrows —
 promises that its body performs no concrete effect the row does not name. A
-row without `io` promises no io; a row without `alloc` promises no
-allocation.
+row without `io` promises no io; a row without `alloc` promises that the
+body never touches the allocator.
+
+## `alloc` is a parameter
+
+`alloc` means **uses the allocator**: allocating, freeing, resizing, or
+calling anything that does. A function whose row names `alloc` — written
+or inferred — receives the allocator its caller was using, as a trailing
+parameter the compiler passes for it, and a function whose row does not
+receives nothing ([chapter 4.5](ch04-05-allocators.md)). So `!{ alloc }`
+is not only a claim about the body; it is what puts an allocator within
+the body's reach, and `free` carries it for the same reason `alloc` does:
+a block goes back to the allocator that handed it out.
+
+What receives the parameter is a Gyro function, a closure's lifted body
+through its captures, and a runtime intrinsic that declares `alloc`. A
+foreign function never does: an `@extern` or a `.c` import runs over its
+own `malloc`, and `alloc` on such a declaration says only that it
+allocates, not that it takes ours.
 
 A function with **no** row is unconstrained, exported or not. A row is how a
 signature *states* an interface; it is never the only way to know what a
@@ -62,11 +79,48 @@ What a body performs is judged from its sources:
   `compare` and `message` do nothing.
 - **The standard library states rows on its surface**: `println` is
   `!{ io }`, `Array<T>::push` is `!{ alloc }` (it may grow the buffer),
-  `read_all` is `!{ io, alloc }`.
+  `read_all` is `!{ io, alloc }`, and `mem`'s `alloc`, `free` and
+  `allocator` are all `!{ alloc }`.
+- **A `with` statement is not an effect.** Choosing an allocator for the
+  rest of a block says nothing about whether the function uses one.
 
 A generic body's effects are judged per instantiation, like its borrows: a
 rowless generic callee is read through its instantiations and contributes
 the union of what they reach.
+
+## The route is part of the diagnostic
+
+A row is violated at a call the body makes, but the effect can arrive many
+calls below it, in another module, and none of it is visible in the
+signature the body called. So the error carries the route inference walked
+to find it — a frame per hop, quoting the call that made it, the last
+naming what performs the effect:
+
+```text
+error[E0611]: shape does io, which the row does not name
+  --> render.gyro:38:3
+   |
+38 |   shape(message)
+   |   ^^^^^
+  --> render.gyro:34:3
+   |
+34 |   emit(message)
+   |   ---- shape calls emit
+  --> text.gyro:30:3
+   |
+30 |   println(message)
+   |   ------- emit calls println, which does io
+   |
+   = help: name it in the row: !{ io }
+```
+
+Without it a `!{}` is reported wrong and the reason is left to be searched
+for, which is the cost of inference reaching as far as it does. The frames
+quote the source rather than citing it, because what they point at is
+exactly the code the reader cannot see from the call being reported. A
+callee that performs the effect itself has no route and gets no frames: the
+message already names it. Two effects arriving by different routes are
+shown separately; two arriving along the same calls are shown once.
 
 A closure may write its own row, and its body is checked against it:
 
@@ -212,10 +266,12 @@ become one mechanism.
 - a row variable (`!e`, `!{ io, ..e }`) leaves the row **open and
   unchecked**
 - *calling* a function value — a closure or an `fn` parameter — contributes
-  nothing to the caller
+  nothing to the caller; the value captured the allocator its body needs
+  when it was made ([chapter 11](ch11-00-closures.md))
 - creating a capturing closure is not counted as `alloc`, even though the
   environment is real storage
-- module-level `var` initializers run before `main`, outside any row
+- module-level `var` initializers run before `main`, outside any row, over
+  the process heap
 - channel operations and `Mutex` carry no effect
 - `spawn` declares `!{ io, alloc }`, which covers starting the thread and
   stands in for the task's own effects until a row can travel with a

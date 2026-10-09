@@ -271,6 +271,9 @@ func (f *funcLowerer) fnValue(decl *ast.FuncDecl) string {
 		f.l.fail("@%s: a runtime function cannot be a bare value yet", f.fn.Name)
 	}
 	name := f.l.ensureFunc(decl, nil)
+	if f.l.allocates(decl) {
+		return f.allocatingFnValue(decl, name)
+	}
 	out := f.newReg("fn")
 	f.emit(&metals.FnRef{Dst: out, Callee: name})
 	return out
@@ -284,6 +287,9 @@ func (f *funcLowerer) codeValue(decl *ast.FuncDecl) string {
 		f.l.fail("@%s: %s has no body, so it has no address", f.fn.Name, decl.Name)
 	}
 	name := f.l.ensureFunc(decl, nil)
+	if f.l.allocates(decl) {
+		return f.allocatingCodeValue(decl, name)
+	}
 	out := f.newReg("code")
 	f.emit(&metals.CodeRef{Dst: out, Callee: name})
 	return out
@@ -978,7 +984,7 @@ func (f *funcLowerer) callToString(e ast.Expr, t types.Type, method *types.Metho
 	name := f.l.ensureFunc(method.Decl, bindings)
 	receiver := f.methodReceiver(e, method)
 	out := f.newReg("shown")
-	f.emit(&metals.Call{Dst: out, Callee: name, Args: []string{receiver}})
+	f.emit(&metals.Call{Dst: out, Callee: name, Args: f.withAllocator(method.Decl, receiver)})
 	return out
 }
 

@@ -51,6 +51,18 @@ func wantError(t *testing.T, bag *diag.Bag, fragment string) {
 	t.Errorf("no diagnostic contains %q; got: %v", fragment, bag.Items())
 }
 
+// userModules counts the modules the program wrote, leaving out the
+// bundled ones every program carries whether or not it imports them.
+func userModules(program *loader.Program) int {
+	count := 0
+	for _, module := range program.Modules {
+		if !stdlib.IsBundled(module.Path) {
+			count++
+		}
+	}
+	return count
+}
+
 func TestRelativeImportLoadsBesideTheImporter(t *testing.T) {
 	program, bag := load(t, map[string]string{
 		"main.gyro": "import { helper } from \"./util\"\n\nfn main() {\n  helper()\n}\n",
@@ -60,8 +72,8 @@ func TestRelativeImportLoadsBesideTheImporter(t *testing.T) {
 	if bag.HasErrors() {
 		t.Fatalf("unexpected errors: %v", bag.Items())
 	}
-	if len(program.Modules) != 2 {
-		t.Fatalf("want 2 modules, got %d", len(program.Modules))
+	if got := userModules(program); got != 2 {
+		t.Fatalf("want 2 modules, got %d", got)
 	}
 
 	// Dependencies come first, the root last.
@@ -82,8 +94,8 @@ func TestTwoSpellingsLoadOneModule(t *testing.T) {
 	if bag.HasErrors() {
 		t.Fatalf("unexpected errors: %v", bag.Items())
 	}
-	if len(program.Modules) != 2 {
-		t.Fatalf("want the two spellings deduplicated, got %d modules", len(program.Modules))
+	if got := userModules(program); got != 2 {
+		t.Fatalf("want the two spellings deduplicated, got %d modules", got)
 	}
 	if program.Root.Deps["./util"] != program.Root.Deps["./util.gyro"] {
 		t.Error("the two spellings resolved to different modules")

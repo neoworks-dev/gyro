@@ -410,7 +410,7 @@ func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, strct *types.Struct, elemTy
 		}
 		iterName := f.l.ensureFunc(iter.Decl, ownerBindings(iter.Decl, target))
 		out := f.newReg("iter")
-		f.emit(&metals.Call{Dst: out, Callee: iterName, Args: []string{value}})
+		f.emit(&metals.Call{Dst: out, Callee: iterName, Args: f.withAllocator(iter.Decl, value)})
 		value = out
 		iterated, ok := iter.Sig.Result.(*types.Struct)
 		if !ok {
@@ -427,11 +427,12 @@ func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, strct *types.Struct, elemTy
 	f.emit(&metals.Slot{Dst: cell, Type: f.l.metalsType(target)})
 	f.emit(&metals.Store{Ptr: cell, Val: value})
 	nextName := f.l.ensureFunc(next.Decl, ownerBindings(next.Decl, target))
+	nextArgs := f.withAllocator(next.Decl, cell)
 
 	element := ""
 	f.loopShell(func(breakLabel string) {
 		pair := f.newReg("step")
-		f.emit(&metals.Call{Dst: pair, Callee: nextName, Args: []string{cell}})
+		f.emit(&metals.Call{Dst: pair, Callee: nextName, Args: nextArgs})
 		open := f.newReg("more")
 		f.emit(&metals.TupleGet{Dst: open, X: pair, Index: 1})
 		done := f.newReg("done")

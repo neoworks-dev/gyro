@@ -75,7 +75,7 @@ type symbol struct {
 	// analysis follows until something settles it.
 	holdsAllocation bool
 	// intrinsic names the bundled function an imported symbol stands for —
-	// "alloc", "free" or "spawn" — and is empty for everything else. The
+	// "alloc", "free", "panic" or "spawn" — and is empty for everything else. The
 	// analyses that care about these have to know the import they came
 	// through, since the names are ordinary and can be aliased.
 	intrinsic string
@@ -133,9 +133,9 @@ type program struct {
 	// instantiated caches which (declaration, type arguments) pairs have
 	// been duck-checked, including in-progress ones so recursion converges.
 	instantiated map[string]bool
-	// inferredEffects memoizes what each rowless function's body does,
-	// which is what a same-module call to it contributes.
-	inferredEffects map[*ast.FuncDecl]effectSet
+	// inferredEffects memoizes what each rowless function's body does, and
+	// the route it does it by, which is what a call to it contributes.
+	inferredEffects map[*ast.FuncDecl]effectFacts
 	// depth guards against infinitely growing instantiations such as a
 	// generic function calling itself with Pair<T>.
 	depth int
@@ -149,7 +149,7 @@ func newProgram(bag *diag.Bag) *program {
 		structInstances: map[*types.Struct]map[string]*types.Struct{},
 		enumInstances:   map[*types.Enum]map[string]*types.Enum{},
 		instantiated:    map[string]bool{},
-		inferredEffects: map[*ast.FuncDecl]effectSet{},
+		inferredEffects: map[*ast.FuncDecl]effectFacts{},
 	}
 }
 
@@ -238,6 +238,11 @@ type checker struct {
 	// exit and again at the end of its block.
 	reportedLeaks map[*symbol]bool
 
+	// withDepth counts the `with` statements in force at the statement
+	// being checked. Above zero, an allocation belongs to the allocator
+	// the block chose and the leak analysis leaves it alone.
+	withDepth int
+
 	// importPaths maps an import specifier to the module path it resolved
 	// to, which is how `alloc` is told from a local function of that name.
 	importPaths map[string]string
@@ -309,6 +314,11 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	// every same-module body resolved and every instantiation recorded.
 	for i, module := range prog.Modules {
 		checkers[i].checkModuleEffects(module.Tree)
+	}
+	// What each function and closure does is then written down for the
+	// lowering, which passes an allocator to exactly the ones that use it.
+	for i, module := range prog.Modules {
+		checkers[i].recordModuleEffects(module.Tree)
 	}
 	return p.info
 }
@@ -397,7 +407,10 @@ func (c *checker) collectModule(tree *ast.File) {
 			// — unless the owner is a built-in, which has no declaration
 			// to live under. Those are ordinary names, so they import.
 			if d.Owner == "" || extendsBuiltin(d) {
-				c.declare(d.Name, d.Offset, symValue, d)
+				// The bundled module that declares an intrinsic uses it
+				// under its own name, so it is tagged there as well as at
+				// every import of it.
+				c.declare(d.Name, d.Offset, symValue, d).intrinsic = bundledIntrinsic(c.modulePath, d.Name)
 			}
 		case *ast.StructDecl:
 			shell := &types.Struct{
@@ -450,7 +463,7 @@ func makeTypeParams(params []ast.TypeParam) []*types.TypeParam {
 func bundledIntrinsic(modulePath, name string) string {
 	switch modulePath {
 	case stdlib.Path("mem"):
-		if name == "alloc" || name == "free" {
+		if name == "alloc" || name == "free" || name == "panic" {
 			return name
 		}
 	case stdlib.Path("stdlib"):

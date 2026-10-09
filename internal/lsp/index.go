@@ -375,6 +375,8 @@ func (idx *index) indexStmt(stmt ast.Stmt, enclosing ast.Node, regionStart, regi
 		idx.indexBlock(s.Body, enclosing, regionStart, regionEnd)
 	case *ast.DeferStmt:
 		idx.indexExpr(s.Call, enclosing, regionStart, regionEnd)
+	case *ast.WithStmt:
+		idx.indexExpr(s.Allocator, enclosing, regionStart, regionEnd)
 	case *ast.SendStmt:
 		idx.indexExpr(s.Chan, enclosing, regionStart, regionEnd)
 		idx.indexExpr(s.Value, enclosing, regionStart, regionEnd)

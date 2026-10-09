@@ -660,8 +660,70 @@ part of what Gyro is. If METALS ever grows a traced heap for managed
 guests (Lua, Go), Gyro does not move onto it.
 
 Consequence: the `memory reclamation` gap must be solved unmanaged —
-arenas, a quarantining allocator, or stronger static analysis. Which one
-is still open.
+arenas, a quarantining allocator, or stronger static analysis. The
+answer is allocators as values, riding on the `alloc` effect; see
+"Allocators ride on the `alloc` effect" below.
+
+### Allocators ride on the `alloc` effect *(new)*
+
+**Status: decided; `alloc`, `free` and `Arena` honour it, the runtime's
+own storage does not yet.** An allocator is a value — a procedure and a
+data pointer, Odin's shape — and every function whose row names `alloc`,
+written or inferred, receives one as a trailing parameter the compiler
+passes. A function whose row does not name it receives nothing. `with
+expr` is a statement that replaces the allocator for the rest of the
+enclosing block. `allocator()` reads the current one, `heap()` is the
+process heap, `main` and module initializers start on the heap. `alloc`
+and `free` are ordinary Gyro over the procedure, which is why `free` is
+now `!{ alloc }`: the effect means *uses the allocator*, in either
+direction. [Chapter 4.5](ch04-05-allocators.md) is the specification.
+
+**Why the row.** Gyro already computes, whole-program, which functions
+allocate; that is what the effect checker is. A hidden parameter needs
+exactly that knowledge — who takes it — and inferring it a second time
+for a context struct would be the same analysis under a second name. So
+the row is the parameter: `!{}` costs nothing and can reach no
+allocator, which is what `@gpu` and `@comptime` wanted from rows in the
+first place, and a rowless function that calls `alloc<T>()` is handed one
+without writing a word. The parameter is an ordinary METALS parameter,
+so the verifier, the linker and the backend learn nothing new.
+
+**Closures capture it; code pointers get the heap.** A closure that
+allocates captures the allocator as it captures any local, so calling a
+function value still contributes nothing to a row and `spawn` carries the
+allocator across a thread for free. `&f` on an allocating function is the
+address of a thunk that supplies the heap: a callback C makes has nowhere
+to put an allocator, and refusing the address would make an allocating
+callback unwritable.
+
+**Where it lives.** `Allocator`, `Mode`, `alloc`, `free`, `heap` and
+`Arena` are Gyro in `mem`; the intrinsics under them are `allocator()`,
+`size`, `align`, `panic` and the three `raw_` heap calls. `mem` is loaded
+into every program because the parameter's type is Gyro's, not the
+runtime's. An `Arena` is written over an `Array<u8>` rather than a new
+address-arithmetic primitive, which keeps the surface as it was and
+proves the model on the first allocator written in it.
+
+**Zero-filled.** A block from `Alloc` is zeroed. An allocator reuses
+memory, and the last owner's bytes are not the next one's to read. The
+evaluator's "uninitialized read panics" is gone with the evaluator; the
+detection belongs in a quarantining allocator now, written in Gyro.
+
+**Rejected: a hidden context on every call** (Odin verbatim). It changes
+the convention of every function, closures and callbacks included,
+whether or not they allocate, and it is the implicit ambient state Gyro
+has no other instance of. **Rejected: an explicit allocator parameter
+everywhere** (Zig). Honest, and the tedium is real: it forgoes the
+inference the checker already does, and every rowless function that
+transitively allocates would have to be edited. **Rejected: `with expr
+{ }` as a block.** A statement scoped to the rest of the block reads
+like `defer` and needs no extra nesting for the common case, where the
+arena is chosen once at the top. **Rejected: four `code` fields on the
+allocator** instead of one procedure and a mode. One procedure is
+Odin's, wraps cleanly (a tracking allocator forwards one call), and
+keeps the value two words. **Rejected: refusing `&f` on an allocating
+function.** See above. **Rejected: keeping `free` at `!{}`.** It would
+have to reach the allocator without being handed one.
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -1082,6 +1144,42 @@ process exit code across tiers (a panic case still exits 1), and the
 corpus runs with `GYRO_TEST_ENV=corpus` pinned so `env` has a
 deterministic value to observe.
 
+### `os::readline` is the line reader *(new)*
+
+**Status: decided.** The line-buffered reader the entry above deferred is
+one more intrinsic beside `read_stdin`:
+
+```gyro
+export fn readline(): string? !{ io, alloc }
+```
+
+It answers the next line without its terminator, and null at end of file.
+An empty line is `""` — absence is the null, the same rule `env` follows,
+so a program that reads a blank line sees a blank line rather than a
+stream that ended. A final line with no newline still comes back, because
+a file that does not end in one still has that line in it.
+
+Both readers work the stream, not a private buffer: `readline` takes a
+line and `read_stdin` drains what is left, in either order. That is what
+makes them one interface rather than two, and it is why there is no
+handle, no `Reader` and no buffering state in the signature — the state
+is the process's own stdin, which is already shared.
+
+**This is what makes an interactive program possible at all.** Prompting
+needs a read that returns before end of file, and `read_stdin` cannot:
+`tests/testdata/run/rpn/` is a REPL and could not have been written without
+this.
+
+Rejected: `(string, bool)`, the shape `Array<T>::pop` uses. The flag is
+there because a popped `T` may itself be nullable and `T??` is not a
+type; a line is a `string` and cannot be, so the nullable says the same
+thing with one value instead of two. Rejected: keeping the terminator, so
+that `""` could mean end of file — that makes every caller strip it and
+turns a blank line into a special case. Rejected for now: a `Reader`
+abstraction over files, sockets and stdin; that waits on the interface
+question (#3), and stdin is the one stream a program
+always has.
+
 ---
 
 ## Concurrency
@@ -1318,6 +1416,54 @@ callers can promise, so adding a `println` to an unrowed function can break
 a caller's `!{}`. A library that wants an effect interface it controls
 writes the row, and a written row is always taken at its word — the body is
 only consulted where nothing was said.
+
+**A violation reports the route, not just the callee** *(new)*. The error
+names the call the body makes, and that call is frequently not what
+performs the effect — inference reaches through imports and any depth of
+call, so `!{}` could be rejected for a `println` several frames down in
+another module with nothing on screen to say so. The diagnostic therefore
+carries the route as notes, a hop per line, the last naming the performer:
+
+```text
+= note: shape calls emit (render.gyro:34:3)
+= note: emit calls println, which does io (text.gyro:30:3)
+```
+
+Inference already walked exactly that path to reach its answer, so the
+route costs a witness beside the two bits and nothing else.
+
+**The route is drawn as related frames, not as notes.** A note would cite
+each hop as a position and leave the reader to open it. But the whole
+reason the route exists is that the code performing the effect is code the
+reader cannot see from the call being reported — frequently in a module
+they never opened — so citing it asks them to trust exactly the step they
+could not check. A frame quotes the line. Notes were written first and
+rejected on that: they cost fewer lines and deliver less, and the lines
+they save are the source the diagnostic is about.
+
+A related span was built to point at one other place — the earlier
+declaration — rather than to sequence several, and using it for a route
+stretches it. It survives the stretch because the labels carry the
+narrative (`shape calls emit`, then `emit calls println, which does io`)
+while the frames carry the evidence. What it costs is height: a three-hop
+route is three frames, and that is the accepted price.
+
+Writing the route also sent the renderer's own bug to the surface: every
+frame resolved against the primary diagnostic's file, so a related span in
+another module quoted that line number out of the wrong source, under a
+path naming the right one. Nothing had hit it — the only related span in
+the compiler pointed at a redeclaration in the same file — and it was fixed
+rather than left for whatever became the second user, which is what this
+route then immediately was. `diag.Render` takes a `diag.Files` resolver and
+looks each frame up by its own name; a name the caller does not hold
+degrades to the location instead of quoting something else.
+
+The first route found wins, in source order. Preferring the shortest was
+rejected as machinery for no gain — any route answers the question the
+reader has, and source order is stable across runs, which a golden needs.
+Two effects arriving along the same calls are explained once; along
+different calls, separately. A callee that performs the effect itself has
+no route and gets no notes, because the message already names it.
 
 **A rowless intrinsic contributes every effect.** The one body that cannot
 be read is the one that does not exist. A declaration with no body is a
@@ -1654,9 +1800,10 @@ language's and still hold on every tier.
 - **A closed channel yields no value.** The single-value receive form
   hands back an uninitialized value whose first read panics — the runtime
   shadow of the definite-assignment rule that will catch it statically.
-- **alloc'd memory starts uninitialized**, not zeroed: reading a field
-  before writing it panics. `free` poisons the cell, so use-after-free
-  and double free are runtime panics today, before any static analysis.
+- **alloc'd memory is zero-filled**, by the allocator's contract
+  ("Allocators ride on the `alloc` effect"). Reading a field before
+  writing it reads zero, and nothing detects it; the check belongs in a
+  quarantining allocator, not in every block.
 - **Panics do not run defers.** A panic aborts the process; there is no
   unwinding, so `defer` is reserved for orderly exits. This follows from
   "programmer errors abort" and keeps defer implementable without

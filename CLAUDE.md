@@ -118,6 +118,86 @@ Every new front-end diagnostic needs a `diag.Code`, mapped from its message form
 
 Error-recovery paths must still return structurally valid internal data. Never return malformed or partially initialized structures because a diagnostic was already emitted — downstream stages must not panic on invalid source.
 
+## Git
+
+Commit the worktree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. On a feature branch, only commit what that branch is for.
+
+No trailers, ever: no `Co-Authored-By` on a commit, no "Generated with Claude Code" on a PR.
+
+## Writing
+
+Commits and issues carry only what matters. Say the thing, explain what a reader won't see for themselves, stop. No restating the diff, no summarising what you just said, no section that exists because the format seemed to want one.
+
+Write issues and their comments the way you'd explain it to a colleague, in complete sentences.
+
+- Start with a 2–3 sentence summary: what happened, why, and the fix.
+- Use short headings, with short paragraphs of normal prose under them.
+- Never join ideas with arrows, slashes, colons or dashes. Write "first X, then Y" instead of "X → Y", and "A and B" instead of "A / B".
+- Use at most two code identifiers per sentence. Say what each one does the first time it appears.
+- Use bullets only for genuinely separate items, and make each bullet a full sentence.
+- Use tables only for numbers or timelines.
+- Use one date format everywhere: 2026-10-07 18:28.
+- Put error messages, paths and commands in code formatting, and long logs in a collapsed `<details>` block.
+- Put side findings in a short "Out of scope" section at the end.
+
+## How we work
+
+One agent at a time, with me giving feedback as it goes. Keep each step small enough for me to read in one sitting, and stop to show me rather than piling up work I then have to catch up on.
+
+`main` is what I've reviewed. It stays checked out in the repo root: never switch branches there.
+
+Straight to `main` in the root, no branch: typos, one-liners, and anything that only touches how we work rather than the compiler — this file, `.claude/skills/`, editor config.
+
+Everything else happens on a branch off `main`, in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> -b <branch> main`). Name it `<issue-number>-<slug>` when there is an issue (`12-const-match-pattern`), `<slug>` when there isn't. One branch is one thing; anything found along the way gets written down as an issue and stays off the branch, unless the branch can't finish without it.
+
+Before starting on anything, check whether it is already half-built: `git branch` and `git worktree list` for the feature, and read what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
+
+No pull requests unless I ask for one. Review happens here, on the diff, before the merge.
+
+## Issues
+
+Issues on `neoworks-dev/gyro` carry goals across sessions. A session ends and its context goes with it; an issue is the only thing that carries a goal to the next one. So:
+
+- Work that finishes in this session, with me here, needs no issue.
+- Work that won't finish in one session gets one, however loosely defined it still is.
+- Something concrete found along the way, that isn't what we're doing now, gets one instead of being done.
+
+Write them as soon as the list exists, not once the work starts.
+
+Write to GitHub as the bot: issues, comments and labels go through `gh bot` (`gh bot issue comment 12 --body …`), so they show as `neoworks-bot[bot]`, not as me. Plain `gh` is for reading only. The bot as author already says a model wrote it, so no "written by Claude" line in the text. If `gh bot` fails, say so rather than falling back to plain `gh`.
+
+Every issue gets a type, a priority, an effort and an area. Type, priority and effort are GitHub's own issue type and the organization's issue fields, never labels.
+
+- **Type** — `Bug` something is broken, `Feature` something new, `Task` everything else.
+- **Priority** — `Urgent` drop everything, `High` next up, `Medium` normal, `Low` nice to have.
+- **Effort** — `Low` an hour or two, `Medium` about a day, `High` several days or needs splitting.
+
+`gh bot` sets all three at once, by name: `gh bot issue create --type Bug --priority High --effort Low --label area:sema …`, and `gh bot issue edit 12 --priority Urgent` to change them later.
+
+Area is a label, exactly one of:
+
+- `area:syntax` — lexer, parser, AST, automatic statement termination
+- `area:sema` — name and type checking, effect rows, and the safety analyses
+- `area:lower` — Gyro to METALS lowering
+- `area:metals` — the IR format, verifier and linker
+- `area:cc` — the C front end and `.c` imports
+- `area:backend` — `internal/nasm`, `internal/crt`, and codegen performance
+- `area:stdlib` — the bundled standard library
+- `area:tooling` — CLI, diagnostics rendering, language server, tree-sitter grammars
+- `area:docs` — the book, when the change is to the specification itself
+
+Two areas is fine when an issue genuinely spans them; three means split it.
+
+## Done means verified
+
+Work is done when it has been shown to work, not when the code is written. Shown means a corpus case or a Go test (see Testing) that fails without the change and passes with it, with a golden written by hand. `go test ./...`, `make check` and `make vet` pass on the branch either way, and a performance claim needs a `make bench` number.
+
+Then hand it over and stop: what changed in a sentence or two, the evidence, and the branch. When it has an issue, the evidence also goes on the issue as a comment — that comment is what I read, so it's written for someone who wasn't in the session.
+
+## Merging
+
+I review the branch's diff, and it merges into `main` when I say so — never before, and never without evidence. Merge in the root with `git merge --no-ff <branch>`, so the branch stays one unit in the history; if it conflicts, resolve it in the merge commit. Push `main`. Then remove the worktree and delete the branch, and close its issue with `gh bot issue close <n>`.
+
 ## Project overrides of shared rules
 
 - Go naming: follow Go conventions, including initialisms such as `ID`.

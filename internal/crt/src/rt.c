@@ -204,6 +204,36 @@ void gy_free(void *p) {
     free(cell);
 }
 
+/* The process heap as an allocator sees it: the floor mem's heap() wraps
+ * into an Allocator, and what every other allocator bottoms out in. A
+ * block is zero-filled, which is the allocator contract, and the C
+ * allocator's alignment (16 on this ABI) covers every alignment a Gyro
+ * type can ask for. Null answers a request that cannot be met; alloc<T>
+ * turns that into a panic naming the size. */
+void *gy_raw_alloc(int64_t size, int64_t align) {
+    (void)align;
+    return calloc(1, size > 0 ? (size_t)size : 1);
+}
+
+void gy_raw_free(void *p) { free(p); }
+
+void *gy_raw_resize(void *p, int64_t oldSize, int64_t size, int64_t align) {
+    (void)align;
+    char *grown = realloc(p, size > 0 ? (size_t)size : 1);
+    if (grown != NULL && size > oldSize) {
+        memset(grown + oldSize, 0, (size_t)(size - oldSize));
+    }
+    return grown;
+}
+
+void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
+    memmove(to, from, (size_t)bytes);
+}
+
+/* panic ends the process with the message, the way an index out of range
+ * does: the same abort, reached from Gyro. */
+void gy_panic(const gy_str *message) { gy_abort(message); }
+
 /* ------------------------------------------------------------------ */
 /* Formatting, Go style.                                              */
 /* ------------------------------------------------------------------ */
@@ -912,6 +942,27 @@ gy_str *gy_read_stdin(void) {
     gy_str *out = gy_str_from(buf, len);
     free(buf);
     return out;
+}
+
+/* out: opt<str> = { flag, value } — flag 0 at end of file. The line comes
+ * back without its terminator, and a last line with no newline still
+ * comes back. */
+void gy_readline(int64_t *out) {
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t got = getline(&line, &cap, stdin);
+    if (got < 0) {
+        free(line);
+        out[0] = 0;
+        out[1] = 0;
+        return;
+    }
+    while (got > 0 && (line[got - 1] == '\n' || line[got - 1] == '\r')) {
+        got--;
+    }
+    out[0] = 1;
+    out[1] = (int64_t)gy_str_from(line, (size_t)got);
+    free(line);
 }
 
 _Noreturn void gy_exit(int64_t code) {

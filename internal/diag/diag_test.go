@@ -74,3 +74,69 @@ func TestRenderDrawsACodeFrame(t *testing.T) {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// A related span names its own file. Resolving every frame against the
+// primary's source would quote line 2 of main.gyro under a path reading
+// util.gyro: the wrong source under a correct-looking location.
+func TestRenderResolvesARelatedSpanAgainstItsOwnFile(t *testing.T) {
+	main := NewFile("main.gyro", "import { v } from \"./util\"\nvar v = 2\n")
+	util := NewFile("util.gyro", "// a comment\nexport var v = 1\n")
+	var bag Bag
+	bag.Track(main)
+	bag.Track(util)
+	bag.Add(Diagnostic{
+		Severity: SeverityError,
+		Code:     EAlreadyDeclared,
+		Pos:      main.Position(31),
+		Message:  "v is already declared in this scope",
+		Related: []Span{{
+			Pos:   util.Position(20),
+			Label: "previous declaration here",
+		}},
+	})
+
+	want := `error[E0403]: v is already declared in this scope
+ --> main.gyro:2:5
+  |
+2 | var v = 2
+  |     ^
+ --> util.gyro:2:8
+  |
+2 | export var v = 1
+  |        --- previous declaration here
+
+`
+	if got := bag.Render(Style{}); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// A frame the bag never saw the source for states its location instead of
+// quoting a line out of whichever file was at hand.
+func TestRenderDegradesAnUntrackedRelatedSpan(t *testing.T) {
+	main := NewFile("main.gyro", "var v = 2\n")
+	var bag Bag
+	bag.Track(main)
+	bag.Add(Diagnostic{
+		Severity: SeverityError,
+		Code:     EAlreadyDeclared,
+		Pos:      main.Position(4),
+		Message:  "v is already declared in this scope",
+		Related: []Span{{
+			Pos:   Position{File: "gone.gyro", Offset: 0, Line: 7, Column: 3},
+			Label: "previous declaration here",
+		}},
+	})
+
+	want := `error[E0403]: v is already declared in this scope
+ --> main.gyro:1:5
+  |
+1 | var v = 2
+  |     ^
+ --> gone.gyro:7:3 previous declaration here
+
+`
+	if got := bag.Render(Style{}); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

@@ -43,7 +43,20 @@ return.
 
 A sema pass tracks each `alloc<T>()` and **warns** when one can reach the
 end of its block with nothing having freed or taken it. Warnings, not
-errors, so arena and process-lifetime patterns are not blocked.
+errors, so process-lifetime patterns are not blocked.
+
+An allocation made below a `with` statement is not tracked at all: the
+block chose an allocator for what follows, and what that allocator hands
+out is the allocator's to reclaim ([chapter 4.5](ch04-05-allocators.md)).
+That is the arena idiom, and it warns about nothing:
+
+```gyro
+var arena = Arena::new(4096)
+defer arena.free()
+with arena.allocator()
+
+var node = alloc<Node>()     // the arena's; no free, no warning
+```
 
 An allocation is **settled** by `free`, and equally by anything that hands
 it on:
@@ -97,5 +110,5 @@ written out by hand and warns about nothing.
 It also says nothing about library types. `Array<T>`, `String` and `Map<K, V>`
 own heap buffers and are freed with `free()`; forgetting one leaks, silently,
 today. And the runtime itself leaks by design in v1: strings, closure
-environments and futures are never reclaimed
-([appendix G](appendix-g-known-gaps.md)).
+environments and futures are never reclaimed, and none of them yet come
+from the allocator a `with` chose ([appendix G](appendix-g-known-gaps.md)).

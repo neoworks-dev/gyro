@@ -44,6 +44,24 @@ type Info struct {
 	// Externs holds the library and symbol of every @extern function, so
 	// lowering can emit the import without re-reading the decorator.
 	Externs map[*ast.FuncDecl]types.Extern
+	// Effects holds what every function does: its declared row when it
+	// writes a closed one, what its body reaches when it does not, and
+	// everything when it is an intrinsic with no row. A generic function
+	// answers for all its instantiations at once, so a caller and the
+	// callee agree on whether an allocator is passed without either
+	// knowing which instantiation the other is looking at.
+	Effects map[*ast.FuncDecl]Effects
+	// ClosureAllocates marks every closure whose body, or a closure
+	// nested in it, uses the allocator. Such a closure captures the
+	// allocator current where it is written.
+	ClosureAllocates map[*ast.ClosureExpr]bool
+}
+
+// Effects is the concrete-effect set a signature carries: the two
+// effects rows can name. Alloc is the one the lowering acts on — it is
+// what says a function receives the allocator.
+type Effects struct {
+	IO, Alloc bool
 }
 
 // CallInfo is the resolution of one call expression.
@@ -110,6 +128,9 @@ func newInfo() *Info {
 		Enums:     map[*ast.EnumDecl]*types.Enum{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
 		Externs:   map[*ast.FuncDecl]types.Extern{},
+		Effects:   map[*ast.FuncDecl]Effects{},
+
+		ClosureAllocates: map[*ast.ClosureExpr]bool{},
 	}
 }
 
