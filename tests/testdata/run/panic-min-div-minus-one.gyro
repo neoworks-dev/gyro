@@ -1,0 +1,10 @@
+// The one division that overflows: the negative range is one wider.
+//gyro:panic integer overflow
+
+import { println } from "stdlib"
+
+fn main() {
+  var a: i32 = -2147483648
+  var b: i32 = -1
+  println(a / b)
+}

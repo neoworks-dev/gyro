@@ -1,0 +1,52 @@
+// A Gyro program driving a C library that dispatches through function
+// pointers.
+//
+// A METALS `fn` is two words, { code, env }, because a closure has to
+// keep what it captured. C's function pointer has nothing to keep, and
+// `sizeof` says 8 — so a code pointer is its own one-word type, and a
+// struct holding one is the struct C lays out. That is what the first
+// three numbers here are for; everything after them is the dispatch that
+// only works if those numbers are right.
+
+import { println } from "stdlib"
+import {
+  entries, entry_size, callback_size, dispatch, sorted_at, call_or,
+  identity_holds, stepped,
+} from "./table.c"
+
+fn main() {
+  // A callback is one word; an entry is a padded int beside one; the
+  // table's length comes from sizeof over both.
+  println(callback_size())
+  println(entry_size())
+  println(entries())
+
+  // Dispatch out of a table of pointers, and a code the table has no
+  // entry for.
+  println(dispatch(1, 20, 5))
+  println(dispatch(2, 20, 5))
+  println(dispatch(3, 20, 5))
+  println(dispatch(9, 20, 5))
+
+  // A sort whose order is a function the caller chose, called through
+  // the pointer a second function returned.
+  println(sorted_at(0, 0))
+  println(sorted_at(0, 5))
+  println(sorted_at(1, 0))
+  println(sorted_at(1, 5))
+
+  // A pointer that may be null: a check, not a jump to address zero.
+  println(call_or(0, 6, 7, -99))
+  println(call_or(1, 6, 7, -99))
+
+  // Two names for one function are one address.
+  println(identity_holds())
+
+  // A function pointer with static storage, walking add, mul, sub and
+  // round to add again.
+  var i = 0
+  while i < 4 {
+    println(stepped(10))
+    i = i + 1
+  }
+}

@@ -1,0 +1,98 @@
+# 13.1. Threads
+
+Gyro has three concurrency mechanisms, and they answer three separate
+questions:
+
+| mechanism | question |
+| --- | --- |
+| threads | how do I use every core? |
+| channels | how do I hand work between them safely? |
+| async | how do I hold many idle IO operations at once? |
+
+This chapter is the first.
+
+## `spawn`
+
+`spawn` starts a call on another thread. It is an ordinary stdlib function
+taking a closure, **not grammar** — the closure is what carries the
+arguments across:
+
+```gyro
+import { spawn } from "stdlib"
+
+spawn(fn() produce(values, 10))
+```
+
+`@concurrent(threads = N)` configures a parallel region as a decorator on a
+function.
+
+A spawned thread is a real OS thread on the native tiers and a goroutine
+under the evaluator. A panic on a spawned thread kills that thread only; on
+the main thread it ends the process.
+
+## Mutexes
+
+`Mutex` and friends come from the standard library:
+
+```gyro
+import { Mutex } from "stdlib"
+
+var total = Mutex::new(0)
+
+var guard = total.lock()
+defer guard.unlock()
+guard.set(guard.get() + value)
+```
+
+`Mutex::new(0)` constructs one — and infers `Mutex<i32>` from the argument —
+and `lock()` returns the guard directly. **There is no poisoning**, because
+a Gyro panic aborts the process rather than unwinding past a held lock, so
+no thread ever observes a lock its holder abandoned.
+
+Releasing is explicit: `guard.unlock()`, usually as `defer guard.unlock()`.
+Gyro has no destructors, so nothing can release a guard implicitly. If a
+drop-based design ever lands, the explicit call becomes sugar for it.
+
+Remember that a `defer` runs at the exit of its **enclosing block**, so a
+`defer guard.unlock()` inside a loop body unlocks every iteration — which is
+usually what you want, and is worth being deliberate about.
+
+## The race warning
+
+A closure captures by copy. That is safe for a value and **not** for a
+reference: copying a `*T` copies the pointer, and copying a `T[]` copies a
+pointer and a length over storage it does not own. Both threads then reach
+the same memory.
+
+Handing a reference to `spawn` that way **warns**:
+
+```gyro
+var node = alloc<Node>()
+spawn(fn() { node.value = 1 })      // warns: both threads reach node
+
+spawn(fn[move node]() { ... })      // fine: the binding goes with it
+spawn(fn() { ch <- 1 })             // fine: a channel is built for this
+```
+
+A channel capture is never reported, since carrying work between threads is
+what a channel is for, and a `move` capture hands the binding over rather
+than sharing it. A closure that is not spawned is not reported either.
+
+**This does not prove the absence of a race.** A pointer reached through a
+struct field, and two spawns over one channel, are both invisible to it; so
+is anything the callee of a captured function does. It catches the direct
+case, which is the one people write by accident.
+
+## Threads and the rest of the language
+
+- A panic on a spawned thread prints and kills that thread; the process
+  keeps running.
+- `spawn` declares `!{ io, alloc }`, which covers starting the thread and
+  stands in for the task's own effects until a row can travel with a
+  function value ([chapter 12](ch12-00-effect-rows.md)).
+- Concurrent programs whose output order is not determined cannot be pinned
+  by a golden file, which is what the corpus's `//gyro:unordered` directive
+  is for ([chapter 17.3](ch17-03-testing.md)).
+
+Next: [channels and `select`](ch13-02-channels.md), which is how threads are
+supposed to talk.

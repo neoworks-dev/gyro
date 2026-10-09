@@ -1,0 +1,11 @@
+import { println } from "stdlib"
+
+enum Shape {
+  Circle(f64),
+  Point,
+}
+
+fn main() {
+  println(Shape::Circle(2.5))
+  println(Shape::Point)
+}

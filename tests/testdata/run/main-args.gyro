@@ -1,0 +1,21 @@
+// main may take the command line. args[0] is the name the program was
+// invoked as, so a program run with nothing still sees one element.
+//gyro:args --verbose input.txt
+
+import { println, join, starts_with } from "stdlib"
+
+fn main(args: string[]) {
+  println(args.len())
+  for arg in args {
+    println(arg)
+  }
+  println(join(args, " "))
+
+  var flags = 0
+  for arg in args {
+    if arg.starts_with("--") {
+      flags += 1
+    }
+  }
+  println(flags)
+}

@@ -1,0 +1,55 @@
+// A module-level `var` is mutable state outside any frame. It lowers to
+// METALS storage, zero-initialized, with the initializer run before
+// main's own body in declaration order.
+
+import { println } from "stdlib"
+
+fn triple(n: i32): i32 {
+  return n * 3
+}
+
+var counter: i32 = 0
+// An initializer is ordinary code, so it may call and may read a var
+// declared above it.
+var computed: i32 = triple(4)
+var derived = computed + 1
+var label = "start"
+var flag = false
+
+struct Settings {
+  retries: i32
+  name: string
+}
+
+var settings = Settings{ retries: 2, name: "svc" }
+
+fn bump(): i32 {
+  counter += 1
+  return counter
+}
+
+fn rename(to: string) {
+  label = to
+  flag = true
+}
+
+fn main() {
+  println(bump())
+  println(bump())
+  println(counter)
+
+  println(computed)
+  println(derived)
+
+  rename("running")
+  println(label)
+  println(flag)
+
+  settings.retries += 1
+  println(settings)
+
+  // Storage outside a frame has an address like any other.
+  var p = &counter
+  *p = 40
+  println(counter)
+}

@@ -1,0 +1,23 @@
+// The bundled stubs are real signatures, not opaque names.
+
+import { println, Array } from "stdlib"
+
+fn used() {
+  var xs = Array<i32>::new()
+  xs.push(4)
+  var n: usize = xs.len()
+  println(n)
+  xs.free()
+}
+
+fn misused() {
+  var xs = Array<i32>::new()
+  xs.push("four")                //~ cannot use string as i32
+  xs.free()
+}
+
+// The module is already imported, so the fix for a missing name is one
+// more name in its braces rather than a second import statement.
+fn alreadyImported() {
+  eprintln(1)                    //~ help: add it to the import you already have from "stdlib"
+}

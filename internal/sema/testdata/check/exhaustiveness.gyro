@@ -1,0 +1,110 @@
+// A match over an enum names the variants it left out. Open subjects —
+// integers, strings, error — are exempt.
+
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Point,
+}
+
+fn covered(s: Shape): f64 {
+  return match s {
+    Shape::Circle(r): r
+    Shape::Rect(w, h): w
+    Shape::Point: 0.0
+  }
+}
+
+fn missesTwo(s: Shape): f64 {
+  return match s {               //~ E0521 leaves Shape::Rect, Shape::Point uncovered
+    Shape::Circle(r): r
+  }
+}
+
+fn missesOne(s: Shape): f64 {
+  return match s {               //~ E0521 leaves Shape::Point uncovered
+    Shape::Circle(r): r
+    Shape::Rect(w, h): w
+  }
+}
+
+// `_` and a plain binding both match everything left over, so either one
+// closes a match on its own.
+fn wildcardCloses(s: Shape): f64 {
+  return match s {
+    Shape::Point: 0.0
+    _: 1.0
+  }
+}
+
+fn bindingCloses(s: Shape): f64 {
+  return match s {
+    other: 1.0
+  }
+}
+
+// A variant counts as covered only when its payload patterns bind rather
+// than test: Circle(0.0) still leaves every other radius unmatched.
+fn refutablePayloadDoesNotCover(s: Shape): f64 {
+  return match s {               //~ E0521 leaves Shape::Circle uncovered
+    Shape::Circle(0.0): 1.0
+    Shape::Rect(w, h): w
+    Shape::Point: 0.0
+  }
+}
+
+fn testThenBind(s: Shape): f64 {
+  return match s {
+    Shape::Circle(0.0): 1.0
+    Shape::Circle(r): r
+    Shape::Rect(w, h): w
+    Shape::Point: 0.0
+  }
+}
+
+// Only enums are enumerable.
+fn integersAreOpen(n: i32): string {
+  return match n {
+    0: "zero"
+  }
+}
+
+struct RangeError {
+  value: i32
+}
+
+fn RangeError::message(self): string {
+  return "bad"
+}
+
+fn errorsAreOpen(err: error): i32 {
+  return match err {
+    RangeError(e): e.value
+  }
+}
+
+// A type-test pattern needs an error subject and a type that is one.
+fn typeTest(err: error): i32 {
+  return match err {
+    RangeError(e): e.value
+    _: 0
+  }
+}
+
+fn typeTestNeedsAnError(n: i32) {
+  var x = match n {
+    RangeError(e): 1             //~ needs an error subject
+    _: 0
+  }
+}
+
+struct Quiet {
+  value: i32
+}
+
+fn quietIsNotAnError(err: error): i32 {
+  return match err {
+    Quiet(e): e.value            //~ no message(): string method
+    _: 0
+  }
+}

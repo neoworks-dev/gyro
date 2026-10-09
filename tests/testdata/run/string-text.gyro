@@ -1,0 +1,51 @@
+// The text helpers extend the built-in `string`, so they are spelled as
+// methods. They are ordinary names all the same: importable, and an
+// error to call without a receiver.
+
+import { println, Array, join, from_utf8 } from "stdlib"
+import { split, trim, contains, starts_with, ends_with } from "stdlib"
+import { index_of, substring, repeat } from "stdlib"
+
+fn main() {
+  println("[#{"  padded\t\n".trim()}]")
+  println("[#{"".trim()}]")
+  println("hello".starts_with("he"))
+  println("he".starts_with("hello"))
+  println("hello".ends_with("lo"))
+  println("hello".contains("ell"))
+  println("hello".contains("xyz"))
+  println("hello".substring(1, 4))
+  println("ab".repeat(3))
+  println("[#{"ab".repeat(0)}]")
+
+  var at = "hello".index_of("ll")
+  if at != null {
+    println(at)
+  }
+  println("hello".index_of("zz") == null)
+
+  // An empty field between two separators is a field.
+  var parts = "a,b,,c".split(",")
+  defer parts.free()
+  println(parts.len())
+  for part in parts.slice() {
+    println("[#{part}]")
+  }
+  println(join(parts.slice(), "-"))
+
+  // A separator that does not occur leaves one field.
+  var whole = "abc".split(",")
+  defer whole.free()
+  println(whole.len())
+
+  // Extensions chain like any other method.
+  var fields = "  a, b ,c  ".trim().split(",")
+  defer fields.free()
+  println(fields.len())
+  println(fields.get(0).trim())
+
+  // Bytes round-trip through a slice.
+  println(from_utf8("héllo".bytes()))
+  println("héllo".bytes().len())
+  println("héllo".runes().len())
+}

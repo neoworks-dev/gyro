@@ -1,0 +1,19 @@
+// An index into an Array<T> is bounds-checked wherever it appears, and
+// taking an element's address is the same check as reading one: the
+// address is refused where it is made, not where it is written through.
+
+//gyro:panic index 3 out of range for length 2
+
+import { println, Array } from "stdlib"
+
+fn main() {
+  var xs = Array<i32>::new()
+  defer xs.free()
+  xs.push(1)
+  xs.push(2)
+
+  println("before")
+  var at: usize = 3
+  println(xs[at])
+  println("unreachable")
+}

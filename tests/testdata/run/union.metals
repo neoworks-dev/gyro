@@ -1,0 +1,127 @@
+; Unions on the three METALS tiers.
+;
+; A union is one storage with several readings of it: every member at
+; offset zero, the size the widest member's, the alignment the
+; strictest. That is not a record with coincident offsets — a consumer
+; that believed it was would be right about every address and wrong
+; about every read, because writing one member unwrites the others.
+;
+; The natives get C's own union and C's own answer. The evaluator has no
+; bytes to overlap, so it records which member is live instead, which is
+; strictly more than C keeps and is exactly what it takes to tell C's
+; two cases apart: reading across members is defined where they share an
+; initial sequence, and undefined otherwise. The first is answered; the
+; second is reported.
+
+module "metals:union"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<u32>"(u32)
+  fn @"println<bool>"(bool)
+}
+
+; The tagged-union shape every C event loop is built on: a word every
+; member begins with, and one member per kind of event. Reading `kind`
+; while `key` is live is the common initial sequence, and it is the one
+; cross-member read C defines.
+type %KeyEvent = record { kind: u32, code: u32, down: u32 }
+type %MoveEvent = record { kind: u32, x: i64, y: i64 }
+type %Event = union { kind: u32, key: %KeyEvent, move: %MoveEvent }
+
+export fn @main() {
+  %ev = slot %Event
+
+  ; Fill it through one member, the way a library would.
+  %kp = field.ptr %ev, 1
+  %kind1 = const.u32 1
+  %code = const.u32 65
+  %down = const.u32 1
+  %k = record %KeyEvent(%kind1, %code, %down)
+  store %kp, %k
+
+  ; Read it back through the member that wrote it: an ordinary read of
+  ; an ordinary object.
+  %kp2 = field.ptr %ev, 1
+  %kv = load %kp2
+  %gotcode = field.get %kv, 1
+  call @"println<u32>"(%gotcode)
+
+  ; And through the member that did not: `kind` is a u32 at the front of
+  ; the union, and every member begins with one. This is the read the
+  ; whole arrangement exists for, and it does not disturb what is there.
+  %tp = field.ptr %ev, 0
+  %tag = load %tp
+  call @"println<u32>"(%tag)
+
+  ; Reading `key` again proves it: looking at the tag did not write.
+  %kp3 = field.ptr %ev, 1
+  %kv2 = load %kp3
+  %gotdown = field.get %kv2, 2
+  call @"println<u32>"(%gotdown)
+
+  ; Two members are one address, which is what sharing storage means.
+  ; They are pointers to different types, so the comparison is the one C
+  ; would write too: through the erasure, which claims nothing.
+  %et = ptr.erase %tp
+  %ek = ptr.erase %kp3
+  %same = eq %et, %ek
+  call @"println<bool>"(%same)
+
+  ; Writing the other member is what makes it the live one, and the
+  ; tag reads back out of the new occupant just as well.
+  %mp = field.ptr %ev, 2
+  %kind2 = const.u32 2
+  %x = const.i64 30
+  %y = const.i64 12
+  %mv = record %MoveEvent(%kind2, %x, %y)
+  store %mp, %mv
+  %tp2 = field.ptr %ev, 0
+  %tag2 = load %tp2
+  call @"println<u32>"(%tag2)
+
+  %mp2 = field.ptr %ev, 2
+  %mv2 = load %mp2
+  %gx = field.get %mv2, 1
+  %gy = field.get %mv2, 2
+  %sum = iadd %gx, %gy
+  call @"println<i64>"(%sum)
+
+  ; A union assigns like any other aggregate: the copy is its own
+  ; storage and holds what the original held.
+  %copy = slot %Event
+  %whole = load %ev
+  store %copy, %whole
+  %cp = field.ptr %copy, 2
+  %cv = load %cp
+  %cx = field.get %cv, 1
+  call @"println<i64>"(%cx)
+
+  ; Writing the copy leaves the original alone.
+  %kind3 = const.u32 9
+  %z = const.i64 0
+  %other = record %MoveEvent(%kind3, %z, %z)
+  store %cp, %other
+  %op = field.ptr %ev, 2
+  %ov = load %op
+  %ox = field.get %ov, 1
+  call @"println<i64>"(%ox)
+
+  ; A union in an array: the stride is the union's size, and each
+  ; element is storage of its own.
+  %arr = slot array<%Event, 2>
+  %base = elem.ptr %arr
+  %one = const.i64 1
+  %next = ptr.offset %base, %one
+  %a0 = field.ptr %base, 0
+  %a1 = field.ptr %next, 0
+  %seven = const.u32 7
+  %eight = const.u32 8
+  store %a0, %seven
+  store %a1, %eight
+  %r0 = load %a0
+  %r1 = load %a1
+  call @"println<u32>"(%r0)
+  call @"println<u32>"(%r1)
+  return
+}

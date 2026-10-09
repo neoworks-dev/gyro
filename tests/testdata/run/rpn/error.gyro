@@ -1,0 +1,13 @@
+// The one error this program raises.
+//
+// `error` is duck-typed: a type with a `message(): string` is one, and
+// nothing is declared to make it so. The row says the result views the
+// receiver, because it is the receiver's own field rather than new text.
+
+export struct CalcError {
+  export text: string
+}
+
+export fn CalcError::message(self): string !{ &self } {
+  return self.text
+}

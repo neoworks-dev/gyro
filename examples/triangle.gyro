@@ -1,0 +1,294 @@
+// A Gouraud-shaded triangle in an SDL window, spinning.
+//
+// Everything visual is Gyro: the rasterizer walks each pixel, evaluates
+// three edge functions, and writes a colour into an Array<u32>. SDL never
+// draws anything — it opens a window, takes the finished frame as a
+// texture and puts it on the screen.
+//
+// The whole boundary is @extern. There is no binding library and no
+// generated glue: a declaration with no body, a decorator naming the
+// library it links from, and the compiler links -lSDL2 because the
+// program says so.
+//
+// It reads events, which is what unions and out-parameters were for. An
+// SDL_Event is a 56-byte union of event structs that all begin with the
+// same u32 tag, and `SDL_PollEvent` fills one through a pointer — so the
+// window's close button ends the run, instead of a fixed time doing it.
+//
+// It is the one example the suite does not run: it would open a window on
+// a machine that may have no display, and report a frame count that is
+// different every time. `gyro build examples/triangle.gyro -o triangle`
+// is how to see it.
+//
+//gyro:skip it opens a window and reports a frame rate, neither of which a golden can hold
+
+import { println, eprintln, Array } from "stdlib"
+
+// ---------------------------------------------------------------------
+// SDL2
+
+@extern("SDL2")
+struct Window {}
+
+@extern("SDL2")
+struct Renderer {}
+
+@extern("SDL2")
+struct Texture {}
+
+// A rectangle argument this program only ever passes as null, meaning
+// "the whole thing" to every function that takes one.
+@extern("SDL2")
+struct Rect {}
+
+@extern("SDL2")
+fn SDL_Init(flags: u32): i32 !{ io }
+
+@extern("SDL2")
+fn SDL_Quit() !{ io }
+
+@extern("SDL2")
+fn SDL_GetError(): string !{ alloc }
+
+@extern("SDL2")
+fn SDL_CreateWindow(
+  title: string, x: i32, y: i32, width: i32, height: i32, flags: u32,
+): Window? !{ io, alloc }
+
+@extern("SDL2")
+fn SDL_DestroyWindow(window: Window) !{ io }
+
+@extern("SDL2")
+fn SDL_CreateRenderer(window: Window, index: i32, flags: u32): Renderer? !{ io, alloc }
+
+@extern("SDL2")
+fn SDL_DestroyRenderer(renderer: Renderer) !{ io }
+
+@extern("SDL2")
+fn SDL_CreateTexture(
+  renderer: Renderer, format: u32, access: i32, width: i32, height: i32,
+): Texture? !{ io, alloc }
+
+@extern("SDL2")
+fn SDL_DestroyTexture(texture: Texture) !{ io }
+
+// pixels crosses as a copy repacked to four bytes an element, because a
+// Gyro u32[] gives each one a whole qword.
+@extern("SDL2")
+fn SDL_UpdateTexture(texture: Texture, rect: Rect?, pixels: u32[], pitch: i32): i32 !{ io }
+
+@extern("SDL2")
+fn SDL_RenderClear(renderer: Renderer): i32 !{ io }
+
+@extern("SDL2")
+fn SDL_RenderCopy(renderer: Renderer, texture: Texture, source: Rect?, target: Rect?): i32 !{ io }
+
+@extern("SDL2")
+fn SDL_RenderPresent(renderer: Renderer) !{ io }
+
+// SDL_Event is a union of every event struct SDL has, and they all begin
+// with the same u32 tag — which is what makes reading `kind` out of one
+// defined however it was filled in. Only the tag is read here, so the
+// rest is declared as the storage it is: 56 bytes at eight-byte
+// alignment, which is what `sizeof(SDL_Event)` and `_Alignof(SDL_Event)`
+// say. Getting either wrong would let SDL write past the end.
+union Event {
+  kind: u32
+  storage: u64[7]
+}
+
+const SDL_QUIT: u32 = 256
+
+// The out-parameter: SDL writes the event into storage this program
+// owns, and answers whether there was one.
+@extern("SDL2")
+fn SDL_PollEvent(event: *Event): i32 !{ io }
+
+@extern("SDL2")
+fn SDL_Delay(millis: u32) !{ io }
+
+@extern("SDL2")
+fn SDL_GetTicks(): u32 !{ io }
+
+const SDL_INIT_VIDEO: u32 = 32
+const SDL_WINDOWPOS_CENTERED: i32 = 805240832
+const SDL_WINDOW_SHOWN: u32 = 4
+const SDL_RENDERER_ACCELERATED: u32 = 2
+const SDL_PIXELFORMAT_ARGB8888: u32 = 372645892
+const SDL_TEXTUREACCESS_STREAMING: i32 = 1
+
+@extern("m")
+fn sin(radians: f64): f64 !{}
+
+@extern("m")
+fn cos(radians: f64): f64 !{}
+
+// ---------------------------------------------------------------------
+// The rasterizer
+
+const WIDTH: i32 = 800
+const HEIGHT: i32 = 600
+const DURATION: u32 = 6000
+
+struct Vertex {
+  x: f64
+  y: f64
+  r: f64
+  g: f64
+  b: f64
+}
+
+// Twice the signed area of abp: positive when p is left of a->b, negative
+// when it is right, zero on the line. Divided by the triangle's own area
+// the three of them are the barycentric weights, which is what carries
+// the vertex colours across the face.
+fn edge(ax: f64, ay: f64, bx: f64, by: f64, px: f64, py: f64): f64 {
+  return (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+}
+
+// A narrowing `as` panics on a value that does not fit, so the clamp is
+// load-bearing rather than defensive.
+fn channel(value: f64): u32 {
+  if value <= 0.0 {
+    return 0
+  }
+  if value >= 1.0 {
+    return 255
+  }
+  return (value * 255.0) as u32
+}
+
+fn pack(r: f64, g: f64, b: f64): u32 {
+  return 0xff000000 | (channel(r) << 16) | (channel(g) << 8) | channel(b)
+}
+
+fn rotate(around_x: f64, around_y: f64, radius: f64, angle: f64, r: f64, g: f64, b: f64): Vertex {
+  return Vertex{
+    x: around_x + radius * cos(angle),
+    y: around_y + radius * sin(angle),
+    r: r,
+    g: g,
+    b: b,
+  }
+}
+
+fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
+  var area = edge(a.x, a.y, b.x, b.y, c.x, c.y)
+  var background = pack(0.05, 0.05, 0.09)
+
+  for var y = 0; y < HEIGHT; y += 1 {
+    var py = y as f64 + 0.5
+    for var x = 0; x < WIDTH; x += 1 {
+      var px = x as f64 + 0.5
+      var index = (y * WIDTH + x) as usize
+
+      var w0 = edge(b.x, b.y, c.x, c.y, px, py) / area
+      var w1 = edge(c.x, c.y, a.x, a.y, px, py) / area
+      var w2 = edge(a.x, a.y, b.x, b.y, px, py) / area
+
+      if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+        pixels.set(index, background)
+        continue
+      }
+      pixels.set(index, pack(
+        w0 * a.r + w1 * b.r + w2 * c.r,
+        w0 * a.g + w1 * b.g + w2 * c.g,
+        w0 * a.b + w1 * b.b + w2 * c.b,
+      ))
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+
+// Drains the queue and reports whether the window was asked to close.
+// The whole queue is drained every frame, not just the first event: SDL
+// stops responding otherwise, which is what SDL_PumpEvents used to be
+// here for.
+//
+// `event.kind` is read whatever member SDL filled in, which is defined
+// because every member begins with that same u32 — the one cross-member
+// read C entitles a program to, and the reason a tagged union works at
+// all ([chapter 5.1](../docs/ch05-01-structs.md)).
+fn quit_requested(event: *Event): bool {
+  var quit = false
+  while SDL_PollEvent(event) != 0 {
+    if event.kind == SDL_QUIT {
+      quit = true
+    }
+  }
+  return quit
+}
+
+fn main() {
+  if SDL_Init(SDL_INIT_VIDEO) != 0 {
+    eprintln("SDL_Init: #{SDL_GetError()}")
+    return
+  }
+  defer SDL_Quit()
+
+  var window = SDL_CreateWindow(
+    "gyro — a triangle", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    WIDTH, HEIGHT, SDL_WINDOW_SHOWN,
+  )
+  if window == null {
+    eprintln("SDL_CreateWindow: #{SDL_GetError()}")
+    return
+  }
+  defer SDL_DestroyWindow(window)
+
+  var renderer = SDL_CreateRenderer(window, 0 - 1, SDL_RENDERER_ACCELERATED)
+  if renderer == null {
+    eprintln("SDL_CreateRenderer: #{SDL_GetError()}")
+    return
+  }
+  defer SDL_DestroyRenderer(renderer)
+
+  var texture = SDL_CreateTexture(
+    renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
+  )
+  if texture == null {
+    eprintln("SDL_CreateTexture: #{SDL_GetError()}")
+    return
+  }
+  defer SDL_DestroyTexture(texture)
+
+  // One frame's worth of storage, reused every frame.
+  var pixels = Array<u32>::with_capacity((WIDTH * HEIGHT) as usize)
+  defer pixels.free()
+  for i in 0..(WIDTH * HEIGHT) {
+    pixels.push(0)
+  }
+
+  var centre_x = WIDTH as f64 / 2.0
+  var centre_y = HEIGHT as f64 / 2.0
+  var radius = 240.0
+  var third = 2.0943951023931953
+  var frames = 0
+
+  var started = SDL_GetTicks()
+  var event = Event{ kind: 0 }
+
+  while SDL_GetTicks() - started < DURATION {
+    var angle = (SDL_GetTicks() - started) as f64 / 900.0
+
+    draw(&pixels,
+      rotate(centre_x, centre_y, radius, angle, 0.95, 0.25, 0.30),
+      rotate(centre_x, centre_y, radius, angle + third, 0.25, 0.85, 0.40),
+      rotate(centre_x, centre_y, radius, angle + third + third, 0.30, 0.45, 0.95),
+    )
+
+    var _ = SDL_UpdateTexture(texture, null, pixels.slice(), WIDTH * 4)
+    var _ = SDL_RenderClear(renderer)
+    var _ = SDL_RenderCopy(renderer, texture, null, null)
+    SDL_RenderPresent(renderer)
+
+    if quit_requested(&event) {
+      break
+    }
+    SDL_Delay(1)
+    frames += 1
+  }
+
+  println("#{frames} frames in #{DURATION} ms")
+}

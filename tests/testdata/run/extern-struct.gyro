@@ -1,0 +1,54 @@
+// A struct crosses to C by value, in both directions, because the two
+// languages lay it out the same way: storage is C's, so `Div` and
+// `div_t` are the same eight bytes and neither side converts anything.
+//
+// The layout is asserted rather than assumed — the generated shim carries
+// a _Static_assert per field offset, so a disagreement with cc is a build
+// error and never a wrong answer.
+
+import { println } from "stdlib"
+
+// C's div_t, which glibc and musl both lay out quot first on x86-64.
+struct Div {
+  quot: i32
+  rem: i32
+}
+
+@extern("c")
+fn div(numerator: i32, denominator: i32): Div !{}
+
+// struct in_addr, whose one member is the address in network order. The
+// literal below is 127.0.0.1 as a little-endian machine holds it.
+struct InAddr {
+  s_addr: u32
+}
+
+@extern("c", symbol = "inet_ntoa")
+fn address_text(addr: InAddr): string !{}
+
+// A struct wide enough that C returns it through a hidden pointer rather
+// than in registers, so the other half of the ABI is exercised too.
+struct Split {
+  high: i64
+  low: i64
+  tail: u8
+}
+
+fn main() {
+  var d = div(17, 5)
+  println(d.quot)
+  println(d.rem)
+
+  var negative = div(0 - 17, 5)
+  println(negative.quot)
+  println(negative.rem)
+
+  var local = InAddr{ s_addr: 0x0100007F }
+  println(address_text(local))
+
+  // Gyro's own view of the same bytes: a struct of scalars is packed,
+  // so the fields sit where C would put them.
+  var s = Split{ high: 1, low: 2, tail: 255 }
+  println(s.high + s.low)
+  println(s.tail)
+}

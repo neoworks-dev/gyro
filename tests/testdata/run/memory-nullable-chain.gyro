@@ -1,0 +1,39 @@
+import { println } from "stdlib"
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+  next: *Node?
+}
+
+fn length(head: *Node): i32 {
+  var count: i32 = 0
+  var current: *Node? = head
+  while current != null {
+    count += 1
+    current = current.next
+  }
+  return count
+}
+
+fn link(value: i32, next: *Node?): *Node {
+  var node = alloc<Node>()
+  node.value = value
+  node.next = next
+  return node
+}
+
+fn release(head: *Node?) {
+  var current = head
+  while current != null {
+    var next = current.next
+    free(current)
+    current = next
+  }
+}
+
+fn main() {
+  var chain = link(1, link(2, link(3, null)))
+  println(length(chain))
+  release(chain)
+}

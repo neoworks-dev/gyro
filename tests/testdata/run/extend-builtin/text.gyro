@@ -1,0 +1,33 @@
+import { String, split, join } from "stdlib"
+
+// A user module may extend a built-in exactly as the stdlib does.
+export fn string::shout(self): string {
+  return "#{self}!"
+}
+
+export fn string::first_word(self): string {
+  var parts = self.split(" ")
+  defer parts.free()
+  return parts.get(0)
+}
+
+export fn i32::double(self): i32 {
+  return self * 2
+}
+
+export fn i32::clamp(self, low: i32, high: i32): i32 {
+  if self < low {
+    return low
+  }
+  if self > high {
+    return high
+  }
+  return self
+}
+
+export fn bool::yes_no(self): string {
+  if self {
+    return "yes"
+  }
+  return "no"
+}

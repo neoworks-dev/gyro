@@ -1,0 +1,39 @@
+// A Gyro program calling C that was compiled into the same module.
+//
+// The import is an ordinary one: internal/cc reads mathlib.c, the loader
+// files it as a foreign module the way it does a Lisp one, and the
+// linker puts the two together before any tier sees them. What crosses
+// is C's declared types, so `add` is a call to an i32 function and
+// `divmod` writes through pointers into storage this program allocated.
+//
+// A pointer may cross because there is no boundary here to cross: a
+// boundary is between runtimes, and a C module compiled into METALS is
+// in this one. See docs/decisions.md, "Values copy at runtime
+// boundaries".
+
+import { println } from "stdlib"
+import { alloc, free } from "mem"
+import { add, clamp, fib, gcd, mean_of_range, divmod, hypot_squared, char_wraps } from "./mathlib.c"
+
+fn main() {
+  println(add(2, 3))
+  println(clamp(99, 0, 42))
+  println(clamp(-5, 0, 42))
+
+  println(fib(10))
+  println(fib(40))
+  println(gcd(1071, 462))
+  println(mean_of_range(1, 10))
+
+  // Out-parameters: storage Gyro owns, written by C.
+  var whole = alloc<i32>()
+  var rest = alloc<i32>()
+  defer free(whole)
+  defer free(rest)
+  divmod(47, 10, whole, rest)
+  println(*whole)
+  println(*rest)
+
+  println(hypot_squared(3.0, 4.0))
+  println(char_wraps())
+}

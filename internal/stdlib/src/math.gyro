@@ -1,0 +1,44 @@
+// math — declarations only. Each one is a METALS instruction rather than
+// a runtime call: every tier answers it with the machine's own float
+// operation, so there is no library to agree with and nothing to diverge.
+//
+// f64 only. A f32 value reaches these through `as`, and its result comes
+// back the same way; a separate set of names for the narrow width would
+// buy nothing while Gyro's float literals are f64.
+//
+// None of these allocates or does i/o, so all of them state `!{}`.
+
+// The IEEE square root. Negative input gives NaN, not a panic — the same
+// split as float division by zero: IEEE 754 defines an answer, so it is a
+// value rather than a programmer error.
+export fn sqrt(x: f64): f64 !{}
+
+// The magnitude, keeping NaN a NaN.
+export fn abs(x: f64): f64 !{}
+
+// The four roundings to an integral value. Each returns a f64: rounding
+// and converting are separate questions, and `as` is the one that can
+// fail. NaN, ±Inf and ±0.0 come back unchanged, sign included.
+export fn ceil(x: f64): f64 !{}
+export fn floor(x: f64): f64 !{}
+
+// Toward zero: trunc(-2.7) is -2.0, where floor(-2.7) is -3.0.
+export fn trunc(x: f64): f64 !{}
+
+// To the nearest integral value, and **halfway cases go to the even
+// one**: round(0.5) and round(-0.5) are 0.0, round(1.5) and round(2.5)
+// are both 2.0. This is IEEE roundTiesToEven, not C's ties-away-from-zero
+// `round`; ties-away is the rule that makes a sum of rounded values drift
+// upward.
+export fn round(x: f64): f64 !{}
+
+// The smaller and the larger. **A NaN operand wins**: min and max
+// propagate it rather than answering the other operand, so a NaN in the
+// input is visible in the output instead of silently disappearing. The
+// two zeros are ordered, so min(-0.0, 0.0) is -0.0 and max is 0.0.
+export fn min(x: f64, y: f64): f64 !{}
+export fn max(x: f64, y: f64): f64 !{}
+
+// x with y's sign. copysign(3.0, -0.0) is -3.0, which is how the sign of
+// a zero is read at all.
+export fn copysign(x: f64, y: f64): f64 !{}

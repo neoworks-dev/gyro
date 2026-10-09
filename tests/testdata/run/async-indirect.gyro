@@ -1,0 +1,37 @@
+// An async function referenced as a value, then called through the value.
+// The thunk that carries the call to another thread keys on the signature
+// rather than a callee symbol, since there is none.
+
+import { println } from "stdlib"
+
+async fn work(n: i32): i32 {
+  return n * 2
+}
+
+async fn scale(factor: f64, n: i32): f64 {
+  return factor * (n as f64)
+}
+
+async fn describe(n: i32): (string, error?) {
+  return "n=#{n}", null
+}
+
+async fn main() {
+  var f = work
+  println(await f(21))
+
+  // A closure carries an environment; a bare function reference does not,
+  // and the thunk has to serve both.
+  var offset: i32 = 100
+  var shifted = async fn(n: i32): i32 { return n + offset }
+  println(await shifted(5))
+
+  var scaled = scale
+  println(await scaled(1.5, 4))
+
+  // An aggregate result travels through the hidden sret pointer.
+  var described = describe
+  var text, err = await described(7)
+  println(text)
+  println(err == null)
+}

@@ -1,0 +1,94 @@
+// `xs[lo..hi]` narrows a slice: a window onto storage it already views.
+// The result is always a slice, the bounds are usize like every other
+// index, and a window is a value rather than a place.
+
+import { Array } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+// The shapes that work, so the errors below are about what changed.
+fn shapes(xs: i32[], fixed: i32[4], owned: Array<i32>) {
+  var both = xs[1..2]
+  var toEnd = xs[1..]
+  var fromStart = xs[..2]
+
+  // A fixed-size array narrows to a slice: the length stops being
+  // static, which is what the result type says.
+  var view: i32[] = fixed[0..2]
+  var whole: i32[] = fixed[0..4]
+
+  // A window of a window.
+  var inner = both[0..1]
+
+  // An Array<T> narrows through the view it already hands out, so the
+  // window borrows its buffer.
+  var owning: i32[] = owned[0..2]
+}
+
+// ---------------------------------------------------------------------
+// The bounds
+
+fn signed(xs: i32[], at: i32) {
+  var bad = xs[at..2]      //~ E0513 range bounds are usize, not i32; lengths and indexes never mix with signed arithmetic implicitly
+}
+
+fn floating(xs: i32[]) {
+  var bad = xs[1.5..2]     //~ E0513 range bounds are usize, not untyped float; lengths and indexes never mix with signed arithmetic implicitly
+}
+
+// ---------------------------------------------------------------------
+// What has no window to take
+
+fn text(s: string) {
+  var bad = s[0..2]        //~ E0506 a string cannot be narrowed
+                           //~^ help: a string is UTF-8 and its length is in bytes, so a byte range can cut a code point in half
+}
+
+fn scalar(p: Point) {
+  var bad = p[0..1]        //~ E0506 Point cannot be narrowed; a slice, a fixed-size array and an Array<T> are what have a window to take
+}
+
+struct Holder {
+  value: i32
+}
+
+fn held(h: Holder) {
+  var bad = h[0..1]        //~ E0506 Holder cannot be narrowed; a slice, a fixed-size array and an Array<T> are what have a window to take
+}
+
+fn absent(xs: i32[]?) {
+  var bad = xs[0..1]       //~ E0510 this value is i32[]? and may be null; check it against null before narrowing it
+}
+
+// ---------------------------------------------------------------------
+// A window is a value, not a place
+
+fn assigning(xs: i32[], ys: i32[]) {
+  xs[0..2] = ys            //~ E0602 cannot assign to a narrowing; assign its elements, or the slice variable
+}
+
+fn addressing(xs: i32[]) {
+  var p = &xs[0..2]        //~ E0526 a narrowing has no address; it is a view built here, not storage
+}
+
+// ---------------------------------------------------------------------
+// What it borrows
+
+// A window is a view into its base, so a returned one names its source
+// in the row exactly as the base itself would.
+fn named(xs: i32[]): i32[] !{ &xs } {
+  return xs[1..2]
+}
+
+fn unnamed(xs: i32[]): i32[] {
+  return xs[1..2]          //~ E0609 this returns a view into xs, which the row does not name
+                           //~^ help: say so in the row: !{ &xs }
+}
+
+fn escaping(): i32[] {
+  var local = [1, 2, 3]
+  return local[0..2]       //~ E0610 this returns a view into storage that ends with this function
+}

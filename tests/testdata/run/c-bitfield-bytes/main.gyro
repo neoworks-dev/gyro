@@ -1,0 +1,35 @@
+// Where a bit-field's bits land, read out as bytes.
+//
+// The values are in c-bitfield/. This is the other half: that the bytes
+// are the ones a C compiler would have written, in the places it would
+// have written them. Only reading the storage as bytes can say that, and
+// reading a struct's storage as bytes is type punning — which the native
+// backend does because it has bytes.
+//
+// Every number here was taken from a C compiler on this target before it
+// was written down.
+
+import { println } from "stdlib"
+import {
+  packed_byte, member_after_a_run, straddle_moves_to_the_next_unit,
+  zero_width_opens_a_new_unit, writing_clears_only_its_own,
+} from "./layout.c"
+
+fn main() {
+  // Two four-bit fields in one byte, the first one in the low bits.
+  println(packed_byte())
+
+  // A one-byte run puts the member after it at offset one.
+  println(member_after_a_run())
+
+  // A field that would cross its declared type's boundary starts at the
+  // next one, four bytes along rather than one.
+  println(straddle_moves_to_the_next_unit())
+
+  // A zero-width field closes its run and opens the next at the
+  // following boundary.
+  println(zero_width_opens_a_new_unit())
+
+  // Writing one field clears its own bits and leaves its neighbour's.
+  println(writing_clears_only_its_own())
+}

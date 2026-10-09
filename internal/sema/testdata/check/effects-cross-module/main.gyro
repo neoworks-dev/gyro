@@ -1,0 +1,23 @@
+// Effects are inferred across module boundaries: a rowless imported
+// function contributes what its body does, not nothing. The one body that
+// cannot be read is the one that does not exist.
+
+import { shout, quiet, platform_log } from "./util"
+
+// The route runs off the end of this file, so the frame under the error
+// quotes util.gyro's line, not the line of that number in this file.
+fn inferred(message: string) !{} {
+  shout(message)         //~ E0611 shout does io, which the row does not name
+                         //~^ span: shout calls println, which does io
+                         //~^^ span: util.gyro:6:3
+                         //~^^^ help: name it in the row: !{ io }
+}
+
+fn stated(n: i32) !{} {
+  quiet(n)
+}
+
+fn opaque(message: string) !{} {
+  platform_log(message)  //~ E0611 platform_log is an intrinsic with no row, so it may do io and alloc
+                         //~^ help: name it in the row: !{ io, alloc }
+}

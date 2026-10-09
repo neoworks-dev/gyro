@@ -1,0 +1,27 @@
+// A Map value type may be optional. Optionals do not nest, so get()
+// answers null for a miss and for a stored null alike; contains() is what
+// tells the two apart.
+
+import { println, Map } from "stdlib"
+
+fn main() {
+  var seats = Map<string, i32?>::new()
+  defer seats.free()
+
+  seats.insert("ada", 3)
+  seats.insert("grace", null)
+
+  println(seats.get("ada"))
+  println(seats.get("grace"))
+  println(seats.get("hopper"))
+
+  println(seats.contains("grace"))
+  println(seats.contains("hopper"))
+  println(seats.len())
+
+  // The miss and the stored null only differ through contains().
+  var stored = seats.get("grace")
+  if stored == null && seats.contains("grace") {
+    println("grace is present, holding null")
+  }
+}

@@ -1,0 +1,4 @@
+// Importing a name the target module does not export, and a near miss.
+
+import { hidden } from "./util"      //~ does not export hidden
+import { helepr } from "./util"      //~ help: did you mean helper?

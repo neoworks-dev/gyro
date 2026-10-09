@@ -1,0 +1,86 @@
+// cJSON parsing and printing the same document round after round: the
+// port the execution corpus already checks, measured against the C it came
+// from.
+//
+// The document is the Tiled map export the jsmn case uses, so the two
+// ports meet the same input and the difference between them is what the
+// library does with it. jsmn labels spans of the input and touches a flat
+// token table; cJSON builds a tree — one heap node per value, four
+// pointers each, walked through `next` and `child` — and then walks it
+// again to print. That is the axis none of the other cases cover:
+// allocation and pointer chasing rather than arithmetic, bounds checks or
+// calls.
+//
+// The hot region is parse, print, checksum, delete. The checksum folds the
+// tree rather than the printed bytes, because reading a Gyro string byte
+// by byte means `bytes()`, which copies into a word-strided slice and
+// would put a second pass over the output into the number; the length of
+// the print is folded instead, and the corpus is what says the bytes
+// themselves match the C original.
+//
+// The module is imported out of the corpus rather than copied, so there is
+// exactly one cJSON port: the one whose output the corpus compares against
+// the C original's.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+import * as cjson from "../../../testdata/run/cjson/cjson"
+
+const ROUNDS: i64 = 2000
+
+const DOCUMENT: string = "{ \"height\":10, \"layers\":[ { \"data\":[6,6], \"height\":10, \"name\":\"Calque de Tile 1\", \"opacity\":1, \"type\":\"tilelayer\", \"visible\":true, \"width\":10, \"x\":0, \"y\":0 }], \"orientation\":\"orthogonal\", \"properties\": { }, \"tileheight\":32, \"tilesets\":[ { \"firstgid\":1, \"image\":\"..\\/images\\/tiles.png\", \"imageheight\":64, \"imagewidth\":160, \"margin\":0, \"name\":\"Tiles\", \"properties\":{}, \"spacing\":0, \"tileheight\":32, \"tilewidth\":32 }], \"tilewidth\":32, \"version\":1, \"width\":10 }"
+
+// unsigned reinterprets C's int as its two's-complement bits, so a
+// negative valueint folds into the checksum the same way on both sides.
+fn unsigned(value: i32): u64 {
+  if value >= 0 {
+    return value as u64
+  }
+  return 4294967295 - ((0 - (value + 1)) as u64)
+}
+
+// fold walks the tree the way a consumer would: the kind, what is live for
+// it, and the children in order.
+fn fold(accumulator: u64, item: *cjson::Node?): u64 {
+  if item == null {
+    return accumulator
+  }
+
+  var acc = accumulator *% 31 +% (cjson::type_of(item) as u64)
+  var key = item.key
+  if key != null {
+    acc = acc *% 31 +% (key.len() as u64)
+  }
+  if cjson::is_number(item) {
+    acc = acc *% 31 +% unsigned(cjson::int_of(item))
+  }
+  var text = cjson::string_of(item)
+  if text != null {
+    acc = acc *% 31 +% (text.len() as u64)
+  }
+
+  var child = item.child
+  while child != null {
+    acc = fold(acc, child)
+    child = child.next
+  }
+  return acc
+}
+
+fn main() {
+  var start = monotonic()
+  var acc: u64 = 0
+  for var round: i64 = 0; round < ROUNDS; round += 1 {
+    var root = cjson::parse(DOCUMENT)
+    var printed = cjson::print_unformatted(root)
+    if printed != null {
+      acc = acc *% 31 +% (printed.len() as u64)
+    }
+    acc = fold(acc, root)
+    cjson::delete(root)
+  }
+  var stop = monotonic()
+
+  println(acc)
+  eprintln("gyro:bench #{stop - start}")
+}

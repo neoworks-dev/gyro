@@ -1,0 +1,242 @@
+// The words that are not made of other words: arithmetic, comparison,
+// the stack shuffles and the two constants.
+//
+// Each group is asked whether it recognises a word before it is handed
+// one, so the interpreter can try the groups in order and fall through to
+// the definitions and the variables without any group knowing about the
+// others.
+//
+// These take the machine as a parameter rather than being methods on it.
+// A method on a user type belongs to the module that declares the type —
+// only the built-in types can be extended from elsewhere — so `Calc`'s
+// own surface lives in machine.gyro and the words that use it are
+// functions.
+
+import { Calc } from "./machine"
+import { CalcError } from "./error"
+import { sqrt, abs, floor, ceil, round, trunc, min, max } from "math"
+
+// True is 1 and false is 0: there is no bool on the stack, because a
+// calculator that cannot add up its own comparisons is less useful.
+const TRUE: f64 = 1.0
+const FALSE: f64 = 0.0
+
+export fn is_binary(word: string): bool {
+  return word == "+" || word == "-" || word == "*" || word == "/"
+      || word == "%" || word == "^" || word == "min" || word == "max"
+}
+
+// The comparisons are tested before `>name` is, so `>` and `>=` stay
+// operators and only a longer word starting with `>` stores.
+export fn is_compare(word: string): bool {
+  return word == "=" || word == "<>" || word == "<" || word == "<="
+      || word == ">" || word == ">=" || word == "and" || word == "or"
+}
+
+export fn is_unary(word: string): bool {
+  return word == "neg" || word == "abs" || word == "sqrt" || word == "floor"
+      || word == "ceil" || word == "round" || word == "trunc" || word == "not"
+}
+
+export fn is_stack_word(word: string): bool {
+  return word == "dup" || word == "drop" || word == "swap" || word == "over"
+      || word == "rot" || word == "clear" || word == "depth"
+}
+
+export fn is_constant(word: string): bool {
+  return word == "pi" || word == "e"
+}
+
+// ---------------------------------------------------------------------------
+// Arithmetic
+// ---------------------------------------------------------------------------
+
+export fn binary(calc: *Calc, word: string): error? {
+  var a, b, err = calc.pop2(word)
+  if err != null {
+    return err
+  }
+  if word == "+" {
+    calc.push(a + b)
+  } elif word == "-" {
+    calc.push(a - b)
+  } elif word == "*" {
+    calc.push(a * b)
+  } elif word == "/" {
+    if b == 0.0 {
+      return CalcError{ text: "division by zero" }
+    }
+    calc.push(a / b)
+  } elif word == "%" {
+    if b == 0.0 {
+      return CalcError{ text: "division by zero" }
+    }
+    calc.push(a - b * trunc(a / b))
+  } elif word == "min" {
+    calc.push(min(a, b))
+  } elif word == "max" {
+    calc.push(max(a, b))
+  } else {
+    return power(calc, a, b)
+  }
+  return null
+}
+
+// power is `^`. There is no `pow` in math — every name in it is a machine
+// instruction and that is not one — so the exponent has to be whole and
+// the answer is repeated multiplication.
+export fn power(calc: *Calc, base: f64, exponent: f64): error? {
+  if trunc(exponent) != exponent {
+    return CalcError{ text: "^ wants a whole exponent, not #{exponent}" }
+  }
+  if abs(exponent) > 1024.0 {
+    return CalcError{ text: "^ wants an exponent within ±1024, not #{exponent}" }
+  }
+
+  var times = abs(exponent) as i32
+  var value = 1.0
+  var i = 0
+  while i < times {
+    value *= base
+    i += 1
+  }
+  if exponent < 0.0 {
+    if value == 0.0 {
+      return CalcError{ text: "0 to a negative power has no value" }
+    }
+    value = 1.0 / value
+  }
+  calc.push(value)
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Comparison and logic
+// ---------------------------------------------------------------------------
+
+export fn compare(calc: *Calc, word: string): error? {
+  var a, b, err = calc.pop2(word)
+  if err != null {
+    return err
+  }
+  var answer = false
+  if word == "=" {
+    answer = a == b
+  } elif word == "<>" {
+    answer = a != b
+  } elif word == "<" {
+    answer = a < b
+  } elif word == "<=" {
+    answer = a <= b
+  } elif word == ">" {
+    answer = a > b
+  } elif word == ">=" {
+    answer = a >= b
+  } elif word == "and" {
+    answer = a != 0.0 && b != 0.0
+  } else {
+    answer = a != 0.0 || b != 0.0
+  }
+  if answer {
+    calc.push(TRUE)
+  } else {
+    calc.push(FALSE)
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// One-value words
+// ---------------------------------------------------------------------------
+
+export fn unary(calc: *Calc, word: string): error? {
+  var value, err = calc.pop(word)
+  if err != null {
+    return err
+  }
+  if word == "neg" {
+    calc.push(0.0 - value)
+  } elif word == "abs" {
+    calc.push(abs(value))
+  } elif word == "sqrt" {
+    calc.push(sqrt(value))
+  } elif word == "floor" {
+    calc.push(floor(value))
+  } elif word == "ceil" {
+    calc.push(ceil(value))
+  } elif word == "round" {
+    calc.push(round(value))
+  } elif word == "trunc" {
+    calc.push(trunc(value))
+  } elif value == 0.0 {
+    calc.push(TRUE)
+  } else {
+    calc.push(FALSE)
+  }
+  return null
+}
+
+export fn constant(calc: *Calc, word: string) {
+  if word == "pi" {
+    calc.push(3.141592653589793)
+  } else {
+    calc.push(2.718281828459045)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stack shuffles
+// ---------------------------------------------------------------------------
+
+export fn stack_word(calc: *Calc, word: string): error? {
+  if word == "clear" {
+    calc.clear()
+    return null
+  }
+  if word == "depth" {
+    calc.push(calc.depth() as f64)
+    return null
+  }
+  if word == "dup" {
+    var value, err = calc.pop(word)
+    if err != null {
+      return err
+    }
+    calc.push(value)
+    calc.push(value)
+    return null
+  }
+  if word == "drop" {
+    var _, err = calc.pop(word)
+    return err
+  }
+  if word == "swap" {
+    var a, b, err = calc.pop2(word)
+    if err != null {
+      return err
+    }
+    calc.push(b)
+    calc.push(a)
+    return null
+  }
+  if word == "over" {
+    var a, b, err = calc.pop2(word)
+    if err != null {
+      return err
+    }
+    calc.push(a)
+    calc.push(b)
+    calc.push(a)
+    return null
+  }
+
+  // rot takes the third value to the top: a b c becomes b c a.
+  var a, b, c, err = calc.pop3(word)
+  if err != null {
+    return err
+  }
+  calc.push(b)
+  calc.push(c)
+  calc.push(a)
+  return null
+}

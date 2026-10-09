@@ -1,0 +1,17 @@
+// A module-level const may call a function, so it lowers to a getter
+// rather than a static.
+
+import { println } from "stdlib"
+
+fn triple(n: i32): i32 {
+  return n * 3
+}
+
+const BASE: i32 = triple(7)
+const SCALED: i32 = 15
+
+fn main() {
+  println(BASE)
+  println("twice #{BASE * 2}")
+  println(SCALED)
+}

@@ -1,0 +1,10 @@
+Inner{ label: "a\"b", count: 2 }
+interpolated: Inner{ label: "a\"b", count: 2 }
+Outer{ inner: Inner{ label: "a\"b", count: 2 }, tag: "top", missing: null, present: 5 }
+[1, 2, 3]
+["x", "y"]
+Wrapped::One(Inner{ label: "a\"b", count: 2 })
+Wrapped::Pair(1, "two")
+Wrapped::None
+&7
+null

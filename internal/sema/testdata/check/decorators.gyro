@@ -1,0 +1,10 @@
+// Decorators are a fixed set, not an open extension point.
+
+@gpu fn kernel(a: *f32) {
+}
+
+@concurrent(threads = 8) fn worker() {
+}
+
+@wasm fn unknown() {             //~ unknown decorator @wasm
+}

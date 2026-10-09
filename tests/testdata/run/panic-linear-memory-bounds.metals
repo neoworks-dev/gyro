@@ -1,0 +1,29 @@
+; The bounds check is the whole argument for compiling an unsafe
+; language into METALS rather than linking it: a producer that gets its
+; own pointer arithmetic wrong is stopped at the edge of the region it
+; declared, instead of reaching storage that belongs to something else.
+;
+; One page is 65536 bytes, so a four-byte load at 65534 runs two bytes
+; past the end. The address itself is in range; only the access is not,
+; which is the case a check on the address alone would miss.
+
+;gyro:panic linear memory access out of bounds
+
+module "metals:linear-memory-bounds"
+
+import "gyro:rt" {
+  fn @"println<string>"(str)
+}
+
+memory @m 1
+
+export fn @main() {
+  %start = const.str "before"
+  call @"println<string>"(%start)
+
+  %edge = const.u32 65534
+  %past = mem.load.u32 @m, %edge
+  %never = const.str "after"
+  call @"println<string>"(%never)
+  return
+}

@@ -1,0 +1,47 @@
+// Turning a line into words, and deciding which words are numbers.
+
+import { Array, split } from "stdlib"
+
+export fn is_digit(byte: u8): bool {
+  return byte >= '0' as u8 && byte <= '9' as u8
+}
+
+// is_number decides whether `to_f64` is worth asking. Without it every
+// ordinary word would allocate a parse failure on its way to being
+// recognised as a word.
+export fn is_number(word: string): bool {
+  var bytes = word.bytes()
+  if bytes.len() == 0 {
+    return false
+  }
+  if is_digit(bytes[0]) {
+    return true
+  }
+  if bytes.len() < 2 {
+    return false
+  }
+  var first = bytes[0]
+  if first == '-' as u8 || first == '+' as u8 || first == '.' as u8 {
+    return is_digit(bytes[1]) || bytes[1] == '.' as u8
+  }
+  return false
+}
+
+// words_of splits a line on spaces, drops what runs of them leave behind,
+// and stops at a `#`, which comments out the rest of the line.
+export fn words_of(line: string): Array<string> {
+  var parts = line.split(" ")
+  defer parts.free()
+
+  var out = Array<string>::new()
+  for part in parts.slice() {
+    if part.len() == 0 {
+      continue
+    }
+    if part.bytes()[0] == '#' as u8 {
+      break
+    }
+    out.push(part)
+  }
+  return out
+}

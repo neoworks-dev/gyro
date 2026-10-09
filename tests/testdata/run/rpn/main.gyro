@@ -1,0 +1,101 @@
+// rpn — a reverse-Polish calculator you can talk to.
+//
+// It reads a line at a time from standard input, runs the words on it
+// left to right against a stack of f64, and prints the stack. Values push
+// themselves, operators consume what they need, `>name` stores the top of
+// the stack in a variable, a bare name recalls one, `: name ... ;`
+// defines a word out of other words, and `if ... else ... then` chooses
+// between two of them — which, with a word that calls itself, is enough
+// to write a factorial:
+//
+//     > : fact dup 1 <= if drop 1 else dup 1 - fact * then ;
+//     (empty)
+//     > 5 fact
+//     120
+//
+// A line is all-or-nothing: if a word fails halfway through, the message
+// says why and the stack is the one the line started with, so a typo
+// cannot leave half an expression behind.
+//
+// The program is one module per job:
+//
+//     error.gyro     the error type, which is a type with a message()
+//     text.gyro      a line to words, and which words are numbers
+//     machine.gyro   the stack, the variables, the definitions
+//     builtins.gyro  the words that are not made of other words
+//     interp.gyro    what a line of words does
+//     persist.gyro   save and load, as a program in this same language
+//     main.gyro      the prompt
+//
+// Two things it does not do, because the standard library does not yet:
+// `^` takes whole exponents only, since `math` has no `pow` (nor `exp`,
+// `log` or trig — every name in it is a machine instruction, and those
+// are not); and words split on spaces alone, since there is no general
+// whitespace split.
+
+//gyro:stdin 3 4 + 2 ^
+//gyro:stdin sqrt
+//gyro:stdin >x
+//gyro:stdin : sq dup * ;
+//gyro:stdin x sq
+//gyro:stdin : fact dup 1 <= if drop 1 else dup 1 - fact * then ;
+//gyro:stdin clear 5 fact
+//gyro:stdin 10 fact
+//gyro:stdin clear 3 4 < 3 4 > 3 3 =
+//gyro:stdin clear 1 0 or 1 0 and not
+//gyro:stdin clear pi 2 *
+//gyro:stdin clear save /tmp/gyro-rpn-corpus.rpn
+//gyro:stdin forget sq
+//gyro:stdin words
+//gyro:stdin load /tmp/gyro-rpn-corpus.rpn
+//gyro:stdin words
+//gyro:stdin vars
+//gyro:stdin 1 0 /   # the line fails and the stack is untouched
+//gyro:stdin nope
+//gyro:stdin 2 0 = if pi else e then
+//gyro:stdin help
+//gyro:stdin quit
+
+import { println, print } from "stdlib"
+import { readline } from "os"
+import { words_of } from "./text"
+import { Calc } from "./machine"
+import { run } from "./interp"
+
+fn main() {
+  println("rpn — reverse Polish, with variables and words. \"help\" lists them.")
+
+  var calc = Calc::new()
+  defer calc.free()
+
+  while !calc.done {
+    print("> ")
+    var line = readline()
+    if line == null {
+      break
+    }
+
+    var words = words_of(line)
+    if words.is_empty() {
+      words.free()
+      continue
+    }
+
+    // The stack the line started with, in case it does not finish.
+    var saved = calc.snapshot()
+    var err = run(&calc, words.slice(), 0)
+    if err != null {
+      println("error: #{err.message()}")
+      calc.restore(saved)
+    } else {
+      saved.free()
+      if !calc.done {
+        calc.show()
+      }
+    }
+    words.free()
+  }
+
+  // Both ways out say the same thing: `quit`, and the end of the input.
+  println("bye")
+}

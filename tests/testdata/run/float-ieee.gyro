@@ -1,0 +1,41 @@
+// Floats are IEEE. Division by zero answers ±Inf, or NaN for 0.0 / 0.0,
+// where integer division by zero panics. NaN is unordered under the
+// comparison operators and ordered above every number under compare(),
+// which is a total order so that a comparator stays consistent.
+
+import { println } from "stdlib"
+
+fn main() {
+  var zero = 0.0
+  var one = 1.0
+  var minus_one = 0.0 - 1.0
+
+  println(one / zero)
+  println(minus_one / zero)
+
+  var nan = zero / zero
+  println(nan)
+
+  // Every comparison against NaN is false, equality included.
+  println(nan == nan)
+  println(nan != nan)
+  println(nan < one)
+  println(nan <= one)
+  println(nan > one)
+  println(nan >= one)
+
+  // compare separates what the operators refuse to order.
+  println(nan.compare(one))
+  println(one.compare(nan))
+  println(nan.compare(nan))
+  println(one.compare(one))
+
+  var infinity = one / zero
+  println(infinity.compare(nan))
+  println(nan.compare(infinity))
+
+  // Signed zeros compare equal, the way they do under ==.
+  var minus_zero = zero * minus_one
+  println(zero.compare(minus_zero))
+  println(zero == minus_zero)
+}

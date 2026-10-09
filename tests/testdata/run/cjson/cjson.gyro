@@ -1,0 +1,1797 @@
+// A port of cJSON (github.com/DaveGamble/cJSON, MIT), the core of
+// `cJSON.c` and `cJSON.h`: the parser, the two printers, the minifier, the
+// accessors and constructors, `Delete`, `Duplicate` and `Compare`.
+// `cJSON_Utils.c` — JSON Pointer, Patch and merge patch — is out of scope.
+//
+// What the port changes, and why:
+//
+//   * **The union becomes an enum.** C's `cJSON` carries a `type` bitfield
+//     beside four value fields, only some of which are live for any given
+//     type: `valuestring` for a string and for raw, `valueint` and
+//     `valuedouble` for a number, `child` for an array and an object.
+//     Gyro has no unions, but it has enums with payloads, which is the
+//     same thing with the tag and the payload tied together — so `value`
+//     holds `Number(f64, i32)` or `Text(string)` and nothing else can be
+//     read out of it. What is *not* part of the union stays a field:
+//     `key` is orthogonal to the kind (any node can be an object member),
+//     and `next`/`prev`/`child` are the tree, which `Delete` and the
+//     detach/replace surface walk without caring what kind a node is.
+//     `type_of` recovers C's integer tag where the algorithm really is a
+//     switch on it.
+//
+//   * **Ownership is real.** A node is an `alloc<Node>()` and `delete`
+//     frees it, exactly where `cJSON_Delete` does. The strings are the
+//     part Gyro cannot follow: `from_utf8` allocates and nothing in the
+//     language reclaims text, so where C frees `valuestring` and `string`
+//     this leaks by design — a whole-language gap, not a decision of the
+//     port.
+//
+//   * **`char *` becomes a byte array plus an index.** There are no
+//     interior pointers, so the parse buffer is an `Array<u8>` the
+//     positions index, and every read goes through `at`, which answers 0
+//     past the end the way C reads its NUL terminator. Offsets are i64:
+//     the C is written in `size_t` and relies on wraparound never
+//     mattering, while Gyro's arithmetic panics on underflow.
+//
+//   * **A C string stops at its first NUL.** A `\u0000` escape in the input writes
+//     a zero byte into the unescaped output and C's `strlen` then treats
+//     everything after it as absent. A Gyro string has a length, so the
+//     truncation is written out where the value is built rather than
+//     happening by itself.
+//
+//   * **`return_parse_end` and `cJSON_GetErrorPtr` become a returned
+//     offset.** Both are the same number in C — the position parsing
+//     stopped at — reached once through an out parameter and once through
+//     a global. Gyro has neither, and returning it is what a tuple is for.
+//
+//   * **No references and no const keys.** `cJSON_IsReference` and
+//     `cJSON_StringIsConst` exist to tell `cJSON_Delete` which pointers it
+//     does not own. That is exactly the bookkeeping the port is meant to
+//     do honestly, so `CreateStringReference`, `CreateObjectReference`,
+//     `CreateArrayReference` and `AddItemToObjectCS` are left out rather
+//     than ported into a flag that says "do not free this".
+//
+//   * **The print buffer grows and nothing else.** `ensure`, `noalloc`,
+//     `cJSON_PrintBuffered` and `cJSON_PrintPreallocated` are one
+//     allocation strategy for one output; the port appends to an
+//     `Array<u8>`. What survives is the failure return, which the depth
+//     limit and a raw node with no text still produce.
+
+import { Array, String, from_utf8 } from "stdlib"
+import { alloc, free } from "mem"
+import { to_f64 } from "convert"
+import * as dtoa from "./dtoa"
+
+// The nesting limits, straight from cJSON.h.
+export const NESTING_LIMIT: i64 = 1000
+export const CIRCULAR_LIMIT: i64 = 10000
+
+// C's type bits. They are a bitfield there because the reference and
+// const-key flags ride in the same int; here they are just the tag, and
+// `type_of` is the only place they are produced.
+export const TYPE_INVALID: i32 = 0
+export const TYPE_FALSE: i32 = 1
+export const TYPE_TRUE: i32 = 2
+export const TYPE_NULL: i32 = 4
+export const TYPE_NUMBER: i32 = 8
+export const TYPE_STRING: i32 = 16
+export const TYPE_ARRAY: i32 = 32
+export const TYPE_OBJECT: i32 = 64
+export const TYPE_RAW: i32 = 128
+
+export const INT_MAX: i32 = 2147483647
+export const INT_MIN: i32 = -2147483648
+const INT_MAX_F: f64 = 2147483647.0
+const INT_MIN_F: f64 = -2147483648.0
+
+// DBL_EPSILON, which is what cJSON's compare_double scales by.
+const DBL_EPSILON: f64 = 2.220446049250313e-16
+
+// Value is the union C keeps under `type`. A number carries both of C's
+// fields, because print_number reads them both.
+export enum Value {
+  Invalid,
+  False,
+  True,
+  Null,
+  Number(f64, i32),
+  Text(string),
+  Raw(string),
+  List,
+  Object,
+}
+
+// Node is one item. `key` is the member name when the node sits in an
+// object — C's `string`, renamed because `string` is a type here.
+export struct Node {
+  export value: Value
+  export key: string?
+  export next: *Node?
+  export prev: *Node?
+  export child: *Node?
+}
+
+// ---------------------------------------------------------------------------
+// Construction and destruction
+// ---------------------------------------------------------------------------
+
+// new_node is cJSON_New_Item: a blank node. C memsets it; Gyro has no zero
+// value, so every field is written.
+fn new_node(): *Node {
+  var node = alloc<Node>()
+  node.value = Value::Invalid
+  node.key = null
+  node.next = null
+  node.prev = null
+  node.child = null
+  return node
+}
+
+export fn create_null(): *Node {
+  var node = new_node()
+  node.value = Value::Null
+  return node
+}
+
+export fn create_true(): *Node {
+  var node = new_node()
+  node.value = Value::True
+  return node
+}
+
+export fn create_false(): *Node {
+  var node = new_node()
+  node.value = Value::False
+  return node
+}
+
+export fn create_bool(value: bool): *Node {
+  if value {
+    return create_true()
+  }
+  return create_false()
+}
+
+// clamp saturates a double into C's int, which is what both
+// cJSON_CreateNumber and parse_number do with valueint. A NaN compares
+// false against everything, so C's `(int)number` runs on it; x86 answers
+// INT_MIN, and that is the number this reproduces.
+fn clamp(value: f64): i32 {
+  if dtoa::is_nan(value) {
+    return INT_MIN
+  }
+  if value >= INT_MAX_F {
+    return INT_MAX
+  }
+  if value <= INT_MIN_F {
+    return INT_MIN
+  }
+  return value as i32
+}
+
+export fn create_number(value: f64): *Node {
+  var node = new_node()
+  node.value = Value::Number(value, clamp(value))
+  return node
+}
+
+export fn create_string(text: string): *Node {
+  var node = new_node()
+  node.value = Value::Text(text)
+  return node
+}
+
+export fn create_raw(text: string): *Node {
+  var node = new_node()
+  node.value = Value::Raw(text)
+  return node
+}
+
+export fn create_array(): *Node {
+  var node = new_node()
+  node.value = Value::List
+  return node
+}
+
+export fn create_object(): *Node {
+  var node = new_node()
+  node.value = Value::Object
+  return node
+}
+
+// set_number_value is cJSON_SetNumberHelper: it rewrites both halves of
+// the number, which is why the macro exists at all.
+export fn set_number_value(item: *Node, value: f64) {
+  item.value = Value::Number(value, clamp(value))
+}
+
+// delete is cJSON_Delete: the chain from `item` on, each node's children
+// first. The strings are not freed — nothing in Gyro frees text.
+export fn delete(item: *Node?) {
+  var current = item
+  while current != null {
+    var next = current.next
+    delete(current.child)
+    free(current)
+    current = next
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reading a node
+// ---------------------------------------------------------------------------
+
+export fn type_of(item: *Node?): i32 {
+  if item == null {
+    return TYPE_INVALID
+  }
+  return match item.value {
+    Value::Invalid: TYPE_INVALID
+    Value::False: TYPE_FALSE
+    Value::True: TYPE_TRUE
+    Value::Null: TYPE_NULL
+    Value::Number(d, i): TYPE_NUMBER
+    Value::Text(s): TYPE_STRING
+    Value::Raw(s): TYPE_RAW
+    Value::List: TYPE_ARRAY
+    Value::Object: TYPE_OBJECT
+  }
+}
+
+export fn is_invalid(item: *Node?): bool { return type_of(item) == TYPE_INVALID && item != null }
+export fn is_false(item: *Node?): bool { return type_of(item) == TYPE_FALSE }
+export fn is_true(item: *Node?): bool { return type_of(item) == TYPE_TRUE }
+export fn is_bool(item: *Node?): bool { return is_true(item) || is_false(item) }
+export fn is_null(item: *Node?): bool { return type_of(item) == TYPE_NULL }
+export fn is_number(item: *Node?): bool { return type_of(item) == TYPE_NUMBER }
+export fn is_string(item: *Node?): bool { return type_of(item) == TYPE_STRING }
+export fn is_array(item: *Node?): bool { return type_of(item) == TYPE_ARRAY }
+export fn is_object(item: *Node?): bool { return type_of(item) == TYPE_OBJECT }
+export fn is_raw(item: *Node?): bool { return type_of(item) == TYPE_RAW }
+
+// number_of is cJSON_GetNumberValue: NaN when the node is not a number.
+export fn number_of(item: *Node?): f64 {
+  if item == null {
+    return 0.0 / 0.0
+  }
+  return match item.value {
+    Value::Number(d, i): d
+    _: 0.0 / 0.0
+  }
+}
+
+export fn int_of(item: *Node?): i32 {
+  if item == null {
+    return 0
+  }
+  return match item.value {
+    Value::Number(d, i): i
+    _: 0
+  }
+}
+
+// string_of is cJSON_GetStringValue: the text of a string node, null
+// otherwise. Raw answers null here exactly as C does, since C tests the
+// type before handing back the pointer the two kinds share.
+export fn string_of(item: *Node?): string? {
+  var text: string? = null
+  if item != null {
+    // A `match` expression takes its type from the first arm, so a
+    // `string` arm beside a `null` one is rejected; the assignment form
+    // says `string?` once and both arms fit it.
+    match item.value {
+      Value::Text(s): { text = s }
+      _: {}
+    }
+  }
+  return text
+}
+
+// raw_of is the same for a raw node, which print_value needs.
+fn raw_of(item: *Node): string? {
+  var text: string? = null
+  match item.value {
+    Value::Raw(s): { text = s }
+    _: {}
+  }
+  return text
+}
+
+// ---------------------------------------------------------------------------
+// The parse buffer
+// ---------------------------------------------------------------------------
+
+// Buffer is C's parse_buffer. `content` always carries one byte past
+// `length` so that a read at the very end answers something; `at` answers
+// 0 beyond that, which is the NUL C relies on.
+struct Buffer {
+  content: Array<u8>
+  length: i64
+  offset: i64
+  depth: i64
+}
+
+fn Buffer::can_read(self, size: i64): bool {
+  return self.offset + size <= self.length
+}
+
+fn Buffer::can_access(self, index: i64): bool {
+  return self.offset + index < self.length
+}
+
+// at reads at an absolute index.
+fn Buffer::at(self, index: i64): u8 {
+  if index < 0 || index >= self.content.len() as i64 {
+    return 0
+  }
+  return self.content.get(index as usize)
+}
+
+// here reads relative to the offset, which is C's buffer_at_offset()[i].
+fn Buffer::here(self, index: i64): u8 {
+  return self.at(self.offset + index)
+}
+
+// keyword compares the bytes at the offset against a literal, spelled out
+// byte by byte because `text.bytes()` copies: reading a keyword through a
+// string would allocate three times per parsed value.
+fn Buffer::keyword4(self, a: u8, b: u8, c: u8, d: u8): bool {
+  return self.here(0) == a && self.here(1) == b && self.here(2) == c && self.here(3) == d
+}
+
+// skip_whitespace is C's buffer_skip_whitespace, decrement included: a
+// buffer skipped to its very end steps one back, which is what leaves the
+// NUL readable for require_null_terminated.
+fn Buffer::skip_whitespace(*self) {
+  if !self.can_access(0) {
+    return
+  }
+  while self.can_access(0) && self.here(0) <= 32 {
+    self.offset += 1
+  }
+  if self.offset == self.length {
+    self.offset -= 1
+  }
+}
+
+fn Buffer::skip_bom(*self) {
+  if self.offset != 0 {
+    return
+  }
+  if self.can_access(4) && self.here(0) == 239 && self.here(1) == 187 && self.here(2) == 191 {
+    self.offset += 3
+  }
+}
+
+// ---------------------------------------------------------------------------
+// strtod
+// ---------------------------------------------------------------------------
+
+const DIGIT_0: u8 = 48
+const DIGIT_9: u8 = 57
+
+fn is_digit(byte: u8): bool {
+  return byte >= DIGIT_0 && byte <= DIGIT_9
+}
+
+// number_prefix answers how many bytes at `from` strtod would consume
+// before `limit`: an optional sign, digits around at most one point, and
+// an exponent only when a digit follows it. Zero means no conversion,
+// which is C's `after_end == start`.
+fn number_prefix(bytes: u8[], from: i64, limit: i64): i64 {
+  var i = from
+  var stop = bytes.len() as i64
+  if limit < stop {
+    stop = limit
+  }
+  if i < stop && (bytes[i as usize] == '+' as u8 || bytes[i as usize] == '-' as u8) {
+    i += 1
+  }
+
+  var digits: i64 = 0
+  while i < stop && is_digit(bytes[i as usize]) {
+    i += 1
+    digits += 1
+  }
+  if i < stop && bytes[i as usize] == '.' as u8 {
+    var after = i + 1
+    var fraction: i64 = 0
+    while after < stop && is_digit(bytes[after as usize]) {
+      after += 1
+      fraction += 1
+    }
+    if digits > 0 || fraction > 0 {
+      i = after
+      digits += fraction
+    }
+  }
+  if digits == 0 {
+    return 0
+  }
+
+  if i < stop && (bytes[i as usize] == 'e' as u8 || bytes[i as usize] == 'E' as u8) {
+    var after = i + 1
+    if after < stop && (bytes[after as usize] == '+' as u8 || bytes[after as usize] == '-' as u8) {
+      after += 1
+    }
+    var exponent: i64 = 0
+    while after < stop && is_digit(bytes[after as usize]) {
+      after += 1
+      exponent += 1
+    }
+    if exponent > 0 {
+      i = after
+    }
+  }
+  return i - from
+}
+
+// saturate decides what a literal too large or too small for a double
+// becomes. `to_f64` reports a range error and drops the value strtod would
+// have handed back, so the magnitude is read off the text instead: a
+// mantissa of nothing but zeros is zero, a positive decimal exponent is an
+// overflow to infinity, and anything else underflowed.
+fn saturate(text: string): f64 {
+  var bytes = text.bytes()
+  var i: usize = 0
+  var negative = false
+  if i < bytes.len() && (bytes[i] == '+' as u8 || bytes[i] == '-' as u8) {
+    negative = bytes[i] == '-' as u8
+    i += 1
+  }
+
+  var integer_digits: i64 = 0
+  var lead: i64 = -1
+  var seen: i64 = 0
+  var point = false
+  while i < bytes.len() && (is_digit(bytes[i]) || bytes[i] == '.' as u8) {
+    if bytes[i] == '.' as u8 {
+      point = true
+    } else {
+      if !point {
+        integer_digits += 1
+      }
+      if lead < 0 && bytes[i] != DIGIT_0 {
+        lead = seen
+      }
+      seen += 1
+    }
+    i += 1
+  }
+  if lead < 0 {
+    if negative {
+      return 0.0 - 0.0
+    }
+    return 0.0
+  }
+
+  var exponent: i64 = 0
+  if i < bytes.len() && (bytes[i] == 'e' as u8 || bytes[i] == 'E' as u8) {
+    i += 1
+    var exponent_negative = false
+    if i < bytes.len() && (bytes[i] == '+' as u8 || bytes[i] == '-' as u8) {
+      exponent_negative = bytes[i] == '-' as u8
+      i += 1
+    }
+    while i < bytes.len() && is_digit(bytes[i]) {
+      if exponent < 1000000 {
+        exponent = exponent * 10 + ((bytes[i] - DIGIT_0) as i64)
+      }
+      i += 1
+    }
+    if exponent_negative {
+      exponent = 0 - exponent
+    }
+  }
+
+  var scientific = integer_digits - 1 - lead + exponent
+  if scientific > 0 {
+    if negative {
+      return -1.0 / 0.0
+    }
+    return 1.0 / 0.0
+  }
+  if negative {
+    return 0.0 - 0.0
+  }
+  return 0.0
+}
+
+fn parse_double(text: string): f64 {
+  var value, err = to_f64(text)
+  if err == null {
+    return value
+  }
+  return saturate(text)
+}
+
+fn slice_text(bytes: u8[], from: i64, length: i64): string {
+  var out = Array<u8>::new()
+  for var i = from; i < from + length; i += 1 {
+    if i >= 0 && i < bytes.len() as i64 {
+      out.push(bytes[i as usize])
+    }
+  }
+  var text = from_utf8(out.slice())
+  out.free()
+  return text
+}
+
+// ---------------------------------------------------------------------------
+// parse_number
+// ---------------------------------------------------------------------------
+
+fn parse_number(item: *Node, input: *Buffer): bool {
+  // C copies the run of number-ish characters into a scratch buffer so
+  // that strtod sees a terminator; the copy is what bounds the scan.
+  var length: i64 = 0
+  var scanning = true
+  while scanning && input.can_access(length) {
+    var byte = input.here(length)
+    if is_digit(byte) || byte == '+' as u8 || byte == '-' as u8
+        || byte == 'e' as u8 || byte == 'E' as u8 || byte == '.' as u8 {
+      length += 1
+    } else {
+      scanning = false
+    }
+  }
+
+  var consumed = number_prefix(input.content.slice(), input.offset, input.offset + length)
+  if consumed == 0 {
+    return false
+  }
+
+  var number = parse_double(slice_text(input.content.slice(), input.offset, consumed))
+  item.value = Value::Number(number, clamp(number))
+  input.offset += consumed
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// parse_string
+// ---------------------------------------------------------------------------
+
+fn hex_value(byte: u8): i64 {
+  if byte >= DIGIT_0 && byte <= DIGIT_9 {
+    return (byte - DIGIT_0) as i64
+  }
+  if byte >= 'A' as u8 && byte <= 'F' as u8 {
+    return 10 + ((byte - ('A' as u8)) as i64)
+  }
+  if byte >= 'a' as u8 && byte <= 'f' as u8 {
+    return 10 + ((byte - ('a' as u8)) as i64)
+  }
+  return -1
+}
+
+// parse_hex4 is C's: an invalid digit makes the whole sequence read as
+// zero, which is a value rather than a failure.
+fn parse_hex4(input: *Buffer, at: i64): i64 {
+  var value: i64 = 0
+  for var i: i64 = 0; i < 4; i += 1 {
+    var digit = hex_value(input.at(at + i))
+    if digit < 0 {
+      return 0
+    }
+    value += digit
+    if i < 3 {
+      value = value << 4
+    }
+  }
+  return value
+}
+
+// utf16_to_utf8 converts one `\uXXXX`, or a surrogate pair, appending the
+// UTF-8 bytes. It answers how many input bytes the sequence took, or 0 on
+// failure.
+fn utf16_to_utf8(input: *Buffer, pointer: i64, end: i64, out: Array<u8>): i64 {
+  if end - pointer < 6 {
+    return 0
+  }
+
+  var first = parse_hex4(input, pointer + 2)
+  if first >= 56320 && first <= 57343 {
+    return 0
+  }
+
+  var codepoint = first
+  var sequence: i64 = 6
+  if first >= 55296 && first <= 56319 {
+    var second_at = pointer + 6
+    sequence = 12
+    if end - second_at < 6 {
+      return 0
+    }
+    if input.at(second_at) != '\\' as u8 || input.at(second_at + 1) != 'u' as u8 {
+      return 0
+    }
+    var second = parse_hex4(input, second_at + 2)
+    if second < 56320 || second > 57343 {
+      return 0
+    }
+    codepoint = 65536 + (((first & 1023) << 10) | (second & 1023))
+  }
+
+  if codepoint < 128 {
+    out.push((codepoint & 127) as u8)
+  } elif codepoint < 2048 {
+    out.push((((codepoint >> 6) | 192) & 255) as u8)
+    out.push((((codepoint) | 128) & 191) as u8)
+  } elif codepoint < 65536 {
+    out.push((((codepoint >> 12) | 224) & 255) as u8)
+    out.push((((codepoint >> 6) | 128) & 191) as u8)
+    out.push((((codepoint) | 128) & 191) as u8)
+  } elif codepoint <= 1114111 {
+    out.push((((codepoint >> 18) | 240) & 255) as u8)
+    out.push((((codepoint >> 12) | 128) & 191) as u8)
+    out.push((((codepoint >> 6) | 128) & 191) as u8)
+    out.push((((codepoint) | 128) & 191) as u8)
+  } else {
+    return 0
+  }
+  return sequence
+}
+
+// terminated cuts the bytes at the first NUL, which is where a C string
+// the same bytes were written into would end.
+fn terminated(bytes: Array<u8>): string {
+  var stop: usize = 0
+  while stop < bytes.len() && bytes.get(stop) != 0 {
+    stop += 1
+  }
+  var out = Array<u8>::new()
+  for var i: usize = 0; i < stop; i += 1 {
+    out.push(bytes.get(i))
+  }
+  var text = from_utf8(out.slice())
+  out.free()
+  return text
+}
+
+// parse_string leaves the unescaped text in `item` as a string value; the
+// object parser moves it to `key` afterwards, the way C swaps the two
+// pointers.
+fn parse_string(item: *Node, input: *Buffer): bool {
+  var start = input.offset
+  var pointer = start + 1
+  var failed = false
+
+  if input.here(0) != '"' as u8 {
+    failed = true
+  }
+
+  var end = start + 1
+  if !failed {
+    while end < input.length && input.at(end) != '"' as u8 {
+      if input.at(end) == '\\' as u8 {
+        if end + 1 >= input.length {
+          failed = true
+          break
+        }
+        end += 1
+      }
+      end += 1
+    }
+    if end >= input.length || input.at(end) != '"' as u8 {
+      failed = true
+    }
+  }
+
+  if failed {
+    input.offset = pointer
+    return false
+  }
+
+  var out = Array<u8>::new()
+  while pointer < end {
+    if input.at(pointer) != '\\' as u8 {
+      out.push(input.at(pointer))
+      pointer += 1
+      continue
+    }
+
+    var sequence: i64 = 2
+    var escaped = input.at(pointer + 1)
+    if escaped == 'b' as u8 {
+      out.push(8)
+    } elif escaped == 'f' as u8 {
+      out.push(12)
+    } elif escaped == 'n' as u8 {
+      out.push(10)
+    } elif escaped == 'r' as u8 {
+      out.push(13)
+    } elif escaped == 't' as u8 {
+      out.push(9)
+    } elif escaped == '"' as u8 || escaped == '\\' as u8 || escaped == '/' as u8 {
+      out.push(escaped)
+    } elif escaped == 'u' as u8 {
+      sequence = utf16_to_utf8(input, pointer, end, out)
+      if sequence == 0 {
+        out.free()
+        input.offset = pointer
+        return false
+      }
+    } else {
+      out.free()
+      input.offset = pointer
+      return false
+    }
+    pointer += sequence
+  }
+
+  item.value = Value::Text(terminated(out))
+  out.free()
+  input.offset = end + 1
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// The print buffer
+// ---------------------------------------------------------------------------
+
+struct Printer {
+  out: Array<u8>
+  depth: i64
+  format: bool
+}
+
+fn Printer::byte(*self, value: u8) {
+  self.out.push(value)
+}
+
+fn Printer::text(*self, value: string) {
+  for byte in value.bytes() {
+    self.out.push(byte)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// print_number
+// ---------------------------------------------------------------------------
+
+fn absolute(value: f64): f64 {
+  if value < 0.0 {
+    return 0.0 - value
+  }
+  return value
+}
+
+// compare_double is cJSON's own: equal within one epsilon of the larger
+// magnitude, not bit for bit. It decides both whether a 15-digit print
+// round-tripped and whether two numbers compare equal.
+fn compare_double(a: f64, b: f64): bool {
+  var largest = absolute(a)
+  if absolute(b) > largest {
+    largest = absolute(b)
+  }
+  return absolute(a - b) <= largest * DBL_EPSILON
+}
+
+fn print_number(item: *Node, output: *Printer): bool {
+  var value = number_of(item)
+  var integer = int_of(item)
+
+  if dtoa::is_nan(value) || dtoa::is_infinite(value) {
+    output.text("null")
+    return true
+  }
+  if value == (integer as f64) {
+    output.text("#{integer}")
+    return true
+  }
+
+  // C prints "%1.15g", re-reads it, and falls back to "%1.17g" when the
+  // value did not survive. Both conversions are exact here; see dtoa.gyro.
+  var digits, exponent = dtoa::decimal_of(value)
+  var negative = value < 0.0
+  var text = dtoa::format_g(digits, exponent, negative, 15)
+  var reread = parse_double(text)
+  if !compare_double(reread, value) {
+    text = dtoa::format_g(digits, exponent, negative, 17)
+  }
+  output.text(text)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// print_string
+// ---------------------------------------------------------------------------
+
+fn hex_digit(value: u8): u8 {
+  if value < 10 {
+    return DIGIT_0 + value
+  }
+  return ('a' as u8) + value - 10
+}
+
+fn print_string_text(text: string?, output: *Printer): bool {
+  if text == null {
+    output.text("\"\"")
+    return true
+  }
+
+  var bytes = text.bytes()
+  output.byte('"' as u8)
+  for var i: usize = 0; i < bytes.len(); i += 1 {
+    var byte = bytes[i]
+    if byte > 31 && byte != '"' as u8 && byte != '\\' as u8 {
+      output.byte(byte)
+      continue
+    }
+    output.byte('\\' as u8)
+    if byte == '\\' as u8 {
+      output.byte('\\' as u8)
+    } elif byte == '"' as u8 {
+      output.byte('"' as u8)
+    } elif byte == 8 {
+      output.byte('b' as u8)
+    } elif byte == 12 {
+      output.byte('f' as u8)
+    } elif byte == 10 {
+      output.byte('n' as u8)
+    } elif byte == 13 {
+      output.byte('r' as u8)
+    } elif byte == 9 {
+      output.byte('t' as u8)
+    } else {
+      // C writes "u%04x" of a byte below 32, so the first two digits are
+      // always zero.
+      output.byte('u' as u8)
+      output.byte(DIGIT_0)
+      output.byte(DIGIT_0)
+      output.byte(hex_digit((byte >> 4) & 15))
+      output.byte(hex_digit(byte & 15))
+    }
+  }
+  output.byte('"' as u8)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// parse_value / print_value
+// ---------------------------------------------------------------------------
+
+fn parse_value(item: *Node, input: *Buffer): bool {
+  if input.can_read(4) && input.keyword4('n' as u8, 'u' as u8, 'l' as u8, 'l' as u8) {
+    item.value = Value::Null
+    input.offset += 4
+    return true
+  }
+  if input.can_read(5) && input.keyword4('f' as u8, 'a' as u8, 'l' as u8, 's' as u8)
+      && input.here(4) == 'e' as u8 {
+    item.value = Value::False
+    input.offset += 5
+    return true
+  }
+  if input.can_read(4) && input.keyword4('t' as u8, 'r' as u8, 'u' as u8, 'e' as u8) {
+    item.value = Value::True
+    input.offset += 4
+    return true
+  }
+  if input.can_access(0) && input.here(0) == '"' as u8 {
+    return parse_string(item, input)
+  }
+  if input.can_access(0) && (input.here(0) == '-' as u8 || is_digit(input.here(0))) {
+    return parse_number(item, input)
+  }
+  if input.can_access(0) && input.here(0) == '[' as u8 {
+    return parse_array(item, input)
+  }
+  if input.can_access(0) && input.here(0) == '{' as u8 {
+    return parse_object(item, input)
+  }
+  return false
+}
+
+fn print_value(item: *Node, output: *Printer): bool {
+  return match item.value {
+    Value::Null: print_literal(output, "null")
+    Value::False: print_literal(output, "false")
+    Value::True: print_literal(output, "true")
+    Value::Number(d, i): print_number(item, output)
+    Value::Raw(s): print_raw(item, output)
+    Value::Text(s): print_string_text(string_of(item), output)
+    Value::List: print_array(item, output)
+    Value::Object: print_object(item, output)
+    Value::Invalid: false
+  }
+}
+
+fn print_literal(output: *Printer, text: string): bool {
+  output.text(text)
+  return true
+}
+
+fn print_raw(item: *Node, output: *Printer): bool {
+  var text = raw_of(item)
+  if text == null {
+    return false
+  }
+  output.text(text)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Arrays and objects
+// ---------------------------------------------------------------------------
+
+// link_child appends a freshly allocated node to the chain being built,
+// answering the new head and tail. Passing the node to a call is what
+// tells the leak analysis the allocation has been handed on; C does the
+// same thing with two pointer writes it never has to justify.
+fn link_child(head: *Node?, tail: *Node?, item: *Node): (*Node, *Node) {
+  if head == null || tail == null {
+    return (item, item)
+  }
+  tail.next = item
+  item.prev = tail
+  return (head, item)
+}
+
+fn parse_array(item: *Node, input: *Buffer): bool {
+  if input.depth >= NESTING_LIMIT {
+    return false
+  }
+  input.depth += 1
+
+  var head: *Node? = null
+  var tail: *Node? = null
+  var empty = false
+
+  if input.here(0) != '[' as u8 {
+    return array_failed(input, head)
+  }
+
+  input.offset += 1
+  input.skip_whitespace()
+  if input.can_access(0) && input.here(0) == ']' as u8 {
+    empty = true
+  } elif !input.can_access(0) {
+    input.offset -= 1
+    return array_failed(input, head)
+  }
+
+  if !empty {
+    // Step back to the character in front of the first element, which is
+    // what makes the loop's leading `offset++` skip a comma or the
+    // bracket alike.
+    input.offset -= 1
+    var more = true
+    while more {
+      var element = new_node()
+      var next_head, next_tail = link_child(head, tail, element)
+      head = next_head
+      tail = next_tail
+
+      input.offset += 1
+      input.skip_whitespace()
+      if !parse_value(element, input) {
+        return array_failed(input, head)
+      }
+      input.skip_whitespace()
+      more = input.can_access(0) && input.here(0) == ',' as u8
+    }
+
+    if !input.can_access(0) || input.here(0) != ']' as u8 {
+      return array_failed(input, head)
+    }
+  }
+
+  input.depth -= 1
+  if head != null {
+    head.prev = tail
+  }
+  item.value = Value::List
+  item.child = head
+  input.offset += 1
+  return true
+}
+
+fn array_failed(input: *Buffer, head: *Node?): bool {
+  delete(head)
+  return false
+}
+
+fn parse_object(item: *Node, input: *Buffer): bool {
+  if input.depth >= NESTING_LIMIT {
+    return false
+  }
+  input.depth += 1
+
+  var head: *Node? = null
+  var tail: *Node? = null
+  var empty = false
+
+  if !input.can_access(0) || input.here(0) != '{' as u8 {
+    return array_failed(input, head)
+  }
+
+  input.offset += 1
+  input.skip_whitespace()
+  if input.can_access(0) && input.here(0) == '}' as u8 {
+    empty = true
+  } elif !input.can_access(0) {
+    input.offset -= 1
+    return array_failed(input, head)
+  }
+
+  if !empty {
+    input.offset -= 1
+    var more = true
+    while more {
+      var element = new_node()
+      var next_head, next_tail = link_child(head, tail, element)
+      head = next_head
+      tail = next_tail
+
+      if !input.can_access(1) {
+        return array_failed(input, head)
+      }
+
+      input.offset += 1
+      input.skip_whitespace()
+      if !parse_string(element, input) {
+        return array_failed(input, head)
+      }
+      input.skip_whitespace()
+
+      // C swaps valuestring into string; here the value moves into the
+      // key and leaves the node blank for its own value.
+      element.key = string_of(element)
+      element.value = Value::Invalid
+
+      if !input.can_access(0) || input.here(0) != ':' as u8 {
+        return array_failed(input, head)
+      }
+
+      input.offset += 1
+      input.skip_whitespace()
+      if !parse_value(element, input) {
+        return array_failed(input, head)
+      }
+      input.skip_whitespace()
+      more = input.can_access(0) && input.here(0) == ',' as u8
+    }
+
+    if !input.can_access(0) || input.here(0) != '}' as u8 {
+      return array_failed(input, head)
+    }
+  }
+
+  input.depth -= 1
+  if head != null {
+    head.prev = tail
+  }
+  item.value = Value::Object
+  item.child = head
+  input.offset += 1
+  return true
+}
+
+fn print_array(item: *Node, output: *Printer): bool {
+  if output.depth >= NESTING_LIMIT {
+    return false
+  }
+
+  output.byte('[' as u8)
+  output.depth += 1
+
+  var element = item.child
+  while element != null {
+    if !print_value(element, output) {
+      return false
+    }
+    if element.next != null {
+      output.byte(',' as u8)
+      if output.format {
+        output.byte(' ' as u8)
+      }
+    }
+    element = element.next
+  }
+
+  output.byte(']' as u8)
+  output.depth -= 1
+  return true
+}
+
+fn print_object(item: *Node, output: *Printer): bool {
+  if output.depth >= NESTING_LIMIT {
+    return false
+  }
+
+  output.byte('{' as u8)
+  output.depth += 1
+  if output.format {
+    output.byte(10)
+  }
+
+  var element = item.child
+  while element != null {
+    if output.format {
+      for var i: i64 = 0; i < output.depth; i += 1 {
+        output.byte(9)
+      }
+    }
+    if !print_string_text(element.key, output) {
+      return false
+    }
+    output.byte(':' as u8)
+    if output.format {
+      output.byte(9)
+    }
+    if !print_value(element, output) {
+      return false
+    }
+    if element.next != null {
+      output.byte(',' as u8)
+    }
+    if output.format {
+      output.byte(10)
+    }
+    element = element.next
+  }
+
+  if output.format {
+    for var i: i64 = 0; i < output.depth - 1; i += 1 {
+      output.byte(9)
+    }
+  }
+  output.byte('}' as u8)
+  output.depth -= 1
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Parsing entry points
+// ---------------------------------------------------------------------------
+
+// buffer_of copies the text into a byte array with one NUL after it, which
+// is the buffer C hands the parser when the caller supplied a C string.
+fn buffer_of(text: string): Array<u8> {
+  var content = Array<u8>::new()
+  for byte in text.bytes() {
+    content.push(byte)
+  }
+  content.push(0)
+  return content
+}
+
+// parse_with_length_opts is cJSON_ParseWithLengthOpts. It answers the item
+// and the offset parsing stopped at — C's `return_parse_end` on success
+// and its error position on failure, which are the same number reached two
+// different ways there.
+export fn parse_with_length_opts(text: string, length: i64,
+    require_null_terminated: bool): (*Node?, i64) {
+  if length == 0 {
+    return (null, 0)
+  }
+
+  var content = buffer_of(text)
+  var buffer = Buffer{ content: content, length: length, offset: 0, depth: 0 }
+  var input = &buffer
+  var item = new_node()
+
+  var ok = true
+  input.skip_bom()
+  input.skip_whitespace()
+  if !parse_value(item, input) {
+    ok = false
+  }
+  if ok && require_null_terminated {
+    input.skip_whitespace()
+    if input.offset >= input.length || input.here(0) != 0 {
+      ok = false
+    }
+  }
+
+  if ok {
+    var end = input.offset
+    content.free()
+    return (item, end)
+  }
+
+  delete(item)
+  var position: i64 = 0
+  if input.offset < input.length {
+    position = input.offset
+  } elif input.length > 0 {
+    position = input.length - 1
+  }
+  content.free()
+  return (null, position)
+}
+
+export fn parse_with_opts(text: string, require_null_terminated: bool): (*Node?, i64) {
+  return parse_with_length_opts(text, (text.bytes().len() as i64) + 1, require_null_terminated)
+}
+
+export fn parse_with_length(text: string, length: i64): (*Node?, i64) {
+  return parse_with_length_opts(text, length, false)
+}
+
+export fn parse(text: string): *Node? {
+  var item, position = parse_with_opts(text, false)
+  return item
+}
+
+// ---------------------------------------------------------------------------
+// Printing entry points
+// ---------------------------------------------------------------------------
+
+fn render(item: *Node?, format: bool): string? {
+  if item == null {
+    return null
+  }
+  var out = Array<u8>::new()
+  var printer = Printer{ out: out, depth: 0, format: format }
+  if !print_value(item, &printer) {
+    out.free()
+    return null
+  }
+  var text = from_utf8(out.slice())
+  out.free()
+  return text
+}
+
+export fn print(item: *Node?): string? {
+  return render(item, true)
+}
+
+export fn print_unformatted(item: *Node?): string? {
+  return render(item, false)
+}
+
+// ---------------------------------------------------------------------------
+// Accessors
+// ---------------------------------------------------------------------------
+
+export fn get_array_size(array: *Node?): i32 {
+  if array == null {
+    return 0
+  }
+  var size: i32 = 0
+  var child = array.child
+  while child != null {
+    size += 1
+    child = child.next
+  }
+  return size
+}
+
+fn item_at(array: *Node?, index: i64): *Node? {
+  if array == null {
+    return null
+  }
+  var left = index
+  var child = array.child
+  while child != null && left > 0 {
+    left -= 1
+    child = child.next
+  }
+  return child
+}
+
+export fn get_array_item(array: *Node?, index: i32): *Node? {
+  if index < 0 {
+    return null
+  }
+  return item_at(array, index as i64)
+}
+
+fn lower(byte: u8): u8 {
+  if byte >= 'A' as u8 && byte <= 'Z' as u8 {
+    return byte + 32
+  }
+  return byte
+}
+
+fn same_text(a: string, b: string): bool {
+  var left = a.bytes()
+  var right = b.bytes()
+  if left.len() != right.len() {
+    return false
+  }
+  for var i: usize = 0; i < left.len(); i += 1 {
+    if left[i] != right[i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn same_text_folded(a: string, b: string): bool {
+  var left = a.bytes()
+  var right = b.bytes()
+  if left.len() != right.len() {
+    return false
+  }
+  for var i: usize = 0; i < left.len(); i += 1 {
+    if lower(left[i]) != lower(right[i]) {
+      return false
+    }
+  }
+  return true
+}
+
+fn object_item(object: *Node?, name: string, case_sensitive: bool): *Node? {
+  if object == null {
+    return null
+  }
+  var element = object.child
+  while element != null {
+    var key = element.key
+    if key != null {
+      if case_sensitive && same_text(name, key) {
+        return element
+      }
+      if !case_sensitive && same_text_folded(name, key) {
+        return element
+      }
+    } elif case_sensitive {
+      // C's strcmp walk stops at a member with no name; the
+      // case-insensitive one keeps going, because its comparison answers
+      // "not equal" for a null pointer instead of dereferencing it.
+      return null
+    }
+    element = element.next
+  }
+  return null
+}
+
+export fn get_object_item(object: *Node?, name: string): *Node? {
+  return object_item(object, name, false)
+}
+
+export fn get_object_item_case_sensitive(object: *Node?, name: string): *Node? {
+  return object_item(object, name, true)
+}
+
+export fn has_object_item(object: *Node?, name: string): bool {
+  return get_object_item(object, name) != null
+}
+
+// ---------------------------------------------------------------------------
+// Building
+// ---------------------------------------------------------------------------
+
+// add_item_to_array is C's: the head's `prev` is the tail, so appending
+// costs one hop rather than a walk.
+export fn add_item_to_array(array: *Node?, item: *Node?): bool {
+  if item == null || array == null || array == item {
+    return false
+  }
+
+  var child = array.child
+  if child == null {
+    array.child = item
+    item.prev = item
+    item.next = null
+    return true
+  }
+  var last = child.prev
+  if last != null {
+    last.next = item
+    item.prev = last
+    child.prev = item
+  }
+  return true
+}
+
+export fn add_item_to_object(object: *Node?, name: string, item: *Node?): bool {
+  if object == null || item == null || object == item {
+    return false
+  }
+  item.key = name
+  return add_item_to_array(object, item)
+}
+
+export fn add_null_to_object(object: *Node?, name: string): *Node? {
+  return added(object, name, create_null())
+}
+
+export fn add_true_to_object(object: *Node?, name: string): *Node? {
+  return added(object, name, create_true())
+}
+
+export fn add_false_to_object(object: *Node?, name: string): *Node? {
+  return added(object, name, create_false())
+}
+
+export fn add_bool_to_object(object: *Node?, name: string, value: bool): *Node? {
+  return added(object, name, create_bool(value))
+}
+
+export fn add_number_to_object(object: *Node?, name: string, value: f64): *Node? {
+  return added(object, name, create_number(value))
+}
+
+export fn add_string_to_object(object: *Node?, name: string, value: string): *Node? {
+  return added(object, name, create_string(value))
+}
+
+export fn add_raw_to_object(object: *Node?, name: string, value: string): *Node? {
+  return added(object, name, create_raw(value))
+}
+
+export fn add_object_to_object(object: *Node?, name: string): *Node? {
+  return added(object, name, create_object())
+}
+
+export fn add_array_to_object(object: *Node?, name: string): *Node? {
+  return added(object, name, create_array())
+}
+
+// added is the tail every cJSON_Add*ToObject shares: hand the new node
+// over, or destroy it when the object refused it.
+fn added(object: *Node?, name: string, item: *Node): *Node? {
+  if add_item_to_object(object, name, item) {
+    return item
+  }
+  delete(item)
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Detaching, replacing and inserting
+// ---------------------------------------------------------------------------
+
+export fn detach_item_via_pointer(parent: *Node?, item: *Node?): *Node? {
+  if parent == null || item == null {
+    return null
+  }
+  if item != parent.child && item.prev == null {
+    return null
+  }
+
+  var next = item.next
+  if item != parent.child {
+    var previous = item.prev
+    if previous != null {
+      previous.next = next
+    }
+  }
+  if next != null {
+    next.prev = item.prev
+  }
+  if item == parent.child {
+    parent.child = next
+  } elif next == null {
+    var head = parent.child
+    if head != null {
+      head.prev = item.prev
+    }
+  }
+
+  item.prev = null
+  item.next = null
+  return item
+}
+
+export fn detach_item_from_array(array: *Node?, index: i32): *Node? {
+  if index < 0 {
+    return null
+  }
+  return detach_item_via_pointer(array, item_at(array, index as i64))
+}
+
+export fn delete_item_from_array(array: *Node?, index: i32) {
+  delete(detach_item_from_array(array, index))
+}
+
+export fn detach_item_from_object(object: *Node?, name: string): *Node? {
+  return detach_item_via_pointer(object, get_object_item(object, name))
+}
+
+export fn detach_item_from_object_case_sensitive(object: *Node?, name: string): *Node? {
+  return detach_item_via_pointer(object, get_object_item_case_sensitive(object, name))
+}
+
+export fn delete_item_from_object(object: *Node?, name: string) {
+  delete(detach_item_from_object(object, name))
+}
+
+export fn delete_item_from_object_case_sensitive(object: *Node?, name: string) {
+  delete(detach_item_from_object_case_sensitive(object, name))
+}
+
+export fn insert_item_in_array(array: *Node?, index: i32, item: *Node?): bool {
+  if index < 0 || item == null || array == null {
+    return false
+  }
+
+  var after = item_at(array, index as i64)
+  if after == null {
+    return add_item_to_array(array, item)
+  }
+  if after != array.child && after.prev == null {
+    return false
+  }
+
+  item.next = after
+  item.prev = after.prev
+  after.prev = item
+  if after == array.child {
+    array.child = item
+  } else {
+    var previous = item.prev
+    if previous != null {
+      previous.next = item
+    }
+  }
+  return true
+}
+
+export fn replace_item_via_pointer(parent: *Node?, item: *Node?, replacement: *Node?): bool {
+  if parent == null || replacement == null || item == null {
+    return false
+  }
+  // The narrowing does not travel across `||`, so the head is read after
+  // the parent is known to be a pointer rather than beside the test.
+  var head = parent.child
+  if head == null {
+    return false
+  }
+  if replacement == item {
+    return true
+  }
+
+  replacement.next = item.next
+  replacement.prev = item.prev
+  var after = replacement.next
+  if after != null {
+    after.prev = replacement
+  }
+  if head == item {
+    if head.prev == head {
+      replacement.prev = replacement
+    }
+    parent.child = replacement
+  } else {
+    var before = replacement.prev
+    if before != null {
+      before.next = replacement
+    }
+    if after == null {
+      head.prev = replacement
+    }
+  }
+
+  item.next = null
+  item.prev = null
+  delete(item)
+  return true
+}
+
+export fn replace_item_in_array(array: *Node?, index: i32, item: *Node?): bool {
+  if index < 0 {
+    return false
+  }
+  return replace_item_via_pointer(array, item_at(array, index as i64), item)
+}
+
+fn replace_in_object(object: *Node?, name: string, replacement: *Node?,
+    case_sensitive: bool): bool {
+  if replacement == null {
+    return false
+  }
+  replacement.key = name
+  return replace_item_via_pointer(object, object_item(object, name, case_sensitive), replacement)
+}
+
+export fn replace_item_in_object(object: *Node?, name: string, item: *Node?): bool {
+  return replace_in_object(object, name, item, false)
+}
+
+export fn replace_item_in_object_case_sensitive(object: *Node?, name: string, item: *Node?): bool {
+  return replace_in_object(object, name, item, true)
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate
+// ---------------------------------------------------------------------------
+
+fn duplicate_rec(item: *Node?, depth: i64, recurse: bool): *Node? {
+  if item == null {
+    return null
+  }
+
+  var copy = new_node()
+  copy.value = item.value
+  copy.key = item.key
+  if !recurse {
+    return copy
+  }
+
+  var child = item.child
+  var tail: *Node? = null
+  while child != null {
+    if depth >= CIRCULAR_LIMIT {
+      delete(copy)
+      return null
+    }
+    var new_child = duplicate_rec(child, depth + 1, true)
+    if new_child == null {
+      delete(copy)
+      return null
+    }
+    if tail != null {
+      tail.next = new_child
+      new_child.prev = tail
+      tail = new_child
+    } else {
+      copy.child = new_child
+      tail = new_child
+    }
+    child = child.next
+  }
+  var first = copy.child
+  if first != null {
+    first.prev = tail
+  }
+  return copy
+}
+
+export fn duplicate(item: *Node?, recurse: bool): *Node? {
+  return duplicate_rec(item, 0, recurse)
+}
+
+// ---------------------------------------------------------------------------
+// Compare
+// ---------------------------------------------------------------------------
+
+export fn compare(a: *Node?, b: *Node?, case_sensitive: bool): bool {
+  if a == null || b == null || type_of(a) != type_of(b) {
+    return false
+  }
+  var kind = type_of(a)
+  if kind == TYPE_INVALID {
+    return false
+  }
+  if a == b {
+    return true
+  }
+
+  if kind == TYPE_FALSE || kind == TYPE_TRUE || kind == TYPE_NULL {
+    return true
+  }
+  if kind == TYPE_NUMBER {
+    return compare_double(number_of(a), number_of(b))
+  }
+  if kind == TYPE_STRING || kind == TYPE_RAW {
+    var left = text_value(a)
+    var right = text_value(b)
+    if left == null || right == null {
+      return false
+    }
+    return same_text(left, right)
+  }
+  if kind == TYPE_ARRAY {
+    var left = a.child
+    var right = b.child
+    while left != null && right != null {
+      if !compare(left, right, case_sensitive) {
+        return false
+      }
+      left = left.next
+      right = right.next
+    }
+    return left == null && right == null
+  }
+
+  // An object compares both ways, so that a subset does not read as equal.
+  var element = a.child
+  while element != null {
+    var key = element.key
+    if key == null {
+      return false
+    }
+    var other = object_item(b, key, case_sensitive)
+    if other == null || !compare(element, other, case_sensitive) {
+      return false
+    }
+    element = element.next
+  }
+  element = b.child
+  while element != null {
+    var key = element.key
+    if key == null {
+      return false
+    }
+    var other = object_item(a, key, case_sensitive)
+    if other == null || !compare(element, other, case_sensitive) {
+      return false
+    }
+    element = element.next
+  }
+  return true
+}
+
+// text_value reads the text of a string or a raw node, which are the two
+// kinds sharing `valuestring` in C.
+fn text_value(item: *Node): string? {
+  var text: string? = null
+  match item.value {
+    Value::Text(s): { text = s }
+    Value::Raw(s): { text = s }
+    _: {}
+  }
+  return text
+}
+
+// ---------------------------------------------------------------------------
+// Minify
+// ---------------------------------------------------------------------------
+
+// minify is cJSON_Minify, which rewrites its input in place and shortens
+// it. The buffer here carries the trailing NUL C stops on, and the walk is
+// the same two indexes C keeps as two pointers into one array — including
+// the string case's habit of copying a byte it has already passed.
+fn minify_bytes(json: Array<u8>) {
+  var read: usize = 0
+  var into: usize = 0
+  var length = json.len()
+
+  while read < length && json.get(read) != 0 {
+    var byte = json.get(read)
+    if byte == 32 || byte == 9 || byte == 13 || byte == 10 {
+      read += 1
+    } elif byte == '/' as u8 {
+      if read + 1 < length && json.get(read + 1) == '/' as u8 {
+        read += 2
+        while read < length && json.get(read) != 0 {
+          if json.get(read) == 10 {
+            read += 1
+            break
+          }
+          read += 1
+        }
+      } elif read + 1 < length && json.get(read + 1) == '*' as u8 {
+        read += 2
+        while read < length && json.get(read) != 0 {
+          if json.get(read) == '*' as u8 && read + 1 < length && json.get(read + 1) == '/' as u8 {
+            read += 2
+            break
+          }
+          read += 1
+        }
+      } else {
+        read += 1
+      }
+    } elif byte == '"' as u8 {
+      json.set(into, json.get(read))
+      read += 1
+      into += 1
+      var closed = false
+      while !closed && read < length && json.get(read) != 0 {
+        json.set(into, json.get(read))
+        if json.get(read) == '"' as u8 {
+          read += 1
+          into += 1
+          closed = true
+        } else {
+          if json.get(read) == '\\' as u8 && read + 1 < length && json.get(read + 1) == '"' as u8 {
+            json.set(into + 1, json.get(read + 1))
+            read += 1
+            into += 1
+          }
+          read += 1
+          into += 1
+        }
+      }
+    } else {
+      json.set(into, json.get(read))
+      read += 1
+      into += 1
+    }
+  }
+  json.set(into, 0)
+}
+
+export fn minify(text: string): string {
+  var json = buffer_of(text)
+  minify_bytes(json)
+  var result = terminated(json)
+  json.free()
+  return result
+}

@@ -1,0 +1,35 @@
+import { println } from "stdlib"
+
+fn sum(xs: ...i32): i32 {
+  var total = 0
+  for x in xs {
+    total += x
+  }
+  return total
+}
+
+fn count(xs: ...string): usize {
+  return xs.len()
+}
+
+fn forward(rest: ...i32): i32 {
+  return sum(rest...)
+}
+
+fn labelled(label: string, rest: ...i32) {
+  println("#{label} #{rest.len()} #{sum(rest...)}")
+  for x in rest {
+    println("  #{x}")
+  }
+}
+
+fn main() {
+  println(sum())
+  println(sum(7))
+  println(sum(1, 2, 3, 4))
+  println(count())
+  println(count("a", "b"))
+  println(forward(4, 5, 6))
+  labelled("empty:")
+  labelled("three:", 1, 2, 3)
+}

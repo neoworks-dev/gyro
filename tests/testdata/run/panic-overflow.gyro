@@ -1,0 +1,10 @@
+//gyro:panic integer overflow
+
+import { println } from "stdlib"
+
+fn main() {
+  println("before")
+  var x: i32 = 2147483647
+  var y = x + 1
+  println(y)
+}

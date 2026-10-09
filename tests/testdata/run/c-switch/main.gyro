@@ -1,0 +1,31 @@
+// A Gyro program driving a C stack machine.
+//
+// The C side is a `switch` dispatch over an opcode: a group shared by
+// two labels, a `default` that traps, a `break` that leaves the switch
+// and a `continue` that does not, and a control expression that promotes
+// from char to int. Its state is `static` — a file-scope stack, and a
+// counter inside `step` that outlives every call to it.
+
+import { println } from "stdlib"
+import { run, depth, at, digit_value, scan } from "./vm.c"
+
+fn main() {
+  // Instructions executed before the machine halted.
+  println(run())
+
+  // What it left on the stack: (7 + 5) * 3, and the flag saying that
+  // equals 36.
+  println(depth())
+  println(at(0))
+  println(at(1))
+  println(at(2))
+
+  // A switch on a char, with two labels sharing a group. A Gyro rune is
+  // not a C int, so the codes go across as the numbers they are:
+  // '0', '3', 'A', 'b', 'x'.
+  for code in [48, 51, 65, 98, 120] {
+    println(digit_value(code))
+  }
+
+  println(scan())
+}

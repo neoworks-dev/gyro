@@ -1,0 +1,63 @@
+// The known-answer tests of crypto-algorithms' md5_test.c and
+// sha256_test.c, run against the Gyro ports.
+//
+// The C drivers print one word, SUCCEEDED or FAILED, which says nothing
+// about which vector broke. This one prints the digest of every vector,
+// so the output is comparable line by line against the C original (see
+// ../c-ports/crypto-algorithms/gyro/reference.c, the same table with the
+// same print loop).
+//
+// Two things are added to the C tables. The length sweep walks 0 to 70
+// bytes so both branches of the padding — a length that fits in the
+// final block and one that forces an extra transform — are exercised at
+// their boundaries, which the C vectors only reach by accident. And
+// sha256_test.c's third vector hashes a megabyte; here it hashes ten
+// kilobytes, because this runs on a tree-walking interpreter as well as
+// on two native backends. reference.c uses the same count.
+
+import { repeat } from "stdlib"
+import { printf } from "fmt"
+import * as md5 from "./md5"
+import * as sha256 from "./sha256"
+
+const REPEATS: i64 = 1000
+
+fn show(algorithm: string, label: string, digest: u8[]) {
+  printf("%-6s %-12s ", algorithm, label)
+  for byte in digest {
+    printf("%02x", byte)
+  }
+  printf("\n")
+}
+
+fn both(label: string, message: string) {
+  show("md5", label, md5::sum(message.bytes()))
+  show("sha256", label, sha256::sum(message.bytes()))
+}
+
+fn main() {
+  // The vectors the two C test files hash.
+  both("empty", "")
+  both("abc", "abc")
+  both("fips-2", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+  both("alnum", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+
+  // md5_test.c adds its third message in two chunks, to show that a
+  // context accepts more than one update.
+  var ctx = md5::init()
+  ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes())
+  ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes())
+  show("md5", "two-chunk", ctx.final())
+
+  // sha256_test.c's repeated-update vector, at a tenth of a percent of
+  // its length.
+  show("sha256", "repeated", sha256::sum_repeated("aaaaaaaaaa".bytes(), REPEATS))
+
+  // The padding boundaries: 55 and 56 bytes bracket the branch in
+  // `final`, 63 and 64 bracket the block that `update` flushes on its
+  // own, and 0 and 70 are the ends.
+  for length in 0..71 {
+    var message = "a".repeat(length)
+    both("#{length}", message)
+  }
+}

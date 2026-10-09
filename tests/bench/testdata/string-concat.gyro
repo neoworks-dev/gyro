@@ -1,0 +1,21 @@
+// String building: push copies bytes one at a time through Array<u8>, so
+// this is allocation growth plus a per-byte loop — the path most of the
+// text stdlib is built on.
+
+import { println, eprintln, String } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+  var start = monotonic()
+  var out = String::new()
+  defer out.free()
+  for var i = 0; i < 2000000; i += 1 {
+    out.push("gyro")
+    out.push("-")
+  }
+  var text = out.text()
+  var stop = monotonic()
+
+  println(text.len())
+  eprintln("gyro:bench #{stop - start}")
+}

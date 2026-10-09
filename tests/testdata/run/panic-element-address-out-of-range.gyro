@@ -1,0 +1,20 @@
+// Taking an element's address is the same bounds check as reading one:
+// the length is in the array's type, so the check is against a constant
+// and the abort is indexing's own. An address out of range is refused
+// where it is made, not where it is later written through.
+
+//gyro:panic index 4 out of range for length 4
+
+import { println } from "stdlib"
+
+fn bump(p: *i32) {
+  *p = *p + 1
+}
+
+fn main() {
+  var xs = [1, 2, 3, 4]
+  println("before")
+  var at: usize = 4
+  bump(&xs[at])
+  println("unreachable")
+}

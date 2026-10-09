@@ -1,0 +1,11 @@
+import { println } from "stdlib"
+
+fn main() {
+  var x: i32 = 300
+  println(x as i64)
+  println((x & 0xff) as u8)
+  var f: f64 = 2.9
+  println(f as i32)
+  var r: rune = 'A'
+  println(r as u32)
+}

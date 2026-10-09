@@ -1,0 +1,8 @@
+// A re-export flows through, named or wholesale.
+
+import { helper } from "./named"
+import { Shape } from "./star"
+
+fn t(s: Shape) {
+  helper()
+}

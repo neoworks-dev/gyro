@@ -1,0 +1,56 @@
+// An element of a fixed-size array has an address of its own, so `&xs[i]`
+// is a pointer the callee writes through and the caller reads back. That
+// is what an out-parameter over a buffer is, and it works the same way
+// whether the array is a local, a struct's field, or a field the code
+// reaches through a pointer to that struct.
+
+import { println } from "stdlib"
+
+struct Buf {
+  tag: i32
+  data: i32[4]
+}
+
+fn bump(p: *i32) {
+  *p = *p + 1
+}
+
+fn swap(a: *i32, b: *i32) {
+  var held = *a
+  *a = *b
+  *b = held
+}
+
+fn main() {
+  var xs = [1, 2, 3, 4]
+
+  bump(&xs[0])
+  println(xs[0])
+
+  // Two addresses into one array are two distinct elements.
+  swap(&xs[1], &xs[3])
+  println(xs[1])
+  println(xs[3])
+
+  // A field's element, and the field beside it left alone.
+  var buf = Buf{ tag: 7, data: [10, 20, 30, 40] }
+  bump(&buf.data[2])
+  println(buf.data[2])
+  println(buf.tag)
+
+  // The same field reached through the struct's own address.
+  var p = &buf
+  bump(&p.data[0])
+  println(buf.data[0])
+
+  // The address outlives the expression that made it: what is written
+  // through it is what the array holds afterwards.
+  var q = &xs[2]
+  *q = 99
+  println(xs[2])
+
+  // The index is an ordinary value, not a constant.
+  var i: usize = 3
+  bump(&xs[i])
+  println(xs[3])
+}

@@ -1,0 +1,16 @@
+// Structs are values: assignment copies, so the two names never alias.
+
+import { println } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+fn main() {
+  var a = Point{ x: 1, y: 2 }
+  var b = a
+  b.x = 99
+  println(a.x)
+  println(b.x)
+}

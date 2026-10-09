@@ -1,0 +1,52 @@
+// A C union named in Gyro. There is one type here, not two that agree:
+// the C front end declares `%Value` as a METALS union, the generated
+// header spells it `export union Value`, and the linker resolves the two
+// sides to one declaration.
+//
+// This is what a union in the surface language was for. The `c-union`
+// case beside this one drives the same idea through accessor functions,
+// which is what a program had to do while Gyro could not spell the type.
+
+import { println } from "stdlib"
+import {
+  Value, Boxed,
+  make_int, int_of, store_double, boxed, kind_of, value_size, boxed_size,
+} from "./value.c"
+
+fn main() {
+  // The size is the widest member's at the strictest member's
+  // alignment, and Gyro lays it out the same way — which is the claim
+  // this case is really making.
+  println(value_size())
+  println(boxed_size())
+
+  // C makes one, Gyro reads its member.
+  var fromC = make_int(42)
+  println(fromC.i)
+
+  // Gyro makes one, C reads its member.
+  var mine = Value{ i: 7 }
+  println(int_of(mine))
+
+  // Gyro writes a member and C reads the same storage.
+  mine.i = 9
+  println(int_of(mine))
+
+  // An out-parameter: C writes through the address of storage Gyro
+  // owns, and Gyro reads the member C wrote.
+  var out = Value{ i: 0 }
+  store_double(&out, 2.5)
+  println(out.f)
+
+  // A struct holding a union crosses whole, and the field beside it is
+  // an ordinary field.
+  var b = boxed(3, 11)
+  println(kind_of(&b))
+  println(b.kind)
+  println(b.value.i)
+
+  // ...and Gyro can build one too.
+  var mineBoxed = Boxed{ kind: 4, value: Value{ i: 13 } }
+  println(kind_of(&mineBoxed))
+  println(mineBoxed.value.i)
+}

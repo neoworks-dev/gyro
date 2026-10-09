@@ -1,0 +1,69 @@
+// A final parameter written `name: ...T` collects the remaining arguments.
+// Inside the body it is an ordinary `T[]` slice, so nothing new has to be
+// learned to use one: len(), indexing and for..in all work.
+//
+// Mixed-type packs are not a second mechanism. They are `...any`, where
+// `any` is a value that remembers the one type it holds — which is what
+// makes a printf possible in ordinary Gyro.
+
+import { println } from "stdlib"
+import { printf } from "fmt"
+
+// A homogeneous pack. The call site may pass nothing at all.
+fn sum(values: ...i32): i32 {
+  var total = 0
+  for value in values {
+    total += value
+  }
+  return total
+}
+
+// A pack forwards to another pack with a trailing `...`, which passes the
+// slice whole instead of making it one element.
+fn average(values: ...i32): f64 {
+  if values.len() == 0 {
+    return 0.0
+  }
+  return (sum(values...) as f64) / (values.len() as f64)
+}
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+// A heterogeneous pack. Each argument is wrapped on the way in — packing
+// is the one place a value converts without saying so, because the call is
+// what builds the pack.
+fn describe(label: string, values: ...any) {
+  println("#{label} (#{values.len()})")
+  for value in values {
+    // An any prints as whatever is inside it, so showing one needs no
+    // unwrapping. Asking what it holds is a match.
+    var kind = match value {
+      i32(n): "an i32"
+      f64(f): "an f64"
+      string(s): "a string of #{s.len()}"
+      bool(b): "a bool"
+      Point(p): "a point at #{p.x},#{p.y}"
+      _: "something else"
+    }
+    println("  #{value} is #{kind}")
+  }
+}
+
+fn main() {
+  println(sum())
+  println(sum(1, 2, 3, 4))
+  println(average(2, 4, 9))
+
+  describe("mixed:", 1, 2.5, "three", true, Point{ x: 4, y: 5 })
+
+  // Outside a pack, `as` is how a value enters and leaves an any. Leaving
+  // panics when the type disagrees, the way a narrowing conversion does.
+  var held: any = 7 as any
+  println(held as i32)
+
+  // fmt is ordinary Gyro over one of these packs.
+  printf("%-6s has %2d items, %d%% of %x\n", "cart", 3, 40, 255)
+}

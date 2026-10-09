@@ -1,0 +1,15 @@
+// read_stdin reads to end of file in one shot; a second call finds the
+// stream drained.
+
+//gyro:stdin first line
+//gyro:stdin second line
+
+import { println } from "stdlib"
+import { read_stdin } from "os"
+
+fn main() {
+  var text = read_stdin()
+  println(text.len())
+  println(text)
+  println("[#{read_stdin()}]")
+}

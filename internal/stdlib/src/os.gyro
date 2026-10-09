@@ -1,0 +1,21 @@
+// os — declarations only; the runtime supplies the bodies.
+
+// env returns the variable's value, or null when it is unset. The result
+// owns its bytes, so it carries no borrow row.
+export fn env(name: string): string? !{ io, alloc }
+
+// read_stdin reads standard input to end of file, one shot: a second
+// call finds the stream drained and returns "".
+export fn read_stdin(): string !{ io, alloc }
+
+// readline reads the next line of standard input, without its
+// terminator, and answers null at end of file. An empty line is "", the
+// way an empty environment variable is: absence is the null.
+//
+// It reads the same stream read_stdin does, so a program may take a line
+// and then drain what is left.
+export fn readline(): string? !{ io, alloc }
+
+// exit ends the process with the given code after flushing stdout and
+// stderr. Deferred calls do not run; exit is immediate, like a panic.
+export fn exit(code: i32) !{ io }

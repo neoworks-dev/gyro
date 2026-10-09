@@ -1,0 +1,12 @@
+// The row travels with the declaration, so an imported function's borrows
+// reach its caller.
+
+import { pick } from "./util"
+
+fn carried(xs: i32[], ys: i32[]): i32[] !{ &xs } {
+  return pick(xs, ys)
+}
+
+fn notCarried(xs: i32[], ys: i32[]): i32[] {
+  return pick(xs, ys)            //~ E0609 this returns a view into xs, which the row does not name
+}

@@ -1,0 +1,62 @@
+// A Gyro program handing C addresses it will not describe, and taking
+// them back.
+//
+// `anyptr` is Gyro's spelling of C's `void *`: an address whose target's
+// type has been forgotten. It is the only pointer in Gyro that is not a
+// pointer *to* something, so it has none of a pointer's operations —
+// nothing to dereference, nothing to step, nothing to order. What it
+// has is identity, and `as`.
+//
+// Both directions of `as` are here. Forgetting is free and always true.
+// Remembering is this program's claim about what is at the address,
+// which is exactly the claim C's own cast makes — with the difference
+// that the evaluator checks it and C never could.
+
+import { println } from "stdlib"
+import {
+  Cell, erase, read_through, keep, held, kept, nothing, same,
+  address_size,
+} from "./store.c"
+
+fn main() {
+  // An address costs a word whatever it addresses.
+  println(address_size())
+
+  var a = Cell{ value: 7 }
+  var b = Cell{ value: 9 }
+
+  // Gyro's own pointer, erased here and read by C.
+  println(read_through(&a as anyptr))
+
+  // Erased by C and given its type again on this side.
+  var raw = erase(&b)
+  if raw == null {
+    println("nothing came back")
+    return
+  }
+  println((raw as *Cell).value)
+
+  // Held by a library that was never told what it is holding.
+  keep(0, &a as anyptr)
+  keep(1, &b as anyptr)
+  println(kept())
+
+  var first = held(0)
+  if first == null {
+    println("slot 0 is empty")
+    return
+  }
+  println((first as *Cell).value)
+
+  // Identity, which is all a program can ask about an address it knows
+  // nothing else about.
+  println(same(&a as anyptr, &a as anyptr))
+  println(same(&a as anyptr, &b as anyptr))
+
+  // The absent address.
+  println(nothing() == null)
+  println(held(3) == null)
+
+  // Nothing at the far end is readable, so what it prints is the word.
+  println(&a as anyptr)
+}

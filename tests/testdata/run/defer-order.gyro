@@ -1,0 +1,24 @@
+// Defers run at block exit in reverse registration order, and every exit
+// counts: an early return, a nested block, falling off the end.
+
+import { println } from "stdlib"
+
+fn work(early: bool): i32 {
+  defer println("f1")
+  defer println("f2")
+  if early {
+    defer println("branch")
+    return 1
+  }
+  {
+    defer println("inner")
+    println("in the block")
+  }
+  println("after the block")
+  return 2
+}
+
+fn main() {
+  println(work(true))
+  println(work(false))
+}

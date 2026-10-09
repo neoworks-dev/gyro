@@ -1,0 +1,25 @@
+{
+  "name": "tree-sitter-gyro",
+  "version": "0.1.0",
+  "description": "Gyro grammar for tree-sitter",
+  "license": "MIT",
+  "main": "bindings/node",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.gyro",
+      "file-types": [
+        "gyro"
+      ]
+    }
+  ],
+  "allowScripts": {
+    "tree-sitter-cli@0.25.10": true
+  }
+}

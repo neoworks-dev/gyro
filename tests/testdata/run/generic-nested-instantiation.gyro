@@ -1,0 +1,48 @@
+// Two regressions kept dead. First: an untyped literal against a generic
+// operand (xs.len() * 2) must wait for instantiation rather than default
+// to i32. Second: two declarations may both name a parameter K, and each
+// must get its own Array<K> — the instance cache once keyed by name and
+// handed the second declaration the first one's instance, whose foreign
+// parameter substitution could never rewrite.
+
+import { println, Array } from "stdlib"
+
+struct Grid<K, V> {
+  rows: Array<Array<K>>
+  tags: Array<(K, V)>
+}
+
+fn empty_rows<K, V>(count: usize): Array<Array<K>> {
+  var rows = Array<Array<K>>::with_capacity(count)
+  for i in 0..count {
+    rows.push(Array<K>::new())
+  }
+  return rows
+}
+
+fn Grid<K, V>::widen(*self) {
+  var wider = empty_rows<K, V>(self.rows.len() * 2)
+  for i in 0..self.rows.len() {
+    var row = self.rows.get(i)
+    var moved = wider.get(i)
+    for at in 0..row.len() {
+      moved.push(row.get(at))
+    }
+    row.free()
+  }
+  self.rows.free()
+  self.rows = wider
+}
+
+fn main() {
+  var grid = Grid<string, i32>{ rows: empty_rows<string, i32>(2), tags: Array<(string, i32)>::new() }
+  var first = grid.rows.get(0)
+  first.push("a")
+  first.push("b")
+  grid.widen()
+  println(grid.rows.len())
+  println(grid.rows.get(0).len())
+  println(grid.rows.get(0).get(1))
+  grid.tags.push(("k", 1))
+  println(grid.tags.len())
+}

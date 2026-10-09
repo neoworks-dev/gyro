@@ -1,0 +1,71 @@
+// `xs[i]` on an `Array<T>` is a **place**, not a value. It reaches the
+// element's own address, so writing one writes the array and taking one
+// gives a pointer into the buffer.
+//
+// That is the difference from `get`, which answers with a copy — so
+// `xs.get(0).x = 9` mutates a copy and nothing else, which is the shape
+// the md4c port called out as error-prone. Both spellings stay: `get` is
+// what you want when a copy is what you want.
+
+import { println, Array } from "stdlib"
+
+struct Point {
+  x: i32
+  y: i32
+}
+
+fn bump(p: *i32) {
+  *p = *p + 1
+}
+
+fn main() {
+  var xs = Array<i32>::new()
+  defer xs.free()
+  xs.push(1)
+  xs.push(2)
+  xs.push(3)
+
+  // Reading.
+  println(xs[0])
+  println(xs[2])
+
+  // Writing an element writes the array.
+  xs[1] = 20
+  println(xs[1])
+  println(xs.get(1))
+
+  // The address of an element is a pointer into the buffer, so a callee
+  // writing through it writes the array.
+  bump(&xs[2])
+  println(xs[2])
+
+  // The same address twice is the same element.
+  var at = xs.at(0)
+  *at = 100
+  println(xs[0])
+
+  // A struct element is mutated in place, where `get` would answer with
+  // a copy and the assignment would reach nothing.
+  var ps = Array<Point>::new()
+  defer ps.free()
+  ps.push(Point{ x: 1, y: 2 })
+  ps.push(Point{ x: 3, y: 4 })
+
+  ps[0].x = 9
+  println(ps[0].x)
+  println(ps.get(0).x)
+  println(ps[0].y)
+
+  // The element beside it is untouched.
+  println(ps[1].x)
+
+  // An index computed at run time, and a whole element assigned.
+  var i: usize = 1
+  ps[i] = Point{ x: 30, y: 40 }
+  println(ps[i].x)
+  println(ps[1].y)
+
+  // A slice of the array views the same elements a moment later.
+  println(xs.slice()[0])
+  println(xs.len())
+}

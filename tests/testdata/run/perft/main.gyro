@@ -1,0 +1,84 @@
+// Perft over the ported BBC move generator: for each position, the node
+// count of every root move (a "divide") and then the total.
+//
+// Divide rather than a bare total on purpose. A wrong perft number says
+// only that something is broken; a divide says which root move the
+// subtree under it went wrong, which is how a move generator is actually
+// debugged. ../../../../../c-ports/chess_programming/gyro/reference.c is
+// the C driver over upstream bbc.c that prints exactly these lines, and
+// expected.out is its output.
+//
+// The depths are what a tree-walking interpreter finishes in a few
+// seconds — it runs about twenty thousand nodes a second, so the budget
+// is tens of thousands of them, not millions. The positions with the
+// widest trees get 2, the rest 3, and the four narrow endgames 4. The
+// deep workload is the benchmark case, not this one.
+
+import { printf } from "fmt"
+import * as chess from "./perft"
+
+// The six standard perft positions. The first three are the Chess
+// Programming Wiki's "Position 1" (the initial position), kiwipete —
+// upstream calls it tricky_position — and "Position 3".
+const START: string = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
+const KIWIPETE: string = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 "
+const POSITION_3: string = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 "
+const POSITION_4: string = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1 "
+const POSITION_5: string = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 "
+const POSITION_6: string = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 "
+
+// Four positions that each isolate one rule the FEN and the move
+// generator have to get right, kept shallow because that is all it takes
+// to expose them.
+const EN_PASSANT: string = "8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1 "
+const CASTLING: string = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1 "
+const PROMOTION: string = "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 "
+const PINNED: string = "8/8/1k6/8/2pP4/8/5BK1/8 b - d3 0 1 "
+
+fn divide(name: string, fen: string, depth: i32) {
+  var board = chess::parse_fen(fen)
+  printf("%s depth %d\n", name, depth)
+
+  var count = chess::generate_moves(&board, 0)
+  var total: i64 = 0
+  for index in 0..count {
+    var move = chess::move_at(0, index)
+    var saved = board
+    if chess::make_move(&board, move) {
+      var nodes = chess::perft(&board, depth - 1, 1)
+      total += nodes
+      board = saved
+      printf("  %-5s %d\n", move_name(move), nodes)
+    } else {
+      board = saved
+    }
+  }
+  printf("  total %d\n\n", total)
+}
+
+// Long algebraic: source, target, and the promotion piece when there is
+// one.
+fn move_name(move: i32): string {
+  var text = "#{chess::square_name(chess::move_source(move))}#{chess::square_name(chess::move_target(move))}"
+  var promoted = chess::move_promoted(move)
+  if promoted != 0 {
+    return "#{text}#{chess::promoted_letter(promoted)}"
+  }
+  return text
+}
+
+fn main() {
+  chess::init_all()
+
+  divide("start", START, 3)
+  divide("kiwipete", KIWIPETE, 2)
+  divide("position3", POSITION_3, 3)
+  divide("position4", POSITION_4, 2)
+  divide("position5", POSITION_5, 2)
+  divide("position6", POSITION_6, 2)
+
+  divide("enpassant", EN_PASSANT, 4)
+  divide("castling", CASTLING, 2)
+  divide("promotion", PROMOTION, 2)
+  divide("pinned", PINNED, 3)
+}

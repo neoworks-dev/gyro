@@ -1,0 +1,421 @@
+// stdlib. A declaration with no body is a runtime intrinsic; everything
+// with a body is ordinary Gyro, compiled like any other module.
+
+export fn print<T>(value: T) !{ io }
+export fn println<T>(value: T) !{ io }
+export fn eprintln<T>(value: T) !{ io }
+
+// spawn starts a thread. The closure carries the arguments across; join by
+// receiving on a channel the closure captures. Its row covers starting the
+// thread and stands in for the task's own effects, which no row can carry
+// until effect polymorphism reaches function values.
+export fn spawn(task: fn()) !{ io, alloc }
+
+// Array<T> owns its elements, in contrast to the borrowed view T[].
+export struct Array<T> {}
+
+export fn Array<T>::new(): Array<T> !{ alloc }
+export fn Array<T>::with_capacity(capacity: usize): Array<T> !{ alloc }
+export fn Array<T>::push(*self, value: T) !{ alloc }
+export fn Array<T>::pop(*self): (T, bool) !{}
+export fn Array<T>::get(self, index: usize): T !{}
+export fn Array<T>::set(*self, index: usize, value: T) !{}
+// The element's own address, bounds-checked. `xs[i]` lowers through it,
+// which is what makes an index a place rather than a copy — `get` hands
+// back a value and mutating that mutates nothing. The address is into
+// the array's buffer, so `push` may move it, exactly as in C.
+export fn Array<T>::at(self, index: usize): *T !{}
+export fn Array<T>::len(self): usize !{}
+export fn Array<T>::slice(self): T[] !{ &self }
+export fn Array<T>::free(*self) !{}
+
+// The runtime supplies the buffer; anything above it is ordinary Gyro,
+// written once here rather than once per tier.
+export fn Array<T>::is_empty(self): bool !{} {
+  return self.len() == 0
+}
+
+// from_utf8 reads a byte slice as text, and `s.bytes()` is the other
+// direction. Both copy: a string's bytes are packed UTF-8 while a slice
+// element is a full word, so the two representations cannot alias. Each
+// result owns what it holds, which is why neither carries a borrow row.
+export fn from_utf8(bytes: u8[]): string !{ alloc }
+
+// String owns its bytes, in contrast to the borrowed view `string`. It is
+// the builder: append to it, then read it back with `text()`.
+//
+// Everything below this line is ordinary Gyro. The only things the
+// runtime supplies are Array<T>, from_utf8 and the `bytes()` method on
+// string; the builder and the text helpers are written in the language
+// they serve.
+export struct String {
+  bytes: Array<u8>
+}
+
+export fn String::new(): String !{ alloc } {
+  return String{ bytes: Array<u8>::new() }
+}
+
+export fn String::with_capacity(capacity: usize): String !{ alloc } {
+  return String{ bytes: Array<u8>::with_capacity(capacity) }
+}
+
+export fn String::of(text: string): String !{ alloc } {
+  var out = String::new()
+  out.push(text)
+  return out
+}
+
+export fn String::push(*self, text: string) !{ alloc } {
+  for byte in text.bytes() {
+    self.bytes.push(byte)
+  }
+}
+
+// push_rune encodes one code point as UTF-8. The four cases are the four
+// lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
+// what runes() produces for an invalid sequence.
+export fn String::push_rune(*self, value: rune) !{ alloc } {
+  var point = value as u32
+  if point > 1114111 || (point >= 55296 && point <= 57343) {
+    point = 65533
+  }
+
+  if point < 128 {
+    self.bytes.push(point as u8)
+    return
+  }
+  if point < 2048 {
+    self.bytes.push((192 | (point >> 6)) as u8)
+    self.bytes.push((128 | (point & 63)) as u8)
+    return
+  }
+  if point < 65536 {
+    self.bytes.push((224 | (point >> 12)) as u8)
+    self.bytes.push((128 | ((point >> 6) & 63)) as u8)
+    self.bytes.push((128 | (point & 63)) as u8)
+    return
+  }
+  self.bytes.push((240 | (point >> 18)) as u8)
+  self.bytes.push((128 | ((point >> 12) & 63)) as u8)
+  self.bytes.push((128 | ((point >> 6) & 63)) as u8)
+  self.bytes.push((128 | (point & 63)) as u8)
+}
+
+export fn String::len(self): usize !{} {
+  return self.bytes.len()
+}
+
+export fn String::text(self): string !{ alloc } {
+  return from_utf8(self.bytes.slice())
+}
+
+export fn String::to_string(self): string !{ alloc } {
+  return self.text()
+}
+
+export fn String::free(*self) !{} {
+  self.bytes.free()
+}
+
+// ---------------------------------------------------------------------------
+// Text
+//
+// These extend the built-in `string`, so they are spelled the way the
+// compiler's own surface is: `line.trim()`, not `trim(line)`. An
+// extension is an ordinary name — it must be imported to be callable,
+// which is what keeps it out of universe scope.
+// ---------------------------------------------------------------------------
+
+// slice_at reports whether needle sits at `at` in haystack.
+fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
+  if at + needle.len() > haystack.len() {
+    return false
+  }
+  for var i: usize = 0; i < needle.len(); i += 1 {
+    if haystack[at + i] != needle[i] {
+      return false
+    }
+  }
+  return true
+}
+
+// The predicates below allocate because bytes() copies: a string's bytes
+// are packed UTF-8 and a slice element is a full word, so reading a string
+// as u8[] builds new storage.
+export fn string::starts_with(self, prefix: string): bool !{ alloc } {
+  return slice_at(self.bytes(), prefix.bytes(), 0)
+}
+
+export fn string::ends_with(self, suffix: string): bool !{ alloc } {
+  var body = self.bytes()
+  var tail = suffix.bytes()
+  if tail.len() > body.len() {
+    return false
+  }
+  return slice_at(body, tail, body.len() - tail.len())
+}
+
+// index_of returns the byte offset of the first match, or null.
+export fn string::index_of(self, needle: string): usize? !{ alloc } {
+  var body = self.bytes()
+  var want = needle.bytes()
+  if want.len() > body.len() {
+    return null
+  }
+  for var at: usize = 0; at + want.len() <= body.len(); at += 1 {
+    if slice_at(body, want, at) {
+      return at
+    }
+  }
+  return null
+}
+
+export fn string::contains(self, needle: string): bool !{ alloc } {
+  return self.index_of(needle) != null
+}
+
+// substring takes the half-open byte range [from, to). It does not
+// validate that the ends fall on rune boundaries.
+export fn string::substring(self, from: usize, to: usize): string !{ alloc } {
+  var body = self.bytes()
+  var out = String::new()
+  var stop = to
+  if stop > body.len() {
+    stop = body.len()
+  }
+  for var i = from; i < stop; i += 1 {
+    out.bytes.push(body[i])
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
+
+fn is_space(byte: u8): bool {
+  return byte == 32 || byte == 9 || byte == 10 || byte == 13
+}
+
+export fn string::trim(self): string !{ alloc } {
+  var body = self.bytes()
+  var start: usize = 0
+  while start < body.len() && is_space(body[start]) {
+    start += 1
+  }
+  var stop = body.len()
+  while stop > start && is_space(body[stop - 1]) {
+    stop -= 1
+  }
+  return self.substring(start, stop)
+}
+
+// split cuts on every occurrence of sep. An empty sep would not advance,
+// so it yields the whole text unsplit.
+export fn string::split(self, sep: string): Array<string> !{ alloc } {
+  var parts = Array<string>::new()
+  if sep.len() == 0 {
+    parts.push(self)
+    return parts
+  }
+
+  var body = self.bytes()
+  var want = sep.bytes()
+  var start: usize = 0
+  var at: usize = 0
+  while at + want.len() <= body.len() {
+    if slice_at(body, want, at) {
+      parts.push(self.substring(start, at))
+      at += want.len()
+      start = at
+      continue
+    }
+    at += 1
+  }
+  parts.push(self.substring(start, body.len()))
+  return parts
+}
+
+// join stays a function: its receiver would be the slice, not a string,
+// and `string[]` is not a type an extension can name.
+export fn join(parts: string[], sep: string): string !{ alloc } {
+  var out = String::new()
+  var first = true
+  for part in parts {
+    if !first {
+      out.push(sep)
+    }
+    out.push(part)
+    first = false
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
+
+export fn string::repeat(self, times: i32): string !{ alloc } {
+  var out = String::new()
+  for i in 0..times {
+    out.push(self)
+  }
+  var result = out.text()
+  out.free()
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Map
+//
+// A hash map in ordinary Gyro over Array<T>; the runtime supplies only
+// the buffer. Chaining rather than open addressing: Gyro has no zero
+// values, so an empty probe slot would need a fabricated key to occupy
+// it, while an empty bucket needs nothing.
+// ---------------------------------------------------------------------------
+
+// Map<K, V> hashes with the same derived hash() that == uses, so any key
+// that compares can be stored, and two keys that compare equal land in
+// one bucket. An optional V is allowed: optionals do not nest, so get()
+// answers null both for a miss and for a stored null, and contains() is
+// what separates the two.
+export struct Map<K, V> {
+  buckets: Array<Array<(K, V)>>
+  count: usize
+}
+
+// bucket_index folds a hash onto a bucket count. The count is never zero:
+// new() starts with eight buckets and grow() only doubles.
+fn bucket_index(hash: u64, buckets: usize): usize {
+  return (hash % (buckets as u64)) as usize
+}
+
+fn empty_buckets<K, V>(count: usize): Array<Array<(K, V)>> {
+  var buckets = Array<Array<(K, V)>>::with_capacity(count)
+  for i in 0..count {
+    buckets.push(Array<(K, V)>::new())
+  }
+  return buckets
+}
+
+export fn Map<K, V>::new(): Map<K, V> !{ alloc } {
+  return Map<K, V>{ buckets: empty_buckets<K, V>(8), count: 0 }
+}
+
+fn Map<K, V>::bucket_of(self, key: K): Array<(K, V)> {
+  return self.buckets.get(bucket_index(key.hash(), self.buckets.len()))
+}
+
+// grow doubles the bucket count and redistributes every entry. Insertion
+// order within a bucket is not part of the contract; the walk order here
+// is still deterministic, so every tier agrees byte for byte.
+fn Map<K, V>::grow(*self) {
+  var wider = empty_buckets<K, V>(self.buckets.len() * 2)
+  for i in 0..self.buckets.len() {
+    var bucket = self.buckets.get(i)
+    for at in 0..bucket.len() {
+      var entry = bucket.get(at)
+      var home = wider.get(bucket_index(entry.0.hash(), wider.len()))
+      home.push(entry)
+    }
+    bucket.free()
+  }
+  self.buckets.free()
+  self.buckets = wider
+}
+
+// insert adds the pair, replacing the value (and the stored key) when an
+// equal key is already present.
+export fn Map<K, V>::insert(*self, key: K, value: V) !{ alloc } {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      bucket.set(i, (key, value))
+      return
+    }
+  }
+  if self.count >= self.buckets.len() * 2 {
+    self.grow()
+    bucket = self.bucket_of(key)
+  }
+  bucket.push((key, value))
+  self.count += 1
+}
+
+export fn Map<K, V>::get(self, key: K): V? !{} {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    var entry = bucket.get(i)
+    if entry.0 == key {
+      return entry.1
+    }
+  }
+  return null
+}
+
+export fn Map<K, V>::contains(self, key: K): bool !{} {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      return true
+    }
+  }
+  return false
+}
+
+// remove takes the entry out by swapping the last one into its place,
+// and reports whether the key was present.
+export fn Map<K, V>::remove(*self, key: K): bool !{} {
+  var bucket = self.bucket_of(key)
+  for i in 0..bucket.len() {
+    if bucket.get(i).0 == key {
+      bucket.set(i, bucket.get(bucket.len() - 1))
+      var _, _ = bucket.pop()
+      self.count -= 1
+      return true
+    }
+  }
+  return false
+}
+
+export fn Map<K, V>::len(self): usize !{} {
+  return self.count
+}
+
+export fn Map<K, V>::is_empty(self): bool !{} {
+  return self.count == 0
+}
+
+// keys snapshots the keys into a fresh array the caller frees. The order
+// follows the buckets: deterministic, but not insertion order.
+export fn Map<K, V>::keys(self): Array<K> !{ alloc } {
+  var out = Array<K>::with_capacity(self.count)
+  for i in 0..self.buckets.len() {
+    var bucket = self.buckets.get(i)
+    for at in 0..bucket.len() {
+      out.push(bucket.get(at).0)
+    }
+  }
+  return out
+}
+
+export fn Map<K, V>::free(*self) !{} {
+  for i in 0..self.buckets.len() {
+    self.buckets.get(i).free()
+  }
+  self.buckets.free()
+  self.count = 0
+}
+
+// Mutex<T> owns the value it guards; lock() returns the guard directly.
+// There is no poisoning: a panic aborts the whole process, so no thread
+// ever observes a lock its holder abandoned.
+export struct Mutex<T> {}
+
+export fn Mutex<T>::new(value: T): Mutex<T> !{ alloc }
+export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+
+export struct MutexGuard<T> {}
+
+export fn MutexGuard<T>::get(self): T !{}
+export fn MutexGuard<T>::set(*self, value: T) !{}
+// Release is explicit until a drop-based design is settled; pair lock()
+// with `defer guard.unlock()`.
+export fn MutexGuard<T>::unlock(*self) !{}

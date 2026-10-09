@@ -1,0 +1,17 @@
+import { println } from "stdlib"
+
+struct Version {
+  major: i32
+  minor: i32
+}
+
+fn Version::to_string(self): string {
+  return "v#{self.major}.#{self.minor}"
+}
+
+fn main() {
+  var v = Version{ major: 1, minor: 9 }
+  println(v)
+  println("running #{v} now")
+  println("flag: #{1 < 2}")
+}

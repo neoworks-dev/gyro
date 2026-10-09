@@ -1,0 +1,35 @@
+// A literal argument to a generic parameter takes the type argument's
+// width, not the i32 default. `Array<u64>::push(7)` stores a u64, and
+// `Array<u8>::set(0, 200)` stores a u8 that wraps at 256 — the type is
+// already substituted where the argument is checked, so there is nothing
+// left for defaulting to decide.
+//
+// Every value here is read back and combined with a typed one, because
+// that is where a wrongly widened element shows: 250 +% 10 is 4 in a u8
+// and 260 in an i32.
+
+import { println, Array } from "stdlib"
+
+fn main() {
+  var wide = Array<u64>::new()
+  wide.push(7)
+  wide.push(18446744073709551615)
+  var one: u64 = 1
+  println(wide.get(0) +% one)
+  println(wide.get(1) +% one)
+  wide.free()
+
+  var bytes = Array<u8>::new()
+  bytes.push(250)
+  println(bytes.get(0) +% 10)
+  bytes.set(0, 200)
+  println(bytes.get(0) +% 100)
+  bytes.free()
+
+  // A value no i32 could hold, which is only legal because the element
+  // type is what the literal has to fit.
+  var offsets = Array<i64>::new()
+  offsets.push(4294967296)
+  println(offsets.get(0) + 1)
+  offsets.free()
+}

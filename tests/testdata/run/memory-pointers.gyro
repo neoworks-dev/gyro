@@ -1,0 +1,34 @@
+import { println } from "stdlib"
+import { alloc, free } from "mem"
+
+struct Node {
+  value: i32
+  next: *Node?
+}
+
+fn main() {
+  var head = alloc<Node>()
+  head.value = 1
+  head.next = null
+
+  var second = alloc<Node>()
+  second.value = 2
+  second.next = null
+  head.next = second
+
+  var current: *Node? = head
+  var total: i32 = 0
+  while current != null {
+    total += current.value
+    var next = current.next
+    free(current)
+    current = next
+  }
+  println(total)
+
+  var local: i32 = 5
+  var address = &local
+  println(*address)
+  *address = 7
+  println(local)
+}

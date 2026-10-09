@@ -1,0 +1,32 @@
+// String is written in Gyro, on top of Array<u8>, from_utf8 and the
+// bytes() method. Its UTF-8 encoder is Gyro too.
+
+import { println, String } from "stdlib"
+
+fn main() {
+  var s = String::of("hello")
+  defer s.free()
+  s.push(", ")
+  s.push("world")
+  s.push_rune('!')
+  println(s.text())
+  println(s.len())
+
+  // Each encoded length, and the replacement a bad code point becomes.
+  var wide = String::new()
+  defer wide.free()
+  wide.push_rune('a')
+  wide.push_rune('é')
+  wide.push_rune('€')
+  wide.push_rune('𝄞')
+  println(wide.text())
+  println(wide.len())
+
+  // to_string means a String prints as its text.
+  println(s)
+
+  var empty = String::new()
+  defer empty.free()
+  println(empty.len())
+  println("[#{empty.text()}]")
+}

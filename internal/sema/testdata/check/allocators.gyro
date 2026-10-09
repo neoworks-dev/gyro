@@ -1,0 +1,61 @@
+// Allocators ride on the alloc effect (chapter 4.5). `with expr` chooses
+// the allocator for the rest of a block and has to be handed one; alloc
+// and free both use the allocator, so both are alloc; a block below a
+// with owes the leak analysis nothing; and a panic ends the block for the
+// checker, so a null check that panics narrows below it.
+
+import { alloc, free, allocator, heap, panic, Arena } from "mem"
+
+struct Node {
+  value: i32
+}
+
+fn notAnAllocator() {
+  with 5                      //~ E0615 with needs an Allocator, not i32
+                              //~^ help: with takes the value to hand every call below it: heap(), arena.allocator(), or an Allocator of your own
+}
+
+// with is a statement, not an effect: a !{} function may write one.
+fn chooses(a: Arena) !{} {
+  with heap()
+}
+
+// free hands a block back to the allocator, so it uses one.
+fn releases(node: *Node) !{} {
+  free(node)                  //~ E0611 free does alloc, which the row does not name
+                              //~^ help: name it in the row: !{ alloc }
+}
+
+// allocator() is what makes a function receive one.
+fn reads(): usize !{} {
+  var current = allocator()   //~ E0611 allocator does alloc, which the row does not name
+                              //~^ help: name it in the row: !{ alloc }
+  return 0
+}
+
+// Below a with, an allocation is the allocator's to reclaim.
+fn arenaOwned() {
+  var arena = Arena::new(64)
+  defer arena.free()
+  with arena.allocator()
+  var node = alloc<Node>()
+}
+
+// The with ends with its block: this one still warns.
+fn withEnded() {
+  var arena = Arena::new(64)
+  defer arena.free()
+  {
+    with arena.allocator()
+    var inside = alloc<Node>()
+  }
+  var outside = alloc<Node>()  //~ W0701 the allocation in outside reaches the end of its block unfreed
+}
+
+// panic does not return, so the check narrows p like a return would.
+fn narrowed(p: *Node?): i32 {
+  if p == null {
+    panic("no node")
+  }
+  return p.value
+}

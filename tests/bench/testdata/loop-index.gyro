@@ -1,0 +1,27 @@
+// Loop induction and bounds checks: every `get` re-reads the length and
+// compares against it, and the induction variable is the only thing that
+// changes between iterations. Hoisting the length out of the check and
+// keeping the counter in a register is what this measures.
+
+import { println, eprintln, Array } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+  var values = Array<i64>::new()
+  defer values.free()
+  for var i: i64 = 0; i < 1024; i += 1 {
+    values.push(i)
+  }
+
+  var start = monotonic()
+  var total: i64 = 0
+  for var pass = 0; pass < 16384; pass += 1 {
+    for var i: usize = 0; i < values.len(); i += 1 {
+      total += values.get(i)
+    }
+  }
+  var stop = monotonic()
+
+  println(total)
+  eprintln("gyro:bench #{stop - start}")
+}

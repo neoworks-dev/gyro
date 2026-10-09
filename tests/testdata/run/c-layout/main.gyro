@@ -1,0 +1,35 @@
+// A C translation unit reporting its own storage back to Gyro.
+//
+// Everything printed here is a number C fixes, not a number this
+// compiler is free to choose: a pointer is one machine word, a struct of
+// two pointers is two, a char in front of a pointer pads out to the
+// pointer's alignment, and file-scope pointers start null. A METALS
+// pointer is never null and C's is, so a C pointer is `opt<ptr<T>>` —
+// and that is only free if the optional lives in the pointer's own
+// spare bit pattern rather than beside it.
+
+import { println } from "stdlib"
+import {
+  pointer_size, char_pointer_size, pair_size, node_size, node_stride,
+  table_is_clear, fill_table, table_entry, tag_walk, data_offsets,
+} from "./layout.c"
+
+fn main() {
+  println(pointer_size())
+  println(char_pointer_size())
+  println(pair_size())
+  println(node_size())
+  println(node_stride())
+
+  // Before anything has been written to it.
+  println(table_is_clear())
+  println(fill_table())
+  var i = 0
+  while i < 4 {
+    println(table_entry(i))
+    i = i + 1
+  }
+
+  println(tag_walk())
+  println(data_offsets())
+}

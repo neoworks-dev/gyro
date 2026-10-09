@@ -1,0 +1,10 @@
+// Division truncates toward zero, so the remainder takes the dividend's sign.
+
+import { println } from "stdlib"
+
+fn main() {
+  var a: i32 = -7
+  var b: i32 = 2
+  println(a / b)
+  println(a % b)
+}

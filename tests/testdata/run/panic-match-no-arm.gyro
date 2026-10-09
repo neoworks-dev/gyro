@@ -1,0 +1,12 @@
+// An open subject with no wildcard can fall off the end at runtime.
+//gyro:panic no match arm matched the value
+
+import { println } from "stdlib"
+
+fn main() {
+  var n: i32 = 5
+  var s = match n {
+    0: "zero"
+  }
+  println(s)
+}

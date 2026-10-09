@@ -1,0 +1,25 @@
+{
+  "name": "tree-sitter-metals",
+  "version": "0.1.0",
+  "description": "METALS IR grammar for tree-sitter",
+  "license": "MIT",
+  "main": "bindings/node",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.metals",
+      "file-types": [
+        "metals"
+      ]
+    }
+  ],
+  "allowScripts": {
+    "tree-sitter-cli@0.25.10": true
+  }
+}

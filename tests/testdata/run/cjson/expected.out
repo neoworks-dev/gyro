@@ -1,0 +1,598 @@
+== parse examples
+test1    583 bytes -> 18 nodes, depth 8, ends at 582
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"glossary":	{
+		"title":	"example glossary",
+		"GlossDiv":	{
+			"title":	"S",
+			"GlossList":	{
+				"GlossEntry":	{
+					"ID":	"SGML",
+					"SortAs":	"SGML",
+					"GlossTerm":	"Standard Generalized Markup Language",
+					"Acronym":	"SGML",
+					"Abbrev":	"ISO 8879:1986",
+					"GlossDef":	{
+						"para":	"A meta-markup language, used to create markup languages such as DocBook.",
+						"GlossSeeAlso":	["GML", "XML"]
+					},
+					"GlossSee":	"markup"
+				}
+			}
+		}
+	}
+}
+  --- unformatted
+{"glossary":{"title":"example glossary","GlossDiv":{"title":"S","GlossList":{"GlossEntry":{"ID":"SGML","SortAs":"SGML","GlossTerm":"Standard Generalized Markup Language","Acronym":"SGML","Abbrev":"ISO 8879:1986","GlossDef":{"para":"A meta-markup language, used to create markup languages such as DocBook.","GlossSeeAlso":["GML","XML"]},"GlossSee":"markup"}}}}}
+test2    242 bytes -> 15 nodes, depth 6, ends at 241
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"menu":	{
+		"id":	"file",
+		"value":	"File",
+		"popup":	{
+			"menuitem":	[{
+					"value":	"New",
+					"onclick":	"CreateNewDoc()"
+				}, {
+					"value":	"Open",
+					"onclick":	"OpenDoc()"
+				}, {
+					"value":	"Close",
+					"onclick":	"CloseDoc()"
+				}]
+		}
+	}
+}
+  --- unformatted
+{"menu":{"id":"file","value":"File","popup":{"menuitem":[{"value":"New","onclick":"CreateNewDoc()"},{"value":"Open","onclick":"OpenDoc()"},{"value":"Close","onclick":"CloseDoc()"}]}}}
+test3    603 bytes -> 23 nodes, depth 4, ends at 600
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"widget":	{
+		"debug":	"on",
+		"window":	{
+			"title":	"Sample Konfabulator Widget",
+			"name":	"main_window",
+			"width":	500,
+			"height":	500
+		},
+		"image":	{
+			"src":	"Images/Sun.png",
+			"name":	"sun1",
+			"hOffset":	250,
+			"vOffset":	250,
+			"alignment":	"center"
+		},
+		"text":	{
+			"data":	"Click Here",
+			"size":	36,
+			"style":	"bold",
+			"name":	"text1",
+			"hOffset":	250,
+			"vOffset":	100,
+			"alignment":	"center",
+			"onMouseUp":	"sun1.opacity = (sun1.opacity / 100) * 90;"
+		}
+	}
+}
+  --- unformatted
+{"widget":{"debug":"on","window":{"title":"Sample Konfabulator Widget","name":"main_window","width":500,"height":500},"image":{"src":"Images/Sun.png","name":"sun1","hOffset":250,"vOffset":250,"alignment":"center"},"text":{"data":"Click Here","size":36,"style":"bold","name":"text1","hOffset":250,"vOffset":100,"alignment":"center","onMouseUp":"sun1.opacity = (sun1.opacity / 100) * 90;"}}}
+test4   3464 bytes -> 87 nodes, depth 6, ends at 3464
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"web-app":	{
+		"servlet":	[{
+				"servlet-name":	"cofaxCDS",
+				"servlet-class":	"org.cofax.cds.CDSServlet",
+				"init-param":	{
+					"configGlossary:installationAt":	"Philadelphia, PA",
+					"configGlossary:adminEmail":	"ksm@pobox.com",
+					"configGlossary:poweredBy":	"Cofax",
+					"configGlossary:poweredByIcon":	"/images/cofax.gif",
+					"configGlossary:staticPath":	"/content/static",
+					"templateProcessorClass":	"org.cofax.WysiwygTemplate",
+					"templateLoaderClass":	"org.cofax.FilesTemplateLoader",
+					"templatePath":	"templates",
+					"templateOverridePath":	"",
+					"defaultListTemplate":	"listTemplate.htm",
+					"defaultFileTemplate":	"articleTemplate.htm",
+					"useJSP":	false,
+					"jspListTemplate":	"listTemplate.jsp",
+					"jspFileTemplate":	"articleTemplate.jsp",
+					"cachePackageTagsTrack":	200,
+					"cachePackageTagsStore":	200,
+					"cachePackageTagsRefresh":	60,
+					"cacheTemplatesTrack":	100,
+					"cacheTemplatesStore":	50,
+					"cacheTemplatesRefresh":	15,
+					"cachePagesTrack":	200,
+					"cachePagesStore":	100,
+					"cachePagesRefresh":	10,
+					"cachePagesDirtyRead":	10,
+					"searchEngineListTemplate":	"forSearchEnginesList.htm",
+					"searchEngineFileTemplate":	"forSearchEngines.htm",
+					"searchEngineRobotsDb":	"WEB-INF/robots.db",
+					"useDataStore":	true,
+					"dataStoreClass":	"org.cofax.SqlDataStore",
+					"redirectionClass":	"org.cofax.SqlRedirection",
+					"dataStoreName":	"cofax",
+					"dataStoreDriver":	"com.microsoft.jdbc.sqlserver.SQLServerDriver",
+					"dataStoreUrl":	"jdbc:microsoft:sqlserver://LOCALHOST:1433;DatabaseName=goon",
+					"dataStoreUser":	"sa",
+					"dataStorePassword":	"dataStoreTestQuery",
+					"dataStoreTestQuery":	"SET NOCOUNT ON;select test='test';",
+					"dataStoreLogFile":	"/usr/local/tomcat/logs/datastore.log",
+					"dataStoreInitConns":	10,
+					"dataStoreMaxConns":	100,
+					"dataStoreConnUsageLimit":	100,
+					"dataStoreLogLevel":	"debug",
+					"maxUrlLength":	500
+				}
+			}, {
+				"servlet-name":	"cofaxEmail",
+				"servlet-class":	"org.cofax.cds.EmailServlet",
+				"init-param":	{
+					"mailHost":	"mail1",
+					"mailHostOverride":	"mail2"
+				}
+			}, {
+				"servlet-name":	"cofaxAdmin",
+				"servlet-class":	"org.cofax.cds.AdminServlet"
+			}, {
+				"servlet-name":	"fileServlet",
+				"servlet-class":	"org.cofax.cds.FileServlet"
+			}, {
+				"servlet-name":	"cofaxTools",
+				"servlet-class":	"org.cofax.cms.CofaxToolsServlet",
+				"init-param":	{
+					"templatePath":	"toolstemplates/",
+					"log":	1,
+					"logLocation":	"/usr/local/tomcat/logs/CofaxTools.log",
+					"logMaxSize":	"",
+					"dataLog":	1,
+					"dataLogLocation":	"/usr/local/tomcat/logs/dataLog.log",
+					"dataLogMaxSize":	"",
+					"removePageCache":	"/content/admin/remove?cache=pages&id=",
+					"removeTemplateCache":	"/content/admin/remove?cache=templates&id=",
+					"fileTransferFolder":	"/usr/local/tomcat/webapps/content/fileTransferFolder",
+					"lookInContext":	1,
+					"adminGroupID":	4,
+					"betaServer":	true
+				}
+			}],
+		"servlet-mapping":	{
+			"cofaxCDS":	"/",
+			"cofaxEmail":	"/cofaxutil/aemail/*",
+			"cofaxAdmin":	"/admin/*",
+			"fileServlet":	"/static/*",
+			"cofaxTools":	"/tools/*"
+		},
+		"taglib":	{
+			"taglib-uri":	"cofax.tld",
+			"taglib-location":	"/WEB-INF/tlds/cofax.tld"
+		}
+	}
+}
+  --- unformatted
+{"web-app":{"servlet":[{"servlet-name":"cofaxCDS","servlet-class":"org.cofax.cds.CDSServlet","init-param":{"configGlossary:installationAt":"Philadelphia, PA","configGlossary:adminEmail":"ksm@pobox.com","configGlossary:poweredBy":"Cofax","configGlossary:poweredByIcon":"/images/cofax.gif","configGlossary:staticPath":"/content/static","templateProcessorClass":"org.cofax.WysiwygTemplate","templateLoaderClass":"org.cofax.FilesTemplateLoader","templatePath":"templates","templateOverridePath":"","defaultListTemplate":"listTemplate.htm","defaultFileTemplate":"articleTemplate.htm","useJSP":false,"jspListTemplate":"listTemplate.jsp","jspFileTemplate":"articleTemplate.jsp","cachePackageTagsTrack":200,"cachePackageTagsStore":200,"cachePackageTagsRefresh":60,"cacheTemplatesTrack":100,"cacheTemplatesStore":50,"cacheTemplatesRefresh":15,"cachePagesTrack":200,"cachePagesStore":100,"cachePagesRefresh":10,"cachePagesDirtyRead":10,"searchEngineListTemplate":"forSearchEnginesList.htm","searchEngineFileTemplate":"forSearchEngines.htm","searchEngineRobotsDb":"WEB-INF/robots.db","useDataStore":true,"dataStoreClass":"org.cofax.SqlDataStore","redirectionClass":"org.cofax.SqlRedirection","dataStoreName":"cofax","dataStoreDriver":"com.microsoft.jdbc.sqlserver.SQLServerDriver","dataStoreUrl":"jdbc:microsoft:sqlserver://LOCALHOST:1433;DatabaseName=goon","dataStoreUser":"sa","dataStorePassword":"dataStoreTestQuery","dataStoreTestQuery":"SET NOCOUNT ON;select test='test';","dataStoreLogFile":"/usr/local/tomcat/logs/datastore.log","dataStoreInitConns":10,"dataStoreMaxConns":100,"dataStoreConnUsageLimit":100,"dataStoreLogLevel":"debug","maxUrlLength":500}},{"servlet-name":"cofaxEmail","servlet-class":"org.cofax.cds.EmailServlet","init-param":{"mailHost":"mail1","mailHostOverride":"mail2"}},{"servlet-name":"cofaxAdmin","servlet-class":"org.cofax.cds.AdminServlet"},{"servlet-name":"fileServlet","servlet-class":"org.cofax.cds.FileServlet"},{"servlet-name":"cofaxTools","servlet-class":"org.cofax.cms.CofaxToolsServlet","init-param":{"templatePath":"toolstemplates/","log":1,"logLocation":"/usr/local/tomcat/logs/CofaxTools.log","logMaxSize":"","dataLog":1,"dataLogLocation":"/usr/local/tomcat/logs/dataLog.log","dataLogMaxSize":"","removePageCache":"/content/admin/remove?cache=pages&id=","removeTemplateCache":"/content/admin/remove?cache=templates&id=","fileTransferFolder":"/usr/local/tomcat/webapps/content/fileTransferFolder","lookInContext":1,"adminGroupID":4,"betaServer":true}}],"servlet-mapping":{"cofaxCDS":"/","cofaxEmail":"/cofaxutil/aemail/*","cofaxAdmin":"/admin/*","fileServlet":"/static/*","cofaxTools":"/tools/*"},"taglib":{"taglib-uri":"cofax.tld","taglib-location":"/WEB-INF/tlds/cofax.tld"}}}
+test5    873 bytes -> 56 nodes, depth 5, ends at 872
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"menu":	{
+		"header":	"SVG Viewer",
+		"items":	[{
+				"id":	"Open"
+			}, {
+				"id":	"OpenNew",
+				"label":	"Open New"
+			}, null, {
+				"id":	"ZoomIn",
+				"label":	"Zoom In"
+			}, {
+				"id":	"ZoomOut",
+				"label":	"Zoom Out"
+			}, {
+				"id":	"OriginalView",
+				"label":	"Original View"
+			}, null, {
+				"id":	"Quality"
+			}, {
+				"id":	"Pause"
+			}, {
+				"id":	"Mute"
+			}, null, {
+				"id":	"Find",
+				"label":	"Find..."
+			}, {
+				"id":	"FindAgain",
+				"label":	"Find Again"
+			}, {
+				"id":	"Copy"
+			}, {
+				"id":	"CopyAgain",
+				"label":	"Copy Again"
+			}, {
+				"id":	"CopySVG",
+				"label":	"Copy SVG"
+			}, {
+				"id":	"ViewSVG",
+				"label":	"View SVG"
+			}, {
+				"id":	"ViewSource",
+				"label":	"View Source"
+			}, {
+				"id":	"SaveAs",
+				"label":	"Save As"
+			}, null, {
+				"id":	"Help"
+			}, {
+				"id":	"About",
+				"label":	"About Adobe CVG Viewer..."
+			}]
+	}
+}
+  --- unformatted
+{"menu":{"header":"SVG Viewer","items":[{"id":"Open"},{"id":"OpenNew","label":"Open New"},null,{"id":"ZoomIn","label":"Zoom In"},{"id":"ZoomOut","label":"Zoom Out"},{"id":"OriginalView","label":"Original View"},null,{"id":"Quality"},{"id":"Pause"},{"id":"Mute"},null,{"id":"Find","label":"Find..."},{"id":"FindAgain","label":"Find Again"},{"id":"Copy"},{"id":"CopyAgain","label":"Copy Again"},{"id":"CopySVG","label":"Copy SVG"},{"id":"ViewSVG","label":"View SVG"},{"id":"ViewSource","label":"View Source"},{"id":"SaveAs","label":"Save As"},null,{"id":"Help"},{"id":"About","label":"About Adobe CVG Viewer..."}]}}
+test6    484 bytes -> parse failed at offset 0
+test7    399 bytes -> 19 nodes, depth 3, ends at 398
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+[{
+		"precision":	"zip",
+		"Latitude":	37.7668,
+		"Longitude":	-122.3959,
+		"Address":	"",
+		"City":	"SAN FRANCISCO",
+		"State":	"CA",
+		"Zip":	"94107",
+		"Country":	"US"
+	}, {
+		"precision":	"zip",
+		"Latitude":	37.371991,
+		"Longitude":	-122.02602,
+		"Address":	"",
+		"City":	"SUNNYVALE",
+		"State":	"CA",
+		"Zip":	"94085",
+		"Country":	"US"
+	}]
+  --- unformatted
+[{"precision":"zip","Latitude":37.7668,"Longitude":-122.3959,"Address":"","City":"SAN FRANCISCO","State":"CA","Zip":"94107","Country":"US"},{"precision":"zip","Latitude":37.371991,"Longitude":-122.02602,"Address":"","City":"SUNNYVALE","State":"CA","Zip":"94085","Country":"US"}]
+test8    247 bytes -> 14 nodes, depth 4, ends at 246
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"Image":	{
+		"Width":	800,
+		"Height":	600,
+		"Title":	"View from 15th Floor",
+		"Thumbnail":	{
+			"Url":	"http:/*www.example.com/image/481989943",
+			"Height":	125,
+			"Width":	"100"
+		},
+		"IDs":	[116, 943, 234, 38793]
+	}
+}
+  --- unformatted
+{"Image":{"Width":800,"Height":600,"Title":"View from 15th Floor","Thumbnail":{"Url":"http:/*www.example.com/image/481989943","Height":125,"Width":"100"},"IDs":[116,943,234,38793]}}
+test9     50 bytes -> 13 nodes, depth 3, ends at 49
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+[[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+  --- unformatted
+[[0,-1,0],[1,0,0],[0,0,1]]
+test10    79 bytes -> 8 nodes, depth 2, ends at 78
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  --- unformatted
+["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+test11   149 bytes -> 8 nodes, depth 3, ends at 148
+  reparse of the unformatted print compares equal: yes
+  --- formatted
+{
+	"name":	"Jack (\"Bee\") Nimble",
+	"format":	{
+		"type":	"rect",
+		"width":	1920,
+		"height":	1080,
+		"interlace":	false,
+		"frame rate":	24
+	}
+}
+  --- unformatted
+{"name":"Jack (\"Bee\") Nimble","format":{"type":"rect","width":1920,"height":1080,"interlace":false,"frame rate":24}}
+== parse_value
+  null                                           -> null = null
+  true                                           -> true = true
+  false                                          -> false = false
+  1.5                                            -> number(1.5, int=1) = 1.5
+  ""                                             -> string("") = ""
+  "hello"                                        -> string("hello") = "hello"
+  []                                             -> array(0) = []
+  {}                                             -> object(0) = {}
+== parse_array
+  []                                             -> array(0)
+  [\x0a\x09]                                     -> array(0)
+  [1]                                            -> array(1)
+      [0] <none>     number(1, int=1)
+  ["hello!"]                                     -> array(1)
+      [0] <none>     string("hello!")
+  [[]]                                           -> array(1)
+      [0] <none>     array(0)
+  [null]                                         -> array(1)
+      [0] <none>     null
+  [1\x09,\x0a2, 3]                               -> array(3)
+      [0] <none>     number(1, int=1)
+      [1] <none>     number(2, int=2)
+      [2] <none>     number(3, int=3)
+  [1, null, true, false, [], "hello", {}]        -> array(7)
+      [0] <none>     number(1, int=1)
+      [1] <none>     null
+      [2] <none>     true
+      [3] <none>     false
+      [4] <none>     array(0)
+      [5] <none>     string("hello")
+      [6] <none>     object(0)
+                                                 -> rejected at 0
+  [                                              -> rejected at 1
+  ]                                              -> rejected at 0
+  {"hello":[]}                                   -> object(1)
+      [0] hello      array(0)
+  42                                             -> number(42, int=42)
+  3.14                                           -> number(3.14, int=3)
+  "[]hello world!\x0a"                           -> string("[]hello world!\x0a")
+== parse_object
+  {}                                             -> object(0)
+  {\x0a\x09}                                     -> object(0)
+  {"one":1}                                      -> object(1)
+      [0] one        number(1, int=1)
+  {"hello":"world!"}                             -> object(1)
+      [0] hello      string("world!")
+  {"array":[]}                                   -> object(1)
+      [0] array      array(0)
+  {"null":null}                                  -> object(1)
+      [0] null       null
+  {"one":1\x09,\x09"two"\x0a:2, "three":3}       -> object(3)
+      [0] one        number(1, int=1)
+      [1] two        number(2, int=2)
+      [2] three      number(3, int=3)
+  {"one":1, "NULL":null, "TRUE":true, "FALSE":false, "array":[], "world":"hello", "object":{}} -> object(7)
+      [0] one        number(1, int=1)
+      [1] NULL       null
+      [2] TRUE       true
+      [3] FALSE      false
+      [4] array      array(0)
+      [5] world      string("hello")
+      [6] object     object(0)
+  {                                              -> rejected at 1
+  }                                              -> rejected at 0
+  ["hello",{}]                                   -> array(2)
+      [0] <none>     string("hello")
+      [1] <none>     object(0)
+  "{}hello world!\x0a"                           -> string("{}hello world!\x0a")
+== parse_string
+  ""                                                   -> ""
+  " !\\"#$%&'()*+,-./\\/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_'abcdefghijklmnopqrstuvwxyz{|}~" -> " !"#$%&'()*+,-.//0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~"
+  "\\"\\\\\\/\\b\\f\\n\\r\\t\\u20AC\\u732b"            -> ""\\/\x08\x0c\x0a\x0d\x09\xe2\x82\xac\xe7\x8c\xab"
+  "\\uD83D\\udc31"                                     -> "\xf0\x9f\x90\xb1"
+  "~!@\\\\#$%^&*()\\\\\\\\-\\\\+{}[]:\\\\;\\\\\\"\\\\<\\\\>?/.,DC=ad,DC=com" -> "~!@\\#$%^&*()\\\\-\\+{}[]:\\;\\"\\<\\>?/.,DC=ad,DC=com"
+  this" is not a string"                               -> rejected at 1
+                                                       -> "<none>"
+  Abcdef\\123                                          -> rejected at 1
+  Abcdef\\e23                                          -> rejected at 1
+  "000000000000000000\\                                -> rejected at 2
+  "\\u0000after"                                       -> ""
+  "\\uD800"                                            -> rejected at 2
+  "\\uDC00"                                            -> rejected at 2
+  "\\uD83Dnope"                                        -> rejected at 2
+== print_string
+  empty                    -> ""
+  ascii 1..126             -> "\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f !\\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+  utf8                     -> "\xc3\xbc\xe7\x8c\xab\xe6\x85\x95"
+  quotes and slashes       -> "a\\"b\\\\c/d"
+  controls                 -> "\\t\\n\\r"
+== parse_number
+  0                                                                      -> int=0           print=0
+  0.0                                                                    -> int=0           print=0
+  -0                                                                     -> int=0           print=0
+  -1                                                                     -> int=-1          print=-1
+  -32768                                                                 -> int=-32768      print=-32768
+  -2147483648                                                            -> int=-2147483648 print=-2147483648
+  1                                                                      -> int=1           print=1
+  32767                                                                  -> int=32767       print=32767
+  2147483647                                                             -> int=2147483647  print=2147483647
+  0.001                                                                  -> int=0           print=0.001
+  10e-10                                                                 -> int=0           print=1e-09
+  10E-10                                                                 -> int=0           print=1e-09
+  10e10                                                                  -> int=2147483647  print=100000000000
+  123e+127                                                               -> int=2147483647  print=1.23e+129
+  123e-128                                                               -> int=0           print=1.23e-126
+  -0.001                                                                 -> int=0           print=-0.001
+  -10e-10                                                                -> int=0           print=-1e-09
+  -10E-10                                                                -> int=0           print=-1e-09
+  -10e20                                                                 -> int=-2147483648 print=-1e+21
+  -123e+127                                                              -> int=-2147483648 print=-1.23e+129
+  -123e-128                                                              -> int=0           print=-1.23e-126
+  9999999999999999999999999999999999999999999999912345678901234567       -> int=2147483647  print=1e+64
+  9999999999999999999999999999999999999999999999912345678901234567E10    -> int=2147483647  print=1e+74
+  999999999999999999999999999999999999999999999991234567890.1234567      -> int=2147483647  print=1e+57
+== print_number
+  int=0           -> 0
+  int=-1          -> -1
+  int=-32768      -> -32768
+  int=-2147483648 -> -2147483648
+  int=1           -> 1
+  int=32767       -> 32767
+  int=2147483647  -> 2147483647
+  int=0           -> 0.123
+  int=0           -> 1e-09
+  int=2147483647  -> 1000000000000
+  int=2147483647  -> 1.23e+129
+  int=0           -> 1.23e-126
+  int=3           -> 3.1415926535897931
+  int=0           -> -0.0123
+  int=0           -> -1e-09
+  int=-2147483648 -> -1e+21
+  int=-2147483648 -> -1.23e+129
+  int=0           -> -1.23e-126
+  int=0           -> 0.1
+  int=0           -> 0.33333333333333331
+  int=0           -> 0.66666666666666663
+  int=2147483647  -> 1e+21
+  int=0           -> 1e-05
+  int=0           -> 0.0001
+  int=1234567     -> 1234567
+  int=2147483647  -> 6.02214076e+23
+  int=2147483647  -> 1.79769313486232e+308
+  int=2147483647  -> null
+  int=-2147483648 -> null
+  int=-2147483648 -> null
+== parse_with_opts
+                           terminated=no  -> rejected, stopped at 0
+  {                        terminated=no  -> rejected, stopped at 1
+  { "name":                terminated=no  -> rejected, stopped at 10
+  {}                       terminated=yes -> object(0), stopped at 2
+  {} \x0a                  terminated=yes -> object(0), stopped at 4
+  {}x                      terminated=yes -> rejected, stopped at 2
+  [] empty array XD        terminated=no  -> array(0), stopped at 2
+  \xef\xbb\xbf{}           terminated=yes -> object(0), stopped at 5
+  bom and no bom compare equal: yes
+  first 7 bytes of "[1,2,3]garbage" -> [1,2,3]
+  first 4 bytes of "[1,2,3]" -> rejected at 3
+== compare
+  1                                                          1                                                          sensitive=yes insensitive=yes
+  0.0001                                                     0.0001                                                     sensitive=yes insensitive=yes
+  1E100                                                      10E99                                                      sensitive=yes insensitive=yes
+  0.5E-100                                                   0.5E-101                                                   sensitive=no  insensitive=no
+  1                                                          2                                                          sensitive=no  insensitive=no
+  true                                                       true                                                       sensitive=yes insensitive=yes
+  false                                                      false                                                      sensitive=yes insensitive=yes
+  true                                                       false                                                      sensitive=no  insensitive=no
+  null                                                       null                                                       sensitive=yes insensitive=yes
+  null                                                       true                                                       sensitive=no  insensitive=no
+  "abcdefg"                                                  "abcdefg"                                                  sensitive=yes insensitive=yes
+  "ABCDEFG"                                                  "abcdefg"                                                  sensitive=no  insensitive=no
+  []                                                         []                                                         sensitive=yes insensitive=yes
+  [false,true,null,42,"string",[],{}]                        [false, true, null, 42, "string", [], {}]                  sensitive=yes insensitive=yes
+  [[[1], 2]]                                                 [[[1], 2]]                                                 sensitive=yes insensitive=yes
+  [true,null,42,"string",[],{}]                              [false, true, null, 42, "string", [], {}]                  sensitive=no  insensitive=no
+  [1,2,3]                                                    [1,2]                                                      sensitive=no  insensitive=no
+  {}                                                         {}                                                         sensitive=yes insensitive=yes
+  {"false": false, "true": true, "null": null}               {"true": true, "false": false, "null": null}               sensitive=yes insensitive=yes
+  {"False": false, "true": true}                             {"true": true, "false": false}                             sensitive=no  insensitive=yes
+  {"Flse": false, "true": true}                              {"true": true, "false": false}                             sensitive=no  insensitive=no
+  {"one": 1, "two": 2}                                       {"one": 1, "two": 2, "three": 3}                           sensitive=no  insensitive=no
+  two raw nodes with the same text compare equal: yes
+  a raw node against a null pointer: no
+  two null pointers: no
+== minify
+  /* bla                                                         -> 
+  "\\                                                            -> "\\
+  {// this is {} "some kind" of [] comment /*, don't you see\x0a} -> {}
+  { "key":\x09true\x0d\x0a    }                                  -> {"key":true}
+  {/* this is\x0a a /* multi\x0a //line \x0a {comment "\\" */}   -> {}
+  "this is a string \\" \\t bla"                                 -> "this is a string \\" \\t bla"
+  8 / 5\x0a                                                      -> 85
+  {\x0a    "glossary": {\x0a        "title": "example glossary",\x0a\x09\x09"GlossDiv": {\x0a            "title": "S",\x0a\x09\x09\x09"GlossList": {\x0a                "GlossEntry": {\x0a                    "ID": "SGML",\x0a\x09\x09\x09\x09\x09"SortAs": "SGML",\x0a\x09\x09\x09\x09\x09"GlossTerm": "Standard Generalized Markup Language",\x0a\x09\x09\x09\x09\x09"Acronym": "SGML",\x0a\x09\x09\x09\x09\x09"Abbrev": "ISO 8879:1986",\x0a\x09\x09\x09\x09\x09"GlossDef": {\x0a                        "para": "A meta-markup language, used to create markup languages such as DocBook.",\x0a\x09\x09\x09\x09\x09\x09"GlossSeeAlso": ["GML", "XML"]\x0a                    },\x0a\x09\x09\x09\x09\x09"GlossSee": "markup"\x0a                }\x0a            }\x0a        }\x0a    }\x0a}\x0a -> {"glossary":{"title":"example glossary","GlossDiv":{"title":"S","GlossList":{"GlossEntry":{"ID":"SGML","SortAs":"SGML","GlossTerm":"Standard Generalized Markup Language","Acronym":"SGML","Abbrev":"ISO 8879:1986","GlossDef":{"para":"A meta-markup language, used to create markup languages such as DocBook.","GlossSeeAlso":["GML","XML"]},"GlossSee":"markup"}}}}}
+== add
+  null   -> null
+  true   -> true
+  false  -> false
+  bool   -> true
+  number -> number(42, int=42)
+  string -> string("Hello World!")
+  raw    -> raw({})
+  object -> object(0)
+  array  -> array(0)
+  --- unformatted
+{"null":null,"true":true,"false":false,"bool":true,"number":42,"string":"Hello World!","raw":{},"object":{},"array":[]}
+  --- formatted
+{
+	"null":	null,
+	"true":	true,
+	"false":	false,
+	"bool":	true,
+	"number":	42,
+	"string":	"Hello World!",
+	"raw":	{},
+	"object":	{
+	},
+	"array":	[]
+}
+  lookup "number" case sensitive: number(42, int=42)
+  lookup "NUMBER" case sensitive: none
+  lookup "NUMBER" case insensitive: number(42, int=42)
+  has "array": yes, has "missing": no
+  adding to a null object: none
+  adding an object to itself: no
+== object lookup
+  one      sensitive=number(1, int=1)       insensitive=number(1, int=1)
+  One      sensitive=none                   insensitive=number(1, int=1)
+  tWo      sensitive=none                   insensitive=number(2, int=2)
+  Two      sensitive=number(2, int=2)       insensitive=number(2, int=2)
+  three    sensitive=none                   insensitive=number(3, int=3)
+  tHree    sensitive=number(3, int=3)       insensitive=number(3, int=3)
+  four     sensitive=none                   insensitive=none
+  looking a name up in an array: none
+  array size 1, item 0 number(1, int=1), item 2 none, item -1 none
+== predicates
+  kind     inv   false true  bool  null  num   str   arr   obj  
+  null     no    no    no    no    yes   no    no    no    no   
+  true     no    no    yes   yes   no    no    no    no    no   
+  false    no    yes   no    yes   no    no    no    no    no   
+  number   no    no    no    no    no    yes   no    no    no   
+  string   no    no    no    no    no    no    yes   no    no   
+  array    no    no    no    no    no    no    no    yes   no   
+  object   no    no    no    no    no    no    no    no    yes  
+  raw      no    no    no    no    no    no    no    no    no   
+  none     no    no    no    no    no    no    no    no    no   
+== detach, replace, insert
+  start                  [0,1,2,3,4]
+  detach index 2 -> number(2, int=2) [0,1,3,4]
+  detach index 0 -> number(0, int=0) [1,3,4]
+  detach the end -> number(4, int=4) [1,3]
+  detach out of range -> none
+  insert at 0: yes          ["first",1,3]
+  insert at 2: yes          ["first",1,"middle",3]
+  insert past the end: yes   ["first",1,"middle",3,"last"]
+  replace index 0: yes      [100,1,"middle",3,"last"]
+  replace the end: yes      [100,1,"middle",3,400]
+  replace out of range: no    [100,1,"middle",3,400]
+  delete index 1         [100,"middle",3,400]
+  object                 {"a":1,"b":2,"c":3}
+  replace "b": yes        {"a":1,"b":"two","c":3}
+  delete "a"             {"b":"two","c":3}
+  detach "c" -> number(3, int=3) {"b":"two"}
+  one element            {"rd":[{"a":"123"}]}
+  two elements           {"rd":[{"a":"123"},{"b":"456"}]}
+  first one deleted      {"rd":[{"b":"456"}]}
+== duplicate
+  original  {"a":[1,2,{"b":"c"}],"d":null}
+  recursive {"a":[1,2,{"b":"c"}],"d":null}
+  shallow   {}
+  recursive copy compares equal: yes
+  shallow copy compares equal:   no
+  duplicating nothing: none
+== limits
+  1000 unclosed brackets: rejected at 1000
+  1001 unclosed brackets: rejected at 1000
+  1000 nested arrays:     1000 nodes, depth 1000
+  1001 nested arrays:     rejected at 1000
+  big number 1: 5 nodes, depth 3
+  big number 2: 5 nodes, depth 3
+  big number 3: rejected at 82
+  big number 4: rejected at 82
+== set_number_value
+  int=1            print=1.5
+  int=-1           print=-1.5
+  int=2147483647   print=2147483648
+  int=-2147483648  print=-2147483649

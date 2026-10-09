@@ -1,0 +1,121 @@
+; The float intrinsics as instructions, including the two a C compiler
+; will not ask for.
+;
+; fmin and fmax are here rather than in c-float.c because C's fmin and
+; fmax return the operand that is not NaN, where these propagate it — so
+; clang emits a call instead of the opcode, correctly. A producer whose
+; source language has the opcode (wasm does) needs the instruction, and
+; this is what such a producer emits.
+;
+; Also pinned: the non-finite constants. `inf`, `-inf` and `nan` are how
+; a float constant that is not a number is spelled, which the format
+; needs because any producer can fold its way to one.
+
+module "metals:float-ops"
+
+import "gyro:rt" {
+  fn @"println<f64>"(f64)
+  fn @"println<bool>"(bool)
+}
+
+; A NaN is not equal to itself, which is the only way to ask whether one
+; came back without a runtime that can look at bits.
+fn @is_nan(%v: f64) -> bool {
+  %same = eq %v, %v
+  %out = not %same
+  return %out
+}
+
+fn @pn(%v: f64) {
+  %flag = call @is_nan(%v)
+  call @"println<bool>"(%flag)
+  return
+}
+
+; The sign of a zero, recovered by dividing into it: 1.0 / -0.0 is -inf.
+fn @is_negative_zero(%v: f64) -> bool {
+  %one = const.f64 1.0
+  %q = fdiv %one, %v
+  %neg = const.f64 -inf
+  %out = eq %q, %neg
+  return %out
+}
+
+fn @pz(%v: f64) {
+  %flag = call @is_negative_zero(%v)
+  call @"println<bool>"(%flag)
+  return
+}
+
+export fn @main() {
+  %one = const.f64 1.0
+  %two = const.f64 2.0
+  %zero = const.f64 0.0
+  %negzero = const.f64 -0.0
+  %nan = const.f64 nan
+  %inf = const.f64 inf
+  %neginf = const.f64 -inf
+
+  ; The ordinary answers.
+  %a = fmin %one, %two
+  call @"println<f64>"(%a)
+  %b = fmax %one, %two
+  call @"println<f64>"(%b)
+
+  ; A NaN operand wins, whichever side it is on.
+  %c = fmin %nan, %one
+  call @pn(%c)
+  %d = fmax %nan, %one
+  call @pn(%d)
+  %e = fmin %one, %nan
+  call @pn(%e)
+  %f = fmax %one, %nan
+  call @pn(%f)
+
+  ; The two zeros are ordered, so min keeps -0.0 and max keeps +0.0
+  ; whichever way round they arrive.
+  %g = fmin %negzero, %zero
+  call @pz(%g)
+  %h = fmax %negzero, %zero
+  call @pz(%h)
+  %i = fmin %zero, %negzero
+  call @pz(%i)
+  %j = fmax %zero, %negzero
+  call @pz(%j)
+
+  ; An infinity is ordered normally.
+  %k = fmin %inf, %one
+  call @"println<f64>"(%k)
+  %l = fmax %neginf, %one
+  call @"println<f64>"(%l)
+
+  ; The non-finite constants survive a round trip through the format.
+  call @"println<f64>"(%inf)
+  call @"println<f64>"(%neginf)
+  call @pn(%nan)
+
+  ; copysign is the only way to put a sign onto a zero on purpose.
+  %m = fcopysign %zero, %neginf
+  call @pz(%m)
+  %n = fcopysign %two, %neginf
+  call @"println<f64>"(%n)
+
+  ; sqrt of a negative is NaN rather than an abort: IEEE defines the
+  ; answer, so it is a value.
+  %negone = const.f64 -1.0
+  %o = fsqrt %negone
+  call @pn(%o)
+  %p = fsqrt %inf
+  call @"println<f64>"(%p)
+
+  ; The roundings leave a NaN and an infinity alone.
+  %q = fceil %nan
+  call @pn(%q)
+  %r = ffloor %inf
+  call @"println<f64>"(%r)
+  %s = fnearest %neginf
+  call @"println<f64>"(%s)
+  %t = fabs %neginf
+  call @"println<f64>"(%t)
+  return
+}

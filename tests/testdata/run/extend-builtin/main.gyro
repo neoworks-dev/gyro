@@ -1,0 +1,23 @@
+// Extension methods on built-in types. An extension is an ordinary name:
+// it travels by import, so it is callable here because it was imported,
+// not because it exists somewhere in the program.
+
+import { println } from "stdlib"
+import { shout, first_word, double, clamp, yes_no } from "./text"
+
+fn main() {
+  println("hello".shout())
+  println("the quick fox".first_word())
+
+  var n: i32 = 21
+  println(n.double())
+  println(n.clamp(0, 10))
+  println(n.clamp(30, 40))
+
+  println(true.yes_no())
+  println(false.yes_no())
+
+  // A literal is a receiver like any other value, and extensions chain.
+  println("  padded  ".shout())
+  println(4.double().double())
+}

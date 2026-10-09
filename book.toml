@@ -1,0 +1,10 @@
+[book]
+title = "The Gyro Book"
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "book"
+
+[output.html]
+no-section-label = true

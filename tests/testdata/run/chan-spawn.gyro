@@ -1,0 +1,22 @@
+// Closing a channel ends the range over it, which is what makes the total
+// deterministic without a second synchronization point.
+
+import { println, spawn } from "stdlib"
+
+fn produce(out: chan<i32>, count: i32) {
+  for var i = 0; i < count; i += 1 {
+    out <- i * i
+  }
+  out.close()
+}
+
+fn main() {
+  var values = chan<i32>(16)
+  spawn(fn() produce(values, 5))
+
+  var total: i32 = 0
+  for v in values {
+    total += v
+  }
+  println(total)
+}

@@ -1,0 +1,841 @@
+==================
+imports
+==================
+
+import { println } from "stdlib"
+import { open as fopen } from "fs"
+import * as ast from "ast"
+import "./side-effects"
+
+---
+
+(source_file
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier)
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (import_declaration
+    (identifier)
+    (string_literal
+      (string_content)))
+  (import_declaration
+    (string_literal
+      (string_content))))
+
+==================
+exports
+==================
+
+export { a, b as c }
+export { a } from "./m"
+export * from "./m"
+
+---
+
+(source_file
+  (export_declaration
+    (import_list
+      (import_name
+        (identifier))
+      (import_name
+        (identifier)
+        (identifier))))
+  (export_declaration
+    (import_list
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (export_declaration
+    (string_literal
+      (string_content))))
+
+==================
+methods and associated functions
+==================
+
+export struct Stack {
+  export capacity: i32
+  top: i32
+}
+
+export fn Stack::new(capacity: i32): Stack {
+  return Stack{ capacity: capacity, top: 0 }
+}
+
+fn Stack::is_empty(self): bool {
+  return self.top == 0
+}
+
+fn Stack::push(*self, v: i32) {
+  self.top += 1
+}
+
+fn Pair<T>::swap(*self) {
+}
+
+---
+
+(source_file
+  (struct_declaration
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (struct_literal
+          (named_type
+            (type_identifier))
+          (struct_literal_body
+            (field_initializer
+              (identifier)
+              (identifier))
+            (field_initializer
+              (identifier)
+              (int_literal)))))))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (receiver))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (binary_expression
+          (field_expression
+            (self)
+            (identifier))
+          (int_literal)))))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (receiver)
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block
+      (assignment_statement
+        (field_expression
+          (self)
+          (identifier))
+        (int_literal))))
+  (function_declaration
+    (type_identifier)
+    (type_parameters
+      (type_identifier))
+    (identifier)
+    (parameter_list
+      (receiver))
+    (block)))
+
+==================
+generic function
+==================
+
+fn max<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {
+    return a
+  }
+  return b
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (type_parameters
+      (type_identifier))
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (if_statement
+        (binary_expression
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (identifier)))
+          (int_literal))
+        (block
+          (return_statement
+            (identifier))))
+      (return_statement
+        (identifier)))))
+
+==================
+enum declaration
+==================
+
+export enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Point,
+}
+
+---
+
+(source_file
+  (enum_declaration
+    (type_identifier)
+    (enum_variant_list
+      (enum_variant
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (enum_variant
+        (identifier)
+        (named_type
+          (type_identifier))
+        (named_type
+          (type_identifier)))
+      (enum_variant
+        (identifier)))))
+
+==================
+decorators
+==================
+
+@comptime const FIB_10: i32 = fib(10)
+
+@gpu fn kernel(a: *f32) {}
+
+@concurrent(threads = 8) fn work() {}
+
+---
+
+(source_file
+  (variable_declaration
+    (decorator
+      (identifier))
+    (identifier)
+    (named_type
+      (type_identifier))
+    (call_expression
+      (identifier)
+      (arguments
+        (int_literal))))
+  (function_declaration
+    (decorator
+      (identifier))
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (pointer_type
+          (named_type
+            (type_identifier)))))
+    (block))
+  (function_declaration
+    (decorator
+      (identifier)
+      (arguments
+        (named_argument
+          (identifier)
+          (int_literal))))
+    (identifier)
+    (parameter_list)
+    (block)))
+
+==================
+effect rows
+==================
+
+export fn log(msg: string) !{ io }
+export fn load(p: string): (string, error?) !{ io, alloc }
+fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
+@gpu fn kernel(a: *f32) !{}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (effect_row
+      (identifier)))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (tuple_type
+      (named_type
+        (type_identifier))
+      (optional_type
+        (named_type
+          (type_identifier))))
+    (effect_row
+      (identifier)
+      (identifier)))
+  (function_declaration
+    (identifier)
+    (type_parameters
+      (type_identifier)
+      (type_identifier))
+    (parameter_list
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (function_type
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))
+          (effect_row
+            (identifier)))))
+    (slice_type
+      (named_type
+        (type_identifier)))
+    (effect_row
+      (identifier)))
+  (function_declaration
+    (decorator
+      (identifier))
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (pointer_type
+          (named_type
+            (type_identifier)))))
+    (effect_row)))
+
+==================
+signature-only declarations
+==================
+
+fn Array<T>::new(): Array<T>
+fn find(): *Node?
+
+---
+
+(source_file
+  (function_declaration
+    (type_identifier)
+    (type_parameters
+      (type_identifier))
+    (identifier)
+    (parameter_list)
+    (named_type
+      (type_identifier)
+      (type_arguments
+        (named_type
+          (type_identifier)))))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (optional_type
+      (pointer_type
+        (named_type
+          (type_identifier))))))
+
+==================
+types
+==================
+
+fn f(
+  a: *Node?,
+  b: *(Node?),
+  c: i32[],
+  d: u8[4],
+  e: chan<(string, error?)>,
+  g: fn(i32): bool,
+  h: async fn(): i32,
+  i: ast::Literal,
+  j: (i32, string),
+) {}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (optional_type
+          (pointer_type
+            (named_type
+              (type_identifier)))))
+      (parameter
+        (identifier)
+        (pointer_type
+          (parenthesized_type
+            (optional_type
+              (named_type
+                (type_identifier))))))
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (array_type
+          (named_type
+            (type_identifier))
+          (int_literal)))
+      (parameter
+        (identifier)
+        (chan_type
+          (tuple_type
+            (named_type
+              (type_identifier))
+            (optional_type
+              (named_type
+                (type_identifier))))))
+      (parameter
+        (identifier)
+        (function_type
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (function_type
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (tuple_type
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier)))))
+    (block)))
+
+==================
+tuple returns and destructuring
+==================
+
+fn load(p: string): (string, error?) {
+  return body, null
+}
+
+fn main() {
+  var value, err = load("x")
+  var _, e2 = load("y")
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (tuple_type
+      (named_type
+        (type_identifier))
+      (optional_type
+        (named_type
+          (type_identifier))))
+    (block
+      (return_statement
+        (identifier)
+        (null_literal))))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier)
+        (call_expression
+          (identifier)
+          (arguments
+            (string_literal
+              (string_content)))))
+      (variable_declaration
+        (blank_identifier)
+        (identifier)
+        (call_expression
+          (identifier)
+          (arguments
+            (string_literal
+              (string_content))))))))
+
+==================
+c-style for loop
+==================
+
+fn main() {
+  for var i = 0; i < 10; i += 1 {
+    f(i)
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (for_statement
+        (variable_declaration
+          (identifier)
+          (int_literal))
+        (binary_expression
+          (identifier)
+          (int_literal))
+        (assignment_statement
+          (identifier)
+          (int_literal))
+        (block
+          (expression_statement
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier)))))))))
+
+==================
+defer
+==================
+
+fn main() {
+  var node = alloc<Node>()
+  defer free(node)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (call_expression
+          (identifier)
+          (type_arguments
+            (named_type
+              (type_identifier)))
+          (arguments)))
+      (defer_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))))
+
+==================
+with
+==================
+
+fn main() {
+  with arena.allocator()
+  var node = alloc<Node>()
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (with_statement
+        (call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments)))
+      (variable_declaration
+        (identifier)
+        (call_expression
+          (identifier)
+          (type_arguments
+            (named_type
+              (type_identifier)))
+          (arguments))))))
+
+==================
+default parameter values
+==================
+
+fn f(n: i32 = 4) {}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))
+        (int_literal)))
+    (block)))
+
+==================
+borrows in an effect row
+==================
+
+fn first(xs: i32[]): i32[] !{ &xs }
+fn pick(a: i32[], b: i32[]): i32[] !{ io, &a }
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier)))))
+    (slice_type
+      (named_type
+        (type_identifier)))
+    (effect_row
+      (borrow
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (slice_type
+          (named_type
+            (type_identifier)))))
+    (slice_type
+      (named_type
+        (type_identifier)))
+    (effect_row
+      (identifier)
+      (borrow
+        (identifier)))))
+
+==================
+from is contextual
+==================
+
+import { a } from "m"
+
+fn String::from(text: string): String {
+  var from = text
+  return from
+}
+
+---
+
+(source_file
+  (import_declaration
+    (import_list
+      (import_name
+        (identifier)))
+    (string_literal
+      (string_content)))
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (variable_declaration
+        (identifier)
+        (identifier))
+      (return_statement
+        (identifier)))))
+
+==================
+variadic parameters and spread
+==================
+
+fn sum(xs: ...i32): i32 {
+  return 0
+}
+
+fn show(label: string, rest: ...any) {
+  sum(rest...)
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (int_literal))))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (spread_argument
+              (identifier))))))))
+
+==================
+code pointers
+==================
+
+fn dispatch(
+  cmp: code(i32, i32): i32,
+  hook: code(),
+  maybe: (code(i32): i32)?,
+) {}
+
+fn code(n: i32): i32 { return n }
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (code_type
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (code_type))
+      (parameter
+        (identifier)
+        (optional_type
+          (parenthesized_type
+            (code_type
+              (named_type
+                (type_identifier))
+              (named_type
+                (type_identifier)))))))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (identifier)))))
+
+==================
+union declaration
+==================
+
+export union Value {
+  export i: i64
+  export f: f64
+  bytes: u8[8]
+}
+
+---
+
+(source_file
+  (union_declaration
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (array_type
+          (named_type
+            (type_identifier))
+          (int_literal))))))

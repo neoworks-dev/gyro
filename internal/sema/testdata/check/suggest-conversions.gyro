@@ -1,0 +1,46 @@
+// Mixed operands are the one error whose fix is always a conversion, so
+// the help names the direction that cannot fail.
+
+fn wideningIsSafe(a: i32, b: i64) {
+  var x = a * b                  //~ help: convert the i32 side: `x as i64` widens and always succeeds
+                                 //~^ help: the other direction, `x as i32`, panics when the value does not fit
+}
+
+fn intToFloat(a: i16, b: f64) {
+  var x = a + b                  //~ help: convert the i16 side: `x as f64` widens
+}
+
+// Signedness means neither direction is safe.
+fn signedAndUnsigned(a: i32, b: u32) {
+  var x = a + b                  //~ help: convert one side with `as`: `x as i32` or `x as u32`
+                                 //~^ help: neither direction is a widening
+}
+
+// usize and u64 are one range under two names.
+fn sameRangeTwoNames(a: usize, b: u64) {
+  var x = a + b                  //~ help: both always succeed
+}
+
+// rune is 32 bits wide but not 32 bits deep, so no direction is promised.
+fn runeIsNotAnInteger(a: i32, b: rune) {
+  var x = a + b                  //~ help: convert one side with `as`: `x as i32` or `x as rune`
+}
+
+fn noConversionApplies(a: bool, f: f64, r: rune) {
+  var x = a + a                  //~ help: `as` converts between the numeric types and rune
+  var y = f % f                  //~ help: this operator takes integers; convert first
+  var z = r + r                  //~ help: rune does no arithmetic
+}
+
+// A compound assignment cannot convert its target: the declaration fixes
+// that type, so only the value can move.
+fn compoundConvertsTheValue(b: i64) {
+  var a: i32 = 0
+  a += b                         //~ help: the target is i32, so convert the value: `x as i32`
+                                 //~^ help: that is not a widening, so a value outside i32 panics
+}
+
+fn compoundWidens(b: u32) {
+  var a: i64 = 0
+  a += b                         //~ help: `x as i64` widens and always succeeds
+}

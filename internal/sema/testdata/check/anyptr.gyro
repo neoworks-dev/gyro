@@ -1,0 +1,56 @@
+// anyptr is an address whose target's type has been forgotten. It has
+// identity and `as`, and nothing else: there is nothing at the far end
+// of it that this program is allowed to name.
+
+struct Cell {
+  export value: i32
+}
+
+fn forget(c: *Cell): anyptr {
+  return c as anyptr
+}
+
+fn remember(p: anyptr): *Cell {
+  return p as *Cell
+}
+
+// Forgetting twice is still forgetting.
+fn again(p: anyptr): anyptr {
+  return p as anyptr
+}
+
+fn identity(a: anyptr, b: anyptr): bool {
+  return a == b
+}
+
+// C's `void *` arrives nullable, and null is the absence a pointer has.
+fn absent(p: anyptr?): bool {
+  return p == null
+}
+
+fn noTarget(p: anyptr) {
+  var v = *p                     //~ cannot dereference anyptr; it is not a pointer
+}
+
+fn noArithmetic(p: anyptr, n: i32) {
+  var q = p + n                  //~ operator + needs matching numeric operands, got anyptr and i32
+}
+
+// An address is not a number, and a number is not an address. A pointer
+// that came from arithmetic is the thing this language does not have.
+fn notANumber(n: i64, p: anyptr) {
+  var a = n as anyptr            //~ as converts between numeric types and rune
+  var b = p as i64               //~ as converts between numeric types and rune
+}
+
+// An any promises the concrete type comes back out, and an address that
+// forgot its own has none to give.
+fn notInAnAny(p: anyptr) {
+  var boxed = p as any           //~ an any cannot hold anyptr
+}
+
+// It is still this program's address space, which is exactly what a
+// linked library shares — and `void *` is what half of C's interfaces
+// are written over, so it crosses.
+@extern("c")
+fn keep(p: anyptr) !{}

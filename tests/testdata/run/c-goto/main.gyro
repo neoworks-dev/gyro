@@ -1,0 +1,53 @@
+// A Gyro program driving C code that uses goto.
+//
+// METALS has structured control flow and no jump, so a goto has to
+// become a branch out of, or back to the top of, something that encloses
+// it. C's labels already nest and the two directions want two different
+// wrappers: a label jumped to from earlier gets a `block` around
+// everything before it, and one jumped to from later gets a `loop`
+// around everything from it onwards. Branching out of the first lands
+// where the label is; branching to the second restarts it, which lands
+// in the same place.
+//
+// The three shapes below are what goto is written for in real C — a
+// forward jump to a cleanup label, a backward jump that is a loop, and
+// breaking out of nested loops — and all three are a label in the goto's
+// own statement list or an enclosing one.
+
+import { println } from "stdlib"
+import {
+  acquire_and_release, releases, sum_by_backward_goto,
+  first_pair_multiplying_to, retry_until, skip_a_stage, locals_survive,
+} from "./resource.c"
+
+fn main() {
+  // Failing at each step: what was acquired before the jump, and the
+  // code the cleanup returned with.
+  println(acquire_and_release(1))
+  println(acquire_and_release(2))
+  println(acquire_and_release(0))
+
+  // The cleanup ran once per call, however each call ended.
+  println(releases())
+
+  // A backward goto is a loop: 0 + 1 + ... + 8.
+  println(sum_by_backward_goto(8))
+
+  // Out of two loops at once, which C has no keyword for.
+  println(first_pair_multiplying_to(42))
+  println(first_pair_multiplying_to(97))
+
+  // A label reached from both sides, with both wrappers around it.
+  println(retry_until(0))
+  println(retry_until(1))
+  println(retry_until(3))
+
+  // A jump over one label to the next, which needs the later label's
+  // block to enclose the earlier one's.
+  println(skip_a_stage(1))
+  println(skip_a_stage(2))
+  println(skip_a_stage(3))
+
+  // A local declared before a label is still there after it.
+  println(locals_survive())
+}

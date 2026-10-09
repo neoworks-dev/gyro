@@ -1,0 +1,9 @@
+//gyro:panic double free
+
+import { Array } from "stdlib"
+
+fn main() {
+  var xs = Array<i32>::new()
+  xs.free()
+  xs.free()
+}

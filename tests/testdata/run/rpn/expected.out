@@ -1,0 +1,38 @@
+rpn — reverse Polish, with variables and words. "help" lists them.
+> 49
+> 7
+> (empty)
+> (empty)
+> 49
+> 49
+> 120
+> 120 3.6288e+06
+> 1 0 1
+> 1 1
+> 6.283185307179586
+> saved to /tmp/gyro-rpn-corpus.rpn
+(empty)
+> (empty)
+> : fact dup 1 <= if drop 1 else dup 1 - fact * then ;
+(empty)
+> loaded /tmp/gyro-rpn-corpus.rpn
+(empty)
+> : fact dup 1 <= if drop 1 else dup 1 - fact * then ;
+: sq dup * ;
+(empty)
+> x = 7
+(empty)
+> error: division by zero
+> error: unknown word "nope"
+> 2.718281828459045
+> values    3  -2  1.5   push themselves, and # comments a line
+math      + - * / % ^   min max   pi e
+          neg abs sqrt floor ceil round trunc
+compare   = <> < <= > >=   and or not, answering 1 or 0
+stack     dup drop swap over rot clear depth
+names     >x stores the top in x, x pushes it back
+words     : name body ;   words lists, forget name drops one
+choose    cond if ... else ... then
+session   save path, load path, quit
+2.718281828459045
+> bye

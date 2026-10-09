@@ -1,0 +1,165 @@
+; The six `any` instructions, on the three METALS tiers.
+;
+; Nothing Gyro lowers reaches them yet — its own `any` is a closed enum —
+; so this case is written as IR directly, the way a producer that needed
+; an open dynamic value would emit it. That is the point of the format:
+; a module here is a module whatever wrote it.
+
+module "metals:any-ops"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<f64>"(f64)
+  fn @"println<bool>"(bool)
+  fn @"println<string>"(str)
+}
+
+; A one-field record is one word wide, so the payload could hold it
+; inline. It must not: any.set through one reference has to be visible
+; through every other reference to the same box.
+type %Cell = record { n: i64 }
+type %Mixed = record { label: str, value: any, weight: f64 }
+type %Env = record { base: i64 }
+
+; Narrow fields, which is where the payload's representation shows: an
+; any holds what a field holds, so a boxed i16 is two bytes and reading
+; it back has to widen by its own sign.
+type %Small = record { flag: bool, code: i16, ratio: f32 }
+
+fn @scale(%env: ptr<%Env>, %x: i64) -> i64 {
+  %bp = field.ptr %env, 0
+  %b = load %bp
+  %r = imul %b, %x
+  return %r
+}
+
+fn @negate(%x: i64) -> i64 {
+  %r = neg %x
+  return %r
+}
+
+export fn @main() {
+  ; --- a scalar rides in the payload; the test is a pointer compare ---
+  %f = const.f64 2.5
+  %fa = any.wrap %f
+  %isF = any.is %fa -> f64
+  call @"println<bool>"(%isF)
+  %isI = any.is %fa -> i64
+  call @"println<bool>"(%isI)
+  %fb = any.unwrap %fa -> f64
+  call @"println<f64>"(%fb)
+
+  ; --- anys do not nest, the way optionals do not ---
+  %again = any.wrap %fa
+  %againF = any.unwrap %again -> f64
+  call @"println<f64>"(%againF)
+
+  ; --- a tuple is wider than a word, so it is boxed and copied ---
+  %one = const.i64 1
+  %two = const.i64 2
+  %t = tuple(%one, %two)
+  %ta = any.wrap %t
+  %isT = any.is %ta -> tuple<i64, i64>
+  call @"println<bool>"(%isT)
+  %tb = any.unwrap %ta -> tuple<i64, i64>
+  %t0 = tuple.get %tb, 0
+  %t1 = tuple.get %tb, 1
+  call @"println<i64>"(%t0)
+  call @"println<i64>"(%t1)
+
+  ; --- a string crosses whole ---
+  %s = const.str "text"
+  %sa = any.wrap %s
+  %sb = any.unwrap %sa -> str
+  call @"println<string>"(%sb)
+
+  ; --- a narrow record is shared, and wrapping copies ---
+  %cell = new %Cell
+  %cp = field.ptr %cell, 0
+  store %cp, %one
+  %cv = load %cell
+  %ca = any.wrap %cv
+  %cb = any.wrap %cv
+  %nine = const.i64 9
+  %ninea = any.wrap %nine
+  any.set %ca, "n", %ninea
+  %got = any.get %ca, "n"
+  %gotv = any.unwrap %got -> i64
+  call @"println<i64>"(%gotv)
+  ; %cb boxed its own copy, so it still reads 1.
+  %got2 = any.get %cb, "n"
+  %got2v = any.unwrap %got2 -> i64
+  call @"println<i64>"(%got2v)
+
+  ; --- mixed fields, one of them already an any ---
+  %label = const.str "weighted"
+  %w = const.f64 0.5
+  %m = record %Mixed(%label, %fa, %w)
+  %ma = any.wrap %m
+  %ml = any.get %ma, "label"
+  %mls = any.unwrap %ml -> str
+  call @"println<string>"(%mls)
+  %mv = any.get %ma, "value"
+  %mvf = any.unwrap %mv -> f64
+  call @"println<f64>"(%mvf)
+  %mw = any.get %ma, "weight"
+  %mwf = any.unwrap %mw -> f64
+  call @"println<f64>"(%mwf)
+
+  ; --- narrow fields through the same three instructions ---
+  %flag = const.bool true
+  %code = const.i16 -1000
+  %ratio = const.f32 0.5
+  %sm = record %Small(%flag, %code, %ratio)
+  %sma = any.wrap %sm
+
+  %scode = any.get %sma, "code"
+  %scodev = any.unwrap %scode -> i16
+  %scodew = conv %scodev -> i64
+  call @"println<i64>"(%scodew)
+
+  %newcode = const.i16 -2
+  %newcodea = any.wrap %newcode
+  any.set %sma, "code", %newcodea
+  %scode2 = any.get %sma, "code"
+  %scode2v = any.unwrap %scode2 -> i16
+  %scode2w = conv %scode2v -> i64
+  call @"println<i64>"(%scode2w)
+
+  ; The neighbours are untouched: a narrow write must not spill into the
+  ; field beside it.
+  %sflag = any.get %sma, "flag"
+  %sflagv = any.unwrap %sflag -> bool
+  call @"println<bool>"(%sflagv)
+  %sratio = any.get %sma, "ratio"
+  %sratiov = any.unwrap %sratio -> f32
+  %sratiow = conv %sratiov -> f64
+  call @"println<f64>"(%sratiow)
+
+  ; And the record comes back out whole, with the set visible in it.
+  %smb = any.unwrap %sma -> %Small
+  %smbcode = field.get %smb, 1
+  %smbcodew = conv %smbcode -> i64
+  call @"println<i64>"(%smbcodew)
+
+  ; --- a closure applied through any.call ---
+  %env = new %Env
+  %ep = field.ptr %env, 0
+  %ten = const.i64 10
+  store %ep, %ten
+  %cl = closure @scale, %env
+  %cla = any.wrap %cl
+  %seven = const.i64 7
+  %sevena = any.wrap %seven
+  %res = any.call %cla(%sevena)
+  %resv = any.unwrap %res -> i64
+  call @"println<i64>"(%resv)
+
+  ; --- and a bare function reference, which has no environment ---
+  %nf = fn.ref @negate
+  %nfa = any.wrap %nf
+  %nres = any.call %nfa(%sevena)
+  %nresv = any.unwrap %nres -> i64
+  call @"println<i64>"(%nresv)
+  return
+}

@@ -1,0 +1,181 @@
+// mem. A declaration with no body is a runtime intrinsic; everything with
+// a body is ordinary Gyro over the allocator a function is handed.
+//
+// The model is chapter 4.5: an allocator is a procedure and a data
+// pointer, a function whose row names `alloc` receives the one its caller
+// was using, and `with expr` chooses it for the rest of a block.
+
+import { Array } from "stdlib"
+
+// Mode is what an allocator is asked for. The procedure takes
+// (data, mode, size, align, old, old_size) and answers a block or null.
+export enum Mode {
+  Alloc,
+  Free,
+  FreeAll,
+  Resize,
+}
+
+export struct Allocator {
+  export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+  export data: anyptr?
+}
+
+// allocator is the one this function received. Its row is what makes a
+// function receive one at all.
+export fn allocator(): Allocator !{ alloc }
+
+// size and align answer what C's sizeof and _Alignof would for T.
+export fn size<T>(): usize !{}
+export fn align<T>(): usize !{}
+
+// panic aborts the process with the message, the way an index out of
+// range does.
+export fn panic(message: string) !{}
+
+// The process heap, which every allocator bottoms out in. These carry no
+// row because they are the floor rather than the allocator: heap() wraps
+// them into one.
+export fn raw_alloc(size: usize, align: usize): anyptr? !{}
+export fn raw_free(pointer: anyptr) !{}
+export fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
+export fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
+
+export fn alloc<T>(): *T !{ alloc } {
+  var current = allocator()
+  var block = current.proc(current.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
+  if block == null {
+    panic("allocation of #{size<T>()} bytes failed")
+  }
+  return block as *T
+}
+
+// A call to panic ends the block for the checker, so `if p == null {
+// panic(...) }` narrows p below it, the way a return would.
+
+export fn free<T>(pointer: *T) !{ alloc } {
+  var current = allocator()
+  current.proc(current.data, Mode::Free, 0, 0, pointer as anyptr, size<T>())
+}
+
+// ---------------------------------------------------------------------------
+// The heap
+// ---------------------------------------------------------------------------
+
+fn heap_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
+  match mode {
+    Mode::Alloc: {
+      return raw_alloc(size, align)
+    }
+    Mode::Free: {
+      if old != null {
+        raw_free(old)
+      }
+      return null
+    }
+    Mode::FreeAll: {
+      return null
+    }
+    Mode::Resize: {
+      if old == null {
+        return raw_alloc(size, align)
+      }
+      return raw_resize(old, old_size, size, align)
+    }
+  }
+}
+
+export fn heap(): Allocator !{} {
+  return Allocator{ proc: &heap_proc, data: null }
+}
+
+// ---------------------------------------------------------------------------
+// Arena: one buffer, handed out front to back, released all at once
+// ---------------------------------------------------------------------------
+
+export struct Arena {
+  buffer: Array<u8>
+  capacity: usize
+  used: usize
+}
+
+// new takes the buffer from the allocator current where it is called, so
+// an arena inside an arena is an ordinary thing to build.
+export fn Arena::new(capacity: usize): Arena !{ alloc } {
+  var buffer = Array<u8>::with_capacity(capacity)
+  for i in 0..capacity {
+    buffer.push(0)
+  }
+  return Arena{ buffer: buffer, capacity: capacity, used: 0 }
+}
+
+// take carves the next block out of the buffer, aligned, zeroed, or
+// answers null when the arena is full. It does not grow.
+fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
+  var start = self.used
+  if align > 1 {
+    var over = start % align
+    if over != 0 {
+      start += align - over
+    }
+  }
+  var width = size
+  if width == 0 {
+    width = 1
+  }
+  if start + width > self.capacity {
+    return null
+  }
+  for i in start..start + width {
+    self.buffer.set(i, 0)
+  }
+  self.used = start + width
+  return &self.buffer[start] as anyptr
+}
+
+fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
+  if data == null {
+    return null
+  }
+  var arena = data as *Arena
+  match mode {
+    Mode::Alloc: {
+      return arena.take(size, align)
+    }
+    Mode::Free: {
+      return null
+    }
+    Mode::FreeAll: {
+      arena.used = 0
+      return null
+    }
+    Mode::Resize: {
+      var block = arena.take(size, align)
+      if block == null || old == null {
+        return block
+      }
+      var keep = old_size
+      if size < keep {
+        keep = size
+      }
+      copy_bytes(block, old, keep)
+      return block
+    }
+  }
+}
+
+// allocator is the value to hand to `with`. It points at the arena, so
+// the arena has to stay where it is while the value is in use.
+export fn Arena::allocator(*self): Allocator !{} {
+  return Allocator{ proc: &arena_proc, data: &self as anyptr }
+}
+
+// free_all resets the arena: every block it handed out is gone at once.
+export fn Arena::free_all(*self) !{} {
+  self.used = 0
+}
+
+// free returns the buffer to the allocator new took it from.
+export fn Arena::free(*self) !{ alloc } {
+  self.buffer.free()
+}

@@ -1,0 +1,47 @@
+// A derived representation reaches all the way down: a struct inside a
+// struct, a slice of them, a nullable field, a pointer. A string is raw
+// at the top level and quoted anywhere inside.
+
+import { println } from "stdlib"
+
+struct Inner {
+  label: string
+  count: i32
+}
+
+struct Outer {
+  inner: Inner
+  tag: string
+  missing: i32?
+  present: i32?
+}
+
+enum Wrapped {
+  One(Inner),
+  Pair(i32, string),
+  None,
+}
+
+fn main() {
+  var inner = Inner{ label: "a\"b", count: 2 }
+  println(inner)
+  println("interpolated: #{inner}")
+
+  println(Outer{ inner: inner, tag: "top", missing: null, present: 5 })
+
+  var numbers = [1, 2, 3]
+  println(numbers)
+
+  var texts = ["x", "y"]
+  println(texts)
+
+  println(Wrapped::One(inner))
+  println(Wrapped::Pair(1, "two"))
+  println(Wrapped::None)
+
+  var value: i32 = 7
+  println(&value)
+
+  var nothing: i32? = null
+  println(nothing)
+}

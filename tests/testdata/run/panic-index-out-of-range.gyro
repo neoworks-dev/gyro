@@ -1,0 +1,10 @@
+//gyro:panic index 7 out of range for length 3
+
+import { println } from "stdlib"
+
+fn main() {
+  println("before")
+  var xs = [1, 2, 3]
+  var at: usize = 7
+  println(xs[at])
+}

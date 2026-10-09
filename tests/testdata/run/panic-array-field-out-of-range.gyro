@@ -1,0 +1,25 @@
+// An element reached through the struct's address is still bounds
+// checked. The array's length is in its type, so the check is against a
+// constant, and the abort is the one indexing has always had.
+
+//gyro:panic index 4 out of range for length 4
+
+import { println } from "stdlib"
+
+struct Buf {
+  tag: i32
+  data: i32[4]
+}
+
+fn Buf::get(self, at: usize): i32 {
+  return self.data[at]
+}
+
+fn main() {
+  var buf = Buf{ tag: 7, data: [1, 2, 3, 4] }
+  println("before")
+
+  // 3 is the last element; 4 is one past the end.
+  var at: usize = 4
+  println(buf.get(at))
+}

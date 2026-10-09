@@ -1,0 +1,16 @@
+//gyro:panic va_arg read past the arguments this call was given
+
+// Reading one argument too many is an abort here, on every tier.
+//
+// C cannot say this. A `...` passes no count, so the callee's only
+// source of truth about how many arguments arrived is the format string
+// that lied — and walking off the end reads whatever was on the stack.
+// The pack carries its length, so asking for one more is a question with
+// an answer.
+
+import { println } from "stdlib"
+import { too_few } from "./count.c"
+
+fn main() {
+  println(too_few())
+}
