@@ -91,6 +91,11 @@ A `Format` is not a `string`. Using one where text is wanted, as in
 has two methods for code that writes pieces out itself, `len(self): usize`
 and `piece(self, index: usize): any`.
 
+The holes are evaluated when the literal is, before anything is written, but
+a piece is shown when its turn comes. A `to_string` that prints itself
+therefore prints in the middle of the line, between the pieces on either
+side of it.
+
 Streaming allocates nothing for the format value itself. A piece whose type
 has a `to_string`, or a composite with a derived representation, is still
 rendered to text before it is written, exactly as `println` of that value
