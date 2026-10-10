@@ -165,8 +165,8 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 	}
 	// A method on a type parameter comes from its bounds, and on a trait
 	// value from the trait's method table.
-	if param, ok := recv.(*types.TypeParam); ok {
-		return c.boundCallee(fun, param)
+	if opaque(recv) {
+		return c.boundCallee(fun, recv)
 	}
 	if d, ok := recv.(*types.Dyn); ok {
 		return c.dynCallee(fun, d)
@@ -724,11 +724,11 @@ func (c *checker) builtinMethod(t types.Type, name string) *types.Method {
 			return valueMethod(&types.Func{Params: []types.Type{t}, Required: 1, Result: types.Bool})
 		}
 	case "add", "sub", "mul", "div", "rem":
-		if _, isParam := t.(*types.TypeParam); !isParam && !c.userNamed(t) && capability(operatorKind[name]) {
+		if !opaque(t) && !c.userNamed(t) && capability(operatorKind[name]) {
 			return valueMethod(&types.Func{Params: []types.Type{t}, Required: 1, Result: t})
 		}
 	case "neg":
-		if _, isParam := t.(*types.TypeParam); !isParam && !c.userNamed(t) && capability("Neg") {
+		if !opaque(t) && !c.userNamed(t) && capability("Neg") {
 			return valueMethod(&types.Func{Result: t})
 		}
 	}

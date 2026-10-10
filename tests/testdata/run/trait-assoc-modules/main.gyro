@@ -1,0 +1,22 @@
+import { println } from "stdlib"
+import { Store, value_of, key_of } from "./store"
+import { Slot, Flag } from "./slot"
+
+// The associated types are the ones the impl in the other module gave.
+fn swap_sum<S: Store<Key = i32, Value = i32>>(s: S): i32 {
+  return key_of(s) + value_of(s)
+}
+
+fn main() {
+  var slot = Slot<i32>{ 3, 40 }
+  println(key_of(slot))
+  println(value_of(slot))
+  println(swap_sum(slot))
+
+  var flag = Flag{ on: true }
+  println(key_of(flag))
+  println(value_of(flag))
+
+  var wide = Slot<f64>{ 1, 0.5 }
+  println(value_of(wide))
+}

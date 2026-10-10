@@ -1122,8 +1122,8 @@ The compiler knows these traits by where they are declared (the bundled
 module), not by a name that universe scope would have to hold: they are
 imported like anything else.
 
-Things are intentionally small: a trait takes type parameters but has no
-associated types, the operator traits are `Self -> Self -> Self`, impls are
+Things are intentionally small: a trait takes type parameters and
+associated types; the operator traits are `Self -> Self -> Self`, impls are
 for types the module declares, and an impl cannot ask more of a type's
 parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 
@@ -1160,6 +1160,43 @@ parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 - The bodies an impl brings are checked again for each concrete instance of
   a generic type, between declarations, because an operator or a method table
   reaches them with no call to name them.
+
+### Associated types in traits *(new)*
+
+**Status: done.** A trait declares a type for each impl to fill in, `type Item`,
+optionally bounded, `type Iter: Iterator<Self::Item>`. An impl gives it,
+`type Item = T`. It is written `Self::Item` in the trait and its impls and
+`C::Item` on a parameter bounded by the trait, and a bound can pin it in the
+trait's argument list, `C: Iterable<Item = i32>`, after the positional
+arguments.
+
+Why: a container's element type is determined by the container. With only
+type parameters a bound has to restate it, `fn sum<C: Iterable<T>, T: Add>`,
+and every use of the trait carries a parameter the impl already fixes.
+
+**Rejected.** A second type parameter on the trait. Every impl and every bound
+has to spell it out, so `C: Container<T>` appears wherever `C: Container`
+would say it all, and a type could implement the trait twice with different
+arguments, which leaves `c.first()` without a type until something annotates
+it. With an associated type there is one impl per type and the type follows
+from it. `Iterator<T>` keeps its parameter for now; moving it is a separate
+decision.
+
+**Settled while building it.**
+
+- `type` is contextual, like `move` and `from`: it begins an associated type
+  only as the first word of a member in a trait or impl body. C headers bring
+  in fields called `type`, and `event.type` has to keep working, so it is not
+  a keyword.
+- `C::Item` looks through the bounds of `C` and the traits they require. No
+  bound declaring it, or two, is an error; nothing picks one silently.
+- A pin in a bound makes `C::Item` that type inside the body, and makes the
+  bound hold only for arguments whose impl gave it.
+- A trait with associated types is not a trait value yet: the table would
+  need the type behind the value to say what `Item` is.
+- A pin is only written in a bound or a required trait. An impl names its trait
+  plainly and gives the types in its body.
+- No defaults for an associated type, as a trait has none for its parameters.
 
 ### Trait values are a pointer and a table, and they borrow *(new)*
 
@@ -1210,7 +1247,7 @@ without saying so) stays rejected, for the same reason as duck typing.
 
 The operator traits take and give `Self`. A vector scaled by a number is a
 method. Rust's `Add<Rhs>` with its `Output` would need trait parameters
-with defaults and associated types.
+with defaults, which Gyro does not have.
 
 ### Methods are free-standing### Methods are free-standing `fn Type::name(self)` *(revised)*
 
@@ -1356,9 +1393,9 @@ channels natively; any other type qualifies by implementing
 never be iterated.
 
 The previous rule took any type with a `next` method, or an `iter()` that
-returned one. The `iter()` form is dropped: with no associated types a trait
-has no way to name what `iter` returns, and a collection that hands out an
-iterator is one `fn Bag::iter(self): Walk` away from `for x in bag.iter()`.
+returned one. The `iter()` form was dropped because a trait had no way to
+name what `iter` returns. Associated types can now name it, and issue #5
+brings the form back as a trait, `Iterable`.
 
 ### Printing is derived, opt-in, and overridable *(revised)*
 
@@ -4252,7 +4289,7 @@ and bound imports opaquely; it is deleted.
 | question | why it matters |
 | --- | --- |
 | `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
-| conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; associated types, parameter defaults and a `Trait::method` call syntax are not built either |
+| conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
 | `@comptime` evaluation subset | which operations may run at compile time |
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |

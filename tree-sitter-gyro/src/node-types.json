@@ -422,6 +422,68 @@
     }
   },
   {
+    "type": "associated_type",
+    "named": true,
+    "fields": {
+      "bounds": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bounds",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "associated_type_binding",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "await_expression",
     "named": true,
     "fields": {
@@ -1489,6 +1551,10 @@
       "required": false,
       "types": [
         {
+          "type": "associated_type",
+          "named": true
+        },
+        {
           "type": "function_declaration",
           "named": true
         }
@@ -2349,6 +2415,10 @@
       "required": false,
       "types": [
         {
+          "type": "associated_type",
+          "named": true
+        },
+        {
           "type": "function_declaration",
           "named": true
         }
@@ -2451,6 +2521,10 @@
       "types": [
         {
           "type": "_type",
+          "named": true
+        },
+        {
+          "type": "associated_type_binding",
           "named": true
         },
         {
@@ -3048,6 +3122,10 @@
   {
     "type": "tuple_index",
     "named": true
+  },
+  {
+    "type": "type",
+    "named": false
   },
   {
     "type": "type_identifier",

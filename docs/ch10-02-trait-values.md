@@ -90,7 +90,9 @@ type behind the value. So a trait is usable as `dyn` when every method:
 - has no type parameters of its own
 - does not mention `Self`, other than as its receiver
 
-and the trait itself takes no type parameters. A trait that does not qualify
+and the trait itself takes no type parameters and declares no associated
+types ([chapter 10.1](ch10-01-traits.md)), since the type behind the value
+would have to say what they are. A trait that does not qualify
 is an error where `dyn Trait` is written, naming the method. The capability
 traits — `Eq`, `Ord`, the operators — are not trait values either: they
 are answered by the type at compile time.

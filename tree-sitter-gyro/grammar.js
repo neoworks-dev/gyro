@@ -198,7 +198,7 @@ module.exports = grammar({
       optional(seq(':', $.bounds)),
     ),
 
-    bounds: $ => seq($.named_type, repeat(seq('&', $.named_type))),
+    bounds: $ => seq(alias($._bound, $.named_type), repeat(seq('&', alias($._bound, $.named_type)))),
 
     parameter_list: $ => seq(
       '(',
@@ -292,8 +292,18 @@ module.exports = grammar({
 
     trait_body: $ => seq(
       '{',
-      repeat(choice($.function_declaration, $._terminator)),
+      repeat(choice($.function_declaration, $.associated_type, $._terminator)),
       '}',
+    ),
+
+    // `type Item` in a trait, with bounds as `type Iter: Iterator<Self::Item>`,
+    // and `type Item = T` in an impl. `type` is contextual: it begins a member
+    // only here, and is an ordinary identifier everywhere else.
+    associated_type: $ => seq(
+      'type',
+      field('name', alias($.identifier, $.type_identifier)),
+      optional(seq(':', field('bounds', $.bounds))),
+      optional(seq('=', field('value', $._type))),
     ),
 
     // `impl Trait for Type { ... }`; with no block it asks for the derived
@@ -308,7 +318,7 @@ module.exports = grammar({
 
     impl_body: $ => seq(
       '{',
-      repeat(choice($.function_declaration, $._terminator)),
+      repeat(choice($.function_declaration, $.associated_type, $._terminator)),
       '}',
     ),
 
@@ -833,6 +843,27 @@ module.exports = grammar({
       '<',
       commaSep1(choice($._type, $.int_literal)),
       '>',
+    ),
+
+    // A bound is a named type that may also pin an associated type after
+    // its positional arguments: `C: Container<Item = i32>`. Only a bound
+    // has this form, which keeps `a < b = c` out of its reach.
+    _bound: $ => seq(
+      alias($.identifier, $.type_identifier),
+      optional(alias($._bound_arguments, $.type_arguments)),
+      repeat(seq('::', alias($.identifier, $.type_identifier), optional($.type_arguments))),
+    ),
+
+    _bound_arguments: $ => seq(
+      '<',
+      commaSep1(choice($._type, $.int_literal, $.associated_type_binding)),
+      '>',
+    ),
+
+    associated_type_binding: $ => seq(
+      field('name', alias($.identifier, $.type_identifier)),
+      '=',
+      field('value', $._type),
     ),
 
     pointer_type: $ => prec(TYPE_PREC.pointer, seq('*', $._type)),

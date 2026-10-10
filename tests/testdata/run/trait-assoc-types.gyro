@@ -1,0 +1,80 @@
+// A trait leaves a type for each impl to fill in. A generic bounded by the
+// trait names it C::Item, and it is whatever the argument's impl gave:
+// a type parameter of the implementing type, or a plain type.
+
+import { println } from "stdlib"
+
+trait Container {
+  type Item
+
+  fn first(self): Self::Item
+  fn count(self): usize
+}
+
+struct Box<T> {
+  value: T
+}
+
+struct Range {
+  low: i32
+  high: i32
+}
+
+// The type is filled from the implementing type's own parameter.
+impl Container for Box<T> {
+  type Item = T
+
+  fn first(self): T {
+    return self.value
+  }
+  fn count(self): usize {
+    return 1
+  }
+}
+
+impl Container for Range {
+  type Item = i32
+
+  fn first(self): Self::Item {
+    return self.low
+  }
+  fn count(self): usize {
+    return (self.high - self.low) as usize
+  }
+}
+
+// type is only special at the start of a member, so a field and a local
+// may still be called that.
+struct Event {
+  type: i32
+}
+
+impl Container for Event {
+  type Item = i32
+
+  fn first(self): i32 {
+    var type = self.type
+    return type
+  }
+  fn count(self): usize {
+    return 1
+  }
+}
+
+fn head<C: Container>(c: C): C::Item {
+  return c.first()
+}
+
+fn describe<C: Container>(c: C): usize {
+  var item: C::Item = c.first()
+  return c.count()
+}
+
+fn main() {
+  println(head(Box<i32>{ 7 }))
+  println(head(Box<f64>{ 2.5 }))
+  println(head(Range{ low: 3, high: 9 }))
+  println(head(Event{ type: 12 }))
+  println(describe(Range{ low: 3, high: 9 }))
+  println(describe(Box<bool>{ true }))
+}

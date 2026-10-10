@@ -252,6 +252,11 @@ func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 		for _, super := range d.Supers {
 			idx.indexType(super)
 		}
+		for _, assoc := range d.Assoc {
+			for _, bound := range assoc.Bounds {
+				idx.indexType(bound)
+			}
+		}
 		for _, method := range d.Methods {
 			idx.indexFunc(method, regionStart, regionEnd)
 		}
@@ -261,6 +266,9 @@ func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 		// so only the impl's header is left to anchor here.
 		idx.indexType(d.Trait)
 		idx.indexType(d.For)
+		for _, assoc := range d.Assoc {
+			idx.indexType(assoc.Type)
+		}
 
 	case *ast.StructDecl:
 		start, end := findName(idx.src, d.Offset, d.Name)
@@ -647,6 +655,9 @@ func (idx *index) indexPath(path *ast.Path) {
 		})
 		for _, arg := range segment.Args {
 			idx.indexType(arg)
+		}
+		for _, pin := range segment.Pins {
+			idx.indexType(pin.Type)
 		}
 	}
 }

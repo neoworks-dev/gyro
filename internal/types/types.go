@@ -597,6 +597,9 @@ func Identical(a, b Type) bool {
 	case *Dyn:
 		y, ok := b.(*Dyn)
 		return ok && IdenticalRefs(x.Ref, y.Ref)
+	case *Assoc:
+		y, ok := b.(*Assoc)
+		return ok && x.Name == y.Name && Identical(x.Base, y.Base) && IdenticalRefs(x.Ref, y.Ref)
 	}
 	return false
 }
@@ -645,7 +648,9 @@ type Trait struct {
 	// Methods are the ones this trait declares, in order. Their
 	// signatures are written over Self and Params.
 	Methods []*Method
-	Decl    *ast.TraitDecl
+	// Assoc are the associated types this trait declares, in order.
+	Assoc []*AssocType
+	Decl  *ast.TraitDecl
 	// Kind names the capability the compiler knows the trait as — "Eq",
 	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg" or
 	// "Iterator" — and is empty for every other trait. Such a trait is
@@ -666,13 +671,78 @@ func (t *Trait) MethodNamed(name string) *Method {
 	return nil
 }
 
+// AssocNamed returns the associated type this trait itself declares, or nil.
+func (t *Trait) AssocNamed(name string) *AssocType {
+	for _, assoc := range t.Assoc {
+		if assoc.Name == name {
+			return assoc
+		}
+	}
+	return nil
+}
+
 // TraitRef is a trait applied to its arguments: Iterator<i32>.
 type TraitRef struct {
 	Trait *Trait
 	Args  []Type
+	// Pins fix associated types the trait declares: Iterable<Item = i32>.
+	// They are a requirement of a bound, not part of which trait it is, so
+	// IdenticalRefs does not compare them.
+	Pins []AssocPin
 }
 
-func (r *TraitRef) String() string { return namedString(r.Trait.Name, r.Args) }
+// AssocPin is one `Name = Type` of a bound.
+type AssocPin struct {
+	Name string
+	Type Type
+}
+
+// PinNamed returns the type a reference pins an associated type to, or nil.
+func (r *TraitRef) PinNamed(name string) Type {
+	for _, pin := range r.Pins {
+		if pin.Name == name {
+			return pin.Type
+		}
+	}
+	return nil
+}
+
+// AssocType is a type a trait leaves for each impl to fill in.
+type AssocType struct {
+	Name string
+	// Bounds are what the type has to implement, written over the
+	// trait's Self and parameters.
+	Bounds []*TraitRef
+	Decl   *ast.AssocDecl
+}
+
+// Assoc is an associated type of a type that is not known yet: `C::Item`
+// where C is a type parameter, or a type that is itself associated. Once
+// the base is a concrete type the projection is replaced by what its impl
+// gave, so a value of this type exists only in a generic body that has not
+// been instantiated.
+type Assoc struct {
+	Base Type
+	// Ref is the trait that declares the type, applied to its arguments.
+	Ref  *TraitRef
+	Name string
+}
+
+func (a *Assoc) String() string { return a.Base.String() + "::" + a.Name }
+
+func (r *TraitRef) String() string {
+	if len(r.Pins) == 0 {
+		return namedString(r.Trait.Name, r.Args)
+	}
+	parts := make([]string, 0, len(r.Args)+len(r.Pins))
+	for _, arg := range r.Args {
+		parts = append(parts, arg.String())
+	}
+	for _, pin := range r.Pins {
+		parts = append(parts, pin.Name+" = "+pin.Type.String())
+	}
+	return r.Trait.Name + "<" + strings.Join(parts, ", ") + ">"
+}
 
 // Impl records that a type implements a trait.
 type Impl struct {
@@ -683,13 +753,32 @@ type Impl struct {
 	// Derived marks `impl Eq for Point` with no block: the compiler's
 	// implementation, built from the type's fields.
 	Derived bool
-	Decl    *ast.ImplDecl
+	// Assoc are the types the impl gives for the trait's associated
+	// types, written over the implementing type's own parameters.
+	Assoc []ImplAssoc
+	Decl  *ast.ImplDecl
 	// Owner is the declared type the impl is for.
 	Owner Type
 	// Broken marks an impl that did not meet its trait. What it brings is
 	// not checked further: the defaults would be checked against methods
 	// that are not the trait's, and report the same mistake again.
 	Broken bool
+}
+
+// ImplAssoc is one `type Name = T` of an impl.
+type ImplAssoc struct {
+	Name string
+	Type Type
+}
+
+// AssocNamed returns the type the impl gave, or nil.
+func (i *Impl) AssocNamed(name string) Type {
+	for _, assoc := range i.Assoc {
+		if assoc.Name == name {
+			return assoc.Type
+		}
+	}
+	return nil
 }
 
 // Dyn is `dyn Trait`: a value of an unknown type known by the methods of

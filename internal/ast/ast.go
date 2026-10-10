@@ -309,6 +309,9 @@ type TraitDecl struct {
 	// Supers are the traits every implementer also has to implement.
 	Supers  []Type
 	Methods []*FuncDecl
+	// Assoc are the associated types the trait leaves for each impl to
+	// fill in: `type Item`.
+	Assoc []*AssocDecl
 }
 
 func (t *TraitDecl) Pos() int  { return t.Offset }
@@ -329,10 +332,22 @@ type ImplDecl struct {
 	// Body marks a block, as opposed to the bare form that derives.
 	Body    bool
 	Methods []*FuncDecl
+	// Assoc are the associated types the impl gives: `type Item = T`.
+	Assoc []*AssocDecl
 }
 
 func (i *ImplDecl) Pos() int  { return i.Offset }
 func (i *ImplDecl) declNode() {}
+
+// AssocDecl is an associated type. In a trait it is `type Item`, with bounds
+// when written `type Iter: Iterator<Self::Item>`, and Type is nil. In an impl
+// it is `type Item = T`, with Type set and no bounds.
+type AssocDecl struct {
+	Offset int
+	Name   string
+	Bounds []Type
+	Type   Type
+}
 
 // EnumVariant is one case of an enum.
 type EnumVariant struct {
@@ -543,6 +558,16 @@ type PathSegment struct {
 	Offset int
 	Name   string
 	Args   []Type
+	// Pins are the associated types a bound fixes, written after the
+	// positional arguments: `Iterable<Item = i32>`.
+	Pins []AssocPin
+}
+
+// AssocPin is one `Name = Type` in the argument list of a bound.
+type AssocPin struct {
+	Offset int
+	Name   string
+	Type   Type
 }
 
 func (p *Path) Pos() int  { return p.Offset }

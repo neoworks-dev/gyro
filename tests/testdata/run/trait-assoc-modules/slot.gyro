@@ -1,0 +1,36 @@
+// Another module implements it for a generic type and for a plain one.
+
+import { Store } from "./store"
+
+export struct Slot<V> {
+  export id: i32
+  export held: V
+}
+
+impl Store for Slot<V> {
+  type Key = i32
+  type Value = V
+
+  fn key(self): i32 {
+    return self.id
+  }
+  fn value(self): V {
+    return self.held
+  }
+}
+
+export struct Flag {
+  export on: bool
+}
+
+impl Store for Flag {
+  type Key = bool
+  type Value = bool
+
+  fn key(self): bool {
+    return self.on
+  }
+  fn value(self): Self::Value {
+    return !self.on
+  }
+}
