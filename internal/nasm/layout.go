@@ -228,5 +228,6 @@ var intKinds = map[metals.PrimKind]intKindInfo{
 	metals.U32:   {32, false},
 	metals.U64:   {64, false},
 	metals.Usize: {64, false},
+	metals.Isize: {64, true},
 	metals.Bool:  {8, false},
 }

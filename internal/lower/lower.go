@@ -399,6 +399,8 @@ func (l *lowerer) metalsBasic(t *types.Basic) metals.Type {
 		return metals.TUint64
 	case types.Usize:
 		return metals.TUsize
+	case types.Isize:
+		return metals.TIsize
 	case types.F32:
 		return metals.TF32
 	case types.F64, types.UntypedFloat:

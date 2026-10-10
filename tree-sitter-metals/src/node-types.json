@@ -1335,6 +1335,10 @@
     "named": false
   },
   {
+    "type": "isize",
+    "named": false
+  },
+  {
     "type": "label",
     "named": true
   },

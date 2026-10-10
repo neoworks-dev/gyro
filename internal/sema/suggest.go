@@ -382,7 +382,7 @@ func numericShape(t types.Type) (bits int, signed, isFloat bool) {
 		return 16, true, false
 	case types.I32:
 		return 32, true, false
-	case types.I64:
+	case types.I64, types.Isize:
 		return 64, true, false
 	case types.U8:
 		return 8, false, false

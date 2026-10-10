@@ -316,6 +316,7 @@ func init() {
 	intBounds[types.U32] = bound(32, false)
 	intBounds[types.U64] = bound(64, false)
 	intBounds[types.Usize] = bound(64, false)
+	intBounds[types.Isize] = bound(64, true)
 }
 
 func intFits(value *big.Int, kind types.BasicKind) bool {

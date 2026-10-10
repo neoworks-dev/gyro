@@ -36,6 +36,7 @@ const (
 	U32
 	U64
 	Usize
+	Isize
 	F32
 	F64
 	Bool
@@ -58,6 +59,7 @@ var (
 	TUint32 = &Prim{U32, "u32"}
 	TUint64 = &Prim{U64, "u64"}
 	TUsize  = &Prim{Usize, "usize"}
+	TIsize  = &Prim{Isize, "isize"}
 	TF32    = &Prim{F32, "f32"}
 	TF64    = &Prim{F64, "f64"}
 	TBool   = &Prim{Bool, "bool"}
@@ -69,7 +71,7 @@ var (
 var Prims = map[string]*Prim{
 	"i8": TInt8, "i16": TInt16, "i32": TInt32, "i64": TInt64,
 	"u8": TUint8, "u16": TUint16, "u32": TUint32, "u64": TUint64,
-	"usize": TUsize, "f32": TF32, "f64": TF64,
+	"usize": TUsize, "isize": TIsize, "f32": TF32, "f64": TF64,
 	"bool": TBool, "rune": TRune, "str": TStr,
 }
 
@@ -90,7 +92,7 @@ func PrimWidth(t Type) int {
 		return 2
 	case I32, U32, F32, Rune:
 		return 4
-	case I64, U64, Usize, F64:
+	case I64, U64, Usize, Isize, F64:
 		return 8
 	}
 	return 0

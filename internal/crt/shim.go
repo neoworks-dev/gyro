@@ -414,7 +414,7 @@ func scalarCType(t metals.Type) string {
 		return "int16_t"
 	case metals.I32:
 		return "int32_t"
-	case metals.I64:
+	case metals.I64, metals.Isize:
 		return "int64_t"
 	case metals.U8:
 		return "uint8_t"
