@@ -688,6 +688,24 @@ func TestSliceFromRoundTripsAndVerifies(t *testing.T) {
 `, "slice.from length is usize")
 }
 
+func TestLocRoundTripsAndVerifies(t *testing.T) {
+	roundTrip(t, header+`fn @f() {
+  loc "/src/a b.gyro" 12
+  return
+}
+`)
+	verifyError(t, header+`fn @f() {
+  loc "a.gyro" 0
+  return
+}
+`, "loc lines count from 1")
+	verifyError(t, header+`fn @f() {
+  loc "" 3
+  return
+}
+`, "loc wants a file name")
+}
+
 func TestVerifierChecksPointerErasure(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: i32) {
   %e = ptr.erase %x

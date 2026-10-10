@@ -45,7 +45,7 @@ func Build(module *metals.Module, output string) error {
 		return fmt.Errorf("nasm: %w", err)
 	}
 
-	if err := runTool("nasm", "-felf64", asmPath, "-o", objectPath); err != nil {
+	if err := runTool("nasm", "-g", "-F", "dwarf", "-felf64", asmPath, "-o", objectPath); err != nil {
 		return err
 	}
 

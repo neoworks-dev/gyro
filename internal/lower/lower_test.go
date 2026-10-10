@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gyro-lang/gyro/internal/diag"
@@ -103,6 +105,34 @@ fn main() {
 	for _, want := range []string{`@"util::shout"`, `@"util::Counter::bump"`, `%"util::Counter"`} {
 		if !bytes.Contains([]byte(printed), []byte(want)) {
 			t.Errorf("the module does not mention %s:\n%s", want, printed)
+		}
+	}
+}
+
+// A statement carries the line it was written on into the module, which is
+// what the native backend turns into the line table a debugger reads.
+// Line 6 is the statement `println(2)`; the file is the absolute path, so
+// the debugger can find the source from anywhere.
+func TestStatementsCarryTheirSourceLine(t *testing.T) {
+	dir := t.TempDir()
+	source := `import { println } from "stdlib"
+
+fn main() {
+  println(1)
+
+  println(2)
+}
+`
+	path := filepath.Join(dir, "lines.gyro")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, info := compile(t, path)
+	printed := metals.Print(lowerVerified(t, program, info))
+	for _, line := range []string{"4", "6"} {
+		want := "loc " + strconv.Quote(path) + " " + line + "\n"
+		if !strings.Contains(printed, want) {
+			t.Errorf("the module has no %q:\n%s", want, printed)
 		}
 	}
 }

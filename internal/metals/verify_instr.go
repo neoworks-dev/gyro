@@ -710,6 +710,15 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		state.unreachable = true
 		return nil
 
+	case *Loc:
+		if i.Line < 1 {
+			return fmt.Errorf("loc lines count from 1, not %d", i.Line)
+		}
+		if i.File == "" {
+			return fmt.Errorf("loc wants a file name")
+		}
+		return nil
+
 	case *Abort:
 		state.unreachable = true
 		return nil

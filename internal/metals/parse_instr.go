@@ -609,6 +609,18 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		}
 		return p.line(&Return{}, nil)
 
+	case "loc":
+		file := p.scan.next()
+		if file.kind != tString {
+			return nil, p.errf("loc wants its quoted file name")
+		}
+		line := p.scan.next()
+		n, err := strconv.Atoi(line.text)
+		if line.kind != tNumber || err != nil {
+			return nil, p.errf("loc wants a line number, found %q", line.text)
+		}
+		return p.line(&Loc{File: file.text, Line: n}, nil)
+
 	case "abort":
 		message := p.scan.next()
 		if message.kind != tString {

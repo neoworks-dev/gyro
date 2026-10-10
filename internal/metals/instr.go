@@ -238,6 +238,15 @@ type (
 	// where the length is — and because the abort text is one message
 	// every tier has to word identically.
 	SliceSub struct{ Dst, X, Lo, Hi string }
+	// Loc is `loc "file" N`: the source position of the instructions
+	// that follow it, until the next Loc. It computes nothing and
+	// declares nothing; a consumer that has no use for positions skips
+	// it, and a producer with no source to point at emits none. The
+	// native backend turns it into the line table a debugger reads.
+	Loc struct {
+		File string
+		Line int
+	}
 	// SliceFrom is `%s = slice.from %p, %n`: the slice of n elements that
 	// start where the ptr<T> p points. Nothing can check that n elements
 	// live there, which is why a producer reaches it only from code that
@@ -399,6 +408,7 @@ func (*MakeArray) isInstr()    {}
 func (*Slice) isInstr()        {}
 func (*SliceSub) isInstr()     {}
 func (*SliceFrom) isInstr()    {}
+func (*Loc) isInstr()          {}
 func (*IndexGet) isInstr()     {}
 func (*IndexSet) isInstr()     {}
 func (*IndexPtr) isInstr()     {}
