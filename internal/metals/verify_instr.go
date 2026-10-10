@@ -529,6 +529,28 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, &SliceOf{Elem: pointer.Elem})
 
+	case *Syscall:
+		numberType, err := fv.use(state, i.Number)
+		if err != nil {
+			return err
+		}
+		if !isUsize(numberType) {
+			return fmt.Errorf("syscall number is usize, not %s", numberType)
+		}
+		if len(i.Args) > 6 {
+			return fmt.Errorf("syscall takes at most six arguments, not %d", len(i.Args))
+		}
+		for _, arg := range i.Args {
+			typ, err := fv.use(state, arg)
+			if err != nil {
+				return err
+			}
+			if !isSyscallWord(typ) {
+				return fmt.Errorf("a syscall argument is one word, an integer, bool or pointer, not %s", typ)
+			}
+		}
+		return fv.def(state, i.Dst, TIsize)
+
 	case *SliceSub:
 		typ, err := fv.use(state, i.X)
 		if err != nil {

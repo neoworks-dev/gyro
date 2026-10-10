@@ -1,0 +1,50 @@
+; Linux system calls straight from METALS, with no C library in between.
+;
+; `syscall` hands the kernel a call number and up to six one-word
+; arguments, and answers whatever the kernel answered: zero or more on
+; success, an error number negated on failure. A buffer goes in as the
+; pointer it is, a narrow integer as the word its register already holds,
+; and a null optional pointer as zero.
+
+module "metals:syscall"
+
+import "gyro:rt" {
+  fn @"println<isize>"(isize)
+  fn @"println<bool>"(bool)
+}
+
+export fn @main() {
+  ; write(1, "hi\n", 3). The three bytes are the low ones of a u64, which
+  ; on x86-64 sit first in memory. This runs before anything is printed
+  ; through the runtime, whose output is buffered.
+  %cell = slot u64
+  %bytes = const.u64 682344  ; 0x0a6968: h, i and a newline
+  store %cell, %bytes
+  %buffer = ptr.erase %cell
+  %stdout = const.i32 1
+  %length = const.u8 3
+  %write = const.usize 1
+  %wrote = syscall %write(%stdout, %buffer, %length)
+  call @"println<isize>"(%wrote)
+
+  ; getpid() takes nothing and always succeeds with a positive number.
+  %getpid = const.usize 39
+  %pid = syscall %getpid()
+  %zero = const.isize 0
+  %positive = gt %pid, %zero
+  call @"println<bool>"(%positive)
+
+  ; close(-1) fails with EBADF, which is 9.
+  %close = const.usize 3
+  %bad = const.i32 -1
+  %closed = syscall %close(%bad)
+  call @"println<isize>"(%closed)
+
+  ; write(1, null, 0) writes nothing and succeeds: a null pointer is the
+  ; zero word.
+  %nothing = const.null opt<anyptr>
+  %none = const.u64 0
+  %empty = syscall %write(%stdout, %nothing, %none)
+  call @"println<isize>"(%empty)
+  return
+}

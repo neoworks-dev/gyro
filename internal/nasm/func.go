@@ -802,6 +802,20 @@ func (f *frame) instr(instr metals.Instr) {
 	case *metals.SliceSub:
 		f.emitSliceSub(i)
 
+	case *metals.Syscall:
+		// Linux takes the number in rax and the arguments in rdi, rsi,
+		// rdx, r10, r8 and r9, and the instruction overwrites rcx and
+		// r11. None of them is ever a register's home (only the
+		// callee-saved ones are), so every operand loads straight from
+		// where it lives. A register holds a scalar widened to a qword,
+		// so a narrow integer is already the word the kernel reads.
+		for index, arg := range i.Args {
+			g.ins("mov %s, %s", syscallRegs[index], f.slot(arg))
+		}
+		g.ins("mov rax, %s", f.slot(i.Number))
+		g.ins("syscall")
+		g.ins("mov %s, rax", f.slot(i.Dst))
+
 	case *metals.IndexGet:
 		element := f.indexedElement(i.X, i.Index)
 		f.loadMember(f.slot(i.Dst), element, f.typeOf(i.Dst))

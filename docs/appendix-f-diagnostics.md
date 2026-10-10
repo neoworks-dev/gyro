@@ -92,6 +92,7 @@ A sample, so the ranges have a shape:
 | E0533 | `C::Item` where two bounds of `C` both declare `Item` |
 | E0534 | a pinned `Item = X` that the trait does not allow |
 | E0535 | a type argument whose associated type is not the pinned one |
+| E0536 | a system call argument that is not an integer, a bool or a pointer |
 | E0517 | an error result dropped |
 | E0521 | a match over an enum that is not exhaustive |
 | E0522 | a read of a variable no path has written |

@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strings"
+
 	"strconv"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -46,6 +48,9 @@ func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 	if target.method != nil {
 		t := c.checkCall(call, target)
 		c.noteCall(call, target)
+		if strings.HasPrefix(c.intrinsicCall(call), "syscall") {
+			c.checkSyscallArgs(call)
+		}
 		return t
 	}
 	if target.fnType != nil {
@@ -64,6 +69,33 @@ func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 		}
 	}
 	return types.Unknown
+}
+
+// checkSyscallArgs holds a system call's arguments to what one register
+// carries: an integer, a bool, or a pointer of any kind. The first argument
+// is the call number, which the signature already types.
+func (c *checker) checkSyscallArgs(call *ast.CallExpr) {
+	for _, arg := range call.Args[min(1, len(call.Args)):] {
+		t := c.recordedType(arg.Value)
+		if t == nil || flexible(t) || isSyscallWord(types.Default(t)) {
+			continue
+		}
+		c.errorf(arg.Value.Pos(), "%s cannot be a system call argument; it takes an integer, a bool or a pointer", t)
+	}
+}
+
+// isSyscallWord is a type the kernel reads from one register.
+func isSyscallWord(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Pointer:
+		return true
+	case *types.Optional:
+		if _, ok := t.Elem.(*types.Pointer); ok {
+			return true
+		}
+		return t.Elem == types.AnyPtr
+	}
+	return types.IsInteger(t) || t == types.Bool || t == types.AnyPtr
 }
 
 // ---------------------------------------------------------------------------

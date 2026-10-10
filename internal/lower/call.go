@@ -428,12 +428,26 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 }
 
 // prepareUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
-// itself: putting a type back on an address, and a closure's environment.
+// itself: putting a type back on an address, a closure's environment, and
+// a system call.
 // The rest of the module lowers as ordinary natives.
 func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
 	case "env_of", "with_env":
 		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
+	case "syscall0", "syscall1", "syscall2", "syscall3", "syscall4", "syscall5", "syscall6":
+		// Each argument lowers at the type its own parameter was bound to,
+		// so a pointer stays a pointer all the way into the instruction.
+		number := f.lowerExpr(call.Args[0].Value, types.USize)
+		var args []string
+		for index, arg := range call.Args[1:] {
+			args = append(args, f.lowerExpr(arg.Value, resolved.Sig.Params[index+1]))
+		}
+		return func() string {
+			out := f.newReg("sys")
+			f.emit(&metals.Syscall{Dst: out, Number: number, Args: args})
+			return out
+		}
 	case "slice_from_raw":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

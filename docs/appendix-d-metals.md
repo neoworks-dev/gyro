@@ -641,6 +641,30 @@ time without anything travelling beside it. `code.ref` refuses an `async`
 function: an async function is started rather than called, so its address
 is not something `call.indirect` could reach.
 
+### System calls
+
+```metals
+%r = syscall %n(%fd, %buf, %len)   ; Linux x86-64; %n is a usize -> isize
+```
+
+`syscall` asks the Linux kernel for call number `%n` with up to six
+arguments, and produces the kernel's raw answer as an `isize`: zero or more on
+success, an error number negated on failure. Each argument is one word: an
+integer of any width, a `bool`, a `ptr<T>`, an `anyptr`, or an optional of
+one of those two whose null is the zero word. The kernel reads every
+argument from a register, so a float, a `str`, a slice and any aggregate are
+refused by the verifier rather than flattened.
+
+The arguments keep their types. A buffer is passed as the pointer it is,
+not as an integer made from it, so the instruction never turns an address
+into a number in the format, and a producer that tracks where pointers
+came from still sees every one the kernel is handed.
+
+It is Linux's interface and nothing else's. Linux promises that its call
+numbers and registers do not change, which is what makes calling it without
+a C library sound; the other systems promise only their C libraries, and are
+reached through them.
+
 ### Control flow
 
 ```metals

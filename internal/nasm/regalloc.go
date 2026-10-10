@@ -419,6 +419,8 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{}
 	case *metals.SliceFrom:
 		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Len}}
+	case *metals.Syscall:
+		return roles{defs: []string{i.Dst}, uses: append([]string{i.Number}, i.Args...)}
 	case *metals.SliceSub:
 		// A slice is two words, so neither operand nor result is a
 		// candidate for a machine register in the first place; only the

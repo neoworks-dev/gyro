@@ -292,6 +292,8 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = len %s", reg(i.Dst), reg(i.X))
 	case *StrConcat:
 		p.printf("%s = str.concat %s, %s", reg(i.Dst), reg(i.A), reg(i.B))
+	case *Syscall:
+		p.printf("%s = syscall %s(%s)", reg(i.Dst), reg(i.Number), regs(i.Args))
 	case *Call:
 		if i.Dst == "" {
 			p.printf("call %s(%s)", at(i.Callee), regs(i.Args))

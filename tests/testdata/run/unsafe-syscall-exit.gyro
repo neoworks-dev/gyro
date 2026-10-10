@@ -1,0 +1,20 @@
+// exit_group from Gyro ends the process on the spot, with the status it is
+// given. Nothing runs after it, the runtime's buffered output included,
+// which is why the line below is written with a system call as well.
+//
+//gyro:exit 7
+
+import { syscall1, syscall3 } from "unsafe"
+
+const SYS_WRITE: usize = 1
+const SYS_EXIT_GROUP: usize = 231
+
+safe fn leave(bytes: u8[], status: i32) {
+  var _ = syscall3(SYS_WRITE, 1, &bytes[0], bytes.len())
+  var _ = syscall1(SYS_EXIT_GROUP, status)
+}
+
+fn main() {
+  var bye: u8[4] = [98, 121, 101, 10]
+  leave(bye, 7)
+}

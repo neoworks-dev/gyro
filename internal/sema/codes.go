@@ -107,6 +107,7 @@ var codes = map[string]diag.Code{
 	"%s as %s needs a pointer to the value, not %s":                                                          diag.EDynConversion,
 	"operator %s orders two values of one type, not %s and %s":                                               diag.EBadOperands,
 	"operator %s does not apply to %s":                                                                       diag.EBadOperands,
+	"%s cannot be a system call argument; it takes an integer, a bool or a pointer":                          diag.ESyscallArgument,
 
 	// Members
 	"%s has no field or method %s":                 diag.ENoSuchMember,

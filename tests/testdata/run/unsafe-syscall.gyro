@@ -1,0 +1,47 @@
+// System calls straight from Gyro, with no C library in between.
+//
+// Each wrapper below is one line over a syscallN from `unsafe`, and each
+// argument keeps its type: the buffer goes in as the pointer to its first
+// byte, the descriptor as an i32, an absent buffer as a null anyptr?. The
+// kernel's answer comes back raw, so a failure is an error number, negated.
+//
+// The write happens before anything is printed with println, whose output
+// the runtime buffers until the program ends.
+
+import { println } from "stdlib"
+import { syscall0, syscall1, syscall3 } from "unsafe"
+
+const SYS_WRITE: usize = 1
+const SYS_CLOSE: usize = 3
+const SYS_GETPID: usize = 39
+
+safe fn write(fd: i32, bytes: u8[]): isize {
+  if bytes.len() == 0 {
+    return 0
+  }
+  return syscall3(SYS_WRITE, fd, &bytes[0], bytes.len())
+}
+
+safe fn close(fd: i32): isize {
+  return syscall1(SYS_CLOSE, fd)
+}
+
+safe fn pid(): isize {
+  return syscall0(SYS_GETPID)
+}
+
+safe fn write_nothing(fd: i32): isize {
+  var nowhere: anyptr? = null
+  return syscall3(SYS_WRITE, fd, nowhere, 0)
+}
+
+fn main() {
+  var greeting: u8[6] = [104, 101, 108, 108, 111, 10]
+  var wrote = write(1, greeting)
+
+  println(wrote)
+  println(pid() > 0)
+  // There is no descriptor -1, so the kernel answers EBADF, which is 9.
+  println(close(-1))
+  println(write_nothing(1))
+}
