@@ -1,0 +1,10 @@
+open /tmp: is a directory
+true
+0
+read /tmp: is a directory
+true
+0
+open /tmp/gyro-fs-more-errors.txt: not a directory
+true
+false
+remove /tmp/gyro-fs-more-errors.txt: no such file or directory

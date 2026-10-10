@@ -1,0 +1,17 @@
+// An Array is a handle to a header that outlives free, so a second free
+// and a read after free are caught rather than read through.
+
+//gyro:panic use after free of an Array
+
+import { println, Array } from "stdlib"
+import { heap } from "mem"
+
+fn main() {
+    var xs = Array<i32>::new(heap())
+    xs.push(1)
+    xs.push(2)
+    println(xs.len())
+    xs.free()
+    println("freed")
+    println(xs.len())
+}

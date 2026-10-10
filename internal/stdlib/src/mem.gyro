@@ -9,7 +9,8 @@
 // use it are safe fns: each vouches that what it hands out is a block of the
 // size and alignment asked for, or null, and that nothing else gets through.
 
-import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, with_env } from "unsafe"
+import { shortest } from "float"
+import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, text_bytes, text_seal, text_size, with_env } from "unsafe"
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -214,17 +215,18 @@ fn show(piece: any): string !{}
 // Formatting into an allocator
 // ---------------------------------------------------------------------------
 
-// A string is a header followed by its bytes in one block, and the runtime
-// owns that layout: text_size says how big the block for a given length is,
-// text_write copies a string in at a byte offset, and text_seal stamps the
-// length on and answers the block as a string.
-fn text_size(len: usize): usize !{}
-fn text_write(block: anyptr, at: usize, text: string) !{}
-fn text_seal(block: anyptr, len: usize): string !{}
+// text_write copies a string into a block of text_size bytes, at a byte
+// offset into the text.
+safe fn text_write(block: anyptr, at: usize, text: string) !{} {
+    var bytes = text_bytes(text)
+    if bytes.len() > 0 {
+        copy_bytes(offset(block, text_size(0) + at), &bytes[0] as anyptr, bytes.len())
+    }
+}
 
 // block_for answers a block holding a string of `to` bytes, grown from one
 // of `from` bytes when there is one.
-fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
+safe fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
     if old == null {
         var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
         if fresh == null {
@@ -242,7 +244,7 @@ fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
 // format shows each piece of a Format the way println would and joins them
 // into a string whose bytes come from `a`. The block doubles as the text
 // grows, since the length is not known until the last piece is shown.
-export fn format(a: Allocator, value: Format): string !{ &a } {
+export safe fn format(a: Allocator, value: Format): string !{ &a } {
     var capacity: usize = 64
     var block = block_for(a, null, 0, capacity)
     var used: usize = 0
@@ -261,6 +263,245 @@ export fn format(a: Allocator, value: Format): string !{ &a } {
         used = needed
     }
     return text_seal(block, used)
+}
+
+// ---------------------------------------------------------------------------
+// The leaves of rendering, comparing and hashing
+//
+// Lowering reaches these for the scalar at the bottom of a value: it widens
+// the number to the type each takes, so every width shares one body, and
+// calls them under the name of the width it started from. Nothing here is
+// for a program to call but quote; the rest are plain functions only because
+// lowering finds them by name. They live here because mem is loaded
+// whenever anything is shown, and they build their text from the heap
+// without an Array, which mem cannot import.
+// ---------------------------------------------------------------------------
+
+// heap_text is a block from the heap for a string of `len` bytes.
+safe fn heap_text(len: usize): anyptr !{} {
+    var a = heap()
+    var block = a.proc(a.data, Mode::Alloc, text_size(len + 1), 8, null, 0)
+    if block == null {
+        panic("allocation of a string failed")
+    }
+    return block
+}
+
+safe fn put_byte(block: anyptr, at: usize, byte: u8) !{} {
+    *cast<u8>(offset(block, text_size(0) + at)) = byte
+}
+
+// digit_count is how many decimal digits n takes.
+fn digit_count(n: u64): usize !{} {
+    var count: usize = 1
+    var rest = n
+    while rest >= 10 {
+        rest /= 10
+        count += 1
+    }
+    return count
+}
+
+// put_digits writes n in decimal ending just before `end`.
+safe fn put_digits(block: anyptr, end: usize, n: u64) !{} {
+    var at = end
+    var rest = n
+    while rest > 0 || at == end {
+        at -= 1
+        put_byte(block, at, 48 + (rest % 10) as u8)
+        rest /= 10
+    }
+}
+
+safe fn str_uint(v: u64): string !{} {
+    var count = digit_count(v)
+    var block = heap_text(count)
+    put_digits(block, count, v)
+    return text_seal(block, count)
+}
+
+// str_int writes the magnitude of a negative number as one less than it
+// is, plus one, so that the most negative value has a magnitude to write.
+safe fn str_int(v: i64): string !{} {
+    if v >= 0 {
+        return str_uint(v as u64)
+    }
+    var magnitude = ((0 - (v + 1)) as u64) + 1
+    var count = digit_count(magnitude)
+    var block = heap_text(count + 1)
+    put_byte(block, 0, 45)
+    put_digits(block, count + 1, magnitude)
+    return text_seal(block, count + 1)
+}
+
+fn str_bool(v: bool): string !{} {
+    if v {
+        return "true"
+    }
+    return "false"
+}
+
+// str_rune encodes the code point as UTF-8; a surrogate or a value past
+// U+10FFFF is U+FFFD.
+safe fn str_rune(v: rune): string !{} {
+    var point = v as u32
+    if point > 1114111 || (point >= 55296 && point <= 57343) {
+        point = 65533
+    }
+    var count: usize = 4
+    if point < 128 {
+        count = 1
+    } elif point < 2048 {
+        count = 2
+    } elif point < 65536 {
+        count = 3
+    }
+    var block = heap_text(count)
+    if count == 1 {
+        put_byte(block, 0, point as u8)
+    } elif count == 2 {
+        put_byte(block, 0, (192 | (point >> 6)) as u8)
+        put_byte(block, 1, (128 | (point & 63)) as u8)
+    } elif count == 3 {
+        put_byte(block, 0, (224 | (point >> 12)) as u8)
+        put_byte(block, 1, (128 | ((point >> 6) & 63)) as u8)
+        put_byte(block, 2, (128 | (point & 63)) as u8)
+    } else {
+        put_byte(block, 0, (240 | (point >> 18)) as u8)
+        put_byte(block, 1, (128 | ((point >> 12) & 63)) as u8)
+        put_byte(block, 2, (128 | ((point >> 6) & 63)) as u8)
+        put_byte(block, 3, (128 | (point & 63)) as u8)
+    }
+    return text_seal(block, count)
+}
+
+fn str_float(v: f64): string !{} {
+    return shortest(v)
+}
+
+// hex_digit is the lowercase digit for a value below sixteen.
+fn hex_digit(value: u8): u8 {
+    if value < 10 {
+        return 48 + value
+    }
+    return 87 + value
+}
+
+// quoted_width is how many bytes a byte takes once quoted: two for an
+// escape with a letter, four for \xNN, one for itself.
+fn quoted_width(byte: u8): usize {
+    if byte == 34 || byte == 92 || byte == 10 || byte == 13 || byte == 9 {
+        return 2
+    }
+    if byte < 32 || byte == 127 {
+        return 4
+    }
+    return 1
+}
+
+// quote is the text between double quotes, the way `println` shows a
+// string inside a composite: a quote, a backslash, a newline, a return and
+// a tab are escaped with a backslash, any other control byte is \xNN, and
+// everything else, UTF-8 included, passes through. The block comes from a.
+export safe fn quote(a: Allocator, text: string): string !{ &a } {
+    var bytes = text_bytes(text)
+    var width: usize = 2
+    for byte in bytes {
+        width += quoted_width(byte)
+    }
+    var block = a.proc(a.data, Mode::Alloc, text_size(width + 1), 8, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{width} bytes failed"))
+    }
+    var at: usize = 0
+    put_byte(block, at, 34)
+    at += 1
+    for byte in bytes {
+        var kind = quoted_width(byte)
+        if kind == 1 {
+            put_byte(block, at, byte)
+        } else {
+            put_byte(block, at, 92)
+            if kind == 4 {
+                put_byte(block, at + 1, 120)
+                put_byte(block, at + 2, hex_digit(byte >> 4))
+                put_byte(block, at + 3, hex_digit(byte & 15))
+            } elif byte == 10 {
+                put_byte(block, at + 1, 110)
+            } elif byte == 13 {
+                put_byte(block, at + 1, 114)
+            } elif byte == 9 {
+                put_byte(block, at + 1, 116)
+            } else {
+                put_byte(block, at + 1, byte)
+            }
+        }
+        at += kind
+    }
+    put_byte(block, at, 34)
+    return text_seal(block, width)
+}
+
+// str_str is a string shown inside a composite, which quotes it.
+fn str_str(v: string): string !{} {
+    return quote(heap(), v)
+}
+
+// compare_text orders strings bytewise: the shorter loses when it is a
+// prefix of the longer one.
+safe fn compare_text(a: string, b: string): i32 !{} {
+    var left = text_bytes(a)
+    var right = text_bytes(b)
+    var shared = left.len()
+    if right.len() < shared {
+        shared = right.len()
+    }
+    for var i: usize = 0; i < shared; i += 1 {
+        if left[i] < right[i] {
+            return -1
+        }
+        if left[i] > right[i] {
+            return 1
+        }
+    }
+    if left.len() < right.len() {
+        return -1
+    }
+    if left.len() > right.len() {
+        return 1
+    }
+    return 0
+}
+
+// hash_word is the splitmix64 finalizer: an avalanche over one word, so
+// small integers do not land in neighbouring buckets.
+fn hash_word(x: u64): u64 !{} {
+    var h = x
+    h = h ^ (h >> 30)
+    h = h *% 0xbf58476d1ce4e5b9
+    h = h ^ (h >> 27)
+    h = h *% 0x94d049bb133111eb
+    h = h ^ (h >> 31)
+    return h
+}
+
+// hash_float hashes the bits of the number, with the two zeros folded
+// together because they are equal.
+safe fn hash_float(v: f64): u64 !{} {
+    var held = v
+    if held == 0.0 {
+        held = 0.0
+    }
+    return hash_word(*cast<u64>(&held as anyptr))
+}
+
+// hash_text is FNV-1a over the bytes.
+safe fn hash_text(v: string): u64 !{} {
+    var h: u64 = 0xcbf29ce484222325
+    for byte in text_bytes(v) {
+        h = (h ^ (byte as u64)) *% 0x100000001b3
+    }
+    return h
 }
 
 // ---------------------------------------------------------------------------

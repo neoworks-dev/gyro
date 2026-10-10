@@ -56,6 +56,16 @@ From `stdlib`:
 Each is generic over one value bounded by `Print`, so `println` takes
 anything printable — a `Format` included.
 
+**Standard output is buffered, and the order is kept.** A print appends to
+a block, and the block is written out when it fills, when `main` returns,
+when the program panics or calls `os::exit`, before the program waits on
+standard input, before anything is printed to standard error, and before a
+call into a C library. What a program prints therefore appears in the order
+it printed it, on one stream or across two, and none of it is lost. On a
+terminal the block is also written at each newline, as C's `stdio` does.
+Standard error is written as it is printed. Printing a number writes its
+digits straight into the block, so it allocates nothing.
+
 ## Interpolation
 
 `#{expr}` embeds arbitrary Gyro in a string literal, showing the result the

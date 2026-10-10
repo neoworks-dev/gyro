@@ -3750,6 +3750,142 @@ unpack every argument at run time. **Rejected: inline assembly.** It would
 reach the same instruction, but it is a far larger unsafe surface than
 seven functions, and nothing else needs it yet.
 
+### The standard library is Gyro over `sys` *(new)*
+
+**Status: decided, in progress (#136).** The pure parts of the runtime moved
+out of `rt.c` into the bundled modules, and `rt.c` shrank from 1,708 lines to
+about 950. What moved, and the choices that were open:
+
+**`Array<T>` is a handle over a header, written in Gyro.** It is a struct
+with one field, a pointer to a header holding the buffer, the length, the
+capacity, the first-growth hint, a freed flag and the allocator. A copy of the
+value is the same array, which `Map` and every container built on `Array`
+rely on. The header stays after `free`, which is how a second `free` and a
+use after `free` are caught. `pop` on an empty array answers an element read
+from a block the allocator zero-filled, because Gyro has no value to put
+there. `xs[i]` and `xs[a..b]` still lower through `at` and `slice`, which
+are now ordinary functions lowering calls by name. Rejected: keeping the
+array an opaque handle with Gyro bodies, which METALS cannot express, since
+a `handle` converts to nothing; and a value-type array holding its own
+fields, which would stop `bucket.push(x)` on a copy from reaching the map.
+The cost is real: the accessors are calls the backend cannot inline, and
+three array-heavy cases of the benchmark suite run 15 to 35 percent slower
+than they did over the C `Array`, as the last section of this entry gives.
+Two general improvements to generated code paid for most of it: a record
+parameter the body only reads is no longer copied into a slot in the
+prologue, and the assembler's peephole pass lets an instruction that
+reloads a value the one before it stored take the register instead.
+
+**Integers are read by width, in any radix.** `to_i8` through `to_usize`
+take `(text, radix = 10)`; `to_i32(text)` keeps working. A value outside the
+width is an error, never wrapped, and the message tells the two refusals
+apart: `"abc" is not an i32` and `"300" is out of range for u8`. The radix
+runs from 2 to 36, letters in either case, and a radix outside that is a
+bug in the caller and panics. There is no prefix, separator or sign on an
+unsigned type except `-0`. Rejected: base 0 with `0x` and `0b` prefixes,
+which makes the radix a property of the text; one `to_i64` and `to_u64` with
+the caller narrowing, which loses the width in the message.
+
+**Floats are printed and read in Gyro, exactly.** `float.write` is
+Burger and Dybvig's free-format algorithm over big naturals in 32-bit limbs:
+the shortest digits that read back as the same double, the nearest of those,
+and the even digit on an exact tie, which is what Go's `strconv` and the
+printf loop it replaces do. `float.parse` reads decimal text and rounds once,
+to nearest with ties to even, whatever the length, with a fast path through
+one multiplication when the digits and the power of ten are both exact.
+`to_f64` is an error for a value that overflows and for one that falls
+into the subnormals or to zero and loses digits, as `strtod` with `ERANGE`
+was; `5e-324` is therefore out of range, as it was. It accepts a sign,
+digits, a point, an exponent, and `inf`, `infinity` and `nan` in either case.
+It does not accept hexadecimal floats; nothing in the corpus read one.
+Rejected: Ryu or Grisu, whose tables are most of the code and whose gain
+is speed no program here needs; and the existing `cjson/dtoa.gyro` loop of
+`%.Ne` and a read-back, which needs a correct reader first.
+
+**The leaves are Gyro functions, reached through a wrapper.** A number
+shown, a string compared, a word hashed and a scalar printed are answered by
+functions in `mem` and `stdlib`. Lowering still names them by the width the
+call started from, `str<i8>` or `hash<u16>`, and defines that name as a
+wrapper that widens the argument and calls the one body, so a call site and a
+hand-written METALS import see the same name. They live in `mem` because
+`mem` is loaded whenever anything is shown, and build text without an
+`Array`, which `mem` cannot import. Rejected: loading `stdlib` into every
+program, which changes what every tool sees of every program to save one
+module lookup.
+
+**Standard output is buffered in Gyro.** A print appends to a 32 KiB block.
+The block is written when it fills, when `main` returns, on a panic, in
+`os::exit`, before a read of standard input, before a write to standard
+error, and before a call into a C library, and on a terminal at each
+newline. The last three are what keep the order of what is printed: the
+generated FFI shim calls the flush hook before every C function, and the C
+runtime makes the C library's own `stdout` unbuffered, so `puts` and
+`println` still share one stdout in the order they ran. The hook is a
+function pointer Gyro registers the first time it prints, which is the one
+piece of C the buffer needs until the freestanding entry exists (#139).
+Standard error is written as it is printed. The `gyro:rt` printing
+functions that hand-written METALS calls stay in C: they print through
+the same flush, but nothing in the toolchain can give a METALS file a Gyro
+function to import, so for a producer that is not Gyro they are the contract.
+Rejected: writing through on every statement, which is correct and costs a
+system call a line; buffering in the C library, which was the point of
+leaving it; and flushing at every call into C only when the program imports
+one, which needs a flag the runtime cannot see.
+
+**The environment comes from `/proc/self/environ`.** It is the block the
+kernel handed the process, read by `open`, `read` and `close` like any file,
+so `os::env` needs nothing from C. A variable a C library sets afterwards
+is not in it. Arguments still come from the C entry point, which builds the
+slice `main` is given, until the freestanding `_start` exists.
+
+**`os::exit` is `exit_group`.** It flushes standard output and leaves
+through the kernel, so a C library's exit handlers and the buffers of the
+files it opened do not run. Rejected: calling libc's `exit` for them, which
+is the dependency this removes.
+
+**The float intrinsics and float to integer conversions are emitted in
+line.** `sqrtsd`, `roundsd` for ceil, floor, trunc and nearest, a sign-bit
+splice for abs and copysign, and a compare-and-branch for min and max with
+NaN propagating and `-0.0` below `+0.0`; the conversions use `cvttsd2si`
+with the range check against the abort the integer conversions already
+have. `roundsd` is SSE4.1, which every x86-64 machine made since 2008 has.
+Rejected: calls into libm and the runtime, which put C under the METALS
+instructions that are supposed to be the machine's own.
+
+**A record the body only reads stays a value.** Lowering used to copy every
+by-value record parameter into a slot so that its fields could be assigned.
+It now does so only when the body may change the record or take its address:
+a field or element assigned through the name, a narrowing that could be
+written through, a call with a `*self` method on it, `&` of it or of a part,
+or any mention inside a closure. The analysis is syntactic and errs towards
+a slot. Rejected: an inliner over METALS, which is the bigger lever and a
+bigger risk than this change needed.
+
+**The assembler forwards a stored register to the next load.** Every METALS
+register has a frame slot and every instruction stores its result there, so
+the instruction after it loads the value back and waits on the store.
+`forwardStores` rewrites a load, or a `cmp` or arithmetic operand, that reads
+the slot the previous instruction stored a register to, to read the
+register. The store stays, so a later reader of the slot is unaffected.
+This is where the benchmark suite got faster than it was before the runtime
+moved: `md4c` 402 to 261 ms, `regex` 491 to 398, `loop-index` 102 to 78.
+
+**`sys` is a bundled module.** The system call numbers, the flags, `open`,
+`read`, `write_all`, `unlink`, `access`, and the sentence for an error
+number, spelled as `strerror` spells it with the first letter lowered. It
+imports `stdlib` for `Array`, so `stdlib` cannot import it; the print path
+makes its own `write` calls. Rejected: the same functions repeated inside
+`fs`, `os` and `time`.
+
+**Benchmark suite, before and after (`make bench REPEAT=5`, hot region,
+milliseconds):** `arith-checked` 32.7 and 31.8, `call-fib` 28.3 and 24.9,
+`cjson` 101.1 and 89.5, `jsmn` 199.1 and 238.7, `loop-index` 101.8 and 77.8,
+`md4c` 402.1 and 261.9, `perft` 157.7 and 151.1, `regex` 491.1 and 397.0,
+`sha256` 232.4 and 226.0, `string-concat` 148.1 and 170.5, `struct-array`
+87.2 and 121.0. The two output cases, which print 300,000 integers and
+200,000 interpolated lines, went from 145.5 and 665.0 to 13.4 and 47.6,
+because standard output is no longer a system call a print.
+
 ### The runtime is C on libc *(new)*
 
 **Status: reversed — see "Gyro reaches Linux through system calls".**

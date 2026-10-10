@@ -1,0 +1,164 @@
+// Every integer width reads its own limits and refuses one past them, in
+// the radix it is given. A failure is an error carrying the text, never a
+// wrapped number.
+
+import { println } from "stdlib"
+import { to_i8, to_i16, to_i32, to_i64, to_isize, to_u8, to_u16, to_u32, to_u64, to_usize } from "convert"
+
+fn i8_of(text: string, radix: u32) {
+    var value, err = to_i8(text, radix)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn i16_of(text: string) {
+    var value, err = to_i16(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn i32_of(text: string) {
+    var value, err = to_i32(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn i64_of(text: string) {
+    var value, err = to_i64(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn isize_of(text: string) {
+    var value, err = to_isize(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn u8_of(text: string, radix: u32) {
+    var value, err = to_u8(text, radix)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn u16_of(text: string, radix: u32) {
+    var value, err = to_u16(text, radix)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn u32_of(text: string) {
+    var value, err = to_u32(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn u64_of(text: string) {
+    var value, err = to_u64(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn usize_of(text: string) {
+    var value, err = to_usize(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn main() {
+    // The limits of each signed width, and one past them.
+    i8_of("127", 10)
+    i8_of("128", 10)
+    i8_of("-128", 10)
+    i8_of("-129", 10)
+    i16_of("32767")
+    i16_of("32768")
+    i16_of("-32768")
+    i16_of("-32769")
+    i32_of("2147483647")
+    i32_of("2147483648")
+    i32_of("-2147483648")
+    i32_of("-2147483649")
+    i64_of("9223372036854775807")
+    i64_of("9223372036854775808")
+    i64_of("-9223372036854775808")
+    i64_of("-9223372036854775809")
+    isize_of("-9223372036854775808")
+    isize_of("9223372036854775808")
+
+    // And of each unsigned one. A minus sign is allowed on zero only.
+    u8_of("255", 10)
+    u8_of("256", 10)
+    u8_of("-1", 10)
+    u8_of("-0", 10)
+    u16_of("65535", 10)
+    u16_of("65536", 10)
+    u32_of("4294967295")
+    u32_of("4294967296")
+    u64_of("18446744073709551615")
+    u64_of("18446744073709551616")
+    u64_of("99999999999999999999999")
+    usize_of("18446744073709551615")
+    usize_of("-5")
+
+    // Radixes: binary, octal, hex in either case, and the largest, 36.
+    u8_of("11111111", 2)
+    u8_of("100000000", 2)
+    u8_of("12", 2)
+    u8_of("377", 8)
+    u8_of("ff", 16)
+    u8_of("FF", 16)
+    u8_of("100", 16)
+    u8_of("g", 16)
+    i8_of("-80", 16)
+    i8_of("80", 16)
+    u16_of("zz", 36)
+    u16_of("ZZ", 36)
+
+    // White space around the digits is dropped; anything else is refused.
+    i32_of("  42\n")
+    i32_of("+7")
+    i32_of("-0")
+    i32_of("007")
+    i32_of("")
+    i32_of("   ")
+    i32_of("-")
+    i32_of("+")
+    i32_of("--1")
+    i32_of("1 2")
+    i32_of("0x10")
+    i32_of("1_000")
+    i32_of("3.5")
+    i32_of("a\tb")
+    i32_of("say \"no\"")
+}

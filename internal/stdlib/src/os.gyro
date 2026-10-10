@@ -1,16 +1,151 @@
-// os — declarations only; the runtime supplies the bodies.
+// os — the process: its environment, its standard input, and how it ends.
+// Written in Gyro over the system calls of sys.
 
-import { Allocator } from "mem"
+import { Allocator, heap } from "mem"
+import { Array, flush_output, from_utf8 } from "stdlib"
+import { O_RDONLY, SYS_EXIT_GROUP, close, open, read } from "sys"
+import { copy_bytes, offset, raw_alloc, raw_free, slice_from_raw, syscall1, text_bytes } from "unsafe"
 
 // env returns the variable's value, or null when it is unset. The result
 // is a copy made from `a` and owns its bytes; the only thing it borrows is
 // the allocator, which is what `&a` says. read_stdin and readline build
 // their text from an allocator the same way.
-export fn env(a: Allocator, name: string): string? !{ io, &a }
+//
+// The environment is read from /proc/self/environ, which is the block the
+// kernel handed the process when it started. A variable a C library sets
+// afterwards is not in it.
+export safe fn env(a: Allocator, name: string): string? !{ io, &a } {
+    var key = text_bytes(name)
+    if key.len() == 0 {
+        return null
+    }
+
+    var fd = open("/proc/self/environ", O_RDONLY, 0)
+    if fd < 0 {
+        return null
+    }
+    var block = Array<u8>::new(heap())
+    var chunk = Array<u8>::with_capacity(heap(), 4096)
+    for i in 0..4096 {
+        chunk.push(0)
+    }
+    var view = chunk.slice()
+    while true {
+        var got = read(fd, view)
+        if got <= 0 {
+            break
+        }
+        for byte in view[0..(got as usize)] {
+            block.push(byte)
+        }
+    }
+    close(fd)
+    chunk.free()
+
+    // The block is NAME=value entries, each ended by a NUL.
+    var entries = block.slice()
+    var start: usize = 0
+    var found: string? = null
+    while start < entries.len() && found == null {
+        var stop = start
+        while stop < entries.len() && entries[stop] != 0 {
+            stop += 1
+        }
+        if stop - start > key.len() && entries[start + key.len()] == 61 {
+            var same = true
+            for var i: usize = 0; i < key.len(); i += 1 {
+                if entries[start + i] != key[i] {
+                    same = false
+                    break
+                }
+            }
+            if same {
+                found = from_utf8(a, entries[(start + key.len() + 1)..stop])
+            }
+        }
+        start = stop + 1
+    }
+    block.free()
+    return found
+}
+
+// ---------------------------------------------------------------------------
+// Standard input
+//
+// Bytes are read in blocks and held until something asks for them. The
+// block grows to hold a line longer than itself. Standard output is
+// written out before every wait, so a prompt shows before it is answered.
+// ---------------------------------------------------------------------------
+
+var input_block: anyptr? = null
+var input_capacity: usize = 0
+var input_start: usize = 0
+var input_end: usize = 0
+var input_done: bool = false
+
+// input_more reads once more from standard input, making room first: what
+// was already consumed is dropped, and the block doubles when it is full.
+// It answers false when there is nothing more to read.
+safe fn input_more(): bool !{ io } {
+    flush_output()
+    if input_done {
+        return false
+    }
+    var block = input_block
+    if block != null && input_start > 0 {
+        copy_bytes(block, offset(block, input_start), input_end - input_start)
+        input_end -= input_start
+        input_start = 0
+    }
+    if block == null || input_end == input_capacity {
+        var wider = input_capacity * 2
+        if wider < 8192 {
+            wider = 8192
+        }
+        var fresh = raw_alloc(wider, 16)
+        if fresh == null {
+            input_done = true
+            return false
+        }
+        if block != null {
+            copy_bytes(fresh, block, input_end)
+            raw_free(block)
+        }
+        input_block = fresh
+        input_capacity = wider
+        block = fresh
+    }
+    if block == null {
+        return false
+    }
+    var space = slice_from_raw<u8>(offset(block, input_end), input_capacity - input_end)
+    var got = read(0, space)
+    if got <= 0 {
+        input_done = true
+        return false
+    }
+    input_end += got as usize
+    return true
+}
+
+// input_window is what has been read and not yet taken.
+safe fn input_window(): u8[] !{} {
+    var block = input_block
+    if block == null {
+        return slice_from_raw<u8>(&input_capacity as anyptr, 0)
+    }
+    return slice_from_raw<u8>(offset(block, input_start), input_end - input_start)
+}
 
 // read_stdin reads standard input to end of file, one shot: a second
 // call finds the stream drained and returns "".
-export fn read_stdin(a: Allocator): string !{ io, &a }
+export safe fn read_stdin(a: Allocator): string !{ io, &a } {
+    while input_more() {
+    }
+    var text = from_utf8(a, input_window())
+    input_start = input_end
+    return text
+}
 
 // readline reads the next line of standard input, without its
 // terminator, and answers null at end of file. An empty line is "", the
@@ -18,8 +153,42 @@ export fn read_stdin(a: Allocator): string !{ io, &a }
 //
 // It reads the same stream read_stdin does, so a program may take a line
 // and then drain what is left.
-export fn readline(a: Allocator): string? !{ io, &a }
+export safe fn readline(a: Allocator): string? !{ io, &a } {
+    var scanned: usize = 0
+    while true {
+        var window = input_window()
+        while scanned < window.len() && window[scanned] != 10 {
+            scanned += 1
+        }
+        if scanned < window.len() {
+            var stop = scanned
+            while stop > 0 && window[stop - 1] == 13 {
+                stop -= 1
+            }
+            var line = from_utf8(a, window[0..stop])
+            input_start += scanned + 1
+            return line
+        }
+        if !input_more() {
+            window = input_window()
+            if window.len() == 0 {
+                return null
+            }
+            var stop = window.len()
+            while stop > 0 && window[stop - 1] == 13 {
+                stop -= 1
+            }
+            var line = from_utf8(a, window[0..stop])
+            input_start = input_end
+            return line
+        }
+    }
+    return null
+}
 
 // exit ends the process with the given code after flushing stdout and
 // stderr. Deferred calls do not run; exit is immediate, like a panic.
-export fn exit(code: i32) !{ io }
+export safe fn exit(code: i32) !{ io } {
+    flush_output()
+    var _ = syscall1(SYS_EXIT_GROUP, code)
+}

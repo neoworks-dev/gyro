@@ -1,7 +1,9 @@
 // stdlib. A declaration with no body is a runtime intrinsic; everything
 // with a body is ordinary Gyro, compiled like any other module.
 
-import { Allocator, heap, Format } from "mem"
+import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
+import { cast, copy_bytes, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
 export fn println<T: Print>(value: T) !{ io }
@@ -86,6 +88,268 @@ export trait Index<T> {
 fn lock_output() !{ io }
 fn unlock_output() !{ io }
 
+// ---------------------------------------------------------------------------
+// Output
+//
+// Standard output is buffered: a print appends to a block and the block is
+// written when it fills, when the program ends, when it panics or leaves
+// through os::exit, before it waits on standard input, before it writes to
+// standard error, and before a call into a C library, so that what a
+// program prints appears in the order it printed it. On a terminal the
+// buffer is also written at each newline, as C's stdio does. Standard error
+// is written as it is printed, a call at a time.
+//
+// Printing a number writes its digits straight into the block, so printing
+// allocates nothing. The leaves below are what lowering reaches for a
+// scalar under print, println, eprint and eprintln: it widens the number,
+// and says which stream and whether a newline follows.
+// ---------------------------------------------------------------------------
+
+struct Stream {
+    fd: isize
+    block: anyptr?
+    len: usize
+    capacity: usize
+    line: bool
+    started: bool
+}
+
+var stdout_stream = Stream{ fd: 1, block: null, len: 0, capacity: 32768, line: false, started: false }
+var stderr_stream = Stream{ fd: 2, block: null, len: 0, capacity: 1024, line: false, started: false }
+
+// set_flush_hook tells the C runtime what to call to write standard
+// output out: when the program ends, when it panics, and before a call
+// into a C library.
+fn set_flush_hook(hook: code()) !{ io }
+
+// stream_of picks the stream a leaf writes to.
+safe fn stream_of(fd: i32): *Stream !{} {
+    if fd == 2 {
+        return &stderr_stream
+    }
+    return &stdout_stream
+}
+
+// write_raw writes every byte, going again after a short write or an
+// interrupted call. A failure, a closed pipe among them, ends the write:
+// there is nowhere to report it.
+safe fn write_raw(fd: isize, from: anyptr, count: usize) !{ io } {
+    var done: usize = 0
+    while done < count {
+        var put = syscall3(1, fd, offset(from, done), count - done)
+        if put == -4 {
+            continue
+        }
+        if put <= 0 {
+            return
+        }
+        done += put as usize
+    }
+}
+
+// base_of is the stream's block, once it has one.
+safe fn base_of(s: *Stream): anyptr !{} {
+    var block = s.block
+    if block == null {
+        panic("the output buffer was never made")
+        return base_of(s)
+    }
+    return block
+}
+
+// begin makes the stream's block on first use, and for standard output
+// finds out whether it is a terminal and registers the flush with the
+// runtime.
+safe fn begin(s: *Stream) !{ io } {
+    if s.started {
+        return
+    }
+    s.started = true
+    var block = raw_alloc(s.capacity, 16)
+    if block == null {
+        panic("the output buffer could not be allocated")
+        return
+    }
+    s.block = block
+    if s.fd == 1 {
+        // A terminal answers TCGETS, which writes a termios of 60 bytes.
+        s.line = syscall3(16, 1, 21505, block) == 0
+        set_flush_hook(&flush_output)
+    }
+}
+
+safe fn flush_stream(s: *Stream) !{ io } {
+    if s.len > 0 {
+        var count = s.len
+        s.len = 0
+        write_raw(s.fd, base_of(s), count)
+    }
+}
+
+// flush_output writes out what standard output holds.
+export safe fn flush_output() !{ io } {
+    lock_output()
+    flush_stream(&stdout_stream)
+    unlock_output()
+}
+
+// room leaves space for `need` more bytes in the block, which is at most
+// its capacity, and answers where they go.
+safe fn room(s: *Stream, need: usize): anyptr !{ io } {
+    begin(s)
+    if s.len + need > s.capacity {
+        flush_stream(s)
+    }
+    return offset(base_of(s), s.len)
+}
+
+// settle ends a print: a terminal and standard error see it at once,
+// and standard error is ordered after everything standard output holds.
+safe fn settle(s: *Stream, newline: bool) !{ io } {
+    if newline {
+        *cast<u8>(room(s, 1)) = 10
+        s.len += 1
+    }
+    if s.fd == 2 || (s.line && newline) {
+        flush_stream(s)
+    }
+}
+
+// open_stream takes the lock and orders standard error after standard
+// output.
+safe fn open_stream(fd: i32): *Stream !{ io } {
+    lock_output()
+    var s = stream_of(fd)
+    if fd == 2 {
+        flush_stream(&stdout_stream)
+    }
+    return s
+}
+
+safe fn put_text(text: string, fd: i32, newline: bool) !{ io } {
+    var s = open_stream(fd)
+    var bytes = text_bytes(text)
+    var count = bytes.len()
+    begin(s)
+    if count > 0 {
+        if s.len + count > s.capacity {
+            flush_stream(s)
+        }
+        if count > s.capacity {
+            write_raw(s.fd, &bytes[0] as anyptr, count)
+        } else {
+            copy_bytes(offset(base_of(s), s.len), &bytes[0] as anyptr, count)
+            s.len += count
+        }
+        if s.line && !newline {
+            for byte in bytes {
+                if byte == 10 {
+                    flush_stream(s)
+                    break
+                }
+            }
+        }
+    }
+    settle(s, newline)
+    unlock_output()
+}
+
+// put_digits writes n in decimal ending just before `end`.
+safe fn put_digits(at: anyptr, end: usize, n: u64) !{} {
+    var place = end
+    var rest = n
+    while rest > 0 || place == end {
+        place -= 1
+        *cast<u8>(offset(at, place)) = 48 + (rest % 10) as u8
+        rest /= 10
+    }
+}
+
+safe fn put_uint(v: u64, fd: i32, newline: bool) !{ io } {
+    var s = open_stream(fd)
+    var at = room(s, 24)
+    var count: usize = 1
+    var rest = v
+    while rest >= 10 {
+        rest /= 10
+        count += 1
+    }
+    put_digits(at, count, v)
+    s.len += count
+    settle(s, newline)
+    unlock_output()
+}
+
+// put_int writes the magnitude of a negative number as one less than it
+// is, plus one, so that the most negative value has a magnitude to write.
+safe fn put_int(v: i64, fd: i32, newline: bool) !{ io } {
+    if v >= 0 {
+        put_uint(v as u64, fd, newline)
+        return
+    }
+    var magnitude = ((0 - (v + 1)) as u64) + 1
+    var s = open_stream(fd)
+    var at = room(s, 24)
+    *cast<u8>(at) = 45
+    var count: usize = 1
+    var rest = magnitude
+    while rest >= 10 {
+        rest /= 10
+        count += 1
+    }
+    put_digits(at, count + 1, magnitude)
+    s.len += count + 1
+    settle(s, newline)
+    unlock_output()
+}
+
+safe fn put_bool(v: bool, fd: i32, newline: bool) !{ io } {
+    if v {
+        put_text("true", fd, newline)
+        return
+    }
+    put_text("false", fd, newline)
+}
+
+safe fn put_rune(v: rune, fd: i32, newline: bool) !{ io } {
+    var s = open_stream(fd)
+    var at = room(s, 4)
+    var point = v as u32
+    if point > 1114111 || (point >= 55296 && point <= 57343) {
+        point = 65533
+    }
+    var count: usize = 4
+    if point < 128 {
+        count = 1
+        *cast<u8>(at) = point as u8
+    } elif point < 2048 {
+        count = 2
+        *cast<u8>(at) = (192 | (point >> 6)) as u8
+        *cast<u8>(offset(at, 1)) = (128 | (point & 63)) as u8
+    } elif point < 65536 {
+        count = 3
+        *cast<u8>(at) = (224 | (point >> 12)) as u8
+        *cast<u8>(offset(at, 1)) = (128 | ((point >> 6) & 63)) as u8
+        *cast<u8>(offset(at, 2)) = (128 | (point & 63)) as u8
+    } else {
+        *cast<u8>(at) = (240 | (point >> 18)) as u8
+        *cast<u8>(offset(at, 1)) = (128 | ((point >> 12) & 63)) as u8
+        *cast<u8>(offset(at, 2)) = (128 | ((point >> 6) & 63)) as u8
+        *cast<u8>(offset(at, 3)) = (128 | (point & 63)) as u8
+    }
+    s.len += count
+    settle(s, newline)
+    unlock_output()
+}
+
+safe fn put_float(v: f64, fd: i32, newline: bool) !{ io } {
+    var s = open_stream(fd)
+    var at = room(s, 48)
+    s.len += write_float(v, at)
+    settle(s, newline)
+    unlock_output()
+}
+
 fn stream_print(message: Format) !{ io } {
     lock_output()
     for i in 0..message.len() {
@@ -125,25 +389,174 @@ fn stream_eprintln(message: Format) !{ io } {
 // and its buffer, comes from that allocator, push grows the buffer through
 // it, and free hands the buffer back to it. Nothing else names an
 // allocator, so an array cannot be freed to one it did not come from.
-export struct Array<T> {}
+//
+// An Array is a handle: a pointer to a header, so a copy of the value is
+// the same array, and a method that takes `*self` changes what every copy
+// sees. The header stays allocated after free, which is how a second free
+// or a use after free is caught rather than read through.
+struct ArrayHead<T> {
+    // The buffer, or while there is none the header itself, which a view of
+    // no elements may start at.
+    data: anyptr
+    count: usize
+    capacity: usize
+    // The capacity with_capacity asked for, used at the first growth.
+    hint: usize
+    freed: bool
+    // Where every block this array owns comes from.
+    alloc: Allocator
+}
 
-export fn Array<T>::new(a: Allocator): Array<T> !{ &a }
-export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a }
-export fn Array<T>::push(*self, value: T) !{}
-export fn Array<T>::pop(*self): (T, bool) !{}
-export fn Array<T>::get(self, index: usize): T !{}
-export fn Array<T>::set(*self, index: usize, value: T) !{}
+export struct Array<T> {
+    head: *ArrayHead<T>
+}
+
+export safe fn Array<T>::new(a: Allocator): Array<T> !{ &a } {
+    var head = alloc<ArrayHead<T>>(a)
+    head.data = head as anyptr
+    head.alloc = a
+    return Array<T>{ head: head }
+}
+
+export safe fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a } {
+    var out = Array<T>::new(a)
+    out.head.hint = capacity
+    return out
+}
+
+// The accessors below are written flat, with the element reached by one
+// comparison and one address computation: a call that did more would be
+// paid on every element of every loop. The byte offset is a wrapping
+// product because the comparison has already kept the index inside a buffer
+// that exists, and a checked multiply is a slower instruction.
+
+// out_of_range is the abort for an index past the end, kept out of line so
+// that the accessors carry only the comparison.
+fn out_of_range(index: usize, count: usize) !{} {
+    panic(format(heap(), "index #{index} out of range for length #{count}"))
+}
+
+// array_grow makes room for one more element: eight, or what with_capacity
+// asked for, and then twice what there is.
+safe fn array_grow<T>(head: *ArrayHead<T>) !{} {
+    var grown = head.capacity * 2
+    if head.capacity == 0 {
+        grown = 8
+        if head.hint > 8 {
+            grown = head.hint
+        }
+    }
+    var old: anyptr? = null
+    if head.capacity > 0 {
+        old = head.data
+    }
+    var block = head.alloc.proc(head.alloc.data, Mode::Resize, grown * size<T>(), 16, old, head.capacity * size<T>())
+    if block == null {
+        panic(format(heap(), "allocation of #{grown * size<T>()} bytes failed"))
+    }
+    head.data = block
+    head.capacity = grown
+}
+
+export safe fn Array<T>::push(*self, value: T) !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    var at = head.count
+    if at == head.capacity {
+        array_grow(head)
+    }
+    *cast<T>(offset(head.data, at *% size<T>())) = value
+    head.count = at +% 1
+}
+
+// pop on an empty array answers a zeroed element and false: Gyro has no
+// value to put there, so the element is read out of a block the allocator
+// zero-filled.
+export safe fn Array<T>::pop(*self): (T, bool) !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    if head.count == 0 {
+        var blank = alloc<T>(head.alloc)
+        var out = *blank
+        free(head.alloc, blank)
+        return (out, false)
+    }
+    head.count -= 1
+    return (*cast<T>(offset(head.data, head.count *% size<T>())), true)
+}
+
+export safe fn Array<T>::get(self, index: usize): T !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
+    }
+    return *cast<T>(offset(head.data, index *% size<T>()))
+}
+
+export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
+    }
+    *cast<T>(offset(head.data, index *% size<T>())) = value
+}
+
 // The element's own address, bounds-checked. `xs[i]` lowers through it,
 // which is what makes an index a place rather than a copy — `get` hands
 // back a value and mutating that mutates nothing. The address is into
 // the array's buffer, so `push` may move it, exactly as in C.
-export fn Array<T>::at(self, index: usize): *T !{}
-export fn Array<T>::len(self): usize !{}
-export fn Array<T>::slice(self): T[] !{ &self }
-export fn Array<T>::free(*self) !{}
+export safe fn Array<T>::at(self, index: usize): *T !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
+    }
+    return cast<T>(offset(head.data, index *% size<T>()))
+}
 
-// The runtime supplies the buffer; anything above it is ordinary Gyro,
-// written once here rather than once per tier.
+export safe fn Array<T>::len(self): usize !{} {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    return head.count
+}
+
+export safe fn Array<T>::slice(self): T[] !{ &self } {
+    var head = self.head
+    if head.freed {
+        panic("use after free of an Array")
+    }
+    return slice_from_raw<T>(head.data, head.count)
+}
+
+export safe fn Array<T>::free(*self) !{} {
+    var head = self.head
+    if head.freed {
+        panic("double free of an Array")
+    }
+    head.freed = true
+    if head.capacity > 0 {
+        head.alloc.proc(head.alloc.data, Mode::Free, 0, 0, head.data, head.capacity * size<T>())
+    }
+    head.data = head as anyptr
+}
+
 export fn Array<T>::is_empty(self): bool !{} {
     return self.len() == 0
 }
@@ -153,9 +566,79 @@ export fn Array<T>::is_empty(self): bool !{} {
 // each result owns what it holds, which is why neither carries a borrow
 // row. runes decodes into code points, which are wider than the bytes
 // they come from.
-export fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a }
-export fn string::bytes(self, a: Allocator): u8[] !{ &a }
-export fn string::runes(self, a: Allocator): rune[] !{ &a }
+//
+// The block is asked for a byte more than it holds, as every block of
+// bytes here is, so that a view of it never points one past its end.
+export safe fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a } {
+    var block = a.proc(a.data, Mode::Alloc, text_size(bytes.len() + 1), 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{text_size(bytes.len() + 1)} bytes failed"))
+    }
+    if bytes.len() > 0 {
+        copy_bytes(offset(block, text_size(0)), &bytes[0] as anyptr, bytes.len())
+    }
+    return text_seal(block, bytes.len())
+}
+
+export safe fn string::bytes(self, a: Allocator): u8[] !{ &a } {
+    var view = view_bytes(self)
+    var block = a.proc(a.data, Mode::Alloc, view.len() + 1, 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{view.len() + 1} bytes failed"))
+    }
+    if view.len() > 0 {
+        copy_bytes(block, &view[0] as anyptr, view.len())
+    }
+    return slice_from_raw<u8>(block, view.len())
+}
+
+// continuation is true for a byte of the form 10xxxxxx.
+fn continuation(byte: u8): bool {
+    return (byte & 192) == 128
+}
+
+// runes decodes UTF-8, and an invalid sequence yields U+FFFD and consumes
+// one byte: a stray continuation byte, a lead byte missing its followers,
+// an overlong form, a surrogate, or a value past U+10FFFF.
+export safe fn string::runes(self, a: Allocator): rune[] !{ &a } {
+    var view = view_bytes(self)
+    var block = a.proc(a.data, Mode::Alloc, view.len() * 4 + 4, 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{view.len() * 4 + 4} bytes failed"))
+    }
+    var count: usize = 0
+    var i: usize = 0
+    while i < view.len() {
+        var lead = view[i] as u32
+        var point: u32 = 65533
+        var size: usize = 1
+        if lead < 128 {
+            point = lead
+        } elif (lead & 224) == 192 && i + 1 < view.len() && continuation(view[i + 1]) {
+            var got = ((lead & 31) << 6) | ((view[i + 1] as u32) & 63)
+            if got >= 128 {
+                point = got
+                size = 2
+            }
+        } elif (lead & 240) == 224 && i + 2 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) {
+            var got = ((lead & 15) << 12) | (((view[i + 1] as u32) & 63) << 6) | ((view[i + 2] as u32) & 63)
+            if got >= 2048 && (got < 55296 || got > 57343) {
+                point = got
+                size = 3
+            }
+        } elif (lead & 248) == 240 && i + 3 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) && continuation(view[i + 3]) {
+            var got = ((lead & 7) << 18) | (((view[i + 1] as u32) & 63) << 12) | (((view[i + 2] as u32) & 63) << 6) | ((view[i + 3] as u32) & 63)
+            if got >= 65536 && got <= 1114111 {
+                point = got
+                size = 4
+            }
+        }
+        *cast<rune>(offset(block, count * 4)) = point as rune
+        count += 1
+        i += size
+    }
+    return slice_from_raw<rune>(block, count)
+}
 
 // String owns its bytes, in contrast to the borrowed view `string`. It is
 // the builder: append to it, then read it back with `text()`.
@@ -266,7 +749,9 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
 // makes. The view borrows the string, which is immutable, so the
 // predicates below read through it and allocate nothing. It is private: a
 // caller that wants bytes it can write to asks `bytes` for a copy.
-fn view_bytes(text: string): u8[] !{}
+safe fn view_bytes(text: string): u8[] !{} {
+    return text_bytes(text)
+}
 
 export fn string::starts_with(self, prefix: string): bool !{} {
     return slice_at(view_bytes(self), view_bytes(prefix), 0)

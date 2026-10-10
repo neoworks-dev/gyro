@@ -1029,6 +1029,7 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		// so an element is a place: assigning to one assigns into the
 		// array, where `get` hands back a copy of it.
 		if elem := arrayElem(base); elem != nil {
+			c.instantiateArrayMethod(base, "at")
 			return elem
 		}
 		if elem := c.indexElem(base); elem != nil {
@@ -1057,9 +1058,24 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 	return types.Unknown
 }
 
+// instantiateArrayMethod checks the body of an Array method for an element
+// type the program never called it on by name, because indexing and
+// narrowing reach it without a call: lowering will ask for that instance.
+func (c *checker) instantiateArrayMethod(array *types.Struct, name string) {
+	origin := array
+	if array.Origin != nil {
+		origin = array.Origin
+	}
+	method := origin.Methods[name]
+	if method == nil || method.Decl == nil || len(method.Decl.OwnerParams) != 1 {
+		return
+	}
+	c.instantiateQuietly(method.Decl, map[string]types.Type{method.Decl.OwnerParams[0].Name: array.Args[0]})
+}
+
 // arrayElem is the element type of an `Array<T>`, or nil for anything
-// else. The Array is the runtime's own handle, so it is recognized by
-// being that declaration rather than by shape.
+// else. The Array is recognized by being the bundled declaration rather
+// than by shape.
 func arrayElem(t *types.Struct) types.Type {
 	origin := t
 	if t.Origin != nil {
@@ -1112,6 +1128,7 @@ func (c *checker) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) types.Type 
 		// An Array<T> narrows through the view it already hands out, so
 		// `xs[a..b]` is `xs.slice()[a..b]` and borrows the same buffer.
 		if elem := arrayElem(base); elem != nil {
+			c.instantiateArrayMethod(base, "slice")
 			return &types.Slice{Elem: elem}
 		}
 	case *types.Optional:
@@ -1532,12 +1549,15 @@ func anyPayload(t types.Type) bool {
 	return true
 }
 
-// isRuntimeHandle reports a bundled struct the runtime owns — Array,
-// Mutex, File. It has no fields to carry, so it is a reference the runtime
-// hands out, and putting one in an any would copy a handle rather than a
-// value.
+// isRuntimeHandle reports a bundled struct that is a reference rather than
+// a value — a Mutex, or an Array, which is written in Gyro but is still a
+// pointer to a header the program shares. Putting one in an any would copy
+// a handle rather than a value.
 func isRuntimeHandle(t *types.Struct) bool {
-	return stdlib.IsBundled(t.Module) && len(t.Fields) == 0
+	if !stdlib.IsBundled(t.Module) {
+		return false
+	}
+	return len(t.Fields) == 0 || arrayElem(t) != nil
 }
 
 func castable(t types.Type) bool {

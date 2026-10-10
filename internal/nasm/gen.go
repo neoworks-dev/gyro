@@ -173,7 +173,7 @@ func (g *generator) assemble() string {
 	}
 
 	out.WriteString("\nsection .text\n")
-	out.WriteString(g.text.String())
+	out.WriteString(forwardStores(g.text.String()))
 	if g.at != (metals.Loc{}) {
 		// NASM mis-encodes the line table's last advance when the final
 		// row sits between 128 and 255 bytes from the end of the section,

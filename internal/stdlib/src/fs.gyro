@@ -1,25 +1,167 @@
-// fs — declarations only; the runtime supplies the bodies.
+// fs — files and directories, written in Gyro over the system calls of
+// sys. Every error carries the call that failed, the path, and the
+// kernel's reason, worded the way Go's os package words them.
 
-import { Array } from "stdlib"
-import { Allocator } from "mem"
+import { Array, from_utf8, substring } from "stdlib"
+import { Allocator, heap } from "mem"
+import { O_APPEND, O_CREAT, O_DIRECTORY, O_RDONLY, O_TRUNC, O_WRONLY, SYS_GETDENTS64, access, close, fail, open as open_fd, read, unlink, write_text } from "sys"
+import { syscall3 } from "unsafe"
 
-export struct File {}
+// A File names a path that open found reachable. Reading it opens the path
+// again, so a handle holds nothing the kernel could run out of.
+export struct File {
+    name: string
+    closed: bool
+}
 
-export fn open(path: string): (File, error?) !{ io }
-export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a }
-export fn File::close(*self) !{ io }
+export fn open(path: string): (File, error?) !{ io } {
+    var found = access(path)
+    var file = File{ name: path.substring(heap(), 0, path.len()), closed: false }
+    if found < 0 {
+        return file, fail("stat", path, found)
+    }
+    return file, null
+}
 
-// The one-shot operations take a path, not a handle: each opens, acts and
-// closes in one call. write_file creates or truncates; append_file creates
-// or extends.
-export fn write_file(path: string, text: string): error? !{ io }
-export fn append_file(path: string, text: string): error? !{ io }
-export fn remove(path: string): error? !{ io }
+export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
+    var fd = open_fd(file.name, O_RDONLY, 0)
+    if fd < 0 {
+        return "", fail("open", file.name, fd)
+    }
 
-// read_all and read_dir build what they return from `a`: the text, or the
-// array of names and the names in it.
-//
-// read_dir lists an existing directory's entry names, sorted, without
-// "." and "..".
-export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &a }
-export fn exists(path: string): bool !{ io }
+    var content = Array<u8>::new(heap())
+    var chunk = Array<u8>::with_capacity(heap(), 4096)
+    for i in 0..4096 {
+        chunk.push(0)
+    }
+    var view = chunk.slice()
+    while true {
+        var got = read(fd, view)
+        if got < 0 {
+            close(fd)
+            content.free()
+            chunk.free()
+            return "", fail("read", file.name, got)
+        }
+        if got == 0 {
+            break
+        }
+        for byte in view[0..(got as usize)] {
+            content.push(byte)
+        }
+    }
+    close(fd)
+    var text = from_utf8(a, content.slice())
+    content.free()
+    chunk.free()
+    return text, null
+}
+
+export fn File::close(*self) !{ io } {
+    self.closed = true
+}
+
+// write_to opens, writes and closes in one call.
+fn write_to(path: string, text: string, flags: usize): error? !{ io } {
+    var fd = open_fd(path, flags, 438)
+    if fd < 0 {
+        return fail("open", path, fd)
+    }
+    var put = write_text(fd, text)
+    close(fd)
+    if put < 0 {
+        return fail("write", path, put)
+    }
+    return null
+}
+
+export fn write_file(path: string, text: string): error? !{ io } {
+    return write_to(path, text, O_WRONLY | O_CREAT | O_TRUNC)
+}
+
+export fn append_file(path: string, text: string): error? !{ io } {
+    return write_to(path, text, O_WRONLY | O_CREAT | O_APPEND)
+}
+
+export fn remove(path: string): error? !{ io } {
+    var result = unlink(path)
+    if result < 0 {
+        return fail("remove", path, result)
+    }
+    return null
+}
+
+export fn exists(path: string): bool !{ io } {
+    return access(path) >= 0
+}
+
+// The bytes of a name, as a window onto the directory buffer.
+safe fn entry_name(a: Allocator, window: u8[]): string !{ &a } {
+    var length: usize = 0
+    while length < window.len() && window[length] != 0 {
+        length += 1
+    }
+    return from_utf8(a, window[0..length])
+}
+
+// sort orders the names bytewise, the way Go sorts a listing. A shell sort:
+// no allocation, and good enough for a directory.
+fn sort(names: Array<string>) !{} {
+    var gap = names.len() / 2
+    while gap > 0 {
+        for var i = gap; i < names.len(); i += 1 {
+            var held = names.get(i)
+            var at = i
+            while at >= gap && names.get(at - gap).compare(held) > 0 {
+                names.set(at, names.get(at - gap))
+                at -= gap
+            }
+            names.set(at, held)
+        }
+        gap /= 2
+    }
+}
+
+export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &a } {
+    var names = Array<string>::new(a)
+    var fd = open_fd(path, O_RDONLY | O_DIRECTORY, 0)
+    if fd < 0 {
+        return names, fail("open", path, fd)
+    }
+
+    var block = Array<u8>::with_capacity(heap(), 32768)
+    for i in 0..32768 {
+        block.push(0)
+    }
+    var buffer = block.slice()
+    while true {
+        var got = syscall_getdents(fd, buffer)
+        if got < 0 {
+            close(fd)
+            block.free()
+            return names, fail("read", path, got)
+        }
+        if got == 0 {
+            break
+        }
+        // Each record is { u64 inode, i64 offset, u16 length, u8 type,
+        // name... }, the name running to its NUL.
+        var at: usize = 0
+        while at < (got as usize) {
+            var length = (buffer[at + 16] as usize) | ((buffer[at + 17] as usize) << 8)
+            var name = entry_name(a, buffer[(at + 19)..(at + length)])
+            if name != "." && name != ".." {
+                names.push(name)
+            }
+            at += length
+        }
+    }
+    close(fd)
+    block.free()
+    sort(names)
+    return names, null
+}
+
+safe fn syscall_getdents(fd: isize, buffer: u8[]): isize !{ io } {
+    return syscall3(SYS_GETDENTS64, fd, &buffer[0], buffer.len())
+}

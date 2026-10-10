@@ -777,7 +777,7 @@ func isSyscallWord(t Type) bool {
 	switch t := t.(type) {
 	case *Prim:
 		switch t.Kind {
-		case I8, I16, I32, I64, U8, U16, U32, U64, Usize, Bool:
+		case I8, I16, I32, I64, Isize, U8, U16, U32, U64, Usize, Bool:
 			return true
 		}
 	case *Ptr, *AnyPtr:

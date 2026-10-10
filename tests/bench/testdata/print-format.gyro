@@ -1,0 +1,15 @@
+// Output: an interpolated line, which is several pieces to the printer
+// and one line to the reader.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+    var start = monotonic()
+    for var i = 0; i < 200000; i += 1 {
+        println("line #{i} of #{200000}: #{i * 3}")
+    }
+    var stop = monotonic()
+
+    eprintln("gyro:bench #{stop - start}")
+}

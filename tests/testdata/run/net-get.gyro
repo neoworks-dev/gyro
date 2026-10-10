@@ -1,0 +1,12 @@
+// net has no network to ask yet: get answers an error.
+
+import { println } from "stdlib"
+import { get } from "net"
+
+async fn main() {
+    var body, err = await get("http://example.com")
+    println(body.len())
+    if err != null {
+        println(err.message())
+    }
+}

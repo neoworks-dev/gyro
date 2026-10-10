@@ -212,10 +212,18 @@ Two things sit beside the allocation:
 
 ## The runtime contract
 
-The C runtime implements the `gyro:rt` import surface. Monomorphized
-import names map to C symbols plus static marshaling decided at codegen
-time — `Array<Point>::push` becomes `gy_array_push(handle, &value)`
-against an array that recorded its element size at `Array<T>::new`.
+The C runtime implements what is left of the `gyro:rt` import surface.
+Most of the standard library is Gyro now: `Array<T>`, text, numbers shown
+and read, printing, `fs`, `os`, `time` and `net` are ordinary functions over
+the `unsafe` module and the system calls of `sys`, and the backend emits
+the float intrinsics and the float conversions in line. What `rt.c` still
+holds is the string layout's `text_seal` and `text_bytes`, `gy_alloc` and
+`gy_free`, the aborts, threads, channels, mutexes, futures and `any`, the
+linear-memory instructions, the pointer and integer conversions, `copy_bytes`,
+the output lock, the byte floor `write_byte` and `read_byte`, and the printing
+half of `gyro:rt` that a producer which is not Gyro reaches through
+`println<i64>` and its siblings. Monomorphized import names map to C symbols
+plus static marshaling decided at codegen time.
 
 Obligations beyond the obvious:
 
@@ -229,9 +237,9 @@ Obligations beyond the obvious:
   anywhere in the toolchain any more.
 - **Hashing is pinned.** `hash<T>` covers the
   scalars only — splitmix64 over an integer's word or a float's bits,
-  FNV-1a over a string's bytes, `-0.0` folded into `0.0`. The
-  composites never reach C: the lowering synthesizes one function per
-  type and those call these.
+  FNV-1a over a string's bytes, `-0.0` folded into `0.0`. The scalars are
+  Gyro functions in `mem`, and the composites are synthesized by lowering,
+  one function per type, calling them.
 - **Channels.** Mutex + condvar ring buffer; capacity 0 is a true
   rendezvous (the sender blocks until a receiver takes the element).
   `recv` fills a `(element, open)` tuple; a closed channel yields

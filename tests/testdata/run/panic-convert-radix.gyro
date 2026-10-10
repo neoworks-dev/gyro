@@ -1,0 +1,14 @@
+// A radix outside 2 to 36 is a bug in the caller, not a condition: it
+// aborts like an index out of range.
+
+//gyro:panic radix 37 is not between 2 and 36
+
+import { println } from "stdlib"
+import { to_u8 } from "convert"
+
+fn main() {
+    println("before")
+    var value, err = to_u8("1", 37)
+    println(value)
+    println(err == null)
+}

@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -428,8 +429,8 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 }
 
 // prepareUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
-// itself: putting a type back on an address, a closure's environment, and
-// a system call.
+// itself: putting a type back on an address, moving one along, a closure's
+// environment, and a system call.
 // The rest of the module lowers as ordinary natives.
 func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
@@ -461,6 +462,20 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 			f.emit(&metals.PtrCast{Dst: first, X: address, To: target})
 			out := f.newReg("raw")
 			f.emit(&metals.SliceFrom{Dst: out, Ptr: first, Len: length})
+			return out
+		}
+	case "offset":
+		// The address `bytes` past base is a pointer to bytes moved along by
+		// that many elements, and then forgotten again.
+		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
+		bytes := f.lowerExpr(call.Args[1].Value, types.USize)
+		return func() string {
+			typed := f.newReg("raw")
+			f.emit(&metals.PtrCast{Dst: typed, X: address, To: &metals.Ptr{Elem: metals.TUint8}})
+			moved := f.newReg("moved")
+			f.emit(&metals.PtrOffset{Dst: moved, Ptr: typed, N: bytes})
+			out := f.newReg("shifted")
+			f.emit(&metals.PtrErase{Dst: out, X: moved})
 			return out
 		}
 	case "cast":
@@ -631,10 +646,6 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		Result: metals.TStr,
 	}
 	sw := &metals.Switch{X: "tag"}
-	sw.Cases = append(sw.Cases, metals.SwitchCase{Value: 0, Body: []metals.Instr{
-		&metals.VariantField{Dst: "native", X: "e", Variant: 0, Index: 0},
-		&metals.Return{Val: "native"},
-	}})
 
 	for _, errType := range f.l.errTypes {
 		index := f.l.errVariant[errType]
@@ -642,20 +653,23 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		callee := f.l.ensureFunc(method.Decl, nil)
 		f.l.metalsStruct(errType)
 
+		// Registers are named per variant: one holds a different type in
+		// each case, and a register's type is fixed at first assignment.
+		value, cell, msg := fmt.Sprintf("v%d", index), fmt.Sprintf("cell%d", index), fmt.Sprintf("msg%d", index)
 		body := []metals.Instr{
-			&metals.VariantField{Dst: "v", X: "e", Variant: index, Index: 0},
+			&metals.VariantField{Dst: value, X: "e", Variant: index, Index: 0},
 		}
-		receiver := "v"
+		receiver := value
 		if method.Recv == types.PointerRecv {
 			body = append(body,
-				&metals.Slot{Dst: "cell", Type: f.l.metalsType(errType)},
-				&metals.Store{Ptr: "cell", Val: "v"},
+				&metals.Slot{Dst: cell, Type: f.l.metalsType(errType)},
+				&metals.Store{Ptr: cell, Val: value},
 			)
-			receiver = "cell"
+			receiver = cell
 		}
 		body = append(body,
-			&metals.Call{Dst: "msg", Callee: callee, Args: []string{receiver}},
-			&metals.Return{Val: "msg"},
+			&metals.Call{Dst: msg, Callee: callee, Args: []string{receiver}},
+			&metals.Return{Val: msg},
 		)
 		sw.Cases = append(sw.Cases, metals.SwitchCase{Value: index, Body: body})
 	}

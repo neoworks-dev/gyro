@@ -1,0 +1,870 @@
+// float. Printing and reading a f64, written in Gyro over exact integer
+// arithmetic: nothing here approximates, so what comes out is the same on
+// every machine.
+//
+// shortest gives the shortest digits that read back as the same number, and
+// among the shortest the ones nearest the value (Steele and White, in
+// Burger and Dybvig's free-format form). parse reads decimal text and
+// rounds it once, to nearest with ties to even, whatever its length.
+//
+// Both work on a big natural number held in thirty-two bit limbs, the
+// least significant first. The largest one either needs is under 4,500
+// bits, so a number is a fixed record with room for a hundred and sixty
+// limbs rather than something that grows.
+//
+// This module imports nothing but the unsafe floor, so that mem can build
+// on it: mem is loaded whenever a number is shown.
+
+import { ceil } from "math"
+import { cast, offset, raw_alloc, raw_free, text_bytes, text_seal, text_size } from "unsafe"
+
+fn panic(message: string) !{}
+
+// ---------------------------------------------------------------------------
+// The bits of a double
+// ---------------------------------------------------------------------------
+
+safe fn bits_of(v: f64): u64 !{} {
+    var held = v
+    return *cast<u64>(&held as anyptr)
+}
+
+safe fn from_bits(bits: u64): f64 !{} {
+    var held = bits
+    return *cast<f64>(&held as anyptr)
+}
+
+const MANTISSA_MASK: u64 = 4503599627370495
+const HIDDEN_BIT: u64 = 4503599627370496
+const LOW_WORD: u64 = 4294967295
+
+// ---------------------------------------------------------------------------
+// A big natural number
+// ---------------------------------------------------------------------------
+
+struct Big {
+    len: usize
+    limb: u32[160]
+}
+
+// BIG_BYTES is what a Big takes: the length, then a hundred and sixty
+// limbs of four bytes.
+const BIG_BYTES: usize = 648
+
+// grab is a zero-filled block from the process heap, or no return.
+safe fn grab(size: usize): anyptr !{} {
+    var block = raw_alloc(size, 8)
+    if block == null {
+        panic("allocation failed")
+        return grab(size)
+    }
+    return block
+}
+
+safe fn big_new(): *Big !{} {
+    var out = cast<Big>(grab(BIG_BYTES))
+    out.len = 0
+    return out
+}
+
+safe fn big_free(b: *Big) !{} {
+    raw_free(b as anyptr)
+}
+
+fn big_trim(b: *Big) !{} {
+    while b.len > 0 && b.limb[b.len - 1] == 0 {
+        b.len -= 1
+    }
+}
+
+fn big_set(b: *Big, v: u64) !{} {
+    b.limb[0] = (v & LOW_WORD) as u32
+    b.limb[1] = (v >> 32) as u32
+    b.len = 2
+    big_trim(b)
+}
+
+fn big_copy(to: *Big, from: *Big) !{} {
+    to.len = from.len
+    for var i: usize = 0; i < from.len; i += 1 {
+        to.limb[i] = from.limb[i]
+    }
+}
+
+fn limb_at(b: *Big, i: usize): u64 !{} {
+    if i < b.len {
+        return b.limb[i] as u64
+    }
+    return 0
+}
+
+// big_mul_small multiplies by a number below 2^32.
+fn big_mul_small(b: *Big, m: u64) !{} {
+    var carry: u64 = 0
+    for var i: usize = 0; i < b.len; i += 1 {
+        var cell = (b.limb[i] as u64) * m + carry
+        b.limb[i] = (cell & LOW_WORD) as u32
+        carry = cell >> 32
+    }
+    if carry > 0 {
+        if b.len >= 160 {
+            panic("a number is too large")
+        }
+        b.limb[b.len] = carry as u32
+        b.len += 1
+    }
+}
+
+// big_add_small adds a number below 2^32.
+fn big_add_small(b: *Big, v: u64) !{} {
+    var carry = v
+    var i: usize = 0
+    while carry > 0 {
+        if i == b.len {
+            if b.len >= 160 {
+                panic("a number is too large")
+            }
+            b.limb[i] = 0
+            b.len += 1
+        }
+        var cell = (b.limb[i] as u64) + carry
+        b.limb[i] = (cell & LOW_WORD) as u32
+        carry = cell >> 32
+        i += 1
+    }
+}
+
+// big_mul_pow10 multiplies by 10^n, nine digits at a time.
+fn big_mul_pow10(b: *Big, n: i64) !{} {
+    var left = n
+    while left >= 9 {
+        big_mul_small(b, 1000000000)
+        left -= 9
+    }
+    var rest: u64 = 1
+    for var i: i64 = 0; i < left; i += 1 {
+        rest *= 10
+    }
+    if rest > 1 {
+        big_mul_small(b, rest)
+    }
+}
+
+// big_shl shifts left by a number of bits. The limbs are moved from the
+// top down, so that a limb is read before the shifted one lands on it.
+fn big_shl(b: *Big, bits: usize) !{} {
+    if b.len == 0 || bits == 0 {
+        return
+    }
+    var words = bits / 32
+    var rem = bits % 32
+    var top = b.len + words + 1
+    if top > 160 {
+        panic("a number is too large")
+    }
+    for var j = b.len; j < top; j += 1 {
+        b.limb[j] = 0
+    }
+    var i = b.len
+    while i > 0 {
+        i -= 1
+        var cell = (b.limb[i] as u64) << rem
+        b.limb[i + words] = (cell & LOW_WORD) as u32
+        b.limb[i + words + 1] = ((b.limb[i + words + 1] as u64) | (cell >> 32)) as u32
+    }
+    for var j: usize = 0; j < words; j += 1 {
+        b.limb[j] = 0
+    }
+    b.len = top
+    big_trim(b)
+}
+
+fn big_cmp(a: *Big, b: *Big): i32 !{} {
+    if a.len != b.len {
+        if a.len < b.len {
+            return -1
+        }
+        return 1
+    }
+    var i = a.len
+    while i > 0 {
+        i -= 1
+        if a.limb[i] != b.limb[i] {
+            if a.limb[i] < b.limb[i] {
+                return -1
+            }
+            return 1
+        }
+    }
+    return 0
+}
+
+// big_add adds b into a.
+fn big_add(a: *Big, b: *Big) !{} {
+    var width = a.len
+    if b.len > width {
+        width = b.len
+    }
+    var carry: u64 = 0
+    for var i: usize = 0; i < width; i += 1 {
+        var cell = limb_at(a, i) + limb_at(b, i) + carry
+        a.limb[i] = (cell & LOW_WORD) as u32
+        carry = cell >> 32
+    }
+    a.len = width
+    if carry > 0 {
+        if a.len >= 160 {
+            panic("a number is too large")
+        }
+        a.limb[a.len] = carry as u32
+        a.len += 1
+    }
+}
+
+// big_sub takes b out of a, which is not less than it.
+fn big_sub(a: *Big, b: *Big) !{} {
+    var borrow: i64 = 0
+    for var i: usize = 0; i < a.len; i += 1 {
+        var cell = (a.limb[i] as i64) - (limb_at(b, i) as i64) - borrow
+        if cell < 0 {
+            cell += 4294967296
+            borrow = 1
+        } else {
+            borrow = 0
+        }
+        a.limb[i] = cell as u32
+    }
+    big_trim(a)
+}
+
+fn big_bitlen(b: *Big): usize !{} {
+    if b.len == 0 {
+        return 0
+    }
+    var top = b.limb[b.len - 1]
+    var n: usize = 0
+    while top > 0 {
+        top = top >> 1
+        n += 1
+    }
+    return (b.len - 1) * 32 + n
+}
+
+// big_bits reads the 64 bits that start at bit `from`, and reports whether
+// any bit below `from` is set.
+fn big_bits(b: *Big, from: usize): (u64, bool) !{} {
+    var first = from / 32
+    var rem = from % 32
+    var low = limb_at(b, first) | (limb_at(b, first + 1) << 32)
+    var out = low >> rem
+    if rem > 0 {
+        out = out | (limb_at(b, first + 2) << (64 - rem))
+    }
+    var sticky = false
+    for var i: usize = 0; i < first && i < b.len; i += 1 {
+        if b.limb[i] != 0 {
+            sticky = true
+        }
+    }
+    if rem > 0 && first < b.len {
+        if ((b.limb[first] as u64) & ((1 << rem) - 1)) != 0 {
+            sticky = true
+        }
+    }
+    return (out, sticky)
+}
+
+// ---------------------------------------------------------------------------
+// Writing a double
+// ---------------------------------------------------------------------------
+
+// Digits is the result of the digit search: the digits themselves, and the
+// position of the decimal point, so that the value is 0.d1d2d3... * 10^point.
+struct Digits {
+    count: usize
+    point: i64
+    digit: u8[24]
+}
+
+// Cursor is where the next byte of a number being written goes.
+struct Cursor {
+    at: anyptr
+    len: usize
+}
+
+safe fn put(c: *Cursor, byte: u8) !{} {
+    *cast<u8>(offset(c.at, c.len)) = byte
+    c.len += 1
+}
+
+safe fn put_word(c: *Cursor, word: string) !{} {
+    for byte in text_bytes(word) {
+        put(c, byte)
+    }
+}
+
+// digits_of finds the shortest digits that identify v, which is finite and
+// positive. With the value written as f * 2^e, the search keeps r/s as the
+// part of it still to write and m_plus/s and m_minus/s as how far above and
+// below the value a number may fall and still read back as v. A power of two
+// has half the room below it that it has above. A mantissa that is even
+// reads its boundaries back as itself, so they count as inside.
+safe fn digits_of(v: f64): *Digits !{} {
+    var bits = bits_of(v)
+    var expbits = (bits >> 52) & 2047
+    var frac = bits & MANTISSA_MASK
+    var f = frac | HIDDEN_BIT
+    var e = (expbits as i64) - 1075
+    var level = (expbits as i64) - 1023
+    if expbits == 0 {
+        f = frac
+        e = -1074
+        var n: i64 = 0
+        var rest = frac
+        while rest > 0 {
+            rest = rest >> 1
+            n += 1
+        }
+        level = n - 1 - 1074
+    }
+    var even = (f & 1) == 0
+    var narrow = frac == 0 && expbits > 1
+
+    var r = big_new()
+    var s = big_new()
+    var plus = big_new()
+    var minus = big_new()
+    big_set(r, f)
+    if e >= 0 {
+        if !narrow {
+            big_shl(r, (e + 1) as usize)
+            big_set(s, 2)
+            big_set(plus, 1)
+            big_shl(plus, e as usize)
+            big_set(minus, 1)
+            big_shl(minus, e as usize)
+        } else {
+            big_shl(r, (e + 2) as usize)
+            big_set(s, 4)
+            big_set(plus, 1)
+            big_shl(plus, (e + 1) as usize)
+            big_set(minus, 1)
+            big_shl(minus, e as usize)
+        }
+    } else {
+        if !narrow {
+            big_shl(r, 1)
+            big_set(s, 1)
+            big_shl(s, (1 - e) as usize)
+            big_set(plus, 1)
+            big_set(minus, 1)
+        } else {
+            big_shl(r, 2)
+            big_set(s, 1)
+            big_shl(s, (2 - e) as usize)
+            big_set(plus, 2)
+            big_set(minus, 1)
+        }
+    }
+
+    // The estimate of the decimal exponent is never above the true one, and
+    // at most one below it.
+    var estimate = ceil((level as f64) * 0.30102999566398114 - 0.0000000001) as i64
+    if estimate >= 0 {
+        big_mul_pow10(s, estimate)
+    } else {
+        big_mul_pow10(r, 0 - estimate)
+        big_mul_pow10(plus, 0 - estimate)
+        big_mul_pow10(minus, 0 - estimate)
+    }
+
+    var scratch = big_new()
+    big_copy(scratch, r)
+    big_add(scratch, plus)
+    var above = big_cmp(scratch, s)
+    var out = cast<Digits>(grab(208))
+    out.count = 0
+    if above > 0 || (even && above == 0) {
+        out.point = estimate + 1
+    } else {
+        out.point = estimate
+        big_mul_small(r, 10)
+        big_mul_small(plus, 10)
+        big_mul_small(minus, 10)
+    }
+
+    while true {
+        var d: u8 = 0
+        while big_cmp(r, s) >= 0 {
+            big_sub(r, s)
+            d += 1
+        }
+        var below = big_cmp(r, minus)
+        big_copy(scratch, r)
+        big_add(scratch, plus)
+        var over = big_cmp(scratch, s)
+        var low = below < 0 || (even && below == 0)
+        var high = over > 0 || (even && over == 0)
+        if !low && !high {
+            out.digit[out.count] = d
+            out.count += 1
+            big_mul_small(r, 10)
+            big_mul_small(plus, 10)
+            big_mul_small(minus, 10)
+            continue
+        }
+        var last = d
+        if high && !low {
+            last = d + 1
+        } elif high && low {
+            // Both neighbours are inside the interval: the nearer one, and
+            // on an exact tie the even digit.
+            big_mul_small(r, 2)
+            var side = big_cmp(r, s)
+            if side > 0 || (side == 0 && (d & 1) == 1) {
+                last = d + 1
+            }
+        }
+        out.digit[out.count] = last
+        out.count += 1
+        break
+    }
+
+    big_free(r)
+    big_free(s)
+    big_free(plus)
+    big_free(minus)
+    big_free(scratch)
+    return out
+}
+
+// write puts the shortest text that reads back as v at `to`, which has
+// room for forty bytes, and answers how long it is. Digits, then a decimal
+// point or an exponent: the exponent form is used from 1e6 up and from
+// 1e-5 down, with at least two digits after the sign, and the plain form
+// otherwise, which is Go's %v for a float.
+export safe fn write(v: f64, to: anyptr): usize !{} {
+    var out = Cursor{ at: to, len: 0 }
+    var bits = bits_of(v)
+    var negative = (bits >> 63) == 1
+    var expbits = (bits >> 52) & 2047
+    var frac = bits & MANTISSA_MASK
+    if expbits == 2047 {
+        if frac != 0 {
+            put_word(&out, "NaN")
+        } elif negative {
+            put_word(&out, "-Inf")
+        } else {
+            put_word(&out, "+Inf")
+        }
+        return out.len
+    }
+    if expbits == 0 && frac == 0 {
+        if negative {
+            put(&out, 45)
+        }
+        put(&out, 48)
+        return out.len
+    }
+
+    var magnitude = v
+    if negative {
+        magnitude = from_bits(bits & 9223372036854775807)
+    }
+    var found = digits_of(magnitude)
+    var count = found.count
+    while count > 1 && found.digit[count - 1] == 0 {
+        count -= 1
+    }
+    var exponent = found.point - 1
+
+    if negative {
+        put(&out, 45)
+    }
+    if exponent < -4 || exponent >= 6 {
+        put(&out, 48 + found.digit[0])
+        if count > 1 {
+            put(&out, 46)
+            for var i: usize = 1; i < count; i += 1 {
+                put(&out, 48 + found.digit[i])
+            }
+        }
+        put(&out, 101)
+        var magnitude_of = exponent
+        if exponent < 0 {
+            put(&out, 45)
+            magnitude_of = 0 - exponent
+        } else {
+            put(&out, 43)
+        }
+        if magnitude_of < 10 {
+            put(&out, 48)
+        }
+        var tens: i64 = 1
+        while magnitude_of / tens >= 10 {
+            tens *= 10
+        }
+        while tens > 0 {
+            put(&out, 48 + ((magnitude_of / tens) % 10) as u8)
+            tens /= 10
+        }
+    } else {
+        var point = found.point
+        if point <= 0 {
+            put(&out, 48)
+            put(&out, 46)
+            for var i: i64 = 0; i < 0 - point; i += 1 {
+                put(&out, 48)
+            }
+            for var i: usize = 0; i < count; i += 1 {
+                put(&out, 48 + found.digit[i])
+            }
+        } elif point >= (count as i64) {
+            for var i: usize = 0; i < count; i += 1 {
+                put(&out, 48 + found.digit[i])
+            }
+            for var i = count as i64; i < point; i += 1 {
+                put(&out, 48)
+            }
+        } else {
+            for var i: usize = 0; i < count; i += 1 {
+                if (i as i64) == point {
+                    put(&out, 46)
+                }
+                put(&out, 48 + found.digit[i])
+            }
+        }
+    }
+    raw_free(found as anyptr)
+    return out.len
+}
+
+// shortest is write, as a string from the process heap.
+export safe fn shortest(v: f64): string !{} {
+    var block = grab(text_size(48))
+    var length = write(v, offset(block, text_size(0)))
+    return text_seal(block, length)
+}
+
+// ---------------------------------------------------------------------------
+// Reading a double
+// ---------------------------------------------------------------------------
+
+// How a reading ends.
+export const READ_OK: i32 = 0
+export const READ_SYNTAX: i32 = 1
+export const READ_RANGE: i32 = 2
+
+// Reading is the digits of a number: up to eight hundred significant ones,
+// which is more than any double distinguishes, and one more that stands for
+// whatever followed them when it was not all zeros.
+struct Reading {
+    count: usize
+    digit: u8[801]
+}
+
+fn is_space(byte: u8): bool {
+    return byte == 32 || (byte >= 9 && byte <= 13)
+}
+
+fn is_digit(byte: u8): bool {
+    return byte >= 48 && byte <= 57
+}
+
+// lower folds a letter to lowercase.
+fn lower(byte: u8): u8 {
+    if byte >= 65 && byte <= 90 {
+        return byte + 32
+    }
+    return byte
+}
+
+// word_at reports whether the text from `at` to `stop` is exactly `word`,
+// letters in either case.
+safe fn word_at(bytes: u8[], at: usize, stop: usize, word: string): bool {
+    var letters = text_bytes(word)
+    if stop - at != letters.len() {
+        return false
+    }
+    for var i: usize = 0; i < letters.len(); i += 1 {
+        if lower(bytes[at + i]) != letters[i] {
+            return false
+        }
+    }
+    return true
+}
+
+// power_of_ten is 10^n for n up to 22, the last power of ten a double
+// holds exactly.
+fn power_of_ten(n: i64): f64 {
+    var out = 1.0
+    for var i: i64 = 0; i < n; i += 1 {
+        out = out * 10.0
+    }
+    return out
+}
+
+// assemble rounds the 64 bits `m`, whose top bit is set, scaled by 2^e2,
+// and whatever `sticky` says lay below them, to a double: to nearest, ties
+// to even, subnormal where the exponent runs out. It answers the bits, and
+// the status: out of range when the value overflowed, or when it fell into
+// the subnormals or to zero and lost something doing so.
+fn assemble(m: u64, e2: i64, sticky: bool): (u64, i32) {
+    var exponent = e2 + 63
+    if exponent > 1023 {
+        return (9218868437227405312, READ_RANGE)
+    }
+    var keep: i64 = 53
+    if exponent < -1022 {
+        keep = 53 - (-1022 - exponent)
+    }
+    if keep < 0 {
+        return (0, READ_RANGE)
+    }
+
+    var shift = (64 - keep) as u64
+    var q: u64 = 0
+    var rem = m
+    if shift < 64 {
+        q = m >> shift
+        rem = m & ((1 << shift) - 1)
+    }
+    var half: u64 = 1 << (shift - 1)
+    var up = rem > half || (rem == half && (sticky || (q & 1) == 1))
+    var inexact = rem != 0 || sticky
+    if up {
+        q += 1
+    }
+
+    if exponent < -1022 {
+        if inexact {
+            return (q, READ_RANGE)
+        }
+        return (q, READ_OK)
+    }
+    if q == 2 * HIDDEN_BIT {
+        q = HIDDEN_BIT
+        exponent += 1
+        if exponent > 1023 {
+            return (9218868437227405312, READ_RANGE)
+        }
+    }
+    return ((((exponent + 1023) as u64) << 52) | (q & MANTISSA_MASK), READ_OK)
+}
+
+// parse reads a decimal number: a sign, digits with an optional point, an
+// optional exponent, or inf, infinity or nan in either case. The text is
+// the whole of it; white space around it is ignored. It answers the value
+// and how the reading ended.
+export safe fn parse(text: string): (f64, i32) !{} {
+    var bytes = text_bytes(text)
+    var start: usize = 0
+    var stop = bytes.len()
+    while start < stop && is_space(bytes[start]) {
+        start += 1
+    }
+    while stop > start && is_space(bytes[stop - 1]) {
+        stop -= 1
+    }
+
+    var negative = false
+    if start < stop && (bytes[start] == 43 || bytes[start] == 45) {
+        negative = bytes[start] == 45
+        start += 1
+    }
+    var sign: u64 = 0
+    if negative {
+        sign = 9223372036854775808
+    }
+    if word_at(bytes, start, stop, "inf") || word_at(bytes, start, stop, "infinity") {
+        return (from_bits(sign | 9218868437227405312), READ_OK)
+    }
+    if word_at(bytes, start, stop, "nan") {
+        return (from_bits(sign | 9221120237041090560), READ_OK)
+    }
+
+    var reading = cast<Reading>(grab(816))
+    reading.count = 0
+    var dropped: i64 = 0
+    var places: i64 = 0
+    var sticky = false
+    var seen = false
+    var pointed = false
+
+    var at = start
+    while at < stop {
+        var byte = bytes[at]
+        if byte == 46 {
+            if pointed {
+                raw_free(reading as anyptr)
+                return (0.0, READ_SYNTAX)
+            }
+            pointed = true
+            at += 1
+            continue
+        }
+        if !is_digit(byte) {
+            break
+        }
+        seen = true
+        var digit = byte - 48
+        if reading.count == 0 && digit == 0 {
+            if pointed {
+                places -= 1
+            }
+        } elif reading.count < 800 {
+            reading.digit[reading.count] = digit
+            reading.count += 1
+            if pointed {
+                places -= 1
+            }
+        } else {
+            if !pointed {
+                dropped += 1
+            }
+            if digit != 0 {
+                sticky = true
+            }
+        }
+        at += 1
+    }
+    if !seen {
+        raw_free(reading as anyptr)
+        return (0.0, READ_SYNTAX)
+    }
+
+    var explicit: i64 = 0
+    if at < stop && (bytes[at] == 101 || bytes[at] == 69) {
+        at += 1
+        var minus = false
+        if at < stop && (bytes[at] == 43 || bytes[at] == 45) {
+            minus = bytes[at] == 45
+            at += 1
+        }
+        if at >= stop || !is_digit(bytes[at]) {
+            raw_free(reading as anyptr)
+            return (0.0, READ_SYNTAX)
+        }
+        while at < stop && is_digit(bytes[at]) {
+            if explicit < 100000 {
+                explicit = explicit * 10 + ((bytes[at] - 48) as i64)
+            }
+            at += 1
+        }
+        if minus {
+            explicit = 0 - explicit
+        }
+    }
+    if at != stop {
+        raw_free(reading as anyptr)
+        return (0.0, READ_SYNTAX)
+    }
+
+    var exponent = explicit + dropped + places
+    var count = reading.count
+    while count > 0 && reading.digit[count - 1] == 0 {
+        count -= 1
+        exponent += 1
+    }
+    if count == 0 {
+        raw_free(reading as anyptr)
+        return (from_bits(sign), READ_OK)
+    }
+    if sticky {
+        reading.digit[count] = 1
+        count += 1
+        exponent -= 1
+    }
+
+    // Up to fifteen digits are exact in a double, and so is a power of ten
+    // up to 10^22, so one multiplication or division rounds correctly.
+    if count <= 15 && exponent >= -22 && exponent <= 22 {
+        var whole: u64 = 0
+        for var i: usize = 0; i < count; i += 1 {
+            whole = whole * 10 + (reading.digit[i] as u64)
+        }
+        var value = whole as f64
+        if exponent >= 0 {
+            value = value * power_of_ten(exponent)
+        } else {
+            value = value / power_of_ten(0 - exponent)
+        }
+        raw_free(reading as anyptr)
+        return (from_bits(sign | bits_of(value)), READ_OK)
+    }
+
+    // Otherwise the value is digits * 10^exponent, which lies on the decade
+    // `scale` names. Past the largest double or below half the smallest
+    // there is nothing to round.
+    var scale = (count as i64) + exponent
+    if scale >= 310 {
+        raw_free(reading as anyptr)
+        return (from_bits(sign | 9218868437227405312), READ_RANGE)
+    }
+    if scale <= -325 {
+        raw_free(reading as anyptr)
+        return (from_bits(sign), READ_RANGE)
+    }
+
+    var number = big_new()
+    for var i: usize = 0; i < count; i += 1 {
+        big_mul_small(number, 10)
+        big_add_small(number, reading.digit[i] as u64)
+    }
+    raw_free(reading as anyptr)
+
+    var m: u64 = 0
+    var e2: i64 = 0
+    var below = false
+    if exponent >= 0 {
+        big_mul_pow10(number, exponent)
+        var length = big_bitlen(number)
+        if length <= 64 {
+            var all, _ = big_bits(number, 0)
+            m = all << (64 - length)
+            e2 = 0 - ((64 - length) as i64)
+        } else {
+            m, below = big_bits(number, length - 64)
+            e2 = (length - 64) as i64
+        }
+    } else {
+        // The quotient of digits and 10^-exponent, taken to 64 bits by
+        // long division: the denominator is shifted so that the
+        // quotient has between 63 and 64 bits.
+        var divisor = big_new()
+        big_set(divisor, 1)
+        big_mul_pow10(divisor, 0 - exponent)
+        var top = (big_bitlen(number) as i64) - (big_bitlen(divisor) as i64)
+        var lift = 63 - top
+        if lift >= 0 {
+            big_shl(number, lift as usize)
+        } else {
+            big_shl(divisor, (0 - lift) as usize)
+        }
+        e2 = 0 - lift
+        var step = big_new()
+        var quotient: u64 = 0
+        for var bit: i64 = 63; bit >= 0; bit -= 1 {
+            big_copy(step, divisor)
+            big_shl(step, bit as usize)
+            if big_cmp(number, step) >= 0 {
+                big_sub(number, step)
+                quotient = quotient | (1 << (bit as u64))
+            }
+        }
+        below = number.len > 0
+        m = quotient
+        big_free(step)
+        big_free(divisor)
+        // The quotient may fall short of 64 bits by one; the top bit has to
+        // be set for the rounding to find its place.
+        if (m >> 63) == 0 {
+            m = m << 1
+            e2 -= 1
+        }
+    }
+    big_free(number)
+
+    var result, status = assemble(m, e2, below)
+    return (from_bits(sign | result), status)
+}

@@ -1,0 +1,14 @@
+// A float that does not fit the integer it is converted to aborts, rather
+// than saturating or wrapping.
+
+//gyro:panic conversion loses the value
+
+import { println } from "stdlib"
+
+fn main() {
+    var zero = 0.0
+    var value = 18446744073709551616.0
+    println("before")
+    println(value as u64)
+    println("unreachable")
+}

@@ -456,23 +456,8 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 	switch owner {
 	case "":
 		return g.freePlan(name, method, sig)
-	case "Array":
-		return g.arrayPlan(name, method, sig)
 	case "Mutex", "MutexGuard":
 		return g.mutexPlan(name, method, sig)
-	case "File":
-		if method == "close" {
-			return nativePlan{symbol: "gy_file_close", args: values(0)}
-		}
-	case "string":
-		switch method {
-		case "compare":
-			return nativePlan{symbol: "gy_str_compare", args: values(0, 1)}
-		case "runes":
-			return nativePlan{symbol: "gy_str_runes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
-		case "bytes":
-			return nativePlan{symbol: "gy_str_bytes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
-		}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
@@ -486,20 +471,10 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 			g.fail("@%s: printing a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
 		}
 		return nativePlan{symbol: "gy_" + method + "_" + suffix, args: values(0)}
-	case "str":
-		suffix, ok := printSuffix(sig.Params[0])
-		if !ok {
-			g.fail("@%s: formatting a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
-		}
-		return nativePlan{symbol: "gy_str_" + suffix, args: values(0)}
-	case "hash":
-		return nativePlan{symbol: "gy_hash_" + g.hashSuffix(name, sig.Params[0]), args: values(0)}
 	case "start_thread":
 		return nativePlan{symbol: "gy_start", args: values(0, 1)}
-	case "view_bytes":
+	case "text_bytes":
 		return nativePlan{symbol: "gy_str_view", sret: true, args: values(0)}
-	case "from_utf8":
-		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0), pointerTo(1)}}
 
 	// The floor of every allocator: the process heap, and the abort an
 	// allocator reaches for when a request cannot be met.
@@ -511,112 +486,25 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_raw_resize", args: values(0, 1, 2, 3)}
 	case "copy_bytes":
 		return nativePlan{symbol: "gy_copy_bytes", args: values(0, 1, 2)}
-	case "offset":
-		return nativePlan{symbol: "gy_offset", args: values(0, 1)}
 	case "address_to_pointer":
 		return nativePlan{symbol: "gy_ptr_from_int", args: values(0)}
 	case "ptr_to_int":
 		return nativePlan{symbol: "gy_ptr_to_int", args: values(0)}
 	case "panic":
 		return nativePlan{symbol: "gy_panic", args: values(0)}
-	case "text_size":
-		return nativePlan{symbol: "gy_text_size", args: values(0)}
-	case "text_write":
-		return nativePlan{symbol: "gy_text_write", args: values(0, 1, 2)}
 	case "text_seal":
 		return nativePlan{symbol: "gy_text_seal", args: values(0, 1)}
+	case "set_flush_hook":
+		return nativePlan{symbol: "gy_set_flush_hook", args: values(0)}
 	case "lock_output":
 		return nativePlan{symbol: "gy_lock_output"}
 	case "unlock_output":
 		return nativePlan{symbol: "gy_unlock_output"}
 
-	case "to_i32":
-		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
-	case "to_f64":
-		return nativePlan{symbol: "gy_to_f64", sret: true, args: values(0)}
-	case "open":
-		return nativePlan{symbol: "gy_open", sret: true, args: values(0)}
-	case "read_all":
-		return nativePlan{symbol: "gy_read_all", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
-	case "write_file":
-		return nativePlan{symbol: "gy_write_file", sret: true, args: values(0, 1)}
-	case "append_file":
-		return nativePlan{symbol: "gy_append_file", sret: true, args: values(0, 1)}
-	case "remove":
-		return nativePlan{symbol: "gy_remove", sret: true, args: values(0)}
-	case "read_dir":
-		return nativePlan{symbol: "gy_read_dir", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
-	case "exists":
-		return nativePlan{symbol: "gy_exists", args: values(0)}
-	case "get":
-		return nativePlan{symbol: "gy_get", sret: true, args: values(0)}
-	case "now":
-		return nativePlan{symbol: "gy_now"}
-	case "monotonic":
-		return nativePlan{symbol: "gy_monotonic"}
-	case "sleep":
-		return nativePlan{symbol: "gy_sleep", args: values(0)}
-	case "env":
-		return nativePlan{symbol: "gy_env", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
-	case "read_stdin":
-		return nativePlan{symbol: "gy_read_stdin", args: []planArg{pointerTo(0)}}
-	case "readline":
-		return nativePlan{symbol: "gy_readline", sret: true, args: []planArg{pointerTo(0)}}
-	case "exit":
-		return nativePlan{symbol: "gy_exit", args: values(0)}
 	case "write_byte":
 		return nativePlan{symbol: "gy_write_byte", args: values(0, 1)}
 	case "read_byte":
 		return nativePlan{symbol: "gy_read_byte"}
-	}
-	g.fail("no native mapping for @%s", name)
-	return nativePlan{}
-}
-
-func (g *generator) arrayPlan(name, method string, sig *metals.FnType) nativePlan {
-	switch method {
-	case "new":
-		return nativePlan{symbol: "gy_array_new", args: []planArg{pointerTo(0)}}
-	case "with_capacity":
-		return nativePlan{symbol: "gy_array_with_capacity", args: []planArg{pointerTo(0), {index: 1}}}
-	case "push":
-		return nativePlan{
-			symbol: "gy_array_push",
-			args:   []planArg{{index: 0}, pointerTo(1)},
-			extras: []int64{int64(g.sizeOf(sig.Params[1]))},
-		}
-	case "pop":
-		tuple := sig.Result.(*metals.TupleOf)
-		return nativePlan{
-			symbol: "gy_array_pop", sret: true, args: values(0),
-			extras: []int64{int64(g.sizeOf(tuple.Elems[0]))},
-		}
-	case "get":
-		return nativePlan{
-			symbol: "gy_array_get", sret: true, args: values(0, 1),
-			extras: []int64{int64(g.sizeOf(sig.Result))},
-		}
-	case "set":
-		return nativePlan{
-			symbol: "gy_array_set",
-			args:   []planArg{{index: 0}, {index: 1}, pointerTo(2)},
-			extras: []int64{int64(g.sizeOf(sig.Params[2]))},
-		}
-	case "at":
-		// The element's own address, bounds-checked. It is what `xs[i]`
-		// lowers through, so an index costs one call and no staging
-		// cell — and it is what makes an element assignable in place
-		// where `get` hands back a copy.
-		return nativePlan{
-			symbol: "gy_array_at", args: values(0, 1),
-			extras: []int64{int64(g.sizeOf(sig.Result.(*metals.Ptr).Elem))},
-		}
-	case "len":
-		return nativePlan{symbol: "gy_array_len", args: values(0)}
-	case "slice":
-		return nativePlan{symbol: "gy_array_slice", sret: true, args: values(0)}
-	case "free":
-		return nativePlan{symbol: "gy_array_free", args: values(0)}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
@@ -640,27 +528,6 @@ func (g *generator) mutexPlan(name, method string, sig *metals.FnType) nativePla
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
-}
-
-// hashSuffix picks the entry point behind hash<T>. A rune hashes as the
-// signed integer it is, and the two float widths share one, since an f32
-// is already carried as a double.
-func (g *generator) hashSuffix(name string, t metals.Type) string {
-	prim, ok := t.(*metals.Prim)
-	if ok {
-		switch prim.Kind {
-		case metals.I8, metals.I16, metals.I32, metals.I64, metals.Isize, metals.Rune:
-			return "int"
-		case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
-			return "uint"
-		case metals.F32, metals.F64:
-			return "float"
-		case metals.Str:
-			return "str"
-		}
-	}
-	g.fail("@%s: no native hash for %s", name, t)
-	return ""
 }
 
 func printSuffix(t metals.Type) (string, bool) {

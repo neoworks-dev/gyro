@@ -188,7 +188,11 @@ export fn align<T>(): usize !{}
 
 export fn panic(message: string) !{}
 
-export fn format(a: Allocator, value: Format): string !{}
+export safe fn format(a: Allocator, value: Format): string !{}
+
+// A string between double quotes, as a string shows inside a composite:
+// \", \\, \n, \r and \t escaped, any other control byte as \xNN.
+export safe fn quote(a: Allocator, text: string): string !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
@@ -250,7 +254,7 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{}
 ### `fs`
 
 ```gyro
-export struct File {}
+export struct File { ... }
 
 export fn open(path: string): (File, error?) !{ io }
 export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
@@ -271,22 +275,26 @@ sorted, without `.` and `..`.
 ### `os`
 
 ```gyro
-export fn env(a: Allocator, name: string): string? !{ io }
-export fn read_stdin(a: Allocator): string !{ io }
-export fn readline(a: Allocator): string? !{ io }
+export fn env(a: Allocator, name: string): string? !{ io, &a }
+export fn read_stdin(a: Allocator): string !{ io, &a }
+export fn readline(a: Allocator): string? !{ io, &a }
 export fn exit(code: i32) !{ io }
 ```
 
-`env` answers null when the variable is unset. `read_stdin` reads to end of
-file in one shot: a second call finds the stream drained and returns `""`.
-`exit` ends the process after flushing stdout and stderr — **deferred calls
-do not run**; exit is immediate, like a panic.
+`env` answers null when the variable is unset. It reads the environment the
+kernel handed the process, from `/proc/self/environ`, so a variable a C
+library sets afterwards is not in it. `read_stdin` reads to end of file in
+one shot: a second call finds the stream drained and returns `""`. `exit`
+writes out what standard output holds and ends the process with
+`exit_group`; **deferred calls do not run**, and neither do a C library's
+exit handlers. Exit is immediate, like a panic.
 
 `readline` takes the next line, without its terminator, and answers null at
 end of file — an empty line is `""`, the way an empty environment variable
 is, so absence is the null and nothing else. A final line with no newline
 still comes back. Both readers share the stream: a program may take a line
-and then drain what is left.
+and then drain what is left. Standard output is written out before either
+one waits, so a prompt shows before it is answered.
 
 ### `time`
 
@@ -295,6 +303,9 @@ export fn now(): i64 !{ io }       // wall clock, ms since the Unix epoch
 export fn monotonic(): i64 !{ io } // measuring clock, ns, never steps back
 export fn sleep(millis: i64) !{ io }
 ```
+
+Each is `clock_gettime` or `nanosleep` asked of the kernel; `sleep` goes on
+for the time it had left after a signal interrupts it.
 
 `now` can jump when the system clock is adjusted, so it dates events; it
 does not measure them. Only differences of `monotonic` mean anything.
@@ -329,12 +340,48 @@ Three definitions differ from C's library **on purpose**:
 
 ### `convert`
 
+Numbers from text, written in Gyro. One function for each integer width,
+`to_i8` through `to_usize`, and `to_f64`:
+
 ```gyro
-export fn to_i32(text: string): (i32, error?) !{}
+export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{}
+export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{}
 export fn to_f64(text: string): (f64, error?) !{}
+export struct ParseError { export text: string }
 ```
 
-Both allocate, because the failure carries a message.
+An integer is an optional sign, then digits of the radix, which is 2 to 36
+(a letter is a digit above nine, in either case); white space around it is
+dropped. There is no prefix and no separator, and an unsigned type takes no
+minus sign except on zero. A value that does not fit the width is an error,
+never a wrapped number: `"300" is out of range for u8`. Text that is not a
+number is `"abc" is not an i32`. A radix outside 2 to 36 is a bug in the
+caller and panics. Every failure allocates its message on the heap, and the
+error is a `ParseError`.
+
+### `float`
+
+Writing and reading a `f64`, exactly, in Gyro over big naturals. `println`
+and `convert` are written over it; a program may use it for the same.
+
+```gyro
+export safe fn shortest(v: f64): string !{}
+export safe fn write(v: f64, to: anyptr): usize !{}
+export safe fn parse(text: string): (f64, i32) !{}
+export const READ_OK: i32 = 0
+export const READ_SYNTAX: i32 = 1
+export const READ_RANGE: i32 = 2
+```
+
+`shortest` is the fewest digits that read back as `v`, the nearest of those,
+and the even digit on an exact tie, with the exponent form from `1e+06` up and
+from `1e-05` down: `12.56636`, `12`, `1e+21`, `1e-05`, `NaN`, `+Inf`, `-0`.
+`write` puts the same text at an address that has room for forty bytes and
+answers its length. `parse` reads a sign, digits, a point, an exponent, or
+`inf`, `infinity` or `nan` in either case, rounds once to nearest with ties
+to even whatever the length, and says how it ended. A value that overflows,
+or falls into the subnormals or to zero and loses digits, ends as
+`READ_RANGE`, with the value that rounding gave.
 
 ### `unsafe`
 
@@ -349,6 +396,10 @@ export unsafe fn ptr_to_int(p: anyptr): usize !{}
 export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
 export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
+
+export unsafe fn text_size(len: usize): usize !{}
+export unsafe fn text_seal(block: anyptr, len: usize): string !{}
+export unsafe fn text_bytes(text: string): u8[] !{}
 
 export unsafe fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export unsafe fn raw_free(pointer: anyptr) !{}
@@ -366,12 +417,14 @@ export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, 
 export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }
 ```
 
-`cast`, `slice_from_raw`, `env_of`/`with_env` and the `syscall` functions
-are answered by lowering; each `syscall` is the METALS `syscall`
-instruction, and its arguments must be integers, `bool`s or pointers. `ptr_from_int` is
-Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
-runtime functions: METALS has no instruction that makes a pointer of an
-integer.
+`cast`, `offset`, `slice_from_raw`, `env_of`/`with_env` and the `syscall`
+functions are answered by lowering; each `syscall` is the METALS `syscall`
+instruction, and its arguments must be integers, `bool`s or pointers.
+`offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
+Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
+`ptr_from_int` is Gyro over `cast` and a private intrinsic, `ptr_to_int`,
+`text_seal`, `text_bytes` and the rest are runtime functions: METALS has no
+instruction that makes a pointer of an integer or a string of an address.
 
 ### `cstring`
 
@@ -390,6 +443,30 @@ is the address of its first byte as the `char *` a C header spells `*i8?`,
 and `from_c` copies a `char *` up to its NUL into a string made from `a`; a
 null pointer is the empty string.
 
+### `sys`
+
+The Linux system calls the library is written over, with nothing between
+them and the kernel. `fs`, `os` and `time` call these; a program may too.
+
+```gyro
+export safe fn open(path: string, flags: usize, mode: usize): isize !{ io }
+export safe fn close(fd: isize) !{ io }
+export safe fn read(fd: isize, buffer: u8[]): isize !{ io }
+export safe fn write_all(fd: isize, bytes: u8[]): isize !{ io }
+export safe fn write_text(fd: isize, text: string): isize !{ io }
+export safe fn access(path: string): isize !{ io }
+export safe fn unlink(path: string): isize !{ io }
+export fn errno_text(code: isize): string !{}
+export fn fail(call: string, path: string, result: isize): SysError !{}
+export struct SysError { export text: string }
+```
+
+Each call answers the kernel's result: zero or more on success, a negated
+error number on failure. `errno_text` words an error number the way the C
+library's `strerror` does with the first letter lowered, and `fail` builds
+the error `fs` reports from it: `open /tmp/x: no such file or directory`.
+The module also exports the system call numbers and flag values it uses.
+
 ### `net`
 
 ```gyro
@@ -398,19 +475,21 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
-`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
-`align`, `panic`, and the `unsafe` module's `raw_alloc`/`raw_free`/`raw_resize`,
-`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
-`syscall` functions are lowering's),
-`open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
-`net::get`, the `os` and `time` surfaces. The `math` functions are METALS
-instructions.
+Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private
+`start_thread` under `spawn`, `Mutex<T>`/`MutexGuard<T>`, `mem`'s `size`,
+`align` and `panic`, `Format`'s `show`, the `unsafe` module's `raw_alloc`,
+`raw_free`, `raw_resize`, `copy_bytes`, `offset`, `ptr_to_int`, `text_seal`
+and `text_bytes` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
+`syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
+and `net::get`. The `math` functions are METALS instructions, and so are
+the float conversions: the backend emits them in line.
 
-Ordinary Gyro: `String` and its UTF-8 encoder, every text method, `Format`'s
-methods and `mem`'s `format`,
-`Map<K, V>`, `Array<T>::is_empty`, all of `fmt`, and `mem`'s `alloc`,
-`free`, `heap` and `Arena`.
+Ordinary Gyro: `Array<T>`, `String` and its UTF-8 encoder, `from_utf8`,
+`bytes` and `runes`, every text method, `Format`'s methods and `mem`'s
+`format`, `Map<K, V>`, all of `fmt`, `mem`'s `alloc`, `free`, `heap` and
+`Arena`, the integer parsers of `convert`, all of `fs` and `sys`, and the
+leaves lowering reaches for a number shown, a string compared and a word
+hashed.
 
 **Prefer Gyro.** Something with no interesting runtime requirement written
 into the C runtime instead is a second language to maintain it in, for

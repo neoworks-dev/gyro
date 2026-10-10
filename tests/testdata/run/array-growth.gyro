@@ -1,0 +1,58 @@
+// An Array grows by doubling from eight, or from the capacity it was asked
+// for, and keeps every element across the moves. pop on an empty array
+// answers false rather than failing; a copy of the handle is the same
+// array.
+
+import { println, Array } from "stdlib"
+import { heap } from "mem"
+
+struct Pair {
+    left: i32
+    right: i64
+}
+
+fn push_all(into: Array<i32>, count: i32) {
+    for i in 0..count {
+        into.push(i * 3)
+    }
+}
+
+fn main() {
+    var xs = Array<i32>::new(heap())
+    push_all(xs, 100)
+    println(xs.len())
+    println(xs.get(0))
+    println(xs.get(33))
+    println(xs.get(99))
+    xs[50] = -1
+    println(xs[50])
+
+    var top, found = xs.pop()
+    println(top)
+    println(found)
+    println(xs.len())
+
+    var window = xs[10..13]
+    println(window.len())
+    println(window[2])
+
+    var pairs = Array<Pair>::with_capacity(heap(), 20)
+    for i in 0..25 {
+        pairs.push(Pair{ left: i, right: 1000 * i as i64 })
+    }
+    println(pairs.len())
+    println(pairs[24].right)
+    pairs[3].left = 77
+    println(pairs.get(3).left)
+
+    var none = Array<bool>::new(heap())
+    var last, any = none.pop()
+    println(any)
+    println(last)
+    println(none.is_empty())
+    println(none.slice().len())
+
+    xs.free()
+    pairs.free()
+    none.free()
+}

@@ -1,0 +1,12 @@
+import { println, Array, String } from "stdlib"
+import { heap } from "mem"
+
+// An Array is a handle to a header that its copies share. It is written in
+// Gyro with a field, and still behaves as the handle it is: it cannot go in
+// an any, and showing it would show the header.
+fn handle(xs: Array<i32>, text: String) {
+    var a = xs as any //~ E0509 an any cannot hold Array<i32>
+    println(xs)       //~ E0527 Array<i32> does not implement Print
+    println(text)
+    println(xs.len())
+}

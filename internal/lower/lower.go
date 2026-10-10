@@ -73,6 +73,8 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	l.emitGlobalInit()
 	l.finishErrorType()
 	l.finishAnyType()
+	// The printers just built may name leaves that are Gyro, not yet lowered.
+	l.drain()
 	l.attachImports()
 
 	// A program that imports another language is several METALS modules,
@@ -161,7 +163,7 @@ type lowerer struct {
 
 	// errTypes lists the structs that can inhabit an error value, in
 	// deterministic order; errVariant maps each to its variant index in
-	// the generated %error enum (Native(str) is variant 0). usesError
+	// the generated %error enum. usesError
 	// records whether %error was ever mentioned.
 	errTypes   []*types.Struct
 	errVariant map[*types.Struct]int
@@ -520,8 +522,7 @@ func (l *lowerer) metalsEnum(t *types.Enum) metals.Type {
 
 // collectErrorTypes enumerates every struct in the program that satisfies
 // the structural error contract. Whole-program lowering makes error a
-// closed sum: variant 0 is the runtime's Native(str), then one variant
-// per concrete error type.
+// closed sum: one variant per concrete error type.
 func (l *lowerer) collectErrorTypes() {
 	for _, module := range l.prog.Modules {
 		for _, decl := range module.Tree.Decls {
@@ -533,7 +534,7 @@ func (l *lowerer) collectErrorTypes() {
 			if t == nil || len(t.TypeParams) > 0 || !isErrorStruct(t) {
 				continue
 			}
-			l.errVariant[t] = len(l.errTypes) + 1
+			l.errVariant[t] = len(l.errTypes)
 			l.errTypes = append(l.errTypes, t)
 		}
 	}
@@ -554,9 +555,7 @@ func (l *lowerer) finishErrorType() {
 	if !l.usesError || l.declared["error"] != nil {
 		return
 	}
-	decl := &metals.TypeDecl{Name: "error", Enum: &metals.EnumShape{
-		Variants: []metals.VariantDecl{{Name: "Native", Payload: []metals.Type{metals.TStr}}},
-	}}
+	decl := &metals.TypeDecl{Name: "error", Enum: &metals.EnumShape{}}
 	l.declared["error"] = decl
 	l.module.Types = append(l.module.Types, decl)
 	for _, t := range l.errTypes {
@@ -628,9 +627,10 @@ func (l *lowerer) ensureNativeImport(name string, decl *ast.FuncDecl, sig *types
 // ensureImport registers a synthesized runtime intrinsic such as
 // println<i32> or str<bool>.
 func (l *lowerer) ensureImport(name string, sig *metals.FnType) {
-	if l.imports[name] == nil {
-		l.imports[name] = sig
+	if l.imports[name] != nil || l.ensureLeaf(name, sig) {
+		return
 	}
+	l.imports[name] = sig
 }
 
 // ensureForeignImport declares a function another language's module

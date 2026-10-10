@@ -30,6 +30,11 @@ type funcLowerer struct {
 	result    types.Type
 	addrTaken map[string]bool
 
+	// written holds the names the body may change in place, which is what
+	// decides whether a record parameter needs a slot of its own. It is nil
+	// where nobody has looked, and nil means every name.
+	written map[string]bool
+
 	// captures is set when this is a lifted closure body: the names the
 	// closure copied into its environment record, in field order. The
 	// env pointer arrives as the first parameter, named env.
@@ -92,6 +97,7 @@ func (l *lowerer) lowerFunc(item workItem) {
 	}
 	f.addrTaken = map[string]bool{}
 	markAddressTaken(decl.Body, f.addrTaken)
+	f.written = f.writtenNames(decl.Body)
 
 	f.blocks = []*[]metals.Instr{&f.fn.Body}
 	f.pushScope()
@@ -133,7 +139,7 @@ func (f *funcLowerer) declareParam(name string, typ types.Type) {
 	if typ == nil {
 		f.l.fail("@%s: parameter %s has no recorded type", f.fn.Name, name)
 	}
-	if !f.needsSlot(name, typ) {
+	if !f.paramNeedsSlot(name, typ) {
 		f.fn.Params = append(f.fn.Params, metals.Param{Name: name, Type: f.l.metalsType(typ)})
 		f.bind(name, &local{reg: name, typ: typ, env: -1})
 		f.noteReg(name)
@@ -206,6 +212,8 @@ func placeRoot(e ast.Expr) string {
 		switch x := e.(type) {
 		case *ast.Ident:
 			return x.Name
+		case *ast.SelfExpr:
+			return "self"
 		case *ast.SelectorExpr:
 			e = x.X
 		case *ast.IndexExpr:
@@ -362,6 +370,80 @@ func (f *funcLowerer) needsSlot(name string, typ types.Type) bool {
 		return true
 	}
 	return isUserRecord(typ)
+}
+
+// paramNeedsSlot is needsSlot for an incoming parameter. A record the body
+// only reads stays the value it arrived as: a slot would copy all of it in
+// the prologue so that its fields could be changed, and none are.
+func (f *funcLowerer) paramNeedsSlot(name string, typ types.Type) bool {
+	if f.addrTaken[name] {
+		return true
+	}
+	if _, isUnion := typ.(*types.Union); isUnion {
+		return true
+	}
+	if f.written == nil || f.written[name] {
+		return f.needsSlot(name, typ)
+	}
+	return false
+}
+
+// writtenNames collects every name the body may change in place, or take
+// the address of by another road than &: assigned to through a field or an
+// index, narrowed into a view that can be written, called with a method
+// that takes *self, or mentioned inside a closure, which may do any of
+// them later. It errs towards yes.
+func (f *funcLowerer) writtenNames(body ast.Node) map[string]bool {
+	written := map[string]bool{}
+	walk(body, func(n ast.Node) {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			for _, lhs := range n.Lhs {
+				if root := placeRoot(lhs); root != "" {
+					written[root] = true
+				}
+			}
+		case *ast.IndexExpr:
+			if _, narrowing := n.Index.(*ast.RangeExpr); narrowing {
+				if root := placeRoot(n.X); root != "" {
+					written[root] = true
+				}
+			}
+		case *ast.CallExpr:
+			selector, ok := n.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return
+			}
+			root := placeRoot(selector.X)
+			if root == "" {
+				return
+			}
+			info := f.lookupCall(n)
+			if info == nil || info.Method == nil || info.Method.Recv == types.PointerRecv {
+				written[root] = true
+			}
+		case *ast.ClosureExpr:
+			walk(n, func(inner ast.Node) {
+				switch inner := inner.(type) {
+				case *ast.Ident:
+					written[inner.Name] = true
+				case *ast.SelfExpr:
+					written["self"] = true
+				}
+			})
+		}
+	})
+	return written
+}
+
+// lookupCall is callInfo for a caller that can do without it.
+func (f *funcLowerer) lookupCall(call *ast.CallExpr) *sema.CallInfo {
+	if f.inst != nil {
+		if info, ok := f.inst.Calls[call]; ok {
+			return info
+		}
+	}
+	return f.l.info.Calls[call]
 }
 
 func isUserRecord(t types.Type) bool {
@@ -1216,42 +1298,48 @@ func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 }
 
 // arrayElementPlace reaches one element of an Array<T> through the
-// address the runtime hands back. The name it calls is the one an
-// explicit `xs.at(i)` lowers to, so the two share an import.
+// address its `at` method hands back, the one an explicit `xs.at(i)`
+// calls. `at` rather than `get` is what makes an index a place: `get`
+// answers with a copy, and assigning into a copy assigns into nothing.
 func (f *funcLowerer) arrayElementPlace(e *ast.IndexExpr, elemType types.Type) *place {
-	name := "Array<" + elemType.String() + ">::at"
-	f.l.ensureImport(name, &metals.FnType{
-		Params: []metals.Type{&metals.Handle{}, metals.TUsize},
-		Result: &metals.Ptr{Elem: f.l.metalsType(elemType)},
-	})
+	base := f.typeOf(e.X)
+	if pointer, ok := base.(*types.Pointer); ok {
+		base = pointer.Elem
+	}
+	method := methodOfType(base, "at")
+	if method == nil || method.Decl == nil {
+		f.l.fail("@%s: %s is indexed but has no at method", f.fn.Name, base)
+	}
+	callee := f.l.ensureFunc(method.Decl, methodBindings(method, base))
 
 	elementPtr := func() string {
-		handle := f.nativeReceiver(e.X)
+		receiver := f.methodReceiver(e.X, method)
 		index := f.lowerExpr(e.Index, types.USize)
 		ptr := f.newReg("elem.p")
-		f.emit(&metals.Call{Dst: ptr, Callee: name, Args: []string{handle, index}})
+		f.emit(&metals.Call{Dst: ptr, Callee: callee, Args: []string{receiver, index}})
 		return ptr
 	}
 	return f.pointerPlace(elementPtr(), elemType)
 }
 
-// arrayView calls Array<T>::slice, which is the borrow the runtime
-// already offers. The name is the one an explicit `xs.slice()` lowers
-// to, so the two share an import.
+// arrayView calls Array<T>::slice, the borrow an Array already offers.
 func (f *funcLowerer) arrayView(x ast.Expr, elemType types.Type) string {
-	name := "Array<" + elemType.String() + ">::slice"
-	f.l.ensureImport(name, &metals.FnType{
-		Params: []metals.Type{&metals.Handle{}},
-		Result: &metals.SliceOf{Elem: f.l.metalsType(elemType)},
-	})
+	base := f.typeOf(x)
+	if pointer, ok := base.(*types.Pointer); ok {
+		base = pointer.Elem
+	}
+	method := methodOfType(base, "slice")
+	if method == nil || method.Decl == nil {
+		f.l.fail("@%s: %s has no slice method", f.fn.Name, base)
+	}
+	callee := f.l.ensureFunc(method.Decl, methodBindings(method, base))
 	view := f.newReg("view")
-	f.emit(&metals.Call{Dst: view, Callee: name, Args: []string{f.nativeReceiver(x)}})
+	f.emit(&metals.Call{Dst: view, Callee: callee, Args: []string{f.methodReceiver(x, method)}})
 	return view
 }
 
 // arrayElemOf is the element type of an `Array<T>`, or nil. The Array is
-// the runtime's own handle, so it is recognized by being that
-// declaration rather than by shape.
+// recognized by being that declaration rather than by shape.
 func arrayElemOf(t *types.Struct) types.Type {
 	origin := t
 	if t.Origin != nil {

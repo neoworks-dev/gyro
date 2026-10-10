@@ -39,10 +39,14 @@ println(buf[0])         // 4
 | `slice(self): T[]` | `!{ &self }` | a view of the array's own elements |
 | `free(*self)` | `!{}` | returns the buffer to the recorded allocator |
 
-`Array<T>` is a runtime-backed handle: the declarations have no bodies, so
-each tier implements them ([chapter 7](ch07-00-modules.md)). `is_empty` is
-the exception, and it is written in Gyro because it needs nothing from the
-runtime.
+`Array<T>` is ordinary Gyro in the bundled `stdlib`, written over the
+`unsafe` module ([chapter 4.6](ch04-06-unsafe.md)) and the allocator
+([chapter 4.5](ch04-05-allocators.md)). An array is a handle: a pointer to a
+header holding the buffer, the length, the capacity and the allocator, so a
+copy of the value is the same array. The header stays allocated after `free`,
+which is how a second `free` and a use after `free` are caught. `pop` on an
+empty array answers a zero-filled element beside `false`, since Gyro has no
+other value to put there.
 
 ## Indexing
 

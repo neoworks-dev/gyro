@@ -939,6 +939,15 @@ func (c *checker) builtinPrint(t types.Type, seen map[string]bool) bool {
 	case *types.Tuple:
 		return c.everyHas(t.Elems, "Print", seen)
 	case *types.Struct:
+		// An Array is a handle to a header: showing it would show the
+		// header, which is not the array's value. A String is an Array of
+		// bytes that shows as its text, through its to_string.
+		if arrayElem(t) != nil {
+			return false
+		}
+		if t.Name == "String" && t.Module == stdlib.Path("stdlib") {
+			return true
+		}
 		return c.bundledParts(t, "Print", seen)
 	case *types.Enum:
 		return c.bundledParts(t, "Print", seen)

@@ -1,12 +1,10 @@
-/* gyro:rt — the native runtime behind the gy_* imports the code
- * generator emits. Compiled and linked by `gyro build`; the contract
- * (layouts, message texts, formatting rules) is docs/native.md. The
- * formatting must match Go's strconv byte for byte, because the METALS
- * evaluator prints through it and every tier must agree. */
+/* gyro:rt — what the generated code still asks the C runtime for. Compiled
+ * and linked by `gyro build`. The standard library is Gyro now: this is the
+ * floor under it that no METALS instruction reaches, and the threads,
+ * channels and mutexes that wait on libc's pthreads. */
 
 #define _GNU_SOURCE
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -15,7 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -54,10 +51,18 @@ static void gy_future_fulfill(gy_future *fut);
 static __thread int gy_on_worker_thread = 0;
 static __thread gy_future *gy_current_future = NULL;
 
+/* The Gyro output layer buffers standard output and registers what writes
+ * it out here, the first time it prints. The program ending, a panic, and
+ * a call into a C library are the points where the C runtime asks for it. */
+void (*gy_flush_hook)(void) = NULL;
+
+void gy_set_flush_hook(void (*hook)(void)) { gy_flush_hook = hook; }
+
 _Noreturn void gy_abort(const gy_str *message) {
-    fflush(stdout);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     fprintf(stderr, "panic: %.*s\n", (int)message->len, message->bytes);
-    fflush(stderr);
     if (!gy_on_worker_thread) {
         exit(1);
     }
@@ -68,56 +73,6 @@ _Noreturn void gy_abort(const gy_str *message) {
 }
 
 _Noreturn static void gy_abort_c(const char *message) { gy_abort(gy_str_c(message)); }
-
-/* ------------------------------------------------------------------ */
-/* Allocators. mem's Allocator is a procedure and a data pointer; a   */
-/* container records the one it was made with and goes through it for */
-/* every block it owns. Mode is a Gyro enum, a one-word tag that      */
-/* crosses a call by address like any aggregate, so the procedure     */
-/* takes a pointer to the tag: Alloc, Free, FreeAll, Resize in that   */
-/* order. A block from Alloc or Resize is zero-filled.                 */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    void *(*proc)(void *data, const int64_t *mode, uint64_t size, uint64_t align, void *old,
-                  uint64_t old_size);
-    void *data;
-} gy_allocator;
-
-enum { GY_MODE_ALLOC = 0, GY_MODE_FREE = 1, GY_MODE_FREE_ALL = 2, GY_MODE_RESIZE = 3 };
-
-/* 16 is the largest alignment a Gyro type asks for, and the runtime does
- * not know the element's, so every block asks for it. */
-#define GY_ALLOC_ALIGN 16
-
-/* Out of memory panics with the size, the way alloc<T>() does. */
-static void *gy_allocator_get(const gy_allocator *a, int64_t mode, size_t size, void *old,
-                              size_t old_size) {
-    void *block = a->proc(a->data, &mode, size, GY_ALLOC_ALIGN, old, old_size);
-    if (block == NULL) {
-        char buf[96];
-        snprintf(buf, sizeof buf, "allocation of %zu bytes failed", size);
-        gy_abort_c(buf);
-    }
-    return block;
-}
-
-static void gy_allocator_put(const gy_allocator *a, void *old, size_t old_size) {
-    int64_t mode = GY_MODE_FREE;
-    a->proc(a->data, &mode, 0, 0, old, old_size);
-}
-
-static gy_str *gy_str_alloc_in(const gy_allocator *a, int64_t len) {
-    gy_str *s = gy_allocator_get(a, GY_MODE_ALLOC, sizeof(gy_str) + (size_t)len + 1, NULL, 0);
-    s->len = len;
-    return s;
-}
-
-static gy_str *gy_str_from_in(const gy_allocator *a, const char *text, size_t len) {
-    gy_str *s = gy_str_alloc_in(a, (int64_t)len);
-    memcpy(s->bytes, text, len);
-    return s;
-}
 
 _Noreturn void gy_abort_bounds(int64_t index, int64_t length) {
     char buf[96];
@@ -280,23 +235,13 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
     memmove(to, from, (size_t)bytes);
 }
 
-/* The address `bytes` past base: how an allocator that carves one block
- * into many names where each one starts. */
-void *gy_offset(void *base, int64_t bytes) { return (char *)base + bytes; }
-
 /* An integer as an address and back, which no METALS instruction does. */
 void *gy_ptr_from_int(int64_t address) { return (void *)(uintptr_t)address; }
 int64_t gy_ptr_to_int(const void *p) { return (int64_t)(uintptr_t)p; }
 
-/* A string is a { len, bytes } header followed by its bytes in one block.
- * Building one in an allocator's block is three steps: ask how big the
- * block must be, copy text in at an offset, and seal it with its length. */
-int64_t gy_text_size(int64_t len) { return (int64_t)sizeof(gy_str) + len; }
-
-void gy_text_write(void *block, int64_t at, const gy_str *text) {
-    memcpy(((gy_str *)block)->bytes + at, text->bytes, (size_t)text->len);
-}
-
+/* A string is a { len, bytes } header followed by its bytes in one block,
+ * and sealing a block as one is the one step Gyro cannot take itself: it
+ * has no way to make a string of an address. */
 const gy_str *gy_text_seal(void *block, int64_t len) {
     gy_str *s = block;
     s->len = len;
@@ -426,40 +371,15 @@ static int gy_encode_rune(int64_t r, char *out) {
     return 4;
 }
 
-/* gy_quote is Go's %q for the ASCII range: the escapes strconv.Quote
- * would produce, non-ASCII bytes passed through. */
-static gy_str *gy_quote(const gy_str *s) {
-    char *buf = malloc((size_t)s->len * 4 + 3);
-    char *w = buf;
-    *w++ = '"';
-    for (int64_t i = 0; i < s->len; i++) {
-        unsigned char c = (unsigned char)s->bytes[i];
-        switch (c) {
-        case '"': *w++ = '\\'; *w++ = '"'; break;
-        case '\\': *w++ = '\\'; *w++ = '\\'; break;
-        case '\n': *w++ = '\\'; *w++ = 'n'; break;
-        case '\r': *w++ = '\\'; *w++ = 'r'; break;
-        case '\t': *w++ = '\\'; *w++ = 't'; break;
-        default:
-            if (c < 0x20 || c == 0x7f) {
-                w += sprintf(w, "\\x%02x", c);
-            } else {
-                *w++ = (char)c;
-            }
-        }
-    }
-    *w++ = '"';
-    gy_str *out = gy_str_from(buf, (size_t)(w - buf));
-    free(buf);
-    return out;
-}
-
 /* ------------------------------------------------------------------ */
-/* The print family and str<T>.                                       */
+/* The printing half of gyro:rt, for METALS that is not Gyro: a producer */
+/* that cannot link Gyro's own stdlib prints through these. A Gyro      */
+/* program never reaches them; it prints through stdlib's buffered      */
+/* leaves, and these write what that buffer holds out first.            */
 /* ------------------------------------------------------------------ */
 
 /* Recursive, because a format value holds it across all its pieces and a
-   piece's to_string may print. */
+   piece's to_string may print. The Gyro output layer takes the same lock. */
 static pthread_mutex_t gy_print_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 
 void gy_lock_output(void) { pthread_mutex_lock(&gy_print_mutex); }
@@ -467,6 +387,9 @@ void gy_unlock_output(void) { pthread_mutex_unlock(&gy_print_mutex); }
 
 static void gy_write(FILE *stream, const char *bytes, size_t len, int newline) {
     pthread_mutex_lock(&gy_print_mutex);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     fwrite(bytes, 1, len, stream);
     if (newline) {
         fputc('\n', stream);
@@ -500,11 +423,6 @@ static void gy_print_dispatch(FILE *stream, int newline, const char *bytes, size
         char buf[64];                                                          \
         gy_render_##suffix(v, buf, sizeof buf);                                \
         gy_print_dispatch(stderr, 1, buf, strlen(buf));                        \
-    }                                                                          \
-    gy_str *gy_str_##suffix(type v) {                                          \
-        char buf[64];                                                          \
-        gy_render_##suffix(v, buf, sizeof buf);                                \
-        return gy_str_c(buf);                                                  \
     }
 
 GY_PRINT_FAMILY(int, int64_t, snprintf(buf, cap, "%" PRId64, v))
@@ -517,10 +435,6 @@ void gy_print_str(const gy_str *s) { gy_print_dispatch(stdout, 0, s->bytes, (siz
 void gy_println_str(const gy_str *s) { gy_print_dispatch(stdout, 1, s->bytes, (size_t)s->len); }
 void gy_eprint_str(const gy_str *s) { gy_print_dispatch(stderr, 0, s->bytes, (size_t)s->len); }
 void gy_eprintln_str(const gy_str *s) { gy_print_dispatch(stderr, 1, s->bytes, (size_t)s->len); }
-
-/* A string prints raw but renders quoted: str<string> is only ever
-   reached from inside a composite's representation. */
-gy_str *gy_str_str(const gy_str *s) { return gy_quote(s); }
 
 /* ------------------------------------------------------------------ */
 /* String operations.                                                 */
@@ -537,156 +451,12 @@ int64_t gy_str_eq(const gy_str *a, const gy_str *b) {
     return a->len == b->len && memcmp(a->bytes, b->bytes, (size_t)a->len) == 0;
 }
 
-/* Lexicographic by byte, -1/0/1, matching Go's strings.Compare: the
- * shorter string loses when it is a prefix of the longer one. */
-int64_t gy_str_compare(const gy_str *a, const gy_str *b) {
-    int64_t shared = a->len < b->len ? a->len : b->len;
-    int order = memcmp(a->bytes, b->bytes, (size_t)shared);
-    if (order != 0) {
-        return order < 0 ? -1 : 1;
-    }
-    if (a->len == b->len) {
-        return 0;
-    }
-    return a->len < b->len ? -1 : 1;
-}
-
-/* gy_str_bytes hands a string's UTF-8 out as a slice of u8, which is the
- * same bytes it already holds. It still copies: a string is immutable and
- * shared, and a slice is neither. gy_str_runes below decodes instead,
- * because a rune is four bytes and UTF-8 is not. */
-void gy_str_bytes(void **out, const gy_str *s, const gy_allocator *a) {
-    char *bytes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len + 1, NULL, 0);
-    memcpy(bytes, s->bytes, (size_t)s->len);
-    out[0] = bytes;
-    out[1] = (void *)s->len;
-}
-
-/* gy_str_view is gy_str_bytes without the copy: a slice over the string's
+/* gy_str_view is a slice over the string's
  * own bytes, for a function that only reads them. The view borrows the
  * string, which is immutable, so nothing can write through it. */
 void gy_str_view(void **out, const gy_str *s) {
     out[0] = (void *)s->bytes;
     out[1] = (void *)s->len;
-}
-
-/* gy_from_utf8 is the other direction, and the bytes are the bytes. The
- * copy is what makes the result own what it holds. */
-const gy_str *gy_from_utf8(const gy_allocator *a, const void **slice) {
-    const char *elems = (const char *)slice[0];
-    int64_t len = (int64_t)slice[1];
-    gy_str *out = gy_str_alloc_in(a, len);
-    memcpy(out->bytes, elems, (size_t)len);
-    return out;
-}
-
-/* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
- * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
-void gy_str_runes(void *out, const gy_str *s, const gy_allocator *a) {
-    int32_t *runes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len * 4 + 4, NULL, 0);
-    int64_t count = 0;
-    int64_t i = 0;
-    while (i < s->len) {
-        unsigned char c = (unsigned char)s->bytes[i];
-        int64_t r = 0xFFFD;
-        int size = 1;
-        if (c < 0x80) {
-            r = c;
-        } else if ((c & 0xE0) == 0xC0 && i + 1 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x1F) << 6) | (s->bytes[i + 1] & 0x3F);
-            size = 2;
-            if (r < 0x80) { r = 0xFFFD; size = 1; }
-        } else if ((c & 0xF0) == 0xE0 && i + 2 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80 &&
-                   (s->bytes[i + 2] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x0F) << 12) | ((int64_t)(s->bytes[i + 1] & 0x3F) << 6) |
-                (s->bytes[i + 2] & 0x3F);
-            size = 3;
-            if (r < 0x800 || (r >= 0xD800 && r <= 0xDFFF)) { r = 0xFFFD; size = 1; }
-        } else if ((c & 0xF8) == 0xF0 && i + 3 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80 &&
-                   (s->bytes[i + 2] & 0xC0) == 0x80 && (s->bytes[i + 3] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x07) << 18) | ((int64_t)(s->bytes[i + 1] & 0x3F) << 12) |
-                ((int64_t)(s->bytes[i + 2] & 0x3F) << 6) | (s->bytes[i + 3] & 0x3F);
-            size = 4;
-            if (r < 0x10000 || r > 0x10FFFF) { r = 0xFFFD; size = 1; }
-        }
-        runes[count++] = (int32_t)r;
-        i += size;
-    }
-    void **slice = out;
-    slice[0] = runes;
-    slice[1] = (void *)count;
-}
-
-/* ------------------------------------------------------------------ */
-/* Derived hashing. The composites are folded by functions the         */
-/* lowering synthesizes; these answer for the scalars underneath them, */
-/* and must produce exactly what internal/interp/hash.go does.         */
-/* ------------------------------------------------------------------ */
-
-#define GY_FNV_OFFSET 14695981039346656037ULL
-#define GY_FNV_PRIME 1099511628211ULL
-
-/* The splitmix64 finalizer: an avalanche over one word, so small
- * integers do not land in neighbouring buckets. */
-static uint64_t gy_hash_word(uint64_t x) {
-    x ^= x >> 30;
-    x *= 0xbf58476d1ce4e5b9ULL;
-    x ^= x >> 27;
-    x *= 0x94d049bb133111ebULL;
-    x ^= x >> 31;
-    return x;
-}
-
-uint64_t gy_hash_int(int64_t v) { return gy_hash_word((uint64_t)v); }
-
-uint64_t gy_hash_uint(uint64_t v) { return gy_hash_word(v); }
-
-/* -0.0 == 0.0, so the two have to hash alike. */
-uint64_t gy_hash_float(double v) {
-    if (v == 0.0) {
-        v = 0.0;
-    }
-    uint64_t bits;
-    memcpy(&bits, &v, sizeof bits);
-    return gy_hash_word(bits);
-}
-
-uint64_t gy_hash_str(const gy_str *s) {
-    uint64_t h = GY_FNV_OFFSET;
-    for (int64_t i = 0; i < s->len; i++) {
-        h = (h ^ (unsigned char)s->bytes[i]) * GY_FNV_PRIME;
-    }
-    return h;
-}
-
-/* ------------------------------------------------------------------ */
-/* Conversions the code generator delegates.                          */
-/* ------------------------------------------------------------------ */
-
-double gy_uint_to_double(uint64_t v) { return (double)v; }
-
-int64_t gy_double_to_int(double v, int64_t min, int64_t max) {
-    double t = trunc(v);
-    if (!(t >= -9223372036854775808.0 && t < 9223372036854775808.0)) {
-        gy_abort_c("conversion loses the value");
-    }
-    int64_t out = (int64_t)t;
-    if (out < min || out > max) {
-        gy_abort_c("conversion loses the value");
-    }
-    return out;
-}
-
-uint64_t gy_double_to_uint(double v, uint64_t max) {
-    double t = trunc(v);
-    if (!(t >= 0.0 && t < 18446744073709551616.0)) {
-        gy_abort_c("conversion loses the value");
-    }
-    uint64_t out = (uint64_t)t;
-    if (out > max) {
-        gy_abort_c("conversion loses the value");
-    }
-    return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -706,520 +476,6 @@ void gy_write_byte(int64_t fd, int64_t byte) {
 int64_t gy_read_byte(void) {
     int c = fgetc(stdin);
     return c == EOF ? -1 : (int64_t)c;
-}
-
-/* ------------------------------------------------------------------ */
-/* The float intrinsics whose C library spelling has the wrong        */
-/* semantics. sqrt, fabs, ceil, floor, trunc and copysign mean in C   */
-/* exactly what they mean in METALS, so both backends call libm for   */
-/* those directly; these three do not, and live here so that the two  */
-/* backends cannot answer them differently.                           */
-/* ------------------------------------------------------------------ */
-
-/* fmin and fmax in C return the operand that is not NaN, and say
- * nothing useful about the two zeros. METALS propagates NaN and orders
- * -0.0 below +0.0, which is what a program comparing bit patterns
- * needs and what wasm's f64.min and f64.max specify. */
-double gy_f64_min(double a, double b) {
-    if (a != a || b != b) return a + b; /* either NaN -> NaN */
-    if (a == 0.0 && b == 0.0) return signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
-double gy_f64_max(double a, double b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0 && b == 0.0) return signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-
-/* roundToIntegralTiesToEven. C's round() is ties-away-from-zero and is
- * the wrong function; nearbyint honours the rounding mode, which is
- * round-to-nearest-even unless someone changed it, and nothing here
- * ever does. */
-double gy_f64_nearest(double v) { return nearbyint(v); }
-
-float gy_f32_min(float a, float b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0f && b == 0.0f) return signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
-float gy_f32_max(float a, float b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0f && b == 0.0f) return signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-
-float gy_f32_nearest(float v) { return nearbyintf(v); }
-
-/* ------------------------------------------------------------------ */
-/* convert, fs, net. Result tuples are written into the caller's      */
-/* cell: the error member is { flag, tag, payload... }                */
-/* with tag 0, the closed error sum's Native(str) variant.            */
-/* ------------------------------------------------------------------ */
-
-static void gy_write_error(int64_t *err, gy_str *message) {
-    err[0] = 1; /* opt flag: an error is present */
-    err[1] = 0; /* variant 0: Native(str) */
-    err[2] = (int64_t)message;
-}
-
-static gy_str *gy_trim_space(const gy_str *s) {
-    int64_t from = 0;
-    int64_t to = s->len;
-    while (from < to && isspace((unsigned char)s->bytes[from])) from++;
-    while (to > from && isspace((unsigned char)s->bytes[to - 1])) to--;
-    return gy_str_from(s->bytes + from, (size_t)(to - from));
-}
-
-static gy_str *gy_concat3(const char *before, const gy_str *middle, const char *after) {
-    gy_str *quoted = (gy_str *)middle;
-    size_t beforeLen = strlen(before), afterLen = strlen(after);
-    gy_str *out = gy_str_alloc((int64_t)(beforeLen + (size_t)quoted->len + afterLen));
-    memcpy(out->bytes, before, beforeLen);
-    memcpy(out->bytes + beforeLen, quoted->bytes, (size_t)quoted->len);
-    memcpy(out->bytes + beforeLen + quoted->len, after, afterLen);
-    return out;
-}
-
-/* out: tuple<i32, opt<error>> = { value, flag, tag, message } */
-void gy_to_i32(int64_t *out, const gy_str *s) {
-    gy_str *trimmed = gy_trim_space(s);
-    char buf[64];
-    int64_t parsed = 0;
-    int ok = trimmed->len > 0 && trimmed->len < 63;
-    if (ok) {
-        memcpy(buf, trimmed->bytes, (size_t)trimmed->len);
-        buf[trimmed->len] = 0;
-        char *end = NULL;
-        errno = 0;
-        long long wide = strtoll(buf, &end, 10);
-        ok = end == buf + trimmed->len && errno == 0 && wide >= INT32_MIN && wide <= INT32_MAX;
-        parsed = (int64_t)wide;
-    }
-    if (!ok) {
-        out[0] = 0;
-        gy_write_error(out + 1, gy_concat3("", gy_quote(s), " is not an i32"));
-        return;
-    }
-    out[0] = parsed;
-    out[1] = 0;
-}
-
-/* out: tuple<f64, opt<error>> */
-void gy_to_f64(int64_t *out, const gy_str *s) {
-    gy_str *trimmed = gy_trim_space(s);
-    char buf[128];
-    double parsed = 0;
-    int ok = trimmed->len > 0 && trimmed->len < 127;
-    if (ok) {
-        memcpy(buf, trimmed->bytes, (size_t)trimmed->len);
-        buf[trimmed->len] = 0;
-        char *end = NULL;
-        errno = 0;
-        parsed = strtod(buf, &end);
-        ok = end == buf + trimmed->len && errno == 0;
-    }
-    if (!ok) {
-        out[0] = 0;
-        gy_write_error(out + 1, gy_concat3("", gy_quote(s), " is not an f64"));
-        return;
-    }
-    memcpy(out, &parsed, 8);
-    out[1] = 0;
-}
-
-/* Go's syscall error strings are strerror with a lowercase initial. */
-static gy_str *gy_errno_str(int code) {
-    char buf[128];
-    snprintf(buf, sizeof buf, "%s", strerror(code));
-    if (buf[0] >= 'A' && buf[0] <= 'Z') {
-        buf[0] = (char)(buf[0] - 'A' + 'a');
-    }
-    return gy_str_c(buf);
-}
-
-typedef struct {
-    gy_str *name;
-    int closed;
-} gy_file;
-
-/* gy_cstr copies a str into a NUL-terminated buffer for libc paths. */
-static char *gy_cstr(const gy_str *s) {
-    char *out = malloc((size_t)s->len + 1);
-    memcpy(out, s->bytes, (size_t)s->len);
-    out[s->len] = 0;
-    return out;
-}
-
-/* out: tuple<handle, opt<error>> = { handle, flag, tag, message } */
-void gy_open(int64_t *out, const gy_str *path) {
-    char *cpath = gy_cstr(path);
-    struct stat info;
-    if (stat(cpath, &info) != 0) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("stat ", path, ": ");
-        out[0] = 0;
-        gy_write_error(out + 1, gy_str_concat(prefix, reason));
-        free(cpath);
-        return;
-    }
-    free(cpath);
-    gy_file *file = calloc(1, sizeof(gy_file));
-    file->name = gy_str_from(path->bytes, (size_t)path->len);
-    out[0] = (int64_t)file;
-    out[1] = 0;
-}
-
-/* out: tuple<str, opt<error>> */
-void gy_read_all(int64_t *out, const gy_allocator *a, gy_file *file) {
-    char *cpath = gy_cstr(file->name);
-    FILE *stream = fopen(cpath, "rb");
-    if (stream == NULL) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("open ", file->name, ": ");
-        out[0] = (int64_t)gy_str_c("");
-        gy_write_error(out + 1, gy_str_concat(prefix, reason));
-        free(cpath);
-        return;
-    }
-    free(cpath);
-    fseek(stream, 0, SEEK_END);
-    long size = ftell(stream);
-    fseek(stream, 0, SEEK_SET);
-    gy_str *content = gy_str_alloc_in(a, size);
-    if (size > 0 && fread(content->bytes, 1, (size_t)size, stream) != (size_t)size) {
-        content->len = 0;
-    }
-    fclose(stream);
-    out[0] = (int64_t)content;
-    out[1] = 0;
-}
-
-void gy_file_close(gy_file *file) { file->closed = 1; }
-
-/* gy_write_text opens, writes and closes in one call; the error strings
- * match Go's os package (open/write prefixes) byte for byte. */
-static void gy_write_text(int64_t *out, const gy_str *path, const gy_str *text, const char *mode) {
-    char *cpath = gy_cstr(path);
-    FILE *stream = fopen(cpath, mode);
-    free(cpath);
-    if (stream == NULL) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("open ", path, ": ");
-        gy_write_error(out, gy_str_concat(prefix, reason));
-        return;
-    }
-    if (text->len > 0 && fwrite(text->bytes, 1, (size_t)text->len, stream) != (size_t)text->len) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("write ", path, ": ");
-        gy_write_error(out, gy_str_concat(prefix, reason));
-        fclose(stream);
-        return;
-    }
-    fclose(stream);
-    out[0] = 0;
-}
-
-/* out: opt<error> = { flag, tag, message } */
-void gy_write_file(int64_t *out, const gy_str *path, const gy_str *text) {
-    gy_write_text(out, path, text, "wb");
-}
-
-/* out: opt<error> */
-void gy_append_file(int64_t *out, const gy_str *path, const gy_str *text) {
-    gy_write_text(out, path, text, "ab");
-}
-
-/* out: opt<error> */
-void gy_remove(int64_t *out, const gy_str *path) {
-    char *cpath = gy_cstr(path);
-    if (remove(cpath) != 0) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("remove ", path, ": ");
-        gy_write_error(out, gy_str_concat(prefix, reason));
-        free(cpath);
-        return;
-    }
-    free(cpath);
-    out[0] = 0;
-}
-
-int64_t gy_exists(const gy_str *path) {
-    char *cpath = gy_cstr(path);
-    struct stat info;
-    int64_t found = stat(cpath, &info) == 0;
-    free(cpath);
-    return found;
-}
-
-/* ------------------------------------------------------------------ */
-/* os: the environment, stdin, and the exit code.                     */
-/* ------------------------------------------------------------------ */
-
-/* out: opt<str> = { flag, value } — flag 0 when the variable is unset. */
-void gy_env(int64_t *out, const gy_allocator *a, const gy_str *name) {
-    char *cname = malloc((size_t)name->len + 1);
-    memcpy(cname, name->bytes, (size_t)name->len);
-    cname[name->len] = 0;
-    const char *value = getenv(cname);
-    free(cname);
-    if (value == NULL) {
-        out[0] = 0;
-        out[1] = 0;
-        return;
-    }
-    out[0] = 1;
-    out[1] = (int64_t)gy_str_from_in(a, value, strlen(value));
-}
-
-/* Reads stdin to end of file. One shot: a second call finds the stream
- * drained and returns "". */
-gy_str *gy_read_stdin(const gy_allocator *a) {
-    size_t cap = 4096;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    size_t got;
-    while ((got = fread(buf + len, 1, cap - len, stdin)) > 0) {
-        len += got;
-        if (len == cap) {
-            cap *= 2;
-            buf = realloc(buf, cap);
-        }
-    }
-    gy_str *out = gy_str_from_in(a, buf, len);
-    free(buf);
-    return out;
-}
-
-/* out: opt<str> = { flag, value } — flag 0 at end of file. The line comes
- * back without its terminator, and a last line with no newline still
- * comes back. */
-void gy_readline(int64_t *out, const gy_allocator *a) {
-    char *line = NULL;
-    size_t cap = 0;
-    ssize_t got = getline(&line, &cap, stdin);
-    if (got < 0) {
-        free(line);
-        out[0] = 0;
-        out[1] = 0;
-        return;
-    }
-    while (got > 0 && (line[got - 1] == '\n' || line[got - 1] == '\r')) {
-        got--;
-    }
-    out[0] = 1;
-    out[1] = (int64_t)gy_str_from_in(a, line, (size_t)got);
-    free(line);
-}
-
-_Noreturn void gy_exit(int64_t code) {
-    fflush(stdout);
-    fflush(stderr);
-    exit((int)code);
-}
-
-/* out: tuple<str, opt<error>> */
-void gy_get(int64_t *out, const gy_str *url) {
-    (void)url;
-    out[0] = (int64_t)gy_str_c("");
-    gy_write_error(out + 1, gy_str_c("this runtime has no network"));
-}
-
-/* ------------------------------------------------------------------ */
-/* Clocks. now() dates events on the wall clock; monotonic() measures */
-/* them; sleep blocks only the calling thread — spawn runs pthreads,  */
-/* so the rest of the program keeps going.                            */
-/* ------------------------------------------------------------------ */
-
-int64_t gy_now(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-int64_t gy_monotonic(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
-}
-
-void gy_sleep(int64_t millis) {
-    if (millis <= 0) {
-        return;
-    }
-    struct timespec left = {millis / 1000, (millis % 1000) * 1000000};
-    while (nanosleep(&left, &left) != 0 && errno == EINTR) {
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* Array<T>: a growable buffer handle. The element size arrives with  */
-/* each element-touching call, statically known at the call site.     */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    char *data;
-    int64_t elemSize;
-    int64_t count;
-    int64_t capacity;
-    int64_t hint; /* the capacity with_capacity asked for, used at the first growth */
-    int freed;
-    gy_allocator alloc; /* where every block this array owns comes from */
-} gy_array;
-
-/* The header comes from the array's own allocator too, and stays after
- * free so that a second free is caught rather than read through. */
-void *gy_array_new(const gy_allocator *a) {
-    gy_array *arr = gy_allocator_get(a, GY_MODE_ALLOC, sizeof(gy_array), NULL, 0);
-    arr->alloc = *a;
-    return arr;
-}
-
-void *gy_array_with_capacity(const gy_allocator *a, int64_t capacity) {
-    gy_array *arr = gy_array_new(a);
-    arr->hint = capacity;
-    return arr;
-}
-
-static void gy_array_check(gy_array *a) {
-    if (a->freed) {
-        gy_abort_c("use after free of an Array");
-    }
-}
-
-void gy_array_push(gy_array *a, const void *elem, int64_t elemSize) {
-    gy_array_check(a);
-    a->elemSize = elemSize;
-    if (a->count == a->capacity) {
-        int64_t grown = a->capacity * 2;
-        if (a->capacity == 0) {
-            grown = a->hint > 8 ? a->hint : 8;
-        }
-        a->data = gy_allocator_get(&a->alloc, GY_MODE_RESIZE, (size_t)(grown * elemSize), a->data,
-                                   (size_t)(a->capacity * elemSize));
-        a->capacity = grown;
-    }
-    memcpy(a->data + a->count * elemSize, elem, (size_t)elemSize);
-    a->count++;
-}
-
-/* out: tuple<T, bool> = { element, flag }. The flag sits at the element's
- * own width, which is where a C struct of the two would put a one-byte
- * member, and it is one byte wide: writing a word there would run past
- * the tuple. */
-void gy_array_pop(char *out, gy_array *a, int64_t elemSize) {
-    gy_array_check(a);
-    if (a->count == 0) {
-        memset(out, 0, (size_t)elemSize + 1);
-        return;
-    }
-    a->count--;
-    memcpy(out, a->data + a->count * elemSize, (size_t)elemSize);
-    out[elemSize] = 1;
-}
-
-void gy_array_get(void *out, gy_array *a, int64_t index, int64_t elemSize) {
-    gy_array_check(a);
-    if (index < 0 || index >= a->count) {
-        gy_abort_bounds(index, a->count);
-    }
-    memcpy(out, a->data + index * elemSize, (size_t)elemSize);
-}
-
-void gy_array_set(gy_array *a, int64_t index, const void *elem, int64_t elemSize) {
-    gy_array_check(a);
-    if (index < 0 || index >= a->count) {
-        gy_abort_bounds(index, a->count);
-    }
-    memcpy(a->data + index * elemSize, elem, (size_t)elemSize);
-}
-
-/* The element's own address rather than a copy of it. Bounds-checked
- * the way get and set are, and the reason an index costs one call: the
- * caller loads or stores through the address where the element lies. */
-void *gy_array_at(gy_array *a, int64_t index, int64_t elemSize) {
-    gy_array_check(a);
-    if (index < 0 || index >= a->count) {
-        gy_abort_bounds(index, a->count);
-    }
-    return a->data + index * elemSize;
-}
-
-int64_t gy_array_len(gy_array *a) {
-    gy_array_check(a);
-    return a->count;
-}
-
-void gy_array_slice(void **out, gy_array *a) {
-    gy_array_check(a);
-    out[0] = a->data;
-    out[1] = (void *)a->count;
-}
-
-void gy_array_free(gy_array *a) {
-    if (a->freed) {
-        gy_abort_c("double free of an Array");
-    }
-    a->freed = 1;
-    if (a->data != NULL) {
-        gy_allocator_put(&a->alloc, a->data, (size_t)(a->capacity * a->elemSize));
-    }
-    a->data = NULL;
-}
-
-/* fs::read_dir lives below the Array block because its result is one.  */
-
-/* gy_name_compare orders names bytewise, the way Go sorts a listing.   */
-static int gy_name_compare(const void *a, const void *b) {
-    gy_str *const *left = a;
-    gy_str *const *right = b;
-    int64_t shorter = (*left)->len < (*right)->len ? (*left)->len : (*right)->len;
-    int order = memcmp((*left)->bytes, (*right)->bytes, (size_t)shorter);
-    if (order != 0) {
-        return order;
-    }
-    return ((*left)->len > (*right)->len) - ((*left)->len < (*right)->len);
-}
-
-/* out: tuple<handle, opt<error>> = { handle, flag, tag, message } */
-void gy_read_dir(int64_t *out, const gy_allocator *a, const gy_str *path) {
-    char *cpath = gy_cstr(path);
-    DIR *dir = opendir(cpath);
-    free(cpath);
-    if (dir == NULL) {
-        gy_str *reason = gy_errno_str(errno);
-        gy_str *prefix = gy_concat3("open ", path, ": ");
-        out[0] = (int64_t)gy_array_new(a);
-        gy_write_error(out + 1, gy_str_concat(prefix, reason));
-        return;
-    }
-
-    size_t count = 0, capacity = 0;
-    gy_str **names = NULL;
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        if (count == capacity) {
-            capacity = capacity == 0 ? 16 : capacity * 2;
-            names = realloc(names, capacity * sizeof(gy_str *));
-        }
-        names[count++] = gy_str_from_in(a, entry->d_name, strlen(entry->d_name));
-    }
-    closedir(dir);
-    if (count > 0) {
-        qsort(names, count, sizeof(gy_str *), gy_name_compare);
-    }
-
-    gy_array *entries = gy_array_new(a);
-    for (size_t i = 0; i < count; i++) {
-        gy_array_push(entries, &names[i], 8);
-    }
-    free(names);
-    out[0] = (int64_t)entries;
-    out[1] = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1695,6 +951,9 @@ _Noreturn void gy_any_arity(const gy_type *type, int64_t got) {
 extern void gy_user_main(void *args);
 
 int main(int argc, char **argv) {
+    /* What a C library prints goes out as it is printed, so that it falls
+     * between what Gyro prints in the order the program ran them. */
+    setvbuf(stdout, NULL, _IONBF, 0);
     void **elems = malloc((size_t)argc * 8 + 8);
     for (int i = 0; i < argc; i++) {
         elems[i] = (void *)gy_str_c(argv[i]);
@@ -1702,7 +961,8 @@ int main(int argc, char **argv) {
     void *slice[2] = {elems, (void *)(int64_t)argc};
 
     gy_user_main(slice);
-    fflush(stdout);
-    fflush(stderr);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     return 0;
 }
