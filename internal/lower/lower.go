@@ -73,6 +73,8 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	l.emitGlobalInit()
 	l.finishErrorType()
 	l.finishAnyType()
+	// The printers just built may name leaves that are Gyro, not yet lowered.
+	l.drain()
 	l.attachImports()
 
 	// A program that imports another language is several METALS modules,
@@ -628,9 +630,10 @@ func (l *lowerer) ensureNativeImport(name string, decl *ast.FuncDecl, sig *types
 // ensureImport registers a synthesized runtime intrinsic such as
 // println<i32> or str<bool>.
 func (l *lowerer) ensureImport(name string, sig *metals.FnType) {
-	if l.imports[name] == nil {
-		l.imports[name] = sig
+	if l.imports[name] != nil || l.ensureLeaf(name, sig) {
+		return
 	}
+	l.imports[name] = sig
 }
 
 // ensureForeignImport declares a function another language's module

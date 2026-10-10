@@ -48,6 +48,7 @@ func (l *lowerer) settleAnyTypes() {
 		}
 		for ; seen < len(l.anyTypes); seen++ {
 			t := l.anyTypes[seen]
+			l.warmLeaf(t)
 			if isStringType(t) {
 				continue
 			}

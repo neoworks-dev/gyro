@@ -288,15 +288,9 @@ void *gy_offset(void *base, int64_t bytes) { return (char *)base + bytes; }
 void *gy_ptr_from_int(int64_t address) { return (void *)(uintptr_t)address; }
 int64_t gy_ptr_to_int(const void *p) { return (int64_t)(uintptr_t)p; }
 
-/* A string is a { len, bytes } header followed by its bytes in one block.
- * Building one in an allocator's block is three steps: ask how big the
- * block must be, copy text in at an offset, and seal it with its length. */
-int64_t gy_text_size(int64_t len) { return (int64_t)sizeof(gy_str) + len; }
-
-void gy_text_write(void *block, int64_t at, const gy_str *text) {
-    memcpy(((gy_str *)block)->bytes + at, text->bytes, (size_t)text->len);
-}
-
+/* A string is a { len, bytes } header followed by its bytes in one block,
+ * and sealing a block as one is the one step Gyro cannot take itself: it
+ * has no way to make a string of an address. */
 const gy_str *gy_text_seal(void *block, int64_t len) {
     gy_str *s = block;
     s->len = len;
@@ -537,32 +531,7 @@ int64_t gy_str_eq(const gy_str *a, const gy_str *b) {
     return a->len == b->len && memcmp(a->bytes, b->bytes, (size_t)a->len) == 0;
 }
 
-/* Lexicographic by byte, -1/0/1, matching Go's strings.Compare: the
- * shorter string loses when it is a prefix of the longer one. */
-int64_t gy_str_compare(const gy_str *a, const gy_str *b) {
-    int64_t shared = a->len < b->len ? a->len : b->len;
-    int order = memcmp(a->bytes, b->bytes, (size_t)shared);
-    if (order != 0) {
-        return order < 0 ? -1 : 1;
-    }
-    if (a->len == b->len) {
-        return 0;
-    }
-    return a->len < b->len ? -1 : 1;
-}
-
-/* gy_str_bytes hands a string's UTF-8 out as a slice of u8, which is the
- * same bytes it already holds. It still copies: a string is immutable and
- * shared, and a slice is neither. gy_str_runes below decodes instead,
- * because a rune is four bytes and UTF-8 is not. */
-void gy_str_bytes(void **out, const gy_str *s, const gy_allocator *a) {
-    char *bytes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len + 1, NULL, 0);
-    memcpy(bytes, s->bytes, (size_t)s->len);
-    out[0] = bytes;
-    out[1] = (void *)s->len;
-}
-
-/* gy_str_view is gy_str_bytes without the copy: a slice over the string's
+/* gy_str_view is a slice over the string's
  * own bytes, for a function that only reads them. The view borrows the
  * string, which is immutable, so nothing can write through it. */
 void gy_str_view(void **out, const gy_str *s) {
@@ -570,124 +539,9 @@ void gy_str_view(void **out, const gy_str *s) {
     out[1] = (void *)s->len;
 }
 
-/* gy_from_utf8 is the other direction, and the bytes are the bytes. The
- * copy is what makes the result own what it holds. */
-const gy_str *gy_from_utf8(const gy_allocator *a, const void **slice) {
-    const char *elems = (const char *)slice[0];
-    int64_t len = (int64_t)slice[1];
-    gy_str *out = gy_str_alloc_in(a, len);
-    memcpy(out->bytes, elems, (size_t)len);
-    return out;
-}
-
-/* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
- * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
-void gy_str_runes(void *out, const gy_str *s, const gy_allocator *a) {
-    int32_t *runes = gy_allocator_get(a, GY_MODE_ALLOC, (size_t)s->len * 4 + 4, NULL, 0);
-    int64_t count = 0;
-    int64_t i = 0;
-    while (i < s->len) {
-        unsigned char c = (unsigned char)s->bytes[i];
-        int64_t r = 0xFFFD;
-        int size = 1;
-        if (c < 0x80) {
-            r = c;
-        } else if ((c & 0xE0) == 0xC0 && i + 1 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x1F) << 6) | (s->bytes[i + 1] & 0x3F);
-            size = 2;
-            if (r < 0x80) { r = 0xFFFD; size = 1; }
-        } else if ((c & 0xF0) == 0xE0 && i + 2 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80 &&
-                   (s->bytes[i + 2] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x0F) << 12) | ((int64_t)(s->bytes[i + 1] & 0x3F) << 6) |
-                (s->bytes[i + 2] & 0x3F);
-            size = 3;
-            if (r < 0x800 || (r >= 0xD800 && r <= 0xDFFF)) { r = 0xFFFD; size = 1; }
-        } else if ((c & 0xF8) == 0xF0 && i + 3 < s->len && (s->bytes[i + 1] & 0xC0) == 0x80 &&
-                   (s->bytes[i + 2] & 0xC0) == 0x80 && (s->bytes[i + 3] & 0xC0) == 0x80) {
-            r = ((int64_t)(c & 0x07) << 18) | ((int64_t)(s->bytes[i + 1] & 0x3F) << 12) |
-                ((int64_t)(s->bytes[i + 2] & 0x3F) << 6) | (s->bytes[i + 3] & 0x3F);
-            size = 4;
-            if (r < 0x10000 || r > 0x10FFFF) { r = 0xFFFD; size = 1; }
-        }
-        runes[count++] = (int32_t)r;
-        i += size;
-    }
-    void **slice = out;
-    slice[0] = runes;
-    slice[1] = (void *)count;
-}
-
-/* ------------------------------------------------------------------ */
-/* Derived hashing. The composites are folded by functions the         */
-/* lowering synthesizes; these answer for the scalars underneath them, */
-/* and must produce exactly what internal/interp/hash.go does.         */
-/* ------------------------------------------------------------------ */
-
-#define GY_FNV_OFFSET 14695981039346656037ULL
-#define GY_FNV_PRIME 1099511628211ULL
-
-/* The splitmix64 finalizer: an avalanche over one word, so small
- * integers do not land in neighbouring buckets. */
-static uint64_t gy_hash_word(uint64_t x) {
-    x ^= x >> 30;
-    x *= 0xbf58476d1ce4e5b9ULL;
-    x ^= x >> 27;
-    x *= 0x94d049bb133111ebULL;
-    x ^= x >> 31;
-    return x;
-}
-
-uint64_t gy_hash_int(int64_t v) { return gy_hash_word((uint64_t)v); }
-
-uint64_t gy_hash_uint(uint64_t v) { return gy_hash_word(v); }
-
-/* -0.0 == 0.0, so the two have to hash alike. */
-uint64_t gy_hash_float(double v) {
-    if (v == 0.0) {
-        v = 0.0;
-    }
-    uint64_t bits;
-    memcpy(&bits, &v, sizeof bits);
-    return gy_hash_word(bits);
-}
-
-uint64_t gy_hash_str(const gy_str *s) {
-    uint64_t h = GY_FNV_OFFSET;
-    for (int64_t i = 0; i < s->len; i++) {
-        h = (h ^ (unsigned char)s->bytes[i]) * GY_FNV_PRIME;
-    }
-    return h;
-}
-
 /* ------------------------------------------------------------------ */
 /* Conversions the code generator delegates.                          */
 /* ------------------------------------------------------------------ */
-
-double gy_uint_to_double(uint64_t v) { return (double)v; }
-
-int64_t gy_double_to_int(double v, int64_t min, int64_t max) {
-    double t = trunc(v);
-    if (!(t >= -9223372036854775808.0 && t < 9223372036854775808.0)) {
-        gy_abort_c("conversion loses the value");
-    }
-    int64_t out = (int64_t)t;
-    if (out < min || out > max) {
-        gy_abort_c("conversion loses the value");
-    }
-    return out;
-}
-
-uint64_t gy_double_to_uint(double v, uint64_t max) {
-    double t = trunc(v);
-    if (!(t >= 0.0 && t < 18446744073709551616.0)) {
-        gy_abort_c("conversion loses the value");
-    }
-    uint64_t out = (uint64_t)t;
-    if (out > max) {
-        gy_abort_c("conversion loses the value");
-    }
-    return out;
-}
 
 /* ------------------------------------------------------------------ */
 /* The byte floor a compiled-in language reaches i/o through. One byte */
@@ -707,50 +561,6 @@ int64_t gy_read_byte(void) {
     int c = fgetc(stdin);
     return c == EOF ? -1 : (int64_t)c;
 }
-
-/* ------------------------------------------------------------------ */
-/* The float intrinsics whose C library spelling has the wrong        */
-/* semantics. sqrt, fabs, ceil, floor, trunc and copysign mean in C   */
-/* exactly what they mean in METALS, so both backends call libm for   */
-/* those directly; these three do not, and live here so that the two  */
-/* backends cannot answer them differently.                           */
-/* ------------------------------------------------------------------ */
-
-/* fmin and fmax in C return the operand that is not NaN, and say
- * nothing useful about the two zeros. METALS propagates NaN and orders
- * -0.0 below +0.0, which is what a program comparing bit patterns
- * needs and what wasm's f64.min and f64.max specify. */
-double gy_f64_min(double a, double b) {
-    if (a != a || b != b) return a + b; /* either NaN -> NaN */
-    if (a == 0.0 && b == 0.0) return signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
-double gy_f64_max(double a, double b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0 && b == 0.0) return signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-
-/* roundToIntegralTiesToEven. C's round() is ties-away-from-zero and is
- * the wrong function; nearbyint honours the rounding mode, which is
- * round-to-nearest-even unless someone changed it, and nothing here
- * ever does. */
-double gy_f64_nearest(double v) { return nearbyint(v); }
-
-float gy_f32_min(float a, float b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0f && b == 0.0f) return signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
-float gy_f32_max(float a, float b) {
-    if (a != a || b != b) return a + b;
-    if (a == 0.0f && b == 0.0f) return signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-
-float gy_f32_nearest(float v) { return nearbyintf(v); }
 
 /* ------------------------------------------------------------------ */
 /* convert, fs, net. Result tuples are written into the caller's      */
@@ -780,30 +590,6 @@ static gy_str *gy_concat3(const char *before, const gy_str *middle, const char *
     memcpy(out->bytes + beforeLen, quoted->bytes, (size_t)quoted->len);
     memcpy(out->bytes + beforeLen + quoted->len, after, afterLen);
     return out;
-}
-
-/* out: tuple<i32, opt<error>> = { value, flag, tag, message } */
-void gy_to_i32(int64_t *out, const gy_str *s) {
-    gy_str *trimmed = gy_trim_space(s);
-    char buf[64];
-    int64_t parsed = 0;
-    int ok = trimmed->len > 0 && trimmed->len < 63;
-    if (ok) {
-        memcpy(buf, trimmed->bytes, (size_t)trimmed->len);
-        buf[trimmed->len] = 0;
-        char *end = NULL;
-        errno = 0;
-        long long wide = strtoll(buf, &end, 10);
-        ok = end == buf + trimmed->len && errno == 0 && wide >= INT32_MIN && wide <= INT32_MAX;
-        parsed = (int64_t)wide;
-    }
-    if (!ok) {
-        out[0] = 0;
-        gy_write_error(out + 1, gy_concat3("", gy_quote(s), " is not an i32"));
-        return;
-    }
-    out[0] = parsed;
-    out[1] = 0;
 }
 
 /* out: tuple<f64, opt<error>> */

@@ -1,0 +1,39 @@
+// A float converts to an integer by truncating toward zero, and the value
+// has to fit; an integer converts to a float rounding to nearest, ties to
+// even. The cases are the limits of each width, where an off-by-one in the
+// range check or the top bit of an unsigned value is visible.
+
+import { println } from "stdlib"
+
+fn main() {
+    // Truncation toward zero, including a negative that truncates to zero.
+    println(255.9 as u8)
+    println(-0.9 as u8)
+    println(127.99 as i8)
+    println(-128.5 as i8)
+    println(-2.7 as i32)
+    println(4294967295.5 as u32)
+
+    // The 64-bit limits. -2^63 is exactly representable and fits; the
+    // largest double below 2^64 does too.
+    println(-9223372036854775808.0 as i64)
+    println(9223372036854774784.0 as i64)
+    println(9223372036854775808.0 as u64)
+    println(18446744073709549568.0 as u64)
+
+    // Unsigned to float: halved for the top bit, rounded to nearest even.
+    var most: u64 = 18446744073709551615
+    var top: u64 = 9223372036854775808
+    var odd: u64 = 9007199254740993
+    var oddly: u64 = 9007199254740995
+    var small: u8 = 255
+    var negative: i64 = -5
+    var wide: i32 = 16777217
+    println(most as f64)
+    println(top as f64)
+    println(odd as f64)
+    println(oddly as f64)
+    println(small as f64)
+    println(negative as f64)
+    println(wide as f32)
+}

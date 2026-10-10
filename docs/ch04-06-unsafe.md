@@ -82,6 +82,7 @@ import { cast, offset, ptr_from_int, ptr_to_int, slice_from_raw } from "unsafe"
 | `raw_alloc`, `raw_free`, `raw_resize` | the process heap, which every allocator bottoms out in |
 | `env_of<F>(f: F): anyptr?`, `with_env<F>(f: F, env: anyptr?): F` | read and replace a `fn` value's environment |
 | `syscall0(number: usize): isize` … `syscall6` | makes a Linux system call with zero to six arguments |
+| `text_size(len: usize): usize`, `text_seal(block: anyptr, len: usize): string`, `text_bytes(text: string): u8[]` | build a string in a block, and view the bytes of one without a copy |
 
 `cast` is the program's claim that a `T` lives at the address, the same
 claim C's cast makes. It replaces `p as *T`, which no longer exists:

@@ -9,7 +9,7 @@
 // use it are safe fns: each vouches that what it hands out is a block of the
 // size and alignment asked for, or null, and that nothing else gets through.
 
-import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, with_env } from "unsafe"
+import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, text_bytes, text_seal, text_size, with_env } from "unsafe"
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -214,17 +214,18 @@ fn show(piece: any): string !{}
 // Formatting into an allocator
 // ---------------------------------------------------------------------------
 
-// A string is a header followed by its bytes in one block, and the runtime
-// owns that layout: text_size says how big the block for a given length is,
-// text_write copies a string in at a byte offset, and text_seal stamps the
-// length on and answers the block as a string.
-fn text_size(len: usize): usize !{}
-fn text_write(block: anyptr, at: usize, text: string) !{}
-fn text_seal(block: anyptr, len: usize): string !{}
+// text_write copies a string into a block of text_size bytes, at a byte
+// offset into the text.
+safe fn text_write(block: anyptr, at: usize, text: string) !{} {
+    var bytes = text_bytes(text)
+    if bytes.len() > 0 {
+        copy_bytes(offset(block, text_size(0) + at), &bytes[0] as anyptr, bytes.len())
+    }
+}
 
 // block_for answers a block holding a string of `to` bytes, grown from one
 // of `from` bytes when there is one.
-fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
+safe fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
   if old == null {
     var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
     if fresh == null {
@@ -242,7 +243,7 @@ fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
 // format shows each piece of a Format the way println would and joins them
 // into a string whose bytes come from `a`. The block doubles as the text
 // grows, since the length is not known until the last piece is shown.
-export fn format(a: Allocator, value: Format): string !{ &a } {
+export safe fn format(a: Allocator, value: Format): string !{ &a } {
   var capacity: usize = 64
   var block = block_for(a, null, 0, capacity)
   var used: usize = 0

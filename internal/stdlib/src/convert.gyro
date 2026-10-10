@@ -1,6 +1,254 @@
-// convert — declarations only; the runtime supplies the bodies.
+// convert. Numbers from text, written in Gyro.
+//
+// to_i8 through to_usize read an integer of that width: an optional sign,
+// then digits of the given radix (2 to 36, 10 when none is given), with
+// surrounding white space ignored. A letter is a digit above nine, in
+// either case. There is no prefix and no separator, and an unsigned type
+// takes no minus sign but on zero. A value that does not fit the width is
+// an error, never a wrapped number. A radix outside 2 to 36 is a bug in the caller and
+// panics, like an index out of range.
+//
+// Every failure allocates, because it carries a message, and the one
+// thing it builds that on is the heap.
+
+import { heap, format, panic } from "mem"
+import { quote, starts_with } from "stdlib"
+import { text_bytes } from "unsafe"
+
+// ParseError is what a conversion reports: the text that was refused and
+// why, in one sentence.
+export struct ParseError {
+    export text: string
+}
+
+export fn ParseError::message(self): string !{ &self } {
+    return self.text
+}
+
+fn refuse(input: string, kind: string): ParseError !{} {
+    var article = "a"
+    if kind.starts_with("i") {
+        article = "an"
+    }
+    return ParseError{ text: format(heap(), "#{quote(heap(), input)} is not #{article} #{kind}") }
+}
+
+fn overflow(input: string, kind: string): ParseError !{} {
+    return ParseError{ text: format(heap(), "#{quote(heap(), input)} is out of range for #{kind}") }
+}
+
+fn is_space(byte: u8): bool {
+    return byte == 32 || (byte >= 9 && byte <= 13)
+}
+
+// digit_value is what a digit stands for, or 255 for a byte that is none.
+fn digit_value(byte: u8): u8 {
+    if byte >= 48 && byte <= 57 {
+        return byte - 48
+    }
+    if byte >= 97 && byte <= 122 {
+        return byte - 87
+    }
+    if byte >= 65 && byte <= 90 {
+        return byte - 55
+    }
+    return 255
+}
+
+// Where a parse stopped: it read a number, or it met something that is not
+// one, or the number is too large for sixty-four bits.
+enum Reading {
+    Number
+    Invalid
+    Huge
+}
+
+// read_number reads the sign and magnitude of the text. The magnitude is
+// the digits' value as an unsigned 64-bit number, which holds every width
+// this module reads; the sign is reported separately because -128 is the
+// magnitude 128.
+safe fn read_number(text: string, radix: u32): (u64, bool, Reading) !{} {
+    if radix < 2 || radix > 36 {
+        panic(format(heap(), "radix #{radix} is not between 2 and 36"))
+    }
+    var bytes = text_bytes(text)
+    var start: usize = 0
+    var stop = bytes.len()
+    while start < stop && is_space(bytes[start]) {
+        start += 1
+    }
+    while stop > start && is_space(bytes[stop - 1]) {
+        stop -= 1
+    }
+
+    var negative = false
+    if start < stop && (bytes[start] == 43 || bytes[start] == 45) {
+        negative = bytes[start] == 45
+        start += 1
+    }
+    if start == stop {
+        return (0, false, Reading::Invalid)
+    }
+
+    var magnitude: u64 = 0
+    var base = radix as u64
+    var most: u64 = 18446744073709551615
+    var huge = false
+    for var at = start; at < stop; at += 1 {
+        var digit = digit_value(bytes[at]) as u64
+        if digit >= base {
+            return (0, false, Reading::Invalid)
+        }
+        if magnitude > (most - digit) / base {
+            huge = true
+        } else {
+            magnitude = magnitude * base + digit
+        }
+    }
+    if huge {
+        return (0, negative, Reading::Huge)
+    }
+    return (magnitude, negative, Reading::Number)
+}
+
+// read_signed answers the value of the text when it fits `bits` bits of a
+// signed integer, as an i64.
+fn read_signed(text: string, radix: u32, bits: u32, kind: string): (i64, error?) !{} {
+    var magnitude, negative, reading = read_number(text, radix)
+    match reading {
+        Reading::Invalid: {
+            return 0, refuse(text, kind)
+        }
+        Reading::Huge: {
+            return 0, overflow(text, kind)
+        }
+        Reading::Number: {
+            var room: u64 = 1
+            room = room << (bits - 1)
+            if negative {
+                if magnitude > room {
+                    return 0, overflow(text, kind)
+                }
+                if magnitude == room {
+                    return (0 - ((room - 1) as i64)) - 1, null
+                }
+                return 0 - (magnitude as i64), null
+            }
+            if magnitude >= room {
+                return 0, overflow(text, kind)
+            }
+            return magnitude as i64, null
+        }
+    }
+}
+
+// read_unsigned answers the value of the text when it fits `bits` bits of
+// an unsigned integer. A minus sign is refused, except on zero.
+fn read_unsigned(text: string, radix: u32, bits: u32, kind: string): (u64, error?) !{} {
+    var magnitude, negative, reading = read_number(text, radix)
+    match reading {
+        Reading::Invalid: {
+            return 0, refuse(text, kind)
+        }
+        Reading::Huge: {
+            return 0, overflow(text, kind)
+        }
+        Reading::Number: {
+            if negative && magnitude != 0 {
+                return 0, overflow(text, kind)
+            }
+            if bits < 64 {
+                var room: u64 = 1
+                room = room << bits
+                if magnitude >= room {
+                    return 0, overflow(text, kind)
+                }
+            }
+            return magnitude, null
+        }
+    }
+}
+
+export fn to_i8(text: string, radix: u32 = 10): (i8, error?) !{} {
+    var value, err = read_signed(text, radix, 8, "i8")
+    if err != null {
+        return 0, err
+    }
+    return value as i8, null
+}
+
+export fn to_i16(text: string, radix: u32 = 10): (i16, error?) !{} {
+    var value, err = read_signed(text, radix, 16, "i16")
+    if err != null {
+        return 0, err
+    }
+    return value as i16, null
+}
+
+export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{} {
+    var value, err = read_signed(text, radix, 32, "i32")
+    if err != null {
+        return 0, err
+    }
+    return value as i32, null
+}
+
+export fn to_i64(text: string, radix: u32 = 10): (i64, error?) !{} {
+    var value, err = read_signed(text, radix, 64, "i64")
+    if err != null {
+        return 0, err
+    }
+    return value as i64, null
+}
+
+export fn to_isize(text: string, radix: u32 = 10): (isize, error?) !{} {
+    var value, err = read_signed(text, radix, 64, "isize")
+    if err != null {
+        return 0, err
+    }
+    return value as isize, null
+}
+
+export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{} {
+    var value, err = read_unsigned(text, radix, 8, "u8")
+    if err != null {
+        return 0, err
+    }
+    return value as u8, null
+}
+
+export fn to_u16(text: string, radix: u32 = 10): (u16, error?) !{} {
+    var value, err = read_unsigned(text, radix, 16, "u16")
+    if err != null {
+        return 0, err
+    }
+    return value as u16, null
+}
+
+export fn to_u32(text: string, radix: u32 = 10): (u32, error?) !{} {
+    var value, err = read_unsigned(text, radix, 32, "u32")
+    if err != null {
+        return 0, err
+    }
+    return value as u32, null
+}
+
+export fn to_u64(text: string, radix: u32 = 10): (u64, error?) !{} {
+    var value, err = read_unsigned(text, radix, 64, "u64")
+    if err != null {
+        return 0, err
+    }
+    return value as u64, null
+}
+
+export fn to_usize(text: string, radix: u32 = 10): (usize, error?) !{} {
+    var value, err = read_unsigned(text, radix, 64, "usize")
+    if err != null {
+        return 0, err
+    }
+    return value as usize, null
+}
 
 // Both allocate: the failure carries a message, and building it is the
 // one thing either of them puts on the heap.
-export fn to_i32(text: string): (i32, error?) !{}
 export fn to_f64(text: string): (f64, error?) !{}

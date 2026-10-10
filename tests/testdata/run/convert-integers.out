@@ -1,0 +1,58 @@
+127
+"128" is out of range for i8
+-128
+"-129" is out of range for i8
+32767
+"32768" is out of range for i16
+-32768
+"-32769" is out of range for i16
+2147483647
+"2147483648" is out of range for i32
+-2147483648
+"-2147483649" is out of range for i32
+9223372036854775807
+"9223372036854775808" is out of range for i64
+-9223372036854775808
+"-9223372036854775809" is out of range for i64
+-9223372036854775808
+"9223372036854775808" is out of range for isize
+255
+"256" is out of range for u8
+"-1" is out of range for u8
+0
+65535
+"65536" is out of range for u16
+4294967295
+"4294967296" is out of range for u32
+18446744073709551615
+"18446744073709551616" is out of range for u64
+"99999999999999999999999" is out of range for u64
+18446744073709551615
+"-5" is out of range for usize
+255
+"100000000" is out of range for u8
+"12" is not a u8
+255
+255
+255
+"100" is out of range for u8
+"g" is not a u8
+-128
+"80" is out of range for i8
+1295
+1295
+42
+7
+0
+7
+"" is not an i32
+"   " is not an i32
+"-" is not an i32
+"+" is not an i32
+"--1" is not an i32
+"1 2" is not an i32
+"0x10" is not an i32
+"1_000" is not an i32
+"3.5" is not an i32
+"a\tb" is not an i32
+"say \"no\"" is not an i32

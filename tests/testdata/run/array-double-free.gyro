@@ -1,0 +1,13 @@
+//gyro:panic double free of an Array
+
+import { println, Array } from "stdlib"
+import { heap } from "mem"
+
+fn main() {
+    var xs = Array<string>::new(heap())
+    xs.push("a")
+    xs.free()
+    println("freed")
+    xs.free()
+    println("unreachable")
+}

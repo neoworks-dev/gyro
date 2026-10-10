@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { cast, offset, slice_from_raw, text_bytes } from "unsafe"
+import { cast, copy_bytes, offset, slice_from_raw, text_bytes, text_seal, text_size } from "unsafe"
 
 export fn print<T: Print>(value: T) !{ io }
 export fn println<T: Print>(value: T) !{ io }
@@ -274,9 +274,79 @@ export fn Array<T>::is_empty(self): bool !{} {
 // each result owns what it holds, which is why neither carries a borrow
 // row. runes decodes into code points, which are wider than the bytes
 // they come from.
-export fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a }
-export fn string::bytes(self, a: Allocator): u8[] !{ &a }
-export fn string::runes(self, a: Allocator): rune[] !{ &a }
+//
+// The block is asked for a byte more than it holds, as every block of
+// bytes here is, so that a view of it never points one past its end.
+export safe fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a } {
+    var block = a.proc(a.data, Mode::Alloc, text_size(bytes.len() + 1), 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{text_size(bytes.len() + 1)} bytes failed"))
+    }
+    if bytes.len() > 0 {
+        copy_bytes(offset(block, text_size(0)), &bytes[0] as anyptr, bytes.len())
+    }
+    return text_seal(block, bytes.len())
+}
+
+export safe fn string::bytes(self, a: Allocator): u8[] !{ &a } {
+    var view = view_bytes(self)
+    var block = a.proc(a.data, Mode::Alloc, view.len() + 1, 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{view.len() + 1} bytes failed"))
+    }
+    if view.len() > 0 {
+        copy_bytes(block, &view[0] as anyptr, view.len())
+    }
+    return slice_from_raw<u8>(block, view.len())
+}
+
+// continuation is true for a byte of the form 10xxxxxx.
+fn continuation(byte: u8): bool {
+    return (byte & 192) == 128
+}
+
+// runes decodes UTF-8, and an invalid sequence yields U+FFFD and consumes
+// one byte: a stray continuation byte, a lead byte missing its followers,
+// an overlong form, a surrogate, or a value past U+10FFFF.
+export safe fn string::runes(self, a: Allocator): rune[] !{ &a } {
+    var view = view_bytes(self)
+    var block = a.proc(a.data, Mode::Alloc, view.len() * 4 + 4, 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{view.len() * 4 + 4} bytes failed"))
+    }
+    var count: usize = 0
+    var i: usize = 0
+    while i < view.len() {
+        var lead = view[i] as u32
+        var point: u32 = 65533
+        var size: usize = 1
+        if lead < 128 {
+            point = lead
+        } elif (lead & 224) == 192 && i + 1 < view.len() && continuation(view[i + 1]) {
+            var got = ((lead & 31) << 6) | ((view[i + 1] as u32) & 63)
+            if got >= 128 {
+                point = got
+                size = 2
+            }
+        } elif (lead & 240) == 224 && i + 2 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) {
+            var got = ((lead & 15) << 12) | (((view[i + 1] as u32) & 63) << 6) | ((view[i + 2] as u32) & 63)
+            if got >= 2048 && (got < 55296 || got > 57343) {
+                point = got
+                size = 3
+            }
+        } elif (lead & 248) == 240 && i + 3 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) && continuation(view[i + 3]) {
+            var got = ((lead & 7) << 18) | (((view[i + 1] as u32) & 63) << 12) | (((view[i + 2] as u32) & 63) << 6) | ((view[i + 3] as u32) & 63)
+            if got >= 65536 && got <= 1114111 {
+                point = got
+                size = 4
+            }
+        }
+        *cast<rune>(offset(block, count * 4)) = point as rune
+        count += 1
+        i += size
+    }
+    return slice_from_raw<rune>(block, count)
+}
 
 // String owns its bytes, in contrast to the borrowed view `string`. It is
 // the builder: append to it, then read it back with `text()`.
@@ -508,6 +578,177 @@ export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
   var result = out.text(a)
   out.free()
   return result
+}
+
+// hex_digit is the lowercase digit for a value below sixteen.
+fn hex_digit(value: u8): u8 {
+    if value < 10 {
+        return 48 + value
+    }
+    return 87 + value
+}
+
+// quote is the text between double quotes, the way `println` shows a
+// string inside a composite: a quote, a backslash, a newline, a return and
+// a tab are escaped with a backslash, any other control byte is \xNN, and
+// everything else, UTF-8 included, passes through.
+export fn quote(a: Allocator, text: string): string !{ &a } {
+    var out = String::new(a)
+    out.bytes.push(34)
+    for byte in view_bytes(text) {
+        if byte == 34 || byte == 92 {
+            out.bytes.push(92)
+            out.bytes.push(byte)
+        } elif byte == 10 {
+            out.push("\\n")
+        } elif byte == 13 {
+            out.push("\\r")
+        } elif byte == 9 {
+            out.push("\\t")
+        } elif byte < 32 || byte == 127 {
+            out.push("\\x")
+            out.bytes.push(hex_digit(byte >> 4))
+            out.bytes.push(hex_digit(byte & 15))
+        } else {
+            out.bytes.push(byte)
+        }
+    }
+    out.bytes.push(34)
+    var result = out.text(a)
+    out.free()
+    return result
+}
+
+// ---------------------------------------------------------------------------
+// The leaves of rendering, comparing and hashing
+//
+// Lowering reaches these for the scalar at the bottom of a value: it widens
+// the number to the type each takes, so every width shares one body, and
+// calls them under the name of the width it started from. Nothing here is
+// for a program to call; they are plain functions only because lowering
+// finds them by name.
+// ---------------------------------------------------------------------------
+
+// push_unsigned appends the decimal digits of n: room for all of them
+// first, then the digits written from the last place back.
+fn push_unsigned(out: *String, n: u64) !{} {
+    var count: usize = 1
+    var rest = n
+    while rest >= 10 {
+        rest /= 10
+        count += 1
+    }
+    var start = out.bytes.len()
+    for i in 0..count {
+        out.bytes.push(48)
+    }
+    var at = start + count
+    rest = n
+    while at > start {
+        at -= 1
+        out.bytes.set(at, 48 + (rest % 10) as u8)
+        rest /= 10
+    }
+}
+
+fn str_uint(v: u64): string !{} {
+    var out = String::new(heap())
+    push_unsigned(&out, v)
+    var result = out.text(heap())
+    out.free()
+    return result
+}
+
+// str_int writes the magnitude of a negative number as one less than it
+// is, plus one, so that the most negative value has a magnitude to write.
+fn str_int(v: i64): string !{} {
+    var out = String::new(heap())
+    if v < 0 {
+        out.bytes.push(45)
+        push_unsigned(&out, ((0 - (v + 1)) as u64) + 1)
+    } else {
+        push_unsigned(&out, v as u64)
+    }
+    var result = out.text(heap())
+    out.free()
+    return result
+}
+
+fn str_bool(v: bool): string !{} {
+    if v {
+        return "true"
+    }
+    return "false"
+}
+
+fn str_rune(v: rune): string !{} {
+    var out = String::new(heap())
+    out.push_rune(v)
+    var result = out.text(heap())
+    out.free()
+    return result
+}
+
+// str_str is a string shown inside a composite, which quotes it.
+fn str_str(v: string): string !{} {
+    return quote(heap(), v)
+}
+
+// compare_text orders strings bytewise: the shorter loses when it is a
+// prefix of the longer one.
+fn compare_text(a: string, b: string): i32 !{} {
+    var left = view_bytes(a)
+    var right = view_bytes(b)
+    var shared = left.len()
+    if right.len() < shared {
+        shared = right.len()
+    }
+    for var i: usize = 0; i < shared; i += 1 {
+        if left[i] < right[i] {
+            return -1
+        }
+        if left[i] > right[i] {
+            return 1
+        }
+    }
+    if left.len() < right.len() {
+        return -1
+    }
+    if left.len() > right.len() {
+        return 1
+    }
+    return 0
+}
+
+// hash_word is the splitmix64 finalizer: an avalanche over one word, so
+// small integers do not land in neighbouring buckets.
+fn hash_word(x: u64): u64 !{} {
+    var h = x
+    h = h ^ (h >> 30)
+    h = h *% 0xbf58476d1ce4e5b9
+    h = h ^ (h >> 27)
+    h = h *% 0x94d049bb133111eb
+    h = h ^ (h >> 31)
+    return h
+}
+
+// hash_float hashes the bits of the number, with the two zeros folded
+// together because they are equal.
+safe fn hash_float(v: f64): u64 !{} {
+    var held = v
+    if held == 0.0 {
+        held = 0.0
+    }
+    return hash_word(*cast<u64>(&held as anyptr))
+}
+
+// hash_text is FNV-1a over the bytes.
+fn hash_text(v: string): u64 !{} {
+    var h: u64 = 0xcbf29ce484222325
+    for byte in view_bytes(v) {
+        h = (h ^ (byte as u64)) *% 0x100000001b3
+    }
+    return h
 }
 
 // ---------------------------------------------------------------------------

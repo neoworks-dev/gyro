@@ -44,6 +44,21 @@ export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 // as coming from outside the program, like ptr_from_int's.
 export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
 
+// A string is a header followed by its bytes in one block: a length of
+// eight bytes, then the text (appendix E). Building one in a block an
+// allocator gave out is three steps: ask how big the block must be, copy
+// the bytes in after the header, and seal it with its length.
+//
+// text_size is the size of the block for `len` bytes.
+export unsafe fn text_size(len: usize): usize !{} {
+    return len + 8
+}
+
+// text_seal stamps the length on the block and answers it as a string. The
+// block must hold at least text_size(len) bytes, and the string is the
+// block itself, valid for as long as it is.
+export unsafe fn text_seal(block: anyptr, len: usize): string !{}
+
 // text_bytes views a string's bytes as a slice, without the copy `bytes`
 // makes. A string is immutable and the slice is not, so nothing may write
 // through it, and it is valid only as long as the string is.

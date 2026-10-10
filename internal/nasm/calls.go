@@ -458,15 +458,6 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 		return g.freePlan(name, method, sig)
 	case "Mutex", "MutexGuard":
 		return g.mutexPlan(name, method, sig)
-	case "string":
-		switch method {
-		case "compare":
-			return nativePlan{symbol: "gy_str_compare", args: values(0, 1)}
-		case "runes":
-			return nativePlan{symbol: "gy_str_runes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
-		case "bytes":
-			return nativePlan{symbol: "gy_str_bytes", sret: true, args: []planArg{{index: 0}, pointerTo(1)}}
-		}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
@@ -486,14 +477,10 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 			g.fail("@%s: formatting a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
 		}
 		return nativePlan{symbol: "gy_str_" + suffix, args: values(0)}
-	case "hash":
-		return nativePlan{symbol: "gy_hash_" + g.hashSuffix(name, sig.Params[0]), args: values(0)}
 	case "start_thread":
 		return nativePlan{symbol: "gy_start", args: values(0, 1)}
 	case "text_bytes":
 		return nativePlan{symbol: "gy_str_view", sret: true, args: values(0)}
-	case "from_utf8":
-		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0), pointerTo(1)}}
 
 	// The floor of every allocator: the process heap, and the abort an
 	// allocator reaches for when a request cannot be met.
@@ -513,10 +500,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_ptr_to_int", args: values(0)}
 	case "panic":
 		return nativePlan{symbol: "gy_panic", args: values(0)}
-	case "text_size":
-		return nativePlan{symbol: "gy_text_size", args: values(0)}
-	case "text_write":
-		return nativePlan{symbol: "gy_text_write", args: values(0, 1, 2)}
 	case "text_seal":
 		return nativePlan{symbol: "gy_text_seal", args: values(0, 1)}
 	case "lock_output":
@@ -524,8 +507,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "unlock_output":
 		return nativePlan{symbol: "gy_unlock_output"}
 
-	case "to_i32":
-		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
 	case "to_f64":
 		return nativePlan{symbol: "gy_to_f64", sret: true, args: values(0)}
 	case "get":
@@ -571,27 +552,6 @@ func (g *generator) mutexPlan(name, method string, sig *metals.FnType) nativePla
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
-}
-
-// hashSuffix picks the entry point behind hash<T>. A rune hashes as the
-// signed integer it is, and the two float widths share one, since an f32
-// is already carried as a double.
-func (g *generator) hashSuffix(name string, t metals.Type) string {
-	prim, ok := t.(*metals.Prim)
-	if ok {
-		switch prim.Kind {
-		case metals.I8, metals.I16, metals.I32, metals.I64, metals.Isize, metals.Rune:
-			return "int"
-		case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
-			return "uint"
-		case metals.F32, metals.F64:
-			return "float"
-		case metals.Str:
-			return "str"
-		}
-	}
-	g.fail("@%s: no native hash for %s", name, t)
-	return ""
 }
 
 func printSuffix(t metals.Type) (string, bool) {

@@ -1,0 +1,41 @@
+// runes decodes UTF-8 into code points. An invalid sequence yields U+FFFD
+// (65533) for each byte it consumes: an overlong form, a surrogate, a
+// value past U+10FFFF, a lead byte cut short, and a continuation byte
+// with no lead.
+
+import { println, from_utf8, bytes, runes } from "stdlib"
+import { heap } from "mem"
+
+fn decode(bytes: u8[]) {
+    var text = from_utf8(heap(), bytes)
+    var points = text.runes(heap())
+    println(points.len())
+    for point in points {
+        println(point as u32)
+    }
+}
+
+fn main() {
+    decode([72, 105])
+    decode([0xC3, 0xA9])
+    decode([0xE2, 0x82, 0xAC])
+    decode([0xF0, 0x9F, 0x98, 0x80])
+    decode([0xF4, 0x8F, 0xBF, 0xBF])
+    println("invalid")
+    decode([0xC0, 0x80])
+    decode([0xE0, 0x80, 0x80])
+    decode([0xED, 0xA0, 0x80])
+    decode([0xF4, 0x90, 0x80, 0x80])
+    decode([0xE2, 0x82])
+    decode([0x61, 0xFF, 0x62])
+    println("empty")
+    decode([])
+
+    var word = "h\u{e9}llo"
+    var bytes = word.bytes(heap())
+    println(bytes.len())
+    for byte in bytes {
+        println(byte)
+    }
+    println(from_utf8(heap(), bytes) == word)
+}

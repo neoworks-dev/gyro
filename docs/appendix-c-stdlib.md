@@ -250,7 +250,7 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{}
 ### `fs`
 
 ```gyro
-export struct File {}
+export struct File { ... }
 
 export fn open(path: string): (File, error?) !{ io }
 export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
@@ -329,12 +329,24 @@ Three definitions differ from C's library **on purpose**:
 
 ### `convert`
 
+Numbers from text, written in Gyro. One function for each integer width,
+`to_i8` through `to_usize`, and `to_f64`:
+
 ```gyro
-export fn to_i32(text: string): (i32, error?) !{}
+export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{}
+export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{}
 export fn to_f64(text: string): (f64, error?) !{}
+export struct ParseError { export text: string }
 ```
 
-Both allocate, because the failure carries a message.
+An integer is an optional sign, then digits of the radix, which is 2 to 36
+(a letter is a digit above nine, in either case); white space around it is
+dropped. There is no prefix and no separator, and an unsigned type takes no
+minus sign except on zero. A value that does not fit the width is an error,
+never a wrapped number: `"300" is out of range for u8`. Text that is not a
+number is `"abc" is not an i32`. A radix outside 2 to 36 is a bug in the
+caller and panics. Every failure allocates its message on the heap, and the
+error is a `ParseError`.
 
 ### `unsafe`
 
@@ -390,6 +402,30 @@ is the address of its first byte as the `char *` a C header spells `*i8?`,
 and `from_c` copies a `char *` up to its NUL into a string made from `a`; a
 null pointer is the empty string.
 
+### `sys`
+
+The Linux system calls the library is written over, with nothing between
+them and the kernel. `fs`, `os` and `time` call these; a program may too.
+
+```gyro
+export safe fn open(path: string, flags: usize, mode: usize): isize !{ io }
+export safe fn close(fd: isize) !{ io }
+export safe fn read(fd: isize, buffer: u8[]): isize !{ io }
+export safe fn write_all(fd: isize, bytes: u8[]): isize !{ io }
+export safe fn write_text(fd: isize, text: string): isize !{ io }
+export safe fn access(path: string): isize !{ io }
+export safe fn unlink(path: string): isize !{ io }
+export fn errno_text(code: isize): string !{}
+export fn fail(call: string, path: string, result: isize): SysError !{}
+export struct SysError { export text: string }
+```
+
+Each call answers the kernel's result: zero or more on success, a negated
+error number on failure. `errno_text` words an error number the way the C
+library's `strerror` does with the first letter lowered, and `fail` builds
+the error `fs` reports from it: `open /tmp/x: no such file or directory`.
+The module also exports the system call numbers and flag values it uses.
+
 ### `net`
 
 ```gyro
@@ -398,19 +434,21 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
-`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
-`align`, `panic`, and the `unsafe` module's `raw_alloc`/`raw_free`/`raw_resize`,
-`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
-`syscall` functions are lowering's),
-`open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
-`net::get`, the `os` and `time` surfaces. The `math` functions are METALS
-instructions.
+Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private
+`start_thread` under `spawn`, `Mutex<T>`/`MutexGuard<T>`, `mem`'s `size`,
+`align` and `panic`, `Format`'s `show`, the `unsafe` module's `raw_alloc`,
+`raw_free`, `raw_resize`, `copy_bytes`, `offset`, `ptr_to_int`, `text_seal`
+and `text_bytes` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
+`syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
+and `net::get`. The `math` functions are METALS instructions, and so are
+the float conversions: the backend emits them in line.
 
-Ordinary Gyro: `String` and its UTF-8 encoder, every text method, `Format`'s
-methods and `mem`'s `format`,
-`Map<K, V>`, `Array<T>::is_empty`, all of `fmt`, and `mem`'s `alloc`,
-`free`, `heap` and `Arena`.
+Ordinary Gyro: `Array<T>`, `String` and its UTF-8 encoder, `from_utf8`,
+`bytes` and `runes`, every text method, `Format`'s methods and `mem`'s
+`format`, `Map<K, V>`, all of `fmt`, `mem`'s `alloc`, `free`, `heap` and
+`Arena`, the integer parsers of `convert`, all of `fs` and `sys`, and the
+leaves lowering reaches for a number shown, a string compared and a word
+hashed.
 
 **Prefer Gyro.** Something with no interesting runtime requirement written
 into the C runtime instead is a second language to maintain it in, for

@@ -29,7 +29,7 @@ func (f *frame) emitBin(i *metals.Bin) {
 		f.emitFloatBin(i)
 		return
 	case "fmin", "fmax", "fcopysign":
-		f.emitFloatCall(i.Dst, i.Op, i.A, i.B, isSingle(operand))
+		f.emitFloatOp(i.Dst, i.Op, i.A, i.B, isSingle(operand))
 		return
 	}
 
@@ -527,7 +527,7 @@ func (f *frame) emitUn(i *metals.Un) {
 		f.storeWork(dst, work)
 
 	default:
-		if !f.emitFloatCall(i.Dst, i.Op, i.X, "", isSingle(f.typeOf(i.X))) {
+		if !f.emitFloatOp(i.Dst, i.Op, i.X, "", isSingle(f.typeOf(i.X))) {
 			g.fail("@%s: unknown unary operator %s", f.fn.Name, i.Op)
 		}
 	}
@@ -571,8 +571,23 @@ func (f *frame) emitConvToFloat(i *metals.Conv, source, target *metals.Prim) {
 		// cvtsi2sd takes no immediate.
 		g.ins("cvtsi2sd xmm0, %s", f.inReg(f.slot(i.X), "rax").sized("qword"))
 	default:
-		g.ins("mov rdi, %s", f.slot(i.X))
-		g.ins("call %s", g.extern("gy_uint_to_double"))
+		// cvtsi2sd reads its source as signed, so a value with the top bit
+		// set is halved with its low bit kept (to round correctly), converted
+		// and doubled.
+		big, done := g.newLabel(), g.newLabel()
+		g.ins("mov rax, %s", f.slot(i.X))
+		g.ins("test rax, rax")
+		g.ins("js %s", big)
+		g.ins("cvtsi2sd xmm0, rax")
+		g.ins("jmp %s", done)
+		g.label(big)
+		g.ins("mov rcx, rax")
+		g.ins("shr rcx, 1")
+		g.ins("and eax, 1")
+		g.ins("or rcx, rax")
+		g.ins("cvtsi2sd xmm0, rcx")
+		g.ins("addsd xmm0, xmm0")
+		g.label(done)
 	}
 	if target.Kind == metals.F32 {
 		g.ins("cvtsd2ss xmm0, xmm0")
@@ -581,18 +596,62 @@ func (f *frame) emitConvToFloat(i *metals.Conv, source, target *metals.Prim) {
 	g.ins("movsd %s, xmm0", f.slot(i.Dst))
 }
 
+// emitConvFloatToInt truncates toward zero and aborts when the result does
+// not fit. cvttsd2si answers 0x8000000000000000 for what a signed 64-bit
+// number cannot hold and for NaN, which is out of range for every narrower
+// width too, so only the 64-bit signed case has to ask whether the input
+// was exactly that value.
 func (f *frame) emitConvFloatToInt(i *metals.Conv, target *metals.Prim) {
 	g := f.g
 	kind := intKinds[target.Kind]
+	loss := f.panicLabel(convLossMessage)
 	g.ins("movsd xmm0, %s", f.slot(i.X))
-	if kind.signed {
-		bound := int64(1) << (kind.width - 1)
-		g.ins("mov rdi, %d", -bound)
-		g.ins("mov rsi, %d", bound-1)
-		g.ins("call %s", g.extern("gy_double_to_int"))
-	} else {
-		g.ins("mov rdi, %d", int64(uintMaxOf(kind.width)))
-		g.ins("call %s", g.extern("gy_double_to_uint"))
+
+	switch {
+	case kind.signed:
+		g.ins("cvttsd2si rax, xmm0")
+		if kind.width == 64 {
+			fits := g.newLabel()
+			g.ins("mov rcx, 0x8000000000000000")
+			g.ins("cmp rax, rcx")
+			g.ins("jne %s", fits)
+			g.ins("movq rdx, xmm0")
+			g.ins("mov rcx, 0xC3E0000000000000") // -2^63
+			g.ins("cmp rdx, rcx")
+			g.ins("jne %s", loss)
+			g.label(fits)
+		} else {
+			f.checkFits("rax", kind, loss)
+		}
+
+	case kind.width < 64:
+		g.ins("cvttsd2si rax, xmm0")
+		g.ins("test rax, rax")
+		g.ins("js %s", loss)
+		g.ins("mov rcx, %d", uintMaxOf(kind.width))
+		g.ins("cmp rax, rcx")
+		g.ins("ja %s", loss)
+
+	default:
+		// u64: below 2^63 it is the signed conversion; from there up the
+		// 2^63 is taken off first and put back as the top bit.
+		big, done := g.newLabel(), g.newLabel()
+		g.ins("mov rax, 0x43E0000000000000") // 2^63
+		g.ins("movq xmm1, rax")
+		g.ins("ucomisd xmm0, xmm1")
+		g.ins("jae %s", big)
+		g.ins("cvttsd2si rax, xmm0")
+		g.ins("test rax, rax")
+		g.ins("js %s", loss)
+		g.ins("jmp %s", done)
+		g.label(big)
+		g.ins("subsd xmm0, xmm1")
+		g.ins("cvttsd2si rax, xmm0")
+		g.ins("test rax, rax")
+		g.ins("js %s", loss)
+		g.ins("mov rcx, 0x8000000000000000")
+		g.ins("xor rax, rcx")
+		g.label(done)
 	}
 	f.storeWork(f.slot(i.Dst), "rax")
 }
