@@ -43,6 +43,24 @@ impl Container for Range {
   }
 }
 
+// type is only special at the start of a member, so a field and a local
+// may still be called that.
+struct Event {
+  type: i32
+}
+
+impl Container for Event {
+  type Item = i32
+
+  fn first(self): i32 {
+    var type = self.type
+    return type
+  }
+  fn count(self): usize {
+    return 1
+  }
+}
+
 fn head<C: Container>(c: C): C::Item {
   return c.first()
 }
@@ -56,6 +74,7 @@ fn main() {
   println(head(Box<i32>{ 7 }))
   println(head(Box<f64>{ 2.5 }))
   println(head(Range{ low: 3, high: 9 }))
+  println(head(Event{ type: 12 }))
   println(describe(Range{ low: 3, high: 9 }))
   println(describe(Box<bool>{ true }))
 }
