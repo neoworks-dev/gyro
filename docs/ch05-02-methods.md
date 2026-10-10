@@ -23,8 +23,12 @@ fn Stack::push(*self, v: i32) {
 }
 ```
 
-There is no `impl` block, no `trait`, and no `Self`: a method writes its
-type's name out.
+A type's own methods are not written in an `impl` block: each is a
+free-standing `fn`, and writes its type's name out. An `impl` block is for
+the methods a type provides to keep a promise to a **trait**
+([chapter 10.1](ch10-01-traits.md)); those methods are ordinary methods of
+the type afterwards. Inside a method, `Self` is another way to write the
+owner's name, as in `fn Stack::new(): Self`.
 
 ## Receivers
 
@@ -60,7 +64,8 @@ That is what keeps extensions out of universe scope. `line.trim(heap())` works
 because `trim` is in scope here, not because some module somewhere declared
 it. Two modules may both extend `string` with `trim`; importing both is the
 duplicate-name collision Gyro already reports, and importing one is
-unambiguous. This is also how coherence gets settled without traits.
+unambiguous. A trait cannot be implemented for a built-in type, so there is
+no second place a built-in type could have gained a method from.
 
 Being a method, an extension cannot be called without a receiver.
 
@@ -71,36 +76,39 @@ Most of the standard library's string surface is exactly this: `split`,
 
 ## The compiler's own surface wins
 
-`len`, `runes`, `bytes`, `close`, `compare`, `hash`, `message` — these are
-part of the type rather than an addition to it. They need no import, and an
+`len`, `runes`, `bytes`, `close`, `compare`, `hash`, `eq`, `message` — these
+are part of the type rather than an addition to it. They need no import, and an
 extension of the same name does not displace them.
 
 `void` and `error` cannot be extended: nothing has type void, and `error` is
 a contract satisfied by whatever carries `message()`, not a type.
 
-## Methods are how contracts are expressed
+## Methods and traits
 
-Operators never touch user types, so a comparison is a method:
+A promise to other code is a trait, and the methods that keep it are written
+in an `impl` block ([chapter 10.1](ch10-01-traits.md)):
 
 ```gyro
-export fn Version::compare(self, other: Version): i32 {
-  if self.major != other.major {
-    if self.major < other.major {
-      return -1
+impl Ord for Version {
+  fn compare(self, other: Version): i32 {
+    if self.major != other.major {
+      if self.major < other.major {
+        return -1
+      }
+      return 1
     }
-    return 1
+    if self.minor < other.minor { return -1 }
+    if self.minor > other.minor { return 1 }
+    return 0
   }
-  if self.minor < other.minor { return -1 }
-  if self.minor > other.minor { return 1 }
-  return 0
 }
 ```
 
-Having written it, `Version` is now ordered — which means it works in any
-generic function whose body calls `compare`, with nothing declared:
+Having written it, `Version` is `Ord`, which means it works with `<`, and in
+any generic function bounded by `Ord`:
 
 ```gyro
-export fn max<T>(a: T, b: T): T {
+export fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
   if a.compare(b) > 0 {
     return a
   }
@@ -108,14 +116,14 @@ export fn max<T>(a: T, b: T): T {
 }
 
 max(older, newer)    // fine
-max(3, 7)            // fine: i32 has a built-in compare
+max(3, 7)            // fine: i32 is Ord
 ```
 
-The same pattern runs through the language. Write `message(): string` and
-your type is an `error`. Write `next(*self): (T, bool)` and it works in
-`for..in`. Write `to_string(): string` and it controls its own printing.
-Write `hash(): u64` and you have displaced the derived one — and taken on
-keeping it consistent with `==`.
+The same pattern runs through the language. `impl Iterator<T>` makes a type
+work in `for..in`, `impl Print` with a `to_string` controls its own
+printing, `impl Hash` with a `hash` replaces the derived one — and takes on
+keeping it consistent with `Eq`. The one contract still met by shape is
+`error`, which is any type with `message(): string`.
 
 ## Receivers in effect rows
 

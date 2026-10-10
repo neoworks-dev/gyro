@@ -601,17 +601,148 @@ func TestMethods(t *testing.T) {
 	}
 }
 
-func TestGenericBoundsAreRejected(t *testing.T) {
-	// Generics are duck-typed: the body's usage is the requirement, so a
-	// declared bound has nothing to attach to.
+func TestGenericBounds(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "one bound",
+			src:  "fn max<T: Ord>(a: T, b: T): T {\n}\n",
+			want: "File test.gyro Func max<T: Ord> Param a: Type: NamedType T " +
+				"Param b: Type: NamedType T Result: NamedType T Body: Block",
+		},
+		{
+			name: "bounds join with an ampersand",
+			src:  "fn show<K: Eq & Hash, V>(k: K) {\n}\n",
+			want: "File test.gyro Func show<K: Eq & Hash, V> Param k: Type: NamedType K Body: Block",
+		},
+		{
+			name: "a bound may take arguments",
+			src:  "fn sum<I: Iterator<i32>>(it: I) {\n}\n",
+			want: "File test.gyro Func sum<I: Iterator<_>> Param it: Type: NamedType I Body: Block",
+		},
+		{
+			name: "a type declares bounds on its parameters",
+			src:  "struct Map<K: Eq & Hash, V> {\n}\n",
+			want: "File test.gyro Struct Map<K: Eq & Hash, V>",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := dumpOf(t, test.src); got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestOwnerParametersTakeNoBounds(t *testing.T) {
 	var bag diag.Bag
-	Parse("test.gyro", "fn max<T: Ord>(a: T, b: T): T {\n}\n", &bag)
+	Parse("test.gyro", "fn Pair<T: Eq>::swap(*self) {\n}\n", &bag)
 
 	if !bag.HasErrors() {
-		t.Fatal("expected a bound to be rejected")
+		t.Fatal("expected a bound on an owner parameter to be rejected")
 	}
-	if !strings.Contains(bag.Items()[0].Message, "duck-typed") {
-		t.Errorf("error should explain duck typing, got: %s", bag.Items()[0])
+	if !strings.Contains(bag.Items()[0].Message, "declared on the type") {
+		t.Errorf("error should point at the type, got: %s", bag.Items()[0])
+	}
+}
+
+func TestTraitsAndImpls(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "a trait lists signatures",
+			src:  "trait Element {\n  fn paint(self)\n  fn size(self): i32\n}\n",
+			want: "File test.gyro Trait Element Func paint Recv: self Func size Recv: self Result: NamedType i32",
+		},
+		{
+			name: "a default body",
+			src:  "export trait Named {\n  fn name(self): string\n  fn shout(self): string {\n    return self.name()\n  }\n}\n",
+			want: "File test.gyro Trait export Named Func name Recv: self Result: NamedType string " +
+				"Func shout Recv: self Result: NamedType string Body: Block Return Call Fun: Selector .name Self",
+		},
+		{
+			name: "requiring other traits and taking parameters",
+			src:  "trait Widget<T>: Element & Named {\n}\n",
+			want: "File test.gyro Trait Widget<T>: Element & Named",
+		},
+		{
+			name: "an impl with a block",
+			src:  "impl Element for Button {\n  fn paint(self) {\n  }\n}\n",
+			want: "File test.gyro Impl Trait: NamedType Element For: NamedType Button Func Button::paint Recv: self Body: Block",
+		},
+		{
+			name: "an impl without a block derives",
+			src:  "impl Eq for Point\n",
+			want: "File test.gyro Impl derived Trait: NamedType Eq For: NamedType Point",
+		},
+		{
+			name: "an impl for a generic type names its parameters",
+			src:  "impl Ord for Pair<T> {\n  fn compare(self, other: Pair<T>): i32 {\n  }\n}\n",
+			want: "File test.gyro Impl Trait: NamedType Ord For: NamedType Pair<_> NamedType T " +
+				"Func Pair<T>::compare Recv: self Param other: Type: NamedType Pair<_> NamedType T Result: NamedType i32 Body: Block",
+		},
+		{
+			name: "dyn is a type",
+			src:  "var xs: dyn Element\n",
+			want: "File test.gyro Var xs Type: DynType NamedType Element",
+		},
+		{
+			name: "dyn in a cast",
+			src:  "fn f() {\n  var e = p as dyn Element\n}\n",
+			want: "File test.gyro Func f Body: Block Var e Value: Cast Ident p Type: DynType NamedType Element",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := dumpOf(t, test.src); got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDynIsContextual(t *testing.T) {
+	// A name may still be `dyn`; only a name after it makes a trait value.
+	var bag diag.Bag
+	Parse("test.gyro", "fn f() {\n  var dyn = 3\n  var x = dyn + 1\n}\n", &bag)
+	if bag.HasErrors() {
+		t.Fatalf("dyn should be an ordinary identifier here: %v", bag.Items())
+	}
+}
+
+func TestImplMisuse(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"an owner inside the block", "impl Eq for P {\n  fn P::eq(self) {\n  }\n}\n", "without an owner"},
+		{"only methods", "impl Eq for P {\n  var x = 1\n}\n", "expected a method in the impl"},
+		{"a pointer is not a declared type", "impl Eq for *P\n", "declared in this module"},
+		{"arguments are parameter names", "impl Eq for Pair<*T>\n", "type's own parameters"},
+		{"an exported impl", "export impl Eq for P\n", "not exported"},
+		{"trait owner", "trait T {\n  fn T::f(self)\n}\n", "without an owner"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var bag diag.Bag
+			Parse("test.gyro", test.src, &bag)
+			if !bag.HasErrors() {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(bag.Items()[0].Message, test.want) {
+				t.Errorf("got %q, want it to mention %q", bag.Items()[0].Message, test.want)
+			}
+		})
 	}
 }
 
@@ -882,6 +1013,10 @@ func TestParserAlwaysTerminates(t *testing.T) {
 		"var", "var x =", "import", "export", "@", "}}}", "((((", "fn t() { ]",
 		"enum E { A(", "fn t() { if }", "fn t() { for ; ; }", "chan<",
 		"fn T::", "fn T::m(", "fn t() { var x = (1,", "fn t() { var x = p.",
+		"trait", "trait T {", "trait T: {", "trait T<", "trait T { fn", "trait T { var }",
+		"trait T { fn f(self) {", "impl", "impl T", "impl T for", "impl T for S {",
+		"impl T for S { fn", "impl T for S { var }", "impl T for *S {", "impl T for S<",
+		"fn f<T:", "fn f<T: A &", "fn f<T: >", "var x: dyn", "var x: dyn T<", "x as dyn",
 	}
 
 	for _, src := range sources {

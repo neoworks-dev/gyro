@@ -1,0 +1,84 @@
+// A generic type implements traits for every argument it can be written
+// with, and the impls are compiled for each instance in use: its operators,
+// its equality, how it prints, how it is walked and the method table of a
+// trait value made of one.
+
+import { println, Eq, Print, Add, Iterator, Array } from "stdlib"
+import { heap } from "mem"
+
+struct Pair<T> {
+  first: T
+  second: T
+}
+
+impl Eq for Pair<T>
+impl Print for Pair<T>
+
+// A bound the impls need is declared on the type, and the methods of
+// every impl inherit it.
+struct Money<T: Add> {
+  amount: T
+  fee: T
+}
+
+impl Add for Money<T> {
+  fn add(self, other: Self): Self {
+    return Money{ amount: self.amount + other.amount, fee: self.fee + other.fee }
+  }
+}
+
+impl Print for Money<T>
+
+trait Total {
+  fn total(self): i32
+  fn twice(self): i32 {
+    return self.total() * 2
+  }
+}
+
+impl Total for Pair<T> {
+  fn total(self): i32 {
+    return 7
+  }
+}
+
+struct Span<T> {
+  items: T[]
+  at: usize
+}
+
+impl Iterator<T> for Span<T> {
+  fn next(*self): (T, bool) {
+    if self.at >= self.items.len() {
+      return self.items[0], false
+    }
+    var item = self.items[self.at]
+    self.at += 1
+    return item, true
+  }
+}
+
+fn main() {
+  var a = Pair<i32>{ 1, 2 }
+  var b = Pair<i32>{ 10, 20 }
+  println(a == b)
+  println(a == Pair<i32>{ 1, 2 })
+  println(Money<i32>{ 5, 1 } + Money<i32>{ 10, 2 })
+
+  var names = Pair<string>{ "x", "y" }
+  println(names == Pair<string>{ "x", "y" })
+  println(names)
+
+  var floats = Money<f64>{ 0.5, 1.5 } + Money<f64>{ 0.25, 0.25 }
+  println(floats)
+
+  println(a.twice())
+  var table = &a as dyn Total
+  println(table.twice())
+
+  var numbers = [4, 5, 6]
+  var span = Span<i32>{ items: numbers, at: 0 }
+  for n in span {
+    println(n)
+  }
+}

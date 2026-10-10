@@ -159,6 +159,15 @@ func (c *checker) bindFuncTypeParams(decl *ast.FuncDecl, bindings map[string]typ
 		sym := c.declare(param.Name, param.Offset, symTypeParam, nil)
 		sym.typ = c.typeParamBinding(param.Name, bindings, ownObjects, i)
 	}
+
+	// Self is the owner as the method's own body sees it, whatever the
+	// owner's parameters are currently bound to.
+	if decl.Owner != "" {
+		if self := c.ownerSelfFor(decl); self != nil {
+			sym := c.declare("Self", decl.Offset, symTypeParam, nil)
+			sym.typ = self
+		}
+	}
 }
 
 func (c *checker) typeParamBinding(name string, bindings map[string]types.Type, objects []*types.TypeParam, index int) types.Type {
@@ -177,6 +186,13 @@ func (c *checker) typeParamBinding(name string, bindings map[string]types.Type, 
 // ownerParamObjects returns the canonical type parameters of the method's
 // owner, which the OwnerParams alias positionally.
 func (c *checker) ownerParamObjects(decl *ast.FuncDecl) []*types.TypeParam {
+	// A method of a trait is generic over Self and the trait's parameters.
+	if decl.Trait != nil {
+		if trait := c.traitTypes[decl.Trait]; trait != nil {
+			return append([]*types.TypeParam{trait.Self}, trait.Params...)
+		}
+		return nil
+	}
 	if decl.Owner == "" {
 		return nil
 	}
@@ -197,7 +213,21 @@ func (c *checker) ownerParamObjects(decl *ast.FuncDecl) []*types.TypeParam {
 // the owner instantiated with whatever the type parameter names are
 // currently bound to.
 func (c *checker) selfTypeFor(decl *ast.FuncDecl) types.Type {
-	if decl.Owner == "" || decl.Recv == nil {
+	if decl.Recv == nil {
+		return nil
+	}
+	if decl.Trait != nil {
+		if sym := c.scope.lookup("Self"); sym != nil && sym.typ != nil {
+			return sym.typ
+		}
+		return types.Unknown
+	}
+	return c.ownerSelfFor(decl)
+}
+
+// ownerSelfFor is the type a method's owner denotes inside the method.
+func (c *checker) ownerSelfFor(decl *ast.FuncDecl) types.Type {
+	if decl.Owner == "" {
 		return nil
 	}
 	if builtin := builtinOwner(decl.Owner); builtin != nil {

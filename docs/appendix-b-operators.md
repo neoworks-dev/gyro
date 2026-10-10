@@ -13,19 +13,23 @@
 | type | `?` nullable |
 | other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
 
-There is no `++` or `--`; increment is `i += 1`. Operators are not
-overloadable, so `<` on a user type is an error that points at
-`a.compare(b)`.
+There is no `++` or `--`; increment is `i += 1`. `+ - * / %`, unary `-`,
+`== !=` and `< <= > >=` are overloaded the one way there is: a type the
+program declares implements the trait that carries the operator (`Add`, `Sub`,
+`Mul`, `Div`, `Rem`, `Neg`, `Eq`, `Ord`), and the operator calls its method
+([chapter 10.1](ch10-01-traits.md)). `[]` is `Index`. No other operator is
+overloadable.
 
 ## Which types each accepts
 
 | operator | operands |
 | --- | --- |
-| `+ - * / %` | matching numeric types |
+| `+ - * / %` | matching numeric types, or two values of a type that implements `Add`, `Sub`, `Mul`, `Div` or `Rem` |
+| unary `-` | a number, or a type that implements `Neg` |
 | `+% -% *%` | matching integer types |
 | `& \| ^ ~ << >>` | integers only |
-| `< <= > >=` | numeric primitives and `rune` only |
-| `== !=` | primitives, pointers (identity), tuples, enums, structs (derived field-wise). **Not slices.** |
+| `< <= > >=` | two values of a type that is `Ord`: the numbers, `rune`, `string`, and types that implement it |
+| `== !=` | two values of a type that is `Eq`: primitives, pointers (identity), strings, and tuples, optionals and arrays of what is `Eq`; a struct or enum that implements `Eq`. **Not slices.** |
 | `&& \|\| !` | `bool` |
 | `as` | numeric types and `rune`; into and out of `any`; from a pointer to `anyptr` (the way back is `cast` in `unsafe`) |
 

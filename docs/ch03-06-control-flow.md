@@ -43,20 +43,26 @@ defer runs at the exit of its enclosing block
 ## What `for ... in` accepts
 
 Slices, fixed-size arrays, ranges and channels iterate natively. Any other
-type is iterable **by duck typing**: a type with `next(*self): (T, bool)` —
-or an `iter()` returning such a type — works, and `false` ends the loop.
+type is iterable by **implementing `Iterator<T>`**
+([chapter 10.1](ch10-01-traits.md)): a `next(*self): (T, bool)` that hands
+back the following element and whether there was one, where `false` ends the
+loop.
 
 ```gyro
-fn Counter::next(*self): (i32, bool) {
-  if self.n >= self.limit {
-    return 0, false
+impl Iterator<i32> for Counter {
+  fn next(*self): (i32, bool) {
+    if self.n >= self.limit {
+      return 0, false
+    }
+    self.n += 1
+    return self.n, true
   }
-  self.n += 1
-  return self.n, true
 }
 
 for x in (Counter{ 0, 5 }) { println(x) }
 ```
+
+A type with a `next` method and no impl is not an iterator.
 
 The parentheses are the same rule conditions have: a brace after the
 iterable opens the loop body, so a bare struct literal cannot sit at the top

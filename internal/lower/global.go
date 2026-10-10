@@ -97,7 +97,7 @@ func (f *funcLowerer) globalPlace(decl *ast.VarDecl, name string) *place {
 // module's. It runs after the rest is lowered, so an initializer may
 // call anything the program defines.
 func (l *lowerer) emitGlobalInit() {
-	if len(l.globals) == 0 {
+	if len(l.globals) == 0 && len(l.vtableOrder) == 0 {
 		return
 	}
 
@@ -117,6 +117,13 @@ func (l *lowerer) emitGlobalInit() {
 		value := f.lowerExpr(global.decl.Value, global.typ)
 		f.globalPlace(global.decl, global.binding).store(value)
 	}
+
+	// An initializer may have lowered functions that make trait values
+	// of their own, so the tables are written once everything that could
+	// ask for one has been lowered.
+	l.drain()
+	l.emitTableFills(f)
+
 	f.emit(&metals.Return{})
 	f.popScopeNoDefers()
 

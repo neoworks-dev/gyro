@@ -7,6 +7,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/stdlib"
+	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -21,6 +22,9 @@ func (f *funcLowerer) prepareCall(call *ast.CallExpr) func() string {
 
 	if resolved.Enum != nil {
 		return f.prepareVariant(call, resolved)
+	}
+	if resolved.Dyn != nil {
+		return f.prepareDynCall(call, resolved)
 	}
 	if resolved.Method != nil {
 		decl := resolved.Method.Decl
@@ -507,6 +511,31 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 	case "hash":
 		value := f.lowerExpr(recv, nil)
 		return f.emitCall(f.l.hashFor(recvType), []string{value}, types.Uint64, false)
+
+	case "eq":
+		left := f.lowerExpr(recv, nil)
+		right := f.lowerExpr(call.Args[0].Value, recvType)
+		return func() string { return f.equalValues(left, right, types.Default(recvType)) }
+
+	case "add", "sub", "mul", "div", "rem":
+		left := f.lowerExpr(recv, nil)
+		right := f.lowerExpr(call.Args[0].Value, recvType)
+		op := map[string]token.Kind{
+			"add": token.Plus, "sub": token.Minus, "mul": token.Star, "div": token.Slash, "rem": token.Percent,
+		}[resolved.Method.Name]
+		return func() string {
+			out := f.newReg(resolved.Method.Name)
+			f.emit(&metals.Bin{Dst: out, Op: binOpFor(op, types.Default(recvType), f), A: left, B: right})
+			return out
+		}
+
+	case "neg":
+		value := f.lowerExpr(recv, nil)
+		return func() string {
+			out := f.newReg("neg")
+			f.emit(&metals.Un{Dst: out, Op: "neg", X: value})
+			return out
+		}
 
 	case "message":
 		name := f.ensureErrorMessage()

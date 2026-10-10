@@ -31,7 +31,7 @@
 // C read whatever the static array held from the previous call. This
 // port rejects the pattern instead.
 
-import { Array, bytes } from "stdlib"
+import { Array, bytes, Eq } from "stdlib"
 import { heap } from "mem"
 
 // The C module is fixed-size and says so in its README; the limits are
@@ -58,6 +58,8 @@ export enum Kind {
   Whitespace,
   NotWhitespace,
 }
+
+impl Eq for Kind
 
 export struct Node {
   export kind: Kind

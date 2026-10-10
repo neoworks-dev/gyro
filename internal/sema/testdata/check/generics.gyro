@@ -1,21 +1,53 @@
-// Generics are duck-typed and checked per instantiation: the requirement
-// is whatever the body uses, and the error names the call site.
+// A generic states its bounds, its body may use only what they provide, and
+// a call with a type that does not implement a bound is reported at the call.
 
-// The requirement is reported in the body that has it, with the
-// instantiation that could not meet it pointed at the call.
-fn max<T>(a: T, b: T): T {
-  if a.compare(b) > 0 {          //~ E0405 NoCompare has no method compare
+import { Ord, Eq } from "stdlib"
+
+fn max<T: Ord>(a: T, b: T): T {
+  if a.compare(b) > 0 {
     return a
   }
   return b
+}
+
+// Without the bound the body has nothing to call.
+fn unbounded<T>(a: T, b: T): T {
+  if a.compare(b) > 0 {          //~ E0405 T has no method compare
+    return a
+  }
+  return b
+}
+
+fn noFields<T>(a: T): i32 {
+  return a.n                     //~ E0405 T has no field or method n
+}
+
+fn noOperators<T>(a: T, b: T): T {
+  return a + b                   //~ E0527 T does not implement Add
+}
+
+fn noEquality<T>(a: T, b: T): bool {
+  return a == b                  //~ E0527 T does not implement Eq
+}
+
+// A bound is also a promise to the callers of whatever it is passed to.
+fn forwards<T: Ord>(a: T, b: T): T {
+  return max(a, b)
+}
+
+fn forgetsTheBound<T: Eq>(a: T, b: T): T {
+  return max(a, b)               //~ E0527 T does not implement Ord
 }
 
 struct WithCompare {
   n: i32
 }
 
-fn WithCompare::compare(self, other: WithCompare): i32 {
-  return 0
+impl Eq for WithCompare
+impl Ord for WithCompare {
+  fn compare(self, other: WithCompare): i32 {
+    return 0
+  }
 }
 
 struct NoCompare {
@@ -31,7 +63,8 @@ fn userCompare(a: WithCompare, b: WithCompare): WithCompare {
 }
 
 fn missingCompare(a: NoCompare, b: NoCompare) {
-  var x = max(a, b)              //~ E0505 in the instantiation max<NoCompare>
+  var x = max(a, b)              //~ E0527 NoCompare does not implement Ord
+                                 //~^ help: impl Ord for NoCompare
 }
 
 fn first<T>(a: T, b: T): T !{ &a } {
@@ -123,20 +156,48 @@ fn ownerInferenceIsChecked(): string {
   return b.get()                 //~ cannot use i32 as string
 }
 
-struct Holder<T> {
+// A type's bounds are written on its parameters and its methods inherit
+// them, so a method may call what the bound provides.
+trait Speak {
+  fn speak(self)
+}
+
+struct Holder<T: Speak> {
   value: T
 }
 
 fn Holder<T>::shout(self) {
-  self.value.speak()             //~ E0405 Silent has no method speak
+  self.value.speak()
 }
 
 struct Silent {
   n: i32
 }
 
-fn methodDuckCheck(h: Holder<Silent>) {
-  h.shout()                      //~ E0505 in the instantiation shout<Silent>
+struct Loud {
+  n: i32
+}
+
+impl Speak for Loud {
+  fn speak(self) {
+  }
+}
+
+fn bounded(h: Holder<Loud>) {
+  h.shout()
+}
+
+// Naming the type with an argument that does not meet the bound is the
+// error, at the mention.
+fn holderOfSilent(h: Holder<Silent>) {     //~ E0527 Silent does not implement Speak
+}
+
+struct Plain<T> {
+  value: T
+}
+
+fn Plain<T>::shout(self) {
+  self.value.speak()             //~ E0405 T has no method speak
 }
 
 // Instantiation is cached, so a recursive generic converges.

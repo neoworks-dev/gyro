@@ -20,6 +20,12 @@ export * from "./m"
 
 Struct fields carry their own `export` ([chapter 5.1](ch05-01-structs.md)).
 
+A trait is exported and imported like a type, by name. An `impl` is not
+exported: it belongs to the type it is for, and every module that sees the
+type sees what it implements. The capability traits — `Eq`, `Hash`, `Print`,
+`Ord` and the rest — are ordinary exports of `stdlib` that a module imports to
+write `impl Eq for Point` ([chapter 10.1](ch10-01-traits.md)).
+
 ## Imports
 
 ```gyro

@@ -39,7 +39,7 @@
 //     condition, because that is what every use of them was spelling out
 //     with an `if` and an `else`.
 
-import { Array } from "stdlib"
+import { Array, Eq } from "stdlib"
 import { heap } from "mem"
 
 // ---------------------------------------------------------------------------
@@ -81,6 +81,8 @@ export enum Mode {
   Indx,
   Indy,
 }
+
+impl Eq for Mode
 
 export enum Op {
   Adc,

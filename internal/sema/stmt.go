@@ -796,6 +796,15 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		c.errorf(e.Pos(), "this value is %s and may be null; check it against null before iterating", t)
 		return types.Unknown
 	}
+	if param, ok := t.(*types.TypeParam); ok {
+		if elem := c.iteratorElem(param); elem != nil {
+			return elem
+		}
+		c.errorHintf(e.Pos(), []string{
+			"bound the parameter by Iterator: " + param.Name + ": Iterator<T>",
+		}, "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator", t)
+		return types.Unknown
+	}
 	if flexible(t) {
 		return types.Unknown
 	}
@@ -804,10 +813,12 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		return types.Unknown
 	}
 
-	if elem := c.duckIterableElem(t); elem != nil {
+	if elem := c.iteratorElem(t); elem != nil {
 		return elem
 	}
-	c.errorf(e.Pos(), "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type with next(*self): (T, bool)", t)
+	c.errorHintf(e.Pos(), []string{
+		"a type is iterated by implementing Iterator: impl Iterator<T> for " + t.String() + " { fn next(*self): (T, bool) }",
+	}, "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator", t)
 	return types.Unknown
 }
 
@@ -836,30 +847,4 @@ func (c *checker) rangeElem(rng *ast.RangeExpr) types.Type {
 		return types.Unknown
 	}
 	return lo
-}
-
-// duckIterableElem implements the iteration contract: next(*self) returning
-// (T, bool), or iter() returning something that has it.
-func (c *checker) duckIterableElem(t types.Type) types.Type {
-	if elem := c.nextMethodElem(t); elem != nil {
-		return elem
-	}
-
-	iter, s := c.lookupMethod(t, "iter")
-	if iter == nil || len(iter.Sig.Params) != 0 || len(iter.TypeParams) > 0 {
-		return nil
-	}
-	return c.nextMethodElem(c.substType(iter.Sig.Result, s))
-}
-
-func (c *checker) nextMethodElem(t types.Type) types.Type {
-	next, s := c.lookupMethod(t, "next")
-	if next == nil || len(next.Sig.Params) != 0 || len(next.TypeParams) > 0 {
-		return nil
-	}
-	result, ok := c.substType(next.Sig.Result, s).(*types.Tuple)
-	if !ok || len(result.Elems) != 2 || !types.Identical(result.Elems[1], types.Bool) {
-		return nil
-	}
-	return result.Elems[0]
 }

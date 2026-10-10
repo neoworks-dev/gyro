@@ -24,16 +24,20 @@ None of those is a lint you can switch off. Each is a rule the compiler
 enforces, and [chapter 12](ch12-00-effect-rows.md) and
 [chapter 4](ch04-01-manual-memory.md) are where most of them live.
 
-## One principle, everywhere: duck typing
+## One way to state a contract: a trait
 
-**Gyro is duck-typed wherever a contract is needed.** A type is an `error`
-by having `message(): string`. A type is iterable by having `next()`. A type
-works in a generic function by having whatever methods that function calls.
+**A contract is a trait, and a type opts in on purpose.** A type is `Eq`,
+iterable, printable or usable in a generic function because its author wrote
+`impl Trait for Type`, and a generic says what it needs of its parameters
+with bounds, as in `fn max<T: Ord>`. A type's own methods stay free-standing,
+`fn Type::name(self)`; an `impl` block is only how it keeps a promise to a
+trait.
 
-Nothing is ever declared to satisfy a contract; having the right methods is
-the whole test. There is no `trait`, no `impl`, no `Self`, and no bounds on
-a type parameter — they were removed on purpose ([`decisions.md`](decisions.md),
-"Traits were removed"), and what replaced them is nothing at all.
+Having a method of the right name is not enough, and neither is being
+structurally the same: what a type promises is what its author wrote down
+([chapter 10.1](ch10-01-traits.md), and [`decisions.md`](decisions.md), "Traits").
+The one contract still checked by shape is `error`, which is a type with
+`message(): string` ([chapter 9](ch09-00-errors.md)).
 
 ## Nothing is implicit
 

@@ -66,6 +66,10 @@ func (p *printer) node(node Node) {
 			p.node(imp)
 		}
 		for _, decl := range n.Decls {
+			// A method written in an impl block is printed with its block.
+			if fn, ok := decl.(*FuncDecl); ok && fn.Impl != nil {
+				continue
+			}
 			p.node(decl)
 		}
 		p.indent--
@@ -142,6 +146,37 @@ func (p *printer) node(node Node) {
 					p.node(payload)
 				}
 			})
+		}
+		p.indent--
+
+	case *TraitDecl:
+		supers := ""
+		if len(n.Supers) > 0 {
+			parts := make([]string, len(n.Supers))
+			for i, super := range n.Supers {
+				parts[i] = boundString(super)
+			}
+			supers = ": " + strings.Join(parts, " & ")
+		}
+		p.line("Trait %s%s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams), supers)
+		p.indent++
+		p.decorators(n.Decorators)
+		for _, method := range n.Methods {
+			p.node(method)
+		}
+		p.indent--
+
+	case *ImplDecl:
+		derive := ""
+		if !n.Body {
+			derive = " derived"
+		}
+		p.line("Impl%s", derive)
+		p.indent++
+		p.child("Trait", n.Trait)
+		p.child("For", n.For)
+		for _, method := range n.Methods {
+			p.node(method)
 		}
 		p.indent--
 
@@ -510,6 +545,12 @@ func (p *printer) node(node Node) {
 		p.node(n.Elem)
 		p.indent--
 
+	case *DynType:
+		p.line("DynType")
+		p.indent++
+		p.node(n.Trait)
+		p.indent--
+
 	default:
 		p.line("<unknown %T>", node)
 	}
@@ -668,8 +709,23 @@ func typeParamString(params []TypeParam) string {
 	names := make([]string, len(params))
 	for i, param := range params {
 		names[i] = param.Name
+		if len(param.Bounds) > 0 {
+			bounds := make([]string, len(param.Bounds))
+			for j, bound := range param.Bounds {
+				bounds[j] = boundString(bound)
+			}
+			names[i] += ": " + strings.Join(bounds, " & ")
+		}
 	}
 	return "<" + strings.Join(names, ", ") + ">"
+}
+
+// boundString renders a trait reference the way the dump shows a path.
+func boundString(t Type) string {
+	if named, ok := t.(*NamedType); ok {
+		return pathString(named.Path)
+	}
+	return "?"
 }
 
 func bindingString(bindings []Binding) string {

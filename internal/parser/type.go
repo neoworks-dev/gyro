@@ -70,6 +70,12 @@ func (p *Parser) parseBaseType() ast.Type {
 		if p.tok().Text == "code" && p.peekAt(1).Kind == token.LParen {
 			return p.parseCodeType()
 		}
+		// `dyn` is contextual in the same way: it makes a trait value only
+		// when a name follows it.
+		if p.tok().Text == "dyn" && p.peekAt(1).Kind == token.Ident {
+			p.next()
+			return &ast.DynType{Offset: offset, Trait: p.parseBound()}
+		}
 		return &ast.NamedType{Offset: offset, Path: p.parseTypePathInType()}
 	}
 

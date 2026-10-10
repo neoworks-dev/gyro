@@ -46,7 +46,7 @@
 //     pairs upstream keeps (the merged-line buffers, the attribute
 //     builds, the mark pointer stack) are simply allocations here.
 
-import { Array, bytes } from "stdlib"
+import { Array, bytes, Eq } from "stdlib"
 import * as unicode from "./unicode"
 import { heap } from "mem"
 
@@ -67,6 +67,8 @@ export enum BlockKind {
   P,
 }
 
+impl Eq for BlockKind
+
 export enum SpanKind {
   Em,
   Strong,
@@ -74,6 +76,8 @@ export enum SpanKind {
   Img,
   Code,
 }
+
+impl Eq for SpanKind
 
 export enum TextKind {
   Normal,
@@ -84,6 +88,8 @@ export enum TextKind {
   Code,
   Html,
 }
+
+impl Eq for TextKind
 
 // An Attribute is text that travels outside the normal flow — a link
 // destination, a title, a code fence's info string — and which may be cut
@@ -211,6 +217,8 @@ enum LineKind {
   Html,
   Text,
 }
+
+impl Eq for LineKind
 
 // ---------------------------------------------------------------------------
 // Literals handed to the text callback

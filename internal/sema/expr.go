@@ -449,21 +449,33 @@ func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
 
 	switch e.Op {
 	case token.Minus:
-		if flexible(operand) || types.IsNumeric(operand) {
+		if types.IsUnknown(operand) || types.IsNumeric(operand) {
 			c.foldUnary(e, operand)
 			return operand
+		}
+		// A type parameter negates through its Neg bound, and a declared
+		// type through the Neg it implements; either way the result is
+		// the same type.
+		if _, ok := operand.(*types.TypeParam); ok || c.userNamed(operand) {
+			if c.requireCapability(e.Offset, operand, "Neg", "the operator - needs") {
+				return operand
+			}
+			return types.Unknown
+		}
+		if flexible(operand) {
+			return types.Unknown
 		}
 		c.errorf(e.Offset, "operator - negates numeric values, not %s", operand)
 
 	case token.Bang:
-		if flexible(operand) || types.Identical(operand, types.Bool) {
+		if types.IsUnknown(operand) || types.Identical(operand, types.Bool) {
 			return types.Bool
 		}
 		c.errorf(e.Offset, "operator ! needs a bool, not %s", operand)
 		return types.Bool
 
 	case token.Tilde:
-		if flexible(operand) || types.IsInteger(operand) {
+		if types.IsUnknown(operand) || types.IsInteger(operand) {
 			return operand
 		}
 		c.errorf(e.Offset, "operator ~ inverts integers, not %s", operand)
@@ -541,8 +553,26 @@ func (c *checker) arithmetic(e *ast.BinaryExpr) types.Type {
 	left := c.expr(e.X)
 	right := c.expr(e.Y)
 
+	if types.IsUnknown(left) || types.IsUnknown(right) {
+		return c.pickTyped(left, right)
+	}
+
+	// A type parameter has the operators its bounds give it, and nothing
+	// else: + - * / % through Add, Sub, Mul, Div and Rem.
+	if _, ok := left.(*types.TypeParam); ok {
+		return c.parameterArithmetic(e, left, right)
+	}
+	if _, ok := right.(*types.TypeParam); ok {
+		return c.parameterArithmetic(e, left, right)
+	}
+
 	if flexible(left) || flexible(right) {
 		return c.pickTyped(left, right)
+	}
+
+	// A declared type has them through the traits it implements.
+	if c.userNamed(left) || c.userNamed(right) {
+		return c.declaredArithmetic(e, left, right)
 	}
 
 	// An untyped side adapts to the typed side; two untyped sides fold.
@@ -672,6 +702,10 @@ func (c *checker) shift(e *ast.BinaryExpr) types.Type {
 	if !flexible(right) && !types.IsInteger(right) {
 		c.errorf(e.Y.Pos(), "a shift count is an integer, not %s", describeType(right))
 	}
+	if _, ok := left.(*types.TypeParam); ok {
+		c.errorf(e.Offset, "operator %s shifts integers, not %s", e.Op, describeType(left))
+		return types.Unknown
+	}
 	if flexible(left) {
 		return types.Unknown
 	}
@@ -698,6 +732,14 @@ func (c *checker) equality(e *ast.BinaryExpr) {
 	left := c.expr(e.X)
 	right := c.expr(e.Y)
 
+	if types.IsUnknown(left) || types.IsUnknown(right) {
+		return
+	}
+
+	// A type parameter compares with itself, if its bounds say it is Eq.
+	if c.parameterComparison(e, left, right, "Eq") {
+		return
+	}
 	if flexible(left) || flexible(right) {
 		return
 	}
@@ -731,7 +773,26 @@ func (c *checker) equality(e *ast.BinaryExpr) {
 	}
 	if !c.comparable(left, right) {
 		c.errorf(e.Offset, "cannot compare %s with %s", describeType(left), describeType(right))
+		return
 	}
+	c.requireEq(e, left, right)
+}
+
+// requireEq holds a comparison the checker accepted to the Eq the type
+// states: a declared type is compared by the impl it wrote, and the parts
+// of a tuple or an optional by theirs.
+func (c *checker) requireEq(e *ast.BinaryExpr, left, right types.Type) {
+	operand := left
+	if optional, ok := operand.(*types.Optional); ok && !types.Identical(left, right) {
+		operand = optional.Elem
+	}
+	if _, ok := right.(*types.Optional); ok && types.Identical(left, right) {
+		operand = left
+	}
+	if isErrorBasic(left) || isErrorBasic(right) {
+		return
+	}
+	c.requireCapability(e.Offset, operand, "Eq", "the operator "+e.Op.String()+" needs")
 }
 
 // namedFunc is the declaration an expression names, when it names one
@@ -834,6 +895,12 @@ func (c *checker) ordering(e *ast.BinaryExpr) {
 	left := c.expr(e.X)
 	right := c.expr(e.Y)
 
+	if types.IsUnknown(left) || types.IsUnknown(right) {
+		return
+	}
+	if c.parameterComparison(e, left, right, "Ord") {
+		return
+	}
 	if flexible(left) || flexible(right) {
 		return
 	}
@@ -846,10 +913,12 @@ func (c *checker) ordering(e *ast.BinaryExpr) {
 		return
 	}
 
-	if !types.IsOrdered(left) || !types.Identical(left, right) {
-		c.errorf(e.Offset, "operator %s orders numeric types and rune; ordering %s is spelled a.compare(b)",
-			e.Op, describeType(left))
+	if !types.Identical(left, right) {
+		c.errorf(e.Offset, "operator %s orders two values of one type, not %s and %s",
+			e.Op, describeType(left), describeType(right))
+		return
 	}
+	c.requireCapability(e.Offset, left, "Ord", "the operator "+e.Op.String()+" needs")
 }
 
 // ---------------------------------------------------------------------------
@@ -964,6 +1033,21 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		if elem := arrayElem(base); elem != nil {
 			return elem
 		}
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+	case *types.Enum:
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+	case *types.TypeParam:
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+		c.errorHintf(e.Offset, []string{
+			"bound the parameter by Index: " + base.Name + ": Index<T>",
+		}, "%s cannot be indexed", base)
+		return types.Unknown
 	case *types.Optional:
 		c.errorf(e.Offset, "this value is %s and may be null; check it against null before indexing", base)
 		return types.Unknown
@@ -1084,7 +1168,13 @@ func (c *checker) selectField(offset int, base types.Type, name string, bareMeth
 		c.errorf(offset, "this value is %s and may be null; check it against null before using it", optional)
 		return types.Unknown
 	}
-	if flexible(t) {
+	// A type parameter has no fields, and a trait value only methods.
+	switch t.(type) {
+	case *types.TypeParam, *types.Dyn:
+		c.errorHintf(offset, nil, "%s has no field or method %s", t, name)
+		return types.Unknown
+	}
+	if types.IsUnknown(t) {
 		return types.Unknown
 	}
 
@@ -1315,6 +1405,11 @@ func (c *checker) castExpr(e *ast.CastExpr) types.Type {
 	value := c.expr(e.X)
 	target := c.resolveType(e.Type)
 
+	// `as dyn Trait` makes a trait value of a pointer.
+	if d, ok := target.(*types.Dyn); ok && !types.IsUnknown(value) {
+		return c.castToDyn(e, value, d)
+	}
+
 	if flexible(value) || flexible(target) {
 		return target
 	}
@@ -1401,7 +1496,7 @@ func anyPayload(t types.Type) bool {
 		// does not record which member it holds — so what came out would
 		// be storage rather than a value.
 		return false
-	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam:
+	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Dyn:
 		return false
 	case *types.Pointer:
 		return anyPayload(t.Elem)

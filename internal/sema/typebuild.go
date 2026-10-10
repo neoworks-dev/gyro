@@ -24,11 +24,41 @@ func (c *checker) buildTypes(tree *ast.File) {
 		}
 	}
 
+	// A trait's methods mention types, and a type may mention a trait as a
+	// bound or a dyn, so the supertraits come first: a dyn needs to know
+	// what its trait requires.
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.TraitDecl); ok {
+			c.buildTraitSupers(d)
+		}
+	}
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.TraitDecl); ok {
+			c.buildTraitMethods(d)
+		}
+	}
+
+	// Which traits a type implements is known before any signature or body
+	// mentions a bound, so a bound can be checked wherever it is written.
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.ImplDecl); ok {
+			c.registerImpl(d)
+		}
+	}
+
 	for _, decl := range tree.Decls {
 		if d, ok := decl.(*ast.FuncDecl); ok {
 			c.buildSignature(d)
 		}
 	}
+
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.ImplDecl); ok {
+			c.checkImpl(d)
+		}
+	}
+
+	c.flushBounds()
 
 	for _, decl := range tree.Decls {
 		if d, ok := decl.(*ast.VarDecl); ok {
@@ -86,6 +116,7 @@ func (c *checker) bindTypeParams(params []ast.TypeParam, objects []*types.TypePa
 		sym := c.declare(param.Name, param.Offset, symTypeParam, nil)
 		sym.typ = objects[i]
 	}
+	c.resolveBounds(params, objects)
 }
 
 // buildSignature builds a function's *types.Method, attaches it to its
@@ -106,6 +137,7 @@ func (c *checker) buildSignature(decl *ast.FuncDecl) {
 	c.pushScope(func() {
 		c.bindTypeParams(decl.OwnerParams, ownerParams)
 		c.bindTypeParams(decl.TypeParams, method.TypeParams)
+		c.declareSelf(decl)
 		method.Sig = c.buildFuncSig(decl)
 	})
 
@@ -310,6 +342,8 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		return code
 	case *ast.ChanType:
 		return &types.Chan{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
+	case *ast.DynType:
+		return c.resolveDyn(t)
 	}
 	return types.Unknown
 }
@@ -371,6 +405,11 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 		return sym.typ
 	case symNamespace:
 		return c.resolveNamespaceType(t.Path, sym)
+	case symTrait:
+		c.errorHintf(head.Offset, []string{
+			"a trait is not a type; a value of some type implementing it is written dyn " + head.Name,
+		}, "%s is a trait, not a type", head.Name)
+		return types.Unknown
 	}
 
 	return c.applyTypeArgs(sym.typ, head.Offset, c.resolveTypeArgs(head.Args))
@@ -396,6 +435,9 @@ func (c *checker) applyTypeArgs(named types.Type, offset int, args []types.Type)
 		if len(args) == 0 {
 			return t
 		}
+		if !c.boundsOnApply(offset, t.Name, t.TypeParams, args) {
+			return types.Unknown
+		}
 		return c.instantiateStruct(t, args)
 	case *types.Enum:
 		if len(args) != len(t.TypeParams) {
@@ -404,6 +446,9 @@ func (c *checker) applyTypeArgs(named types.Type, offset int, args []types.Type)
 		}
 		if len(args) == 0 {
 			return t
+		}
+		if !c.boundsOnApply(offset, t.Name, t.TypeParams, args) {
+			return types.Unknown
 		}
 		return c.instantiateEnum(t, args)
 	case *types.Union:
@@ -448,6 +493,12 @@ func (c *checker) resolveNamespaceType(path *ast.Path, head *symbol) types.Type 
 	}
 	if entry.kind == symValue {
 		c.errorf(segment.Offset, "%s::%s is a value, not a type", path.Segments[0].Name, segment.Name)
+		return types.Unknown
+	}
+	if entry.kind == symTrait {
+		c.errorHintf(segment.Offset, []string{
+			"a trait is not a type; a value of some type implementing it is written dyn " + path.Segments[0].Name + "::" + segment.Name,
+		}, "%s is a trait, not a type", segment.Name)
 		return types.Unknown
 	}
 	return c.applyTypeArgs(entry.typ, segment.Offset, c.resolveTypeArgs(segment.Args))

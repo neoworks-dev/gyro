@@ -41,6 +41,28 @@ attached — a skip is a program that will fail the day the gap closes
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 
+## Traits
+
+- **Conditional impls.** `impl Add for Pair<T>` cannot ask more of `T` than
+  `struct Pair<T: Add>` does, so a type cannot be `Add` for some arguments and
+  not for others. The bound goes on the type.
+- **No impl for a built-in type.** A trait of the program's own cannot be
+  implemented for `i32` or `string`, and the capability traits are answered by
+  the compiler for them.
+- **A trait takes no associated types and no defaults for its parameters.**
+  The operator traits are `Self -> Self -> Self`, so a vector cannot be
+  multiplied by a scalar with `*`.
+- **Default bodies need a trait without parameters,** and a trait with
+  parameters is not a trait value: `dyn Iterator<i32>` does not exist.
+- **A trait value cannot be converted to the trait value of a trait it
+  requires,** and has no implicit conversion from a pointer: it is made with
+  `as dyn Trait`.
+- **No `T::new()` through a bound.** A bound provides methods with a receiver.
+- **`error` is not a trait yet,** and keeps its shape-based rule.
+- **No `iter()`.** `for..in` takes an `Iterator`; a collection that hands out
+  an iterator is not iterable itself, since there are no associated types to
+  name what `iter` returns.
+
 ## Language features that are typed but not finished
 
 | feature | state |

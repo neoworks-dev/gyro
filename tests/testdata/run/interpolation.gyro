@@ -1,4 +1,4 @@
-import { println } from "stdlib"
+import { println, Print } from "stdlib"
 import { format, heap } from "mem"
 
 struct Version {
@@ -6,8 +6,10 @@ struct Version {
   minor: i32
 }
 
-fn Version::to_string(self): string {
-  return format(heap(), "v#{self.major}.#{self.minor}")
+impl Print for Version {
+  fn to_string(self): string {
+    return format(heap(), "v#{self.major}.#{self.minor}")
+  }
 }
 
 fn main() {

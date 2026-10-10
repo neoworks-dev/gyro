@@ -1,0 +1,25 @@
+import { println, Array } from "stdlib"
+import { heap } from "mem"
+import { Shape, total_area } from "./shape"
+import { Square } from "./square"
+import { Circle } from "./circle"
+
+fn main() {
+  var squares = [Square{ side: 2 }, Square{ side: 3 }]
+  println(total_area(squares))
+  println(squares[0] == Square{ side: 2 })
+  println(squares[1])
+
+  var c = Circle{ radius: 2 }
+  var s = Square{ side: 5 }
+  var shapes = Array<dyn Shape>::new(heap())
+  defer shapes.free()
+  shapes.push(&c as dyn Shape)
+  shapes.push(&s as dyn Shape)
+  for i in 0..shapes.len() {
+    var shape = shapes.get(i)
+    println("#{shape.name()} #{shape.area()}")
+  }
+  println(c.summary())
+  println(s.summary())
+}

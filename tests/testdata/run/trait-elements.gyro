@@ -1,0 +1,137 @@
+// The GUI shape: elements of different types behind one trait, held in one
+// array as trait values. A trait value is a pointer to the element and the
+// table of its methods, so the elements below are borrowed from main's
+// frame and nothing is allocated for the values themselves. Each element
+// prints what it would draw.
+
+import { println, Array } from "stdlib"
+import { heap, format } from "mem"
+
+trait Element {
+  fn name(self): string
+  fn paint(self)
+  fn width(self): i32
+
+  // A default every element shares unless it writes its own.
+  fn describe(self): string {
+    return format(heap(), "#{self.name()} that is #{self.width()} wide")
+  }
+}
+
+// A widget is an element that can also be clicked, which changes it. Its
+// table holds the methods of Element too.
+trait Widget: Element {
+  fn click(*self)
+}
+
+struct Label {
+  text: string
+}
+
+struct Button {
+  label: string
+  clicks: i32
+}
+
+struct Panel {
+  columns: i32
+}
+
+impl Element for Label {
+  fn name(self): string {
+    return "label"
+  }
+  fn paint(self) {
+    println("text: #{self.text}")
+  }
+  fn width(self): i32 {
+    return self.text.len() as i32
+  }
+}
+
+impl Element for Button {
+  fn name(self): string {
+    return "button"
+  }
+  fn paint(self) {
+    println("[ #{self.label} ] clicked #{self.clicks} times")
+  }
+  fn width(self): i32 {
+    return self.label.len() as i32 + 4
+  }
+  fn describe(self): string {
+    return format(heap(), "a button labelled #{self.label}")
+  }
+}
+
+impl Widget for Button {
+  fn click(*self) {
+    self.clicks += 1
+  }
+}
+
+impl Element for Panel {
+  fn name(self): string {
+    return "panel"
+  }
+  fn paint(self) {
+    println("panel of #{self.columns} columns")
+  }
+  fn width(self): i32 {
+    return self.columns * 10
+  }
+}
+
+fn paint_all(elements: Array<dyn Element>) {
+  for i in 0..elements.len() {
+    var element = elements.get(i)
+    element.paint()
+  }
+}
+
+fn total_width(elements: Array<dyn Element>): i32 {
+  var total = 0
+  for i in 0..elements.len() {
+    total += elements.get(i).width()
+  }
+  return total
+}
+
+// A generic bounded by the trait works on the concrete type; the same
+// function takes a trait value too, since dyn Element implements Element.
+fn announce<T: Element>(item: T) {
+  println("announcing #{item.describe()}")
+}
+
+fn press(target: dyn Widget) {
+  var widget = target
+  widget.click()
+  widget.click()
+}
+
+fn main() {
+  var title = Label{ text: "Settings" }
+  var save = Button{ label: "Save", clicks: 0 }
+  var layout = Panel{ columns: 3 }
+
+  var elements = Array<dyn Element>::new(heap())
+  defer elements.free()
+  elements.push(&title as dyn Element)
+  elements.push(&save as dyn Element)
+  elements.push(&layout as dyn Element)
+
+  paint_all(elements)
+  println(total_width(elements))
+
+  announce(title)
+  announce(save)
+  announce(layout)
+  announce(elements.get(1))
+
+  press(&save as dyn Widget)
+  press(&save as dyn Widget)
+  paint_all(elements)
+
+  var as_element = &save as dyn Element
+  println(as_element.describe())
+}

@@ -4,7 +4,7 @@
 // v1. Allocation is not an effect: a function allocates when it is handed
 // an Allocator, and that shows in its parameters.
 
-import { println, Array, runes } from "stdlib"
+import { println, Array, runes, Print } from "stdlib"
 import { heap } from "mem"
 
 fn quiet(n: i32) !{} {
@@ -68,15 +68,21 @@ fn Logger::log(*self, message: string) !{} {
 
 // A generic body is judged per instantiation, where a call on the type
 // parameter has a concrete callee to answer for it.
+trait Speak {
+  fn speak(self)
+}
+
 struct Shout {
   n: i32
 }
 
-fn Shout::speak(self) {
-  println(self.n)
+impl Speak for Shout {
+  fn speak(self) {
+    println(self.n)
+  }
 }
 
-fn callSpeak<T>(v: T) !{} {
+fn callSpeak<T: Speak>(v: T) !{} {
   v.speak()              //~ E0611 speak does io, which the row does not name
 }
 
@@ -86,7 +92,7 @@ fn trigger() {
 
 // A rowless generic callee is read through its instantiations, so it
 // contributes what the instantiated body reaches.
-fn relay<T>(v: T) {
+fn relay<T: Speak>(v: T) {
   v.speak()
 }
 

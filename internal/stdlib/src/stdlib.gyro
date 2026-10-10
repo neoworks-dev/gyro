@@ -3,10 +3,82 @@
 
 import { Allocator, heap, Format } from "mem"
 
-export fn print<T>(value: T) !{ io }
-export fn println<T>(value: T) !{ io }
-export fn eprint<T>(value: T) !{ io }
-export fn eprintln<T>(value: T) !{ io }
+export fn print<T: Print>(value: T) !{ io }
+export fn println<T: Print>(value: T) !{ io }
+export fn eprint<T: Print>(value: T) !{ io }
+export fn eprintln<T: Print>(value: T) !{ io }
+
+// The capabilities the language itself leans on. Each is an ordinary trait,
+// and the compiler gives it a meaning by where it is declared: == and !=
+// are Eq, the ordering operators are Ord, + - * / % and unary - are Add,
+// Sub, Mul, Div, Rem and Neg, printing is Print, map keys are Eq and Hash,
+// and for..in takes an Iterator. The numbers, strings, tuples and the
+// rest of the built-in types implement them without any impl being written;
+// a type a program declares implements one only by saying so, and
+// `impl Eq for Point` with no block asks for the implementation built from
+// its fields.
+
+// Eq is ==. Two values are equal when the method says so.
+export trait Eq {
+  fn eq(self, other: Self): bool
+}
+
+// Hash folds a value to a number. Two values that are equal hash alike, so
+// whoever writes an Eq by hand writes a Hash to match.
+export trait Hash {
+  fn hash(self): u64
+}
+
+// Print is how println and interpolation show a value. `to_string` is the
+// hook that replaces the derived text; it is not for calling on a type
+// parameter, since a number's text is made by the runtime and has nowhere
+// to be allocated from.
+export trait Print {
+  fn to_string(self): string
+}
+
+// Ord is <, <=, > and >=. compare answers a negative number, zero or a
+// positive one, and the operators are that answer against zero.
+export trait Ord: Eq {
+  fn compare(self, other: Self): i32
+}
+
+export trait Add {
+  fn add(self, other: Self): Self
+}
+
+export trait Sub {
+  fn sub(self, other: Self): Self
+}
+
+export trait Mul {
+  fn mul(self, other: Self): Self
+}
+
+export trait Div {
+  fn div(self, other: Self): Self
+}
+
+export trait Rem {
+  fn rem(self, other: Self): Self
+}
+
+export trait Neg {
+  fn neg(self): Self
+}
+
+// Iterator is what for..in walks: next hands back the following element and
+// whether there was one.
+export trait Iterator<T> {
+  fn next(*self): (T, bool)
+}
+
+// Index is `value[i]`. at hands back the address of element i, which is
+// what makes the index a place: `value[i] = x` writes through it and
+// `&value[i]` is the address itself, as on an Array.
+export trait Index<T> {
+  fn at(*self, index: usize): *T
+}
 
 // A line is written piece by piece, so the output lock is held across
 // all of them and two threads printing do not tear each other's lines.
@@ -332,7 +404,7 @@ export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
 //
 // A Map records the allocator it was made with, as an Array does, and
 // every bucket and every grown table comes from it.
-export struct Map<K, V> {
+export struct Map<K: Eq & Hash, V> {
   buckets: Array<Array<(K, V)>>
   count: usize
   alloc: Allocator

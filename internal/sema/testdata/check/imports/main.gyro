@@ -51,6 +51,6 @@ struct NoCompare {
   n: i32
 }
 
-fn importedGenericIsDuckChecked(a: NoCompare, b: NoCompare) {
-  var x = max(a, b)              //~ E0505 in the instantiation max<NoCompare>
+fn importedGenericIsChecked(a: NoCompare, b: NoCompare) {
+  var x = max(a, b)              //~ E0527 NoCompare does not implement Ord
 }

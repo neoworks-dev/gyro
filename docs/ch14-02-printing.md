@@ -1,30 +1,44 @@
 # 14.2. Printing and formatting
 
-**Every type is printable.** `println(x)` and `#{x}` use a compiler-derived
-representation unless the type has its own `to_string(): string` method,
-which then wins.
+**A type is printable when it implements `Print`.** The built-in types do,
+and a struct or enum the program declares says so with `impl Print for Point`
+and no block, which takes the compiler-derived representation:
+`println(x)` and `#{x}` show it.
 
 ```gyro
+struct Point {
+  x: i32
+  y: i32
+}
+
+impl Print for Point
+
 println(Point{ x: 1, y: 2 })    // Point{ x: 1, y: 2 }
 ```
 
 Primitives print natively. A struct prints its fields, a tuple its elements,
 an enum its variant and payload. An `any` prints as the value inside it, so
 a `...any` pack prints element by element with nothing unwrapped
-([chapter 14.1](ch14-01-any.md)).
+([chapter 14.1](ch14-01-any.md)). Printing a struct that does not implement
+`Print` is an error, as is printing a composite that holds one, and so is
+passing it to a function whose parameter is bounded by `Print`
+([chapter 10.1](ch10-01-traits.md)).
 
 ## Overriding it
 
-Declare `to_string`:
+Give the impl a block with `to_string`:
 
 ```gyro
-export fn Version::to_string(self): string {
-  return format(heap(), "v#{self.major}.#{self.minor}")
+impl Print for Version {
+  fn to_string(self): string {
+    return format(heap(), "v#{self.major}.#{self.minor}")
+  }
 }
 ```
 
-From then on `println(v)` and `#{v}` use it. That is the same
-displacement rule `hash` has: write your own and the derived one steps
+From then on `println(v)` and `#{v}` use it, and so does a derived
+representation that reaches a `Version` inside another type. That is the
+same displacement rule `Hash` has: write your own and the derived one steps
 aside, along with the responsibility for keeping it sensible
 ([chapter 5.2](ch05-02-methods.md)).
 
@@ -39,8 +53,8 @@ From `stdlib`:
 | `eprint(value)` | stderr, no newline |
 | `eprintln(value)` | stderr, newline |
 
-Each is generic over one value, so `println` takes anything — a `Format`
-included.
+Each is generic over one value bounded by `Print`, so `println` takes
+anything printable — a `Format` included.
 
 ## Interpolation
 

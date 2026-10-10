@@ -2,9 +2,11 @@
 // a view and the checker refuses == on one, since a view could as easily
 // mean its contents as its identity.
 
-import { println } from "stdlib"
+import { println, Eq } from "stdlib"
 
 struct Pair { a: i32, b: i32 }
+
+impl Eq for Pair
 
 fn main() {
   var a = [1, 2, 3]

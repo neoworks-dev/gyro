@@ -1,6 +1,8 @@
 // Operators enforce matching operand types. There are no implicit
 // conversions, so a mixed pair is an error rather than a promotion.
 
+import { Eq } from "stdlib"
+
 fn arithmetic(a: i32, b: i32): i32 {
   return a + b * 2
 }
@@ -47,19 +49,34 @@ fn runeComparison(a: rune): bool {
   return a >= 'a'
 }
 
-fn badComparisons(s: string, t: string, a: i32, b: i64) {
-  var x = s < t                  //~ a.compare(b)
-  var y = a < b                  //~ orders numeric types
+fn stringComparison(s: string, t: string): bool {
+  return s < t
+}
+
+fn badComparisons(a: i32, b: i64, p: P, q: P) {
+  var y = a < b                  //~ orders two values of one type
+  var z = p < q                  //~ E0527 P does not implement Ord
 }
 
 struct P {
   x: i32
 }
 
+impl Eq for P
+
 fn equality(a: i32, p: P, q: P, t: (i32, bool), u: (i32, bool)): bool {
   var byValue = a == 3
   var byStruct = p == q
   return t != u
+}
+
+struct NoEq {
+  x: i32
+}
+
+fn missingEq(a: NoEq, b: NoEq, pair: (NoEq, i32), other: (NoEq, i32)) {
+  var plain = a == b             //~ E0527 NoEq does not implement Eq
+  var inside = pair == other     //~ E0527 (NoEq, i32) does not implement Eq
 }
 
 fn badEquality(a: i32[], b: i32[], n: i32, s: string) {

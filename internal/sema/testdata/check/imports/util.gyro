@@ -1,3 +1,5 @@
+import { Ord } from "stdlib"
+
 export fn helper() {
 }
 
@@ -13,8 +15,8 @@ export fn add(a: i32, b: i32): i32 {
   return a + b
 }
 
-export fn max<T>(a: T, b: T): T {
-  if a.compare(b) > 0 {          //~ E0405 NoCompare has no method compare
+export fn max<T: Ord>(a: T, b: T): T {
+  if a.compare(b) > 0 {
     return a
   }
   return b

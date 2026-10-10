@@ -3,13 +3,17 @@
 // structs. Growth redistributes deterministically, which is why the
 // counts below are safe goldens across all three tiers.
 
-import { println, Map } from "stdlib"
+import { println, Map, Eq, Hash } from "stdlib"
 import { heap } from "mem"
 
 struct Point {
   x: i32
   y: i32
 }
+
+impl Hash for Point
+
+impl Eq for Point
 
 fn main() {
   var ages = Map<string, i32>::new(heap())

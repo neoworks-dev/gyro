@@ -146,6 +146,8 @@ module.exports = grammar({
       $.function_declaration,
       $.struct_declaration,
       $.enum_declaration,
+      $.trait_declaration,
+      $.impl_declaration,
       $.variable_declaration,
       $.export_declaration,
     ),
@@ -186,9 +188,17 @@ module.exports = grammar({
 
     type_parameters: $ => seq(
       '<',
-      commaSep1(alias($.identifier, $.type_identifier)),
+      commaSep1($.type_parameter),
       '>',
     ),
+
+    // `T: Eq & Hash` states what a type argument has to implement.
+    type_parameter: $ => seq(
+      alias($.identifier, $.type_identifier),
+      optional(seq(':', $.bounds)),
+    ),
+
+    bounds: $ => seq($.named_type, repeat(seq('&', $.named_type))),
 
     parameter_list: $ => seq(
       '(',
@@ -266,6 +276,40 @@ module.exports = grammar({
     enum_variant: $ => seq(
       field('name', $.identifier),
       optional(seq('(', commaSep($._type), ')')),
+    ),
+
+    // A trait lists method signatures, some with a default body, and may
+    // require other traits: `trait Widget: Element`.
+    trait_declaration: $ => seq(
+      repeat($.decorator),
+      optional('export'),
+      'trait',
+      field('name', alias($.identifier, $.type_identifier)),
+      optional(field('type_parameters', $.type_parameters)),
+      optional(seq(':', field('requires', $.bounds))),
+      field('body', $.trait_body),
+    ),
+
+    trait_body: $ => seq(
+      '{',
+      repeat(choice($.function_declaration, $._terminator)),
+      '}',
+    ),
+
+    // `impl Trait for Type { ... }`; with no block it asks for the derived
+    // implementation.
+    impl_declaration: $ => seq(
+      'impl',
+      field('trait', $.named_type),
+      'for',
+      field('type', $._type),
+      optional(field('body', $.impl_body)),
+    ),
+
+    impl_body: $ => seq(
+      '{',
+      repeat(choice($.function_declaration, $._terminator)),
+      '}',
     ),
 
     // prec.right: in a select arm, the `:` after a binding is read as a type
@@ -776,6 +820,7 @@ module.exports = grammar({
       $.code_type,
       $.chan_type,
       $.optional_type,
+      $.dyn_type,
     ),
 
     named_type: $ => seq(
@@ -836,6 +881,10 @@ module.exports = grammar({
       ')',
       optional(seq(':', $._type)),
     )),
+
+    // `dyn` is contextual in the same way: a name after it makes a trait
+    // value, a pointer to a value and the table of its methods.
+    dyn_type: $ => seq('dyn', $.named_type),
 
     chan_type: $ => seq('chan', '<', field('element', $._type), '>'),
 

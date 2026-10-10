@@ -13,8 +13,12 @@
 | type | `?` nullable |
 | other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
 
-Operators are not overloadable, and `+` on two user types is not a thing
-that can be made to mean something.
+On a type the program declares, `+ - * / %`, unary `-`, `== !=` and
+`< <= > >=` are the methods of the traits `Add`, `Sub`, `Mul`, `Div`, `Rem`,
+`Neg`, `Eq` and `Ord`, and mean what the type's impl says
+([chapter 10.1](ch10-01-traits.md)). The numbers have them built in, and
+their rules below are unchanged. Wrapping arithmetic, the bitwise operators
+and shifts are not traits and are the integers' alone.
 
 ## Overflow panics
 

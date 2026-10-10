@@ -2,6 +2,8 @@
   (block)
   (field_declaration_list)
   (enum_variant_list)
+  (trait_body)
+  (impl_body)
   (struct_literal_body)
   (match_expression)
   (select_statement)

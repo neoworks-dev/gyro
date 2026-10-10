@@ -16,9 +16,11 @@ never shadows anything and never has to be imported separately.
 
 ## Enums are values
 
-`==` and `!=` compare an enum by tag and payload, and `hash()` is derived
-over the same parts ([chapter 3.2](ch03-02-data-types.md)). Printing is
-derived unless the type declares `to_string`.
+`impl Eq for Shape` makes `==` and `!=` compare an enum by tag and payload,
+and `impl Hash for Shape` derives `hash()` over the same parts; printing is
+derived with `impl Print for Shape`, unless the impl supplies `to_string`
+([chapter 10.1](ch10-01-traits.md)). Without the impls an enum does none of
+the three.
 
 An enum is one word of tag plus its widest variant's payload, laid out like
 a C struct ([appendix E](appendix-e-native-backend.md)).

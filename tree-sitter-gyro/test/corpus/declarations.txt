@@ -151,7 +151,8 @@ fn Pair<T>::swap(*self) {
   (function_declaration
     (type_identifier)
     (type_parameters
-      (type_identifier))
+      (type_parameter
+        (type_identifier)))
     (identifier)
     (parameter_list
       (receiver))
@@ -174,7 +175,8 @@ fn max<T>(a: T, b: T): T {
   (function_declaration
     (identifier)
     (type_parameters
-      (type_identifier))
+      (type_parameter
+        (type_identifier)))
     (parameter_list
       (parameter
         (identifier)
@@ -315,8 +317,10 @@ fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
   (function_declaration
     (identifier)
     (type_parameters
-      (type_identifier)
-      (type_identifier))
+      (type_parameter
+        (type_identifier))
+      (type_parameter
+        (type_identifier)))
     (parameter_list
       (parameter
         (identifier)
@@ -362,7 +366,8 @@ fn find(): *Node?
   (function_declaration
     (type_identifier)
     (type_parameters
-      (type_identifier))
+      (type_parameter
+        (type_identifier)))
     (identifier)
     (parameter_list)
     (named_type
@@ -896,3 +901,215 @@ fn t(unsafe: i32, safe: i32): i32 {
           (identifier)))
       (return_statement
         (identifier)))))
+
+==================
+trait with a default body
+==================
+
+trait Element {
+  fn name(self): string
+  fn describe(self): string {
+    return self.name()
+  }
+}
+
+---
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (trait_body
+      (function_declaration
+        (identifier)
+        (parameter_list
+          (receiver))
+        (named_type
+          (type_identifier)))
+      (function_declaration
+        (identifier)
+        (parameter_list
+          (receiver))
+        (named_type
+          (type_identifier))
+        (block
+          (return_statement
+            (call_expression
+              (field_expression
+                (self)
+                (identifier))
+              (arguments))))))))
+
+==================
+trait requiring other traits and taking parameters
+==================
+
+export trait Widget<T>: Element & Named {
+  fn click(*self, at: T)
+}
+
+---
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (type_parameters
+      (type_parameter
+        (type_identifier)))
+    (bounds
+      (named_type
+        (type_identifier))
+      (named_type
+        (type_identifier)))
+    (trait_body
+      (function_declaration
+        (identifier)
+        (parameter_list
+          (receiver)
+          (parameter
+            (identifier)
+            (named_type
+              (type_identifier))))))))
+
+==================
+impl blocks and derived impls
+==================
+
+impl Element for Button {
+  fn name(self): string {
+    return "button"
+  }
+}
+
+impl Eq for Point
+impl Iterator<i32> for Pair<T>
+
+---
+
+(source_file
+  (impl_declaration
+    (named_type
+      (type_identifier))
+    (named_type
+      (type_identifier))
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameter_list
+          (receiver))
+        (named_type
+          (type_identifier))
+        (block
+          (return_statement
+            (string_literal
+              (string_content)))))))
+  (impl_declaration
+    (named_type
+      (type_identifier))
+    (named_type
+      (type_identifier)))
+  (impl_declaration
+    (named_type
+      (type_identifier)
+      (type_arguments
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier)
+      (type_arguments
+        (named_type
+          (type_identifier))))))
+
+==================
+bounds on type parameters
+==================
+
+fn bigger<T: Ord>(a: T, b: T): T {
+  return a
+}
+
+struct Map<K: Eq & Hash, V> {
+  count: usize
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (type_parameters
+      (type_parameter
+        (type_identifier)
+        (bounds
+          (named_type
+            (type_identifier)))))
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (return_statement
+        (identifier))))
+  (struct_declaration
+    (type_identifier)
+    (type_parameters
+      (type_parameter
+        (type_identifier)
+        (bounds
+          (named_type
+            (type_identifier))
+          (named_type
+            (type_identifier))))
+      (type_parameter
+        (type_identifier)))
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier))))))
+
+==================
+dyn types and casts
+==================
+
+fn paint(items: Array<dyn Element>, one: *dyn Widget<i32>) {
+  var e = p as dyn Element
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)
+          (type_arguments
+            (dyn_type
+              (named_type
+                (type_identifier))))))
+      (parameter
+        (identifier)
+        (pointer_type
+          (dyn_type
+            (named_type
+              (type_identifier)
+              (type_arguments
+                (named_type
+                  (type_identifier))))))))
+    (block
+      (variable_declaration
+        (identifier)
+        (cast_expression
+          (identifier)
+          (dyn_type
+            (named_type
+              (type_identifier))))))))

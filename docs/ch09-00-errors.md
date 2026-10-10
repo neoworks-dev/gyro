@@ -18,11 +18,13 @@ if err != null {
 println("listening on #{port}")
 ```
 
-## `error` is duck-typed
+## `error` is satisfied by shape
 
-`error` is a built-in contract, satisfied structurally: **any type with a
-`message(): string` method is an error.** Nothing is declared; having the
-method is the whole test.
+`error` is a built-in contract, and unlike every other it is satisfied
+structurally: **any type with a `message(): string` method is an error.**
+Nothing is declared; having the method is the whole test. Everything else
+that a type promises is a trait ([chapter 10.1](ch10-01-traits.md)); folding
+`error` into the same mechanism is future work.
 
 So a library defines its own error type, carrying its own data, and callers
 match on the concrete kind:

@@ -113,24 +113,28 @@ one element stays plain grouping; there are no one-element tuples.
 
 ## Equality and ordering
 
-`==` and `!=` work on primitives, pointers (identity), tuples and enums, and
-on structs as compiler-derived field-wise comparison. Slices do not compare
-with `==`; compare contents explicitly.
+`==` and `!=` are the trait `Eq`. Primitives, pointers (identity), strings
+and tuples have it, and so do optionals and fixed-size arrays of what has it.
+Slices do not compare with `==`; compare contents explicitly. A struct or
+enum the program declares compares only if it implements `Eq`, and
+`impl Eq for Point` with no block is the compiler-derived, field-wise
+comparison ([chapter 10.1](ch10-01-traits.md)).
 
-`hash(): u64` is derived wherever `==` is, and over the same parts: a struct
-hashes its fields, a tuple its elements, an enum its tag and payload. Two
-values that compare equal therefore hash equal without anything being
-written down. A type that wants a different rule declares its own `hash`,
+`hash(): u64` is the trait `Hash`, derived over the same parts as `Eq`: a
+struct hashes its fields, a tuple its elements, an enum its tag and payload.
+Two values that compare equal therefore hash equal without anything being
+written down. A type that wants a different rule writes its own `Hash` impl,
 which displaces the derived one — and then it owns keeping the two agreed.
 Pointers are the one thing `==` accepts and `hash` does not: `==` on a
 pointer is identity, and an address is not the same from run to run.
 
-The comparison operators `< <= > >=` work on **numeric primitives and
-`rune` only**. Ordering anything else is spelled `a.compare(b)`, which
-returns -1, 0 or 1. `string` carries one, ordering lexicographically by
-byte — the order its code points are in — and a user type orders by writing
-its own. That is also what makes a generic `max` work: the body calls
-`compare`, and any type with `compare` fits ([chapter 10](ch10-00-generics.md)).
+The comparison operators `< <= > >=` are the trait `Ord`: numbers, `rune` and
+`string` have it, ordering a string lexicographically by byte — the order its
+code points are in — and a type of the program's own orders by implementing
+`Ord`, whose one method is `compare(self, other: Self): i32`, returning a
+negative number, zero or a positive one. `a.compare(b)` is callable on any of
+them. That is also what makes a generic `max` work: its parameter is bounded
+by `Ord` ([chapter 10](ch10-00-generics.md)).
 
 ## Where the rest are covered
 

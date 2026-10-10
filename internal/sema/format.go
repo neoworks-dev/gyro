@@ -33,7 +33,10 @@ func (c *checker) isFormat(t types.Type) bool {
 func (c *checker) formatLiteral(e *ast.StringLit) types.Type {
 	for _, part := range e.Parts {
 		if part.Expr != nil {
-			c.expr(part.Expr)
+			shown := c.expr(part.Expr)
+			if !types.IsUntyped(shown) && !c.isFormat(shown) {
+				c.requireCapability(part.Expr.Pos(), shown, "Print", "interpolation needs")
+			}
 		}
 	}
 	if c.program.format == nil {

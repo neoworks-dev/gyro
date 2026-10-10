@@ -216,6 +216,11 @@ func (c *checker) checkBody(body ast.Stmt, row *ast.EffectRow, calls map[*ast.Ca
 			if missing.empty() {
 				return
 			}
+			if opaque && resolved.Dyn != nil {
+				c.reportEffect(source.Offset, reported, row, missing, nil,
+					"%s is called through a trait value, and its trait states no row, so it may do %s", resolved.Method.Name, everyEffect)
+				return
+			}
 			if opaque {
 				c.reportEffect(source.Offset, reported, row, missing, nil,
 					"%s is an intrinsic with no row, so it may do %s", resolved.Method.Name, everyEffect)

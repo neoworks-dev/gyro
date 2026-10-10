@@ -1,0 +1,11 @@
+false
+true
+Money{ amount: 15, fee: 3 }
+true
+Pair{ first: "x", second: "y" }
+Money{ amount: 0.75, fee: 1.75 }
+14
+14
+4
+5
+6

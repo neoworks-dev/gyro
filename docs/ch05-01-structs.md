@@ -48,10 +48,12 @@ Assignment copies. Passing one to a function copies it, unless the parameter
 is a pointer or the receiver is `self` — which borrows and never copies,
 however large the struct is.
 
-Equality is compiler-derived, field by field, and so is `hash()`
-([chapter 3.2](ch03-02-data-types.md)). Printing is derived too:
-`println(p)` on a `Point` prints `Point{ x: 1, y: 2 }` unless the type
-declares its own `to_string(): string`
+Equality, `hash()` and printing are derived from the fields, field by field,
+for a struct that asks: `impl Eq for Point`, `impl Hash for Point` and
+`impl Print for Point` with no block ([chapter 10.1](ch10-01-traits.md)).
+Without the impl a struct does not compare, hash or print.
+`println(p)` on a `Point` that asked prints `Point{ x: 1, y: 2 }` unless its
+`Print` impl supplies its own `to_string(): string`
 ([chapter 14.2](ch14-02-printing.md)).
 
 ## Generic structs
@@ -113,10 +115,10 @@ compares, and cannot be read wrong ([chapter 6.1](ch06-01-enums.md)).
 
 ## What a struct cannot do
 
-There is no inheritance, no embedding, no `impl` block, no operator
-overloading, and no interface a struct declares it satisfies. A struct is
-data; anything a contract is needed for is duck-typed on the methods that
-exist ([chapter 1.1](ch01-01-what-is-gyro.md)).
+There is no inheritance and no embedding. A struct is data; a contract it
+keeps is a trait, written in an `impl Trait for Struct` block
+([chapter 10.1](ch10-01-traits.md)), and a struct's own methods are not in
+one ([chapter 5.2](ch05-02-methods.md)).
 
 A struct imported from a C header that the header never completes arrives
 fieldless: an opaque handle to something a C library owns

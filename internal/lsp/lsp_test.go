@@ -549,9 +549,9 @@ func TestInlayHintsWaitForACleanCheck(t *testing.T) {
 // A generic body carries no types of its own: sema records one set per
 // instantiation, so the hints exist only while a single instantiation pins
 // them.
-const genericHintSource = `import { println } from "stdlib"
+const genericHintSource = `import { println, Ord } from "stdlib"
 
-fn largest<T>(a: T, b: T): T {
+fn largest<T: Ord>(a: T, b: T): T {
   var winner = a
   if b > a {
     winner = b

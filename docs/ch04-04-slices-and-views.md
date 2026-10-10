@@ -10,6 +10,7 @@ separation is in the types.
 | `Array<T>` | a dynamic array: owns a heap buffer, grows, freed explicitly |
 | `string` | a borrowed view of UTF-8 bytes |
 | `String` | an owning text builder, freed explicitly |
+| `dyn Trait` | a trait value: a pointer to a value and the table of its methods, borrowing the value ([chapter 10.2](ch10-02-trait-values.md)) |
 
 Passing a slice allocates nothing. It can view a fixed-size array, an owning
 collection, a literal, or GPU device memory — the slice does not know or

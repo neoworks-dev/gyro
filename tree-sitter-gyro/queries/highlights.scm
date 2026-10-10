@@ -102,6 +102,9 @@
 [
   "struct"
   "enum"
+  "trait"
+  "impl"
+  "dyn"
 ] @keyword.type
 
 [

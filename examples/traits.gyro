@@ -1,0 +1,95 @@
+// A trait is a list of methods, some with a default body. A type implements
+// it in an impl block, and a `dyn Trait` is a value of any such type known
+// only by those methods: a pointer to the value and a table of its methods.
+// It borrows the value, the way a slice borrows its array, and nothing is
+// allocated to make one.
+
+import { println, Array, Iterator } from "stdlib"
+import { heap } from "mem"
+
+trait Element {
+  fn name(self): string
+  fn paint(self)
+
+  // A default body is shared by every type that does not write its own.
+  fn describe(self): string {
+    return "an element"
+  }
+}
+
+struct Button {
+  label: string
+}
+
+struct Label {
+  text: string
+  size: i32
+}
+
+impl Element for Button {
+  fn name(self): string {
+    return "button"
+  }
+  fn paint(self) {
+    println("[ #{self.label} ]")
+  }
+}
+
+impl Element for Label {
+  fn name(self): string {
+    return "label"
+  }
+  fn paint(self) {
+    println("#{self.text} at size #{self.size}")
+  }
+  fn describe(self): string {
+    return "a line of text"
+  }
+}
+
+// A generic over the trait is checked once against what the bound gives it,
+// and compiled once for each type it is called with.
+fn show<T: Element>(item: T) {
+  println("#{item.name()}: #{item.describe()}")
+}
+
+// An iterator is a type with next. for..in drives it.
+struct Countdown {
+  from: i32
+}
+
+impl Iterator<i32> for Countdown {
+  fn next(*self): (i32, bool) {
+    if self.from == 0 {
+      return 0, false
+    }
+    var current = self.from
+    self.from -= 1
+    return current, true
+  }
+}
+
+fn main() {
+  var button = Button{ label: "ok" }
+  var label = Label{ text: "hello", size: 12 }
+
+  show(button)
+  show(label)
+
+  // A tree of mixed elements: the pointers are borrowed, so the values they
+  // point at have to outlive the array.
+  var tree = Array<dyn Element>::new(heap())
+  defer tree.free()
+  tree.push(&button as dyn Element)
+  tree.push(&label as dyn Element)
+
+  for i in 0..tree.len() {
+    var item = tree.get(i)
+    item.paint()
+  }
+
+  var ticks = Countdown{ from: 3 }
+  for tick in ticks {
+    println(tick)
+  }
+}

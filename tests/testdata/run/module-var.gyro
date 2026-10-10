@@ -2,7 +2,7 @@
 // METALS storage, zero-initialized, with the initializer run before
 // main's own body in declaration order.
 
-import { println } from "stdlib"
+import { println, Print } from "stdlib"
 
 fn triple(n: i32): i32 {
   return n * 3
@@ -20,6 +20,8 @@ struct Settings {
   retries: i32
   name: string
 }
+
+impl Print for Settings
 
 var settings = Settings{ retries: 2, name: "svc" }
 
