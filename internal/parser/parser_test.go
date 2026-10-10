@@ -1013,6 +1013,10 @@ func TestParserAlwaysTerminates(t *testing.T) {
 		"var", "var x =", "import", "export", "@", "}}}", "((((", "fn t() { ]",
 		"enum E { A(", "fn t() { if }", "fn t() { for ; ; }", "chan<",
 		"fn T::", "fn T::m(", "fn t() { var x = (1,", "fn t() { var x = p.",
+		"trait", "trait T {", "trait T: {", "trait T<", "trait T { fn", "trait T { var }",
+		"trait T { fn f(self) {", "impl", "impl T", "impl T for", "impl T for S {",
+		"impl T for S { fn", "impl T for S { var }", "impl T for *S {", "impl T for S<",
+		"fn f<T:", "fn f<T: A &", "fn f<T: >", "var x: dyn", "var x: dyn T<", "x as dyn",
 	}
 
 	for _, src := range sources {

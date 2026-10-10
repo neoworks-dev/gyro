@@ -226,9 +226,10 @@ var codes = map[string]diag.Code{
 	"this returns a view into storage that ends with this function": diag.EEscapingLocalView,
 
 	// Effects
-	"%s does %s, which the row does not name":         diag.EUnnamedEffect,
-	"%s is an intrinsic with no row, so it may do %s": diag.EUnnamedEffect,
-	"%s is not an effect":                             diag.EUnknownEffect,
+	"%s does %s, which the row does not name":                                          diag.EUnnamedEffect,
+	"%s is an intrinsic with no row, so it may do %s":                                  diag.EUnnamedEffect,
+	"%s is called through a trait value, and its trait states no row, so it may do %s": diag.EUnnamedEffect,
+	"%s is not an effect": diag.EUnknownEffect,
 
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,

@@ -98,3 +98,18 @@ fn noCapabilities(a: dyn Element, b: dyn Element) {
   println(a)                         //~ E0527 dyn Element does not implement Print
   var same = a == b                  //~ E0527 dyn Element does not implement Eq
 }
+
+// A call through a table has no body to read the effects of, so it counts for
+// what the trait's signature says; a signature with no row may do io.
+trait Painter {
+  fn paint(self)
+  fn size(self): i32 !{}
+}
+
+fn pureCall(p: dyn Painter): i32 !{} {
+  return p.size()
+}
+
+fn impureCall(p: dyn Painter) !{} {
+  p.paint()                          //~ E0611 paint is called through a trait value, and its trait states no row
+}

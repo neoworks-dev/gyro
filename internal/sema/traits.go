@@ -684,7 +684,10 @@ func (c *checker) implementsRef(t types.Type, ref *types.TraitRef) bool {
 		return false
 	}
 
-	if ref.Trait.Kind != "" && ref.Trait.Kind != "Iterator" {
+	// The capability traits without parameters are answered by what the type
+	// is; Iterator<T> and Index<T> are impls like any other, since which T
+	// matters.
+	if ref.Trait.Kind != "" && len(ref.Trait.Params) == 0 {
 		return c.hasCapability(t, ref.Trait.Kind, map[string]bool{})
 	}
 

@@ -1,0 +1,18 @@
+// The trait, and a generic that uses it, live apart from every type that
+// implements it.
+
+export trait Shape {
+  fn area(self): i32
+  fn name(self): string
+  fn summary(self): string {
+    return self.name()
+  }
+}
+
+export fn total_area<S: Shape>(shapes: S[]): i32 {
+  var total = 0
+  for shape in shapes {
+    total += shape.area()
+  }
+  return total
+}
