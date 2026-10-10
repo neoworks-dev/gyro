@@ -451,3 +451,46 @@ export fn @main() {
 		t.Errorf("expected two types, got %d", len(module.Types))
 	}
 }
+
+// A native symbol has one name in the program. A dependency that calls
+// one is not calling a function of its own, so the linker must not
+// qualify it with the dependency's name, and a type its signature names
+// is spelled the way the program spells it.
+func TestLinkLeavesANativeImportOfADependencyUnqualified(t *testing.T) {
+	library := `
+module "cc:strings"
+
+type %Pair = record { a: i32, b: i32 }
+
+import "c:c" {
+  fn @strlen(opt<ptr<i8>>) -> i64
+  fn @swap(%Pair) -> %Pair
+}
+
+export fn @measure(%text: opt<ptr<i8>>) -> i64 {
+  %n = call @strlen(%text)
+  return %n
+}
+`
+	root := `
+module "gyro:main"
+
+import "cc:strings" {
+  fn @measure(opt<ptr<i8>>) -> i64
+}
+
+export fn @main() {
+  %t = const.null opt<ptr<i8>>
+  %n = call @measure(%t)
+  return
+}
+`
+	module := linked(t, library, root)
+	text := Print(module)
+	if !strings.Contains(text, "call @strlen(") || strings.Contains(text, `cc:strings::strlen`) {
+		t.Fatalf("the native call was qualified:\n%s", text)
+	}
+	if !strings.Contains(text, `fn @swap(%"cc:strings::Pair") -> %"cc:strings::Pair"`) {
+		t.Fatalf("the import's signature was not rewritten to the program's type name:\n%s", text)
+	}
+}

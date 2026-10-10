@@ -1,0 +1,16 @@
+// A C file that calls the C library. The file declares malloc, memcpy,
+// sqrt, strlen and qsort and defines none of them; each is resolved
+// against libc and libm when the program is linked.
+
+import { println } from "stdlib"
+import safe {
+  copied_sum, hypotenuse, whole_part, greeting_length, sorted_first,
+} from "./libc.c"
+
+fn main() {
+  println(copied_sum(5))
+  println(hypotenuse(3.0, 4.0))
+  println(whole_part(2.75))
+  println(greeting_length())
+  println(sorted_first(10))
+}

@@ -118,6 +118,9 @@ func Link(modules []*Module) (*Module, error) {
 					continue
 				}
 				seenImport[key] = true
+				// Its signature may name a type this module declares or
+				// imported, which is spelled differently in the program.
+				fn.Sig = l.rewrite(fn.Sig).(*FnType)
 				out.addImport(imp.Module, fn)
 			}
 		}
@@ -443,6 +446,15 @@ func (l *linker) callee(name string) string {
 	for _, imp := range l.current.Imports {
 		exporter, internal := l.byName[imp.Module]
 		if !internal {
+			// An import that survives the link is a symbol of the
+			// runtime or of a native library, and has one name in the
+			// program whichever module asked for it. Qualifying it with
+			// the asker's name would name a function nobody declared.
+			for _, fn := range imp.Funcs {
+				if fn.Name == name {
+					return name
+				}
+			}
 			continue
 		}
 		for _, fn := range imp.Funcs {

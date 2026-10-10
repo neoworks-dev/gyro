@@ -179,7 +179,7 @@ func (f *funcLowerer) wrapCode(raw string, fn *ctype) value {
 // a function, and rvalue decays it to a pointer the way C does.
 func (f *funcLowerer) designator(fn *funcDecl, pos position) value {
 	if fn.body == nil {
-		fail(pos, "%s is declared but not defined here, and taking the address of a function another module defines is not wired up yet", fn.name)
+		fail(pos, "%s is declared but not defined here, and taking the address of a function defined outside the program is not supported", fn.name)
 	}
 	reg := f.temp()
 	f.emit(&metals.CodeRef{Dst: reg, Callee: fn.symbol})
@@ -762,7 +762,7 @@ func (f *funcLowerer) call(e *callExpr) value {
 func (f *funcLowerer) directCall(e *callExpr, callee *funcDecl) value {
 	args := f.callArgs(e, callee.name, callee.typ())
 	if callee.body == nil {
-		fail(e.pos, "%s is declared but not defined here, and calling into another module is not wired up yet", callee.name)
+		f.native(e, callee)
 	}
 
 	if callee.result.isVoid() {
@@ -772,6 +772,23 @@ func (f *funcLowerer) directCall(e *callExpr, callee *funcDecl) value {
 	reg := f.temp()
 	f.emit(&metals.Call{Dst: reg, Callee: callee.symbol, Args: args})
 	return value{reg: reg, typ: callee.result}
+}
+
+// native records a call to a function no unit defines. It is C's
+// undefined symbol, and it is resolved the way C resolves one: by name,
+// at link time, against the library the program was compiled for.
+func (f *funcLowerer) native(e *callExpr, callee *funcDecl) {
+	if callee.static {
+		fail(e.pos, "%s is static and never defined, so there is nothing to call", callee.name)
+	}
+	if callee.variadic {
+		// A variadic callee inside this module reads the extra arguments
+		// as an array the caller built. A native one reads registers and
+		// the stack, which this call cannot lay out.
+		fail(e.pos, "%s is variadic and defined outside this program, which cannot be called: the arguments after the named ones have no layout a native callee reads", callee.name)
+	}
+	code := callee.typ().metalsType().(*metals.CodeType)
+	f.l.natives[callee.symbol] = &metals.FnType{Params: code.Params, Result: code.Result}
 }
 
 func (f *funcLowerer) indirectCall(e *callExpr) value {

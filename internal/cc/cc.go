@@ -47,7 +47,7 @@ func Compile(path, source string, opt *Options) (*metals.Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lower(ModuleName(path), units)
+	return lower(ModuleName(path), units, opt.library())
 }
 
 // ModuleName is the METALS name of the module a C file becomes. The

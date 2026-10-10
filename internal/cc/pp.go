@@ -42,6 +42,17 @@ type Options struct {
 	// translation unit finds the ones it links against. Nil means the
 	// filesystem, as for Read.
 	List func(dir string) ([]string, error)
+	// Package names the pkg-config package whose library a function the
+	// program declares and nothing defines is resolved against. Empty
+	// means the C library, which is always linked.
+	Package string
+}
+
+func (o *Options) library() string {
+	if o == nil || o.Package == "" {
+		return "c"
+	}
+	return o.Package
 }
 
 func (o *Options) read(path string) (string, error) {
@@ -212,7 +223,7 @@ func dropEOF(toks []token) []token {
 // The directive loop
 // ---------------------------------------------------------------------------
 
-func (pp *preprocessor) run(toks []token) ([]token, error) {
+func (pp *preprocessor) run(input []token) ([]token, error) {
 	var out []token
 	var conds []*condition
 
@@ -225,51 +236,82 @@ func (pp *preprocessor) run(toks []token) ([]token, error) {
 		return true
 	}
 
-	i := 0
-	for i < len(toks) {
-		tok := toks[i]
-		if tok.kind == tokEOF {
+	// The input is a queue with a front to push onto: an include or a
+	// macro expansion puts its tokens ahead of what is left, and doing
+	// that by copying the rest of the stream each time is quadratic in
+	// the size of the headers, which is what a real libc is.
+	q := &tokenQueue{buf: input}
+	for {
+		toks := q.rest()
+		if len(toks) == 0 || toks[0].kind == tokEOF {
 			break
 		}
+		tok := toks[0]
 
 		if tok.bol && tok.is("#") {
-			line, next := directiveLine(toks, i+1)
-			i = next
+			line, next := directiveLine(toks, 1)
+			q.drop(next)
 			var err error
 			conds, err = pp.directive(tok, line, conds, active())
 			if err != nil {
 				return nil, err
 			}
 			if pp.pending != nil {
-				toks = splice(toks, i, 0, pp.pending)
+				q.pushFront(pp.pending)
 				pp.pending = nil
 			}
 			continue
 		}
 
 		if !active() {
-			i++
+			q.drop(1)
 			continue
 		}
 
 		if tok.kind == tokIdent {
-			replacement, consumed, ok, err := pp.expandAt(toks, i)
+			replacement, consumed, ok, err := pp.expandAt(toks, 0)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
-				toks = splice(toks, i, consumed, replacement)
+				q.drop(consumed)
+				q.pushFront(replacement)
 				continue
 			}
 		}
 		out = append(out, tok)
-		i++
+		q.drop(1)
 	}
 
 	if len(conds) > 0 {
 		return nil, errorAt(conds[len(conds)-1].pos, "this conditional is never closed")
 	}
 	return out, nil
+}
+
+// tokenQueue is the preprocessor's input: tokens come off the front, and
+// an expansion or an included file goes back on it.
+type tokenQueue struct {
+	buf  []token
+	head int
+}
+
+func (q *tokenQueue) rest() []token { return q.buf[q.head:] }
+func (q *tokenQueue) drop(n int)    { q.head += n }
+
+func (q *tokenQueue) pushFront(with []token) {
+	if len(with) == 0 {
+		return
+	}
+	if q.head < len(with) {
+		remaining := q.buf[q.head:]
+		room := len(with) + len(remaining)/2 + 1024
+		grown := make([]token, room+len(remaining))
+		copy(grown[room:], remaining)
+		q.buf, q.head = grown, room
+	}
+	q.head -= len(with)
+	copy(q.buf[q.head:], with)
 }
 
 // directiveLine takes the rest of a directive's logical line: every token
@@ -576,7 +618,9 @@ func (pp *preprocessor) define(rest []token) error {
 		rest = rest[i:]
 	}
 
-	m.body = rest
+	// A copy: the line is a view into the input queue, and the queue
+	// writes over what it has already consumed.
+	m.body = append([]token(nil), rest...)
 	if len(m.body) > 0 {
 		if m.body[0].is("##") || m.body[len(m.body)-1].is("##") {
 			return errorAt(m.pos, "## joins two tokens and has nothing on one side here")

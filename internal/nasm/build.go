@@ -61,9 +61,28 @@ func Build(module *metals.Module, output string) error {
 
 	args = append(args, "-o", output, "-lpthread", "-lm")
 	for _, library := range libraries {
-		args = append(args, "-l"+library)
+		flags, err := linkFlags(library)
+		if err != nil {
+			return err
+		}
+		args = append(args, flags...)
 	}
 	return runTool("cc", args...)
+}
+
+// linkFlags is what a native import's library adds to the link line. The
+// import names a pkg-config package, so pkg-config is asked for its
+// flags; "c" is the C library, which is linked anyway and has no package
+// to ask.
+func linkFlags(library string) ([]string, error) {
+	if library == "c" {
+		return nil, nil
+	}
+	out, err := exec.Command("pkg-config", "--libs", library).Output()
+	if err != nil {
+		return nil, fmt.Errorf("nasm: pkg-config --libs %s failed: %v", library, err)
+	}
+	return strings.Fields(string(out)), nil
 }
 
 func runTool(name string, args ...string) error {
