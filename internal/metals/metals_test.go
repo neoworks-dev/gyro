@@ -714,6 +714,13 @@ func TestSyscallRoundTripsAndVerifies(t *testing.T) {
   return %r
 }
 `)
+	// An isize is an integer like any other, and a file descriptor or a
+	// directory handle such as AT_FDCWD (-100) is one.
+	roundTrip(t, header+`fn @close(%n: usize, %fd: isize) -> isize {
+  %r = syscall %n(%fd)
+  return %r
+}
+`)
 
 	verifyError(t, header+`fn @f(%n: i64) {
   %r = syscall %n()

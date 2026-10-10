@@ -1,0 +1,64 @@
+// A record arrives by value. A function that only reads it never copies it;
+// one that writes a field, takes an address, narrows a field into a view or
+// calls a method on *self changes its own copy, and the caller's is left
+// as it was.
+
+import { println } from "stdlib"
+
+struct Box {
+    a: i32
+    b: i32
+    data: i32[3]
+}
+
+fn Box::add(*self, n: i32) {
+    self.a += n
+}
+
+fn Box::total(self): i32 {
+    return self.a + self.b + self.data[0] + self.data[1] + self.data[2]
+}
+
+fn read_only(b: Box): i32 {
+    return b.a + b.b
+}
+
+fn assigns(b: Box): i32 {
+    b.a += 10
+    return b.a
+}
+
+fn views(b: Box): i32 {
+    var window = b.data[0..2]
+    window[0] = 99
+    return b.data[0]
+}
+
+fn addresses(b: Box): i32 {
+    var p = &b.b
+    *p = 7
+    return b.b
+}
+
+fn methods(b: Box): i32 {
+    b.add(5)
+    return b.a
+}
+
+fn passes(b: Box): i32 {
+    return b.total() + read_only(b)
+}
+
+fn main() {
+    var box = Box{ a: 1, b: 2, data: [10, 20, 30] }
+    println(read_only(box))
+    println(assigns(box))
+    println(views(box))
+    println(addresses(box))
+    println(methods(box))
+    println(passes(box))
+
+    println(box.a)
+    println(box.b)
+    println(box.data[0])
+}

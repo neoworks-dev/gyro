@@ -426,7 +426,9 @@ export safe fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> 
 
 // The accessors below are written flat, with the element reached by one
 // comparison and one address computation: a call that did more would be
-// paid on every element of every loop.
+// paid on every element of every loop. The byte offset is a wrapping
+// product because the comparison has already kept the index inside a buffer
+// that exists, and a checked multiply is a slower instruction.
 
 // out_of_range is the abort for an index past the end, kept out of line so
 // that the accessors carry only the comparison.
@@ -461,11 +463,12 @@ export safe fn Array<T>::push(*self, value: T) !{} {
     if head.freed {
         panic("use after free of an Array")
     }
-    if head.count == head.capacity {
+    var at = head.count
+    if at == head.capacity {
         array_grow(head)
     }
-    *cast<T>(offset(head.data, head.count * size<T>())) = value
-    head.count += 1
+    *cast<T>(offset(head.data, at *% size<T>())) = value
+    head.count = at +% 1
 }
 
 // pop on an empty array answers a zeroed element and false: Gyro has no
@@ -483,7 +486,7 @@ export safe fn Array<T>::pop(*self): (T, bool) !{} {
         return (out, false)
     }
     head.count -= 1
-    return (*cast<T>(offset(head.data, head.count * size<T>())), true)
+    return (*cast<T>(offset(head.data, head.count *% size<T>())), true)
 }
 
 export safe fn Array<T>::get(self, index: usize): T !{} {
@@ -491,10 +494,11 @@ export safe fn Array<T>::get(self, index: usize): T !{} {
     if head.freed {
         panic("use after free of an Array")
     }
-    if index >= head.count {
-        out_of_range(index, head.count)
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
     }
-    return *cast<T>(offset(head.data, index * size<T>()))
+    return *cast<T>(offset(head.data, index *% size<T>()))
 }
 
 export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
@@ -502,10 +506,11 @@ export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
     if head.freed {
         panic("use after free of an Array")
     }
-    if index >= head.count {
-        out_of_range(index, head.count)
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
     }
-    *cast<T>(offset(head.data, index * size<T>())) = value
+    *cast<T>(offset(head.data, index *% size<T>())) = value
 }
 
 // The element's own address, bounds-checked. `xs[i]` lowers through it,
@@ -517,10 +522,11 @@ export safe fn Array<T>::at(self, index: usize): *T !{} {
     if head.freed {
         panic("use after free of an Array")
     }
-    if index >= head.count {
-        out_of_range(index, head.count)
+    var count = head.count
+    if index >= count {
+        out_of_range(index, count)
     }
-    return cast<T>(offset(head.data, index * size<T>()))
+    return cast<T>(offset(head.data, index *% size<T>()))
 }
 
 export safe fn Array<T>::len(self): usize !{} {

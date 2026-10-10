@@ -11,11 +11,12 @@ attached — a skip is a program that will fail the day the gap closes
 ## Blocking real applications
 
 - **Small standard-library functions are calls.** The backend has no
-  inliner, and `Array<T>`'s accessors are Gyro now, so an element read costs
-  a call and a by-value copy of the handle where it used to cost a call to
-  C. On the array-heavy cases of the benchmark suite that is 1.3 to 2 times
-  the time it was. The runtime is Gyro; making it as fast as the C it
-  replaced is an inliner's work.
+  inliner, and `Array<T>`'s accessors are Gyro now, so an element read is a
+  call into code the backend writes with a frame slot for every register.
+  `jsmn`, `string-concat` and `struct-array` in the benchmark suite run 15 to
+  35 percent slower than they did over the C `Array`. Making the runtime as
+  fast as the C it replaced is an inliner's work, and a register allocator
+  that keeps short-lived values out of the frame.
 
 - **Memory reclamation.** The allocator model
   ([chapter 4.5](ch04-05-allocators.md)) is the answer, and

@@ -3768,9 +3768,13 @@ are now ordinary functions lowering calls by name. Rejected: keeping the
 array an opaque handle with Gyro bodies, which METALS cannot express, since
 a `handle` converts to nothing; and a value-type array holding its own
 fields, which would stop `bucket.push(x)` on a copy from reaching the map.
-The cost is real: a by-value one-pointer record is copied to a slot at each
-call, and the accessors run at about 1.3 to 2 times the C they replaced on
-the array-heavy cases of the benchmark suite until the backend can inline.
+The cost is real: the accessors are calls the backend cannot inline, and
+three array-heavy cases of the benchmark suite run 15 to 35 percent slower
+than they did over the C `Array`, as the last section of this entry gives.
+Two general improvements to generated code paid for most of it: a record
+parameter the body only reads is no longer copied into a slot in the
+prologue, and the assembler's peephole pass lets an instruction that
+reloads a value the one before it stored take the register instead.
 
 **Integers are read by width, in any radix.** `to_i8` through `to_usize`
 take `(text, radix = 10)`; `to_i32(text)` keeps working. A value outside the
@@ -3848,12 +3852,39 @@ have. `roundsd` is SSE4.1, which every x86-64 machine made since 2008 has.
 Rejected: calls into libm and the runtime, which put C under the METALS
 instructions that are supposed to be the machine's own.
 
+**A record the body only reads stays a value.** Lowering used to copy every
+by-value record parameter into a slot so that its fields could be assigned.
+It now does so only when the body may change the record or take its address:
+a field or element assigned through the name, a narrowing that could be
+written through, a call with a `*self` method on it, `&` of it or of a part,
+or any mention inside a closure. The analysis is syntactic and errs towards
+a slot. Rejected: an inliner over METALS, which is the bigger lever and a
+bigger risk than this change needed.
+
+**The assembler forwards a stored register to the next load.** Every METALS
+register has a frame slot and every instruction stores its result there, so
+the instruction after it loads the value back and waits on the store.
+`forwardStores` rewrites a load, or a `cmp` or arithmetic operand, that reads
+the slot the previous instruction stored a register to, to read the
+register. The store stays, so a later reader of the slot is unaffected.
+This is where the benchmark suite got faster than it was before the runtime
+moved: `md4c` 402 to 261 ms, `regex` 491 to 398, `loop-index` 102 to 78.
+
 **`sys` is a bundled module.** The system call numbers, the flags, `open`,
 `read`, `write_all`, `unlink`, `access`, and the sentence for an error
 number, spelled as `strerror` spells it with the first letter lowered. It
 imports `stdlib` for `Array`, so `stdlib` cannot import it; the print path
 makes its own `write` calls. Rejected: the same functions repeated inside
 `fs`, `os` and `time`.
+
+**Benchmark suite, before and after (`make bench REPEAT=5`, hot region,
+milliseconds):** `arith-checked` 32.7 and 31.9, `call-fib` 28.3 and 25.1,
+`cjson` 101.1 and 90.9, `jsmn` 199.1 and 234.4, `loop-index` 101.8 and 78.4,
+`md4c` 402.1 and 261.3, `perft` 157.7 and 149.5, `regex` 491.1 and 398.1,
+`sha256` 232.4 and 225.6, `string-concat` 148.1 and 168.4, `struct-array`
+87.2 and 117.9. The two output cases, which print 300,000 integers and
+200,000 interpolated lines, went from 145.5 and 665.0 to 13.5 and 46.9,
+because standard output is no longer a system call a print.
 
 ### The runtime is C on libc *(new)*
 
