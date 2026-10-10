@@ -238,6 +238,11 @@ type (
 	// where the length is — and because the abort text is one message
 	// every tier has to word identically.
 	SliceSub struct{ Dst, X, Lo, Hi string }
+	// SliceFrom is `%s = slice.from %p, %n`: the slice of n elements that
+	// start where the ptr<T> p points. Nothing can check that n elements
+	// live there, which is why a producer reaches it only from code that
+	// vouches for the memory.
+	SliceFrom struct{ Dst, Ptr, Len string }
 	IndexGet struct{ Dst, X, Index string }
 	IndexSet struct{ X, Index, Val string }
 	Len      struct{ Dst, X string }
@@ -393,6 +398,7 @@ func (*TupleGet) isInstr()     {}
 func (*MakeArray) isInstr()    {}
 func (*Slice) isInstr()        {}
 func (*SliceSub) isInstr()     {}
+func (*SliceFrom) isInstr()    {}
 func (*IndexGet) isInstr()     {}
 func (*IndexSet) isInstr()     {}
 func (*IndexPtr) isInstr()     {}

@@ -37,6 +37,13 @@ export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
 // overlap.
 export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 
+// slice_from_raw views `len` values of T starting at p as a slice, which is
+// how memory that arrives as an address and a length (a mapped buffer, an
+// SDL surface) is written through. Nothing checks that the memory holds
+// that many values or lives as long as the slice, so the result is treated
+// as coming from outside the program, like ptr_from_int's.
+export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
+
 // ---------------------------------------------------------------------------
 // The process heap
 // ---------------------------------------------------------------------------

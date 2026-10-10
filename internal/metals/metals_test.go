@@ -661,6 +661,33 @@ export fn @main() {
 `)
 }
 
+func TestSliceFromRoundTripsAndVerifies(t *testing.T) {
+	roundTrip(t, header+`fn @view(%p: ptr<i32>, %n: usize) -> slice<i32> {
+  %s = slice.from %p, %n
+  return %s
+}
+`)
+
+	verifyError(t, header+`fn @f(%x: i32, %n: usize) {
+  %s = slice.from %x, %n
+  return
+}
+`, "slice.from wants a pointer to the first element")
+
+	// A pointer to an array is slice.of's operand: its extent is static.
+	verifyError(t, header+`fn @f(%p: ptr<array<i32, 4>>, %n: usize) {
+  %s = slice.from %p, %n
+  return
+}
+`, "slice.from wants a pointer to an element")
+
+	verifyError(t, header+`fn @f(%p: ptr<i32>, %n: i32) {
+  %s = slice.from %p, %n
+  return
+}
+`, "slice.from length is usize")
+}
+
 func TestVerifierChecksPointerErasure(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: i32) {
   %e = ptr.erase %x

@@ -780,6 +780,12 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("mov %s, rax", f.slot(i.Dst))
 		f.storeWord(f.slot(i.Dst).plus(8), length)
 
+	case *metals.SliceFrom:
+		g.ins("mov rax, %s", f.slot(i.Ptr))
+		g.ins("mov rcx, %s", f.slot(i.Len))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+		g.ins("mov %s, rcx", f.slot(i.Dst).plus(8))
+
 	case *metals.SliceSub:
 		f.emitSliceSub(i)
 

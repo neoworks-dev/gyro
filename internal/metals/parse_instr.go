@@ -358,6 +358,17 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		return p.line(&IndexGet{Dst: dst, X: x, Index: index}, err)
 
+	case "slice.from":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		n, err := p.reg()
+		return p.line(&SliceFrom{Dst: dst, Ptr: ptr, Len: n}, err)
+
 	case "slice.sub":
 		x, err := p.reg()
 		if err != nil {
