@@ -369,3 +369,56 @@ func (b *eqBuilder) optionalBody(t *types.Optional) {
 	b.returnIfDiffers(left, right, t.Elem)
 	b.emit(&metals.Return{Val: b.boolean(true)})
 }
+
+// ---------------------------------------------------------------------------
+// Indexing
+// ---------------------------------------------------------------------------
+
+// indexElemOf is the T of a declared type that implements Index<T>, or nil.
+// The impl stores T over the type's own parameters; a generic type
+// answers for the instance through its arguments.
+func indexElemOf(t types.Type) types.Type {
+	impl := implementationOf(t, "Index")
+	if impl == nil || len(impl.Args) != 1 {
+		return nil
+	}
+	var params []*types.TypeParam
+	var args []types.Type
+	switch t := t.(type) {
+	case *types.Struct:
+		origin := t
+		if t.Origin != nil {
+			origin = t.Origin
+		}
+		params, args = origin.TypeParams, t.Args
+	case *types.Enum:
+		origin := t
+		if t.Origin != nil {
+			origin = t.Origin
+		}
+		params, args = origin.TypeParams, t.Args
+	}
+	if param, ok := impl.Args[0].(*types.TypeParam); ok {
+		for i, owner := range params {
+			if owner == param && i < len(args) {
+				return args[i]
+			}
+		}
+	}
+	return impl.Args[0]
+}
+
+// declaredElementPlace reaches an element of a declared type through the
+// address its at method hands back, the way an Array's runtime at does.
+func (f *funcLowerer) declaredElementPlace(e *ast.IndexExpr, base, elemType types.Type) *place {
+	method := methodOfType(base, "at")
+	if method == nil || method.Decl == nil {
+		f.l.fail("@%s: %s is indexed but has no at method", f.fn.Name, base)
+	}
+	callee := f.l.ensureFunc(method.Decl, methodBindings(method, base))
+	receiver := f.methodReceiver(e.X, method)
+	index := f.lowerExpr(e.Index, types.USize)
+	ptr := f.newReg("elem.p")
+	f.emit(&metals.Call{Dst: ptr, Callee: callee, Args: []string{receiver, index}})
+	return f.pointerPlace(ptr, elemType)
+}

@@ -27,7 +27,7 @@ import (
 var capabilityNames = map[string]bool{
 	"Eq": true, "Hash": true, "Print": true, "Ord": true,
 	"Add": true, "Sub": true, "Mul": true, "Div": true, "Rem": true, "Neg": true,
-	"Iterator": true,
+	"Iterator": true, "Index": true,
 }
 
 // derivable are the capabilities `impl Trait for Type` with no block asks
@@ -456,6 +456,7 @@ func (c *checker) checkImpl(d *ast.ImplDecl) {
 		return
 	}
 
+	before := len(c.bag.Items())
 	provided := map[string]bool{}
 	for _, method := range d.Methods {
 		provided[method.Name] = true
@@ -469,6 +470,9 @@ func (c *checker) checkImpl(d *ast.ImplDecl) {
 			continue
 		}
 		c.compareImplMethod(method, have, declared, s)
+	}
+	if len(c.bag.Items()) > before {
+		impl.Broken = true
 	}
 
 	var missing []string
@@ -1241,64 +1245,8 @@ func (c *checker) castToDyn(e *ast.CastExpr, value types.Type, target *types.Dyn
 		}, "%s as %s needs a pointer to the value, not %s", describeType(value), target, describeType(value))
 		return target
 	}
-	if c.requireImpl(e.Offset, pointer.Elem, target.Ref, "the dyn value needs to call") {
-		c.instantiateForDyn(e.Offset, pointer.Elem, target.Ref)
-	}
+	c.requireImpl(e.Offset, pointer.Elem, target.Ref, "the dyn value needs to call")
 	return target
-}
-
-// instantiateForDyn checks the methods of a generic type, and the trait
-// defaults a type takes, for the table a trait value of it will carry: no
-// call names them, but the table does.
-func (c *checker) instantiateForDyn(offset int, t types.Type, ref *types.TraitRef) {
-	if flexible(t) || c.lenient {
-		return
-	}
-	for _, entry := range ref.AllMethods() {
-		method, _ := c.lookupMethod(t, entry.Method.Name)
-		if method == nil || method.Decl == nil || method.Decl.Body == nil {
-			continue
-		}
-		decl := method.Decl
-		if len(decl.OwnerParams) == 0 && len(decl.TypeParams) == 0 {
-			continue
-		}
-		bindings := map[string]types.Type{}
-		if method.Impl != nil {
-			bindings["Self"] = t
-		} else {
-			var args []types.Type
-			switch t := t.(type) {
-			case *types.Struct:
-				args = t.Args
-			case *types.Enum:
-				args = t.Args
-			}
-			for i, param := range decl.OwnerParams {
-				if i < len(args) {
-					bindings[param.Name] = args[i]
-				}
-			}
-		}
-		c.instantiate(decl, bindings, decl.Name, offset)
-	}
-}
-
-// checkCallBounds holds a call's type arguments to the bounds of the
-// parameters they stand for: the function's own, and the owner's when the
-// call is what fixes them.
-func (c *checker) checkCallBounds(call *ast.CallExpr, target callee, method *types.Method, s subst) bool {
-	ok := c.checkBounds(call.Offset, method.Name, method.TypeParams, s)
-	if target.ownerArgs == nil && len(target.ownerParams) > 0 {
-		label := method.Name
-		if method.Decl != nil && method.Decl.Owner != "" {
-			label = method.Decl.Owner
-		}
-		if !c.checkBounds(call.Offset, label, target.ownerParams, s) {
-			ok = false
-		}
-	}
-	return ok
 }
 
 // ---------------------------------------------------------------------------
@@ -1372,17 +1320,24 @@ func (c *checker) parameterComparison(e *ast.BinaryExpr, left, right types.Type,
 
 // iteratorElem is the element type a for..in loop over t yields, when t
 // implements Iterator<T>, or nil when it does not.
-func (c *checker) iteratorElem(t types.Type) types.Type {
+func (c *checker) iteratorElem(t types.Type) types.Type { return c.singleArg(t, "Iterator") }
+
+// indexElem is the element type `t[i]` reaches, when t implements Index<T>.
+func (c *checker) indexElem(t types.Type) types.Type { return c.singleArg(t, "Index") }
+
+// singleArg is the T of the impl or bound of a one-parameter capability
+// trait such as Iterator<T>, or nil when t has none.
+func (c *checker) singleArg(t types.Type, kind string) types.Type {
 	if param, ok := t.(*types.TypeParam); ok {
 		for _, bound := range c.boundClosure(param) {
-			if bound.Trait.Kind == "Iterator" && len(bound.Args) == 1 {
+			if bound.Trait.Kind == kind && len(bound.Args) == 1 {
 				return bound.Args[0]
 			}
 		}
 		return nil
 	}
 	for _, impl := range implsOf(t) {
-		if impl.Trait.Kind != "Iterator" {
+		if impl.Trait.Kind != kind {
 			continue
 		}
 		if args := c.implArgsFor(t, impl); len(args) == 1 {
@@ -1423,4 +1378,99 @@ func (c *checker) lackingPart(t types.Type, kind string) types.Type {
 		return elem
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Checking what an impl brings
+// ---------------------------------------------------------------------------
+
+// instantiateImpls checks the bodies an impl gives a concrete type again with
+// the type's arguments, and the trait defaults the type took with Self bound
+// to it. Nothing calls these by name when an operator, a for..in loop, an
+// index or a trait value's method table reaches them, so without this they
+// would never have been checked for the type, and lowering would find no
+// record of what they do.
+func (c *checker) instantiateImpls(t types.Type) {
+	if types.IsUnknown(t) || containsTypeParam(t) {
+		return
+	}
+	var methods map[string]*types.Method
+	var args []types.Type
+	switch t := t.(type) {
+	case *types.Struct:
+		origin := t
+		if t.Origin != nil {
+			origin = t.Origin
+		}
+		methods, args = origin.Methods, t.Args
+	case *types.Enum:
+		origin := t
+		if t.Origin != nil {
+			origin = t.Origin
+		}
+		methods, args = origin.Methods, t.Args
+	case *types.Union:
+		methods = t.Methods
+	}
+
+	names := make([]string, 0, len(methods))
+	for name := range methods {
+		names = append(names, name)
+	}
+	sortStrings(names)
+
+	for _, name := range names {
+		method := methods[name]
+		decl := method.Decl
+		if decl == nil || decl.Body == nil || (decl.Impl == nil && method.Impl == nil) {
+			continue
+		}
+		if method.Impl != nil && method.Impl.Broken {
+			continue
+		}
+		if len(decl.OwnerParams) == 0 && len(decl.TypeParams) == 0 {
+			continue
+		}
+		bindings := map[string]types.Type{}
+		if method.Impl != nil {
+			bindings["Self"] = t
+		} else {
+			for i, param := range decl.OwnerParams {
+				if i < len(args) {
+					bindings[param.Name] = args[i]
+				}
+			}
+		}
+		if len(decl.TypeParams) > 0 {
+			continue
+		}
+		c.instantiateQuietly(decl, bindings)
+	}
+}
+
+// flushInstances checks the impls of every concrete instance created since
+// the last flush. It runs between declarations, where nothing is half-checked.
+func (c *checker) flushInstances() {
+	for len(c.program.pendingInstances) > 0 {
+		t := c.program.pendingInstances[0]
+		c.program.pendingInstances = c.program.pendingInstances[1:]
+		c.instantiateImpls(t)
+	}
+}
+
+// checkCallBounds holds a call's type arguments to the bounds of the
+// parameters they stand for: the function's own, and the owner's when the
+// call is what fixes them.
+func (c *checker) checkCallBounds(call *ast.CallExpr, target callee, method *types.Method, s subst) bool {
+	ok := c.checkBounds(call.Offset, method.Name, method.TypeParams, s)
+	if target.ownerArgs == nil && len(target.ownerParams) > 0 {
+		label := method.Name
+		if method.Decl != nil && method.Decl.Owner != "" {
+			label = method.Decl.Owner
+		}
+		if !c.checkBounds(call.Offset, label, target.ownerParams, s) {
+			ok = false
+		}
+	}
+	return ok
 }

@@ -1119,6 +1119,9 @@ func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 			return f.arrayElementPlace(e, elemType)
 		}
 	}
+	if elemType := indexElemOf(baseType); elemType != nil {
+		return f.declaredElementPlace(e, baseType, elemType)
+	}
 
 	elem := elemOf(baseType, f)
 	basePlace := f.placeOfAddressable(e.X)

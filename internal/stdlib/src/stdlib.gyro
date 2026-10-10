@@ -73,6 +73,13 @@ export trait Iterator<T> {
   fn next(*self): (T, bool)
 }
 
+// Index is `value[i]`. at hands back the address of element i, which is
+// what makes the index a place: `value[i] = x` writes through it and
+// `&value[i]` is the address itself, as on an Array.
+export trait Index<T> {
+  fn at(*self, index: usize): *T
+}
+
 // A line is written piece by piece, so the output lock is held across
 // all of them and two threads printing do not tear each other's lines.
 // The lock is recursive: a to_string that prints takes it again.

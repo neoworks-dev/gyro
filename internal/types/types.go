@@ -689,6 +689,10 @@ type Impl struct {
 	Decl    *ast.ImplDecl
 	// Owner is the declared type the impl is for.
 	Owner Type
+	// Broken marks an impl that did not meet its trait. What it brings is
+	// not checked further: the defaults would be checked against methods
+	// that are not the trait's, and report the same mistake again.
+	Broken bool
 }
 
 // Dyn is `dyn Trait`: a value of an unknown type known by the methods of

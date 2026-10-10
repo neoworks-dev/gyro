@@ -145,6 +145,9 @@ type program struct {
 	// inferredEffects memoizes what each rowless function's body does, and
 	// the route it does it by, which is what a call to it contributes.
 	inferredEffects map[*ast.FuncDecl]effectFacts
+	// pendingInstances are concrete instances of generic types created
+	// since their impls were last checked for them.
+	pendingInstances []types.Type
 	// depth guards against infinitely growing instantiations such as a
 	// generic function calling itself with Pair<T>.
 	depth int
@@ -681,6 +684,8 @@ func (c *checker) collectLocalExportList(decl *ast.ExportDecl, exports *Exports)
 // ---------------------------------------------------------------------------
 
 func (c *checker) checkDecls(tree *ast.File) {
+	c.flushInstances()
+	defer c.flushInstances()
 	for _, decl := range tree.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -694,6 +699,11 @@ func (c *checker) checkDecls(tree *ast.File) {
 			c.checkDecorators(d.Decorators)
 		case *ast.TraitDecl:
 			c.checkTraitDecl(d)
+		case *ast.ImplDecl:
+			// A type without parameters takes its defaults once, here.
+			if owner := c.implTypes[d]; owner != nil {
+				c.instantiateImpls(owner)
+			}
 		case *ast.VarDecl:
 			// Module-level values were typed by buildTypes; only the
 			// decorators remain.
@@ -701,6 +711,7 @@ func (c *checker) checkDecls(tree *ast.File) {
 		case *ast.ExportDecl:
 			c.checkExport(d)
 		}
+		c.flushInstances()
 	}
 }
 

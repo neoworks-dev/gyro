@@ -167,6 +167,7 @@ func (c *checker) instantiateStruct(origin *types.Struct, args []types.Type) *ty
 			Exported: field.Exported,
 		})
 	}
+	c.program.pendingInstances = append(c.program.pendingInstances, instance)
 	return instance
 }
 
@@ -201,6 +202,7 @@ func (c *checker) instantiateEnum(origin *types.Enum, args []types.Type) *types.
 		}
 		instance.Variants = append(instance.Variants, types.Variant{Name: variant.Name, Payload: payload})
 	}
+	c.program.pendingInstances = append(c.program.pendingInstances, instance)
 	return instance
 }
 
@@ -519,5 +521,38 @@ func (c *checker) instantiate(decl *ast.FuncDecl, bindings map[string]types.Type
 	env.checkFuncBody(decl, bindings)
 	if len(c.bag.Items()) > before {
 		c.errorf(callOffset, "in the instantiation %s required here", label)
+	}
+}
+
+// instantiateQuietly is instantiate for a body nothing called by name, so
+// there is no call to point the instantiation note at: an error in the body
+// is reported where it is.
+func (c *checker) instantiateQuietly(decl *ast.FuncDecl, bindings map[string]types.Type) {
+	if decl.Body == nil {
+		return
+	}
+	for _, bound := range bindings {
+		if flexible(bound) {
+			return
+		}
+	}
+
+	key := fmt.Sprintf("%p", decl)
+	for _, param := range append(append([]ast.TypeParam{}, decl.OwnerParams...), decl.TypeParams...) {
+		key += "|" + bindings[param.Name].String()
+	}
+	if c.program.instantiated[key] {
+		return
+	}
+	c.program.instantiated[key] = true
+
+	if c.program.depth >= maxInstantiationDepth {
+		return
+	}
+	c.program.depth++
+	defer func() { c.program.depth-- }()
+
+	if env := c.program.envs[decl]; env != nil {
+		env.checkFuncBody(decl, bindings)
 	}
 }

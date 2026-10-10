@@ -1032,6 +1032,21 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		if elem := arrayElem(base); elem != nil {
 			return elem
 		}
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+	case *types.Enum:
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+	case *types.TypeParam:
+		if elem := c.indexElem(base); elem != nil {
+			return elem
+		}
+		c.errorHintf(e.Offset, []string{
+			"bound the parameter by Index: " + base.Name + ": Index<T>",
+		}, "%s cannot be indexed", base)
+		return types.Unknown
 	case *types.Optional:
 		c.errorf(e.Offset, "this value is %s and may be null; check it against null before indexing", base)
 		return types.Unknown
