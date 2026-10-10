@@ -493,6 +493,8 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_hash_" + g.hashSuffix(name, sig.Params[0]), args: values(0)}
 	case "start_thread":
 		return nativePlan{symbol: "gy_start", args: values(0, 1)}
+	case "view_bytes":
+		return nativePlan{symbol: "gy_str_view", sret: true, args: values(0)}
 	case "from_utf8":
 		return nativePlan{symbol: "gy_from_utf8", args: []planArg{pointerTo(0), pointerTo(1)}}
 

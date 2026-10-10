@@ -752,17 +752,22 @@ reader can see and makes the mismatch unwritable.
 `String::text`, `split`, `substring`, `trim`, `repeat`, `join`, `sprintf`
 and the readers `env`, `read_stdin`, `readline`, `read_all` and `read_dir`
 allocate a result the caller owns and has no container to record it in, so
-the allocator is an argument, first after the receiver. The predicates that
-copy a string to compare it (`starts_with`, `ends_with`, `index_of`,
-`contains`) take one for the same reason, since a function allocates
-exactly when it is handed one. `bytes` and `runes` stop being part of the
+the allocator is an argument, first after the receiver. The predicates
+(`starts_with`, `ends_with`, `index_of`, `contains`) take none: they
+compare the bytes in place through a private, non-copying `u8[]` view of
+each string, `view_bytes` in `stdlib` (#109). A function allocates exactly
+when it is handed an allocator, and a question about two strings has
+nothing to build. The view is a private runtime intrinsic rather than an
+exported function: it hands out a writable-typed slice over an immutable
+string, which only a reader that never writes may hold. `bytes` and `runes` stop being part of the
 type and become extensions of `string` in `stdlib`, imported like `trim`,
 because the compiler's own surface has no way to name `Allocator` and an
 ordinary declaration does.
 
-**`Array<T>` stays in the runtime.** It could be Gyro, but a slice
-cannot be built from a pointer and a length, so `slice()` and indexing
-need the runtime's handle. What moves is the memory: `rt.c` calls the
+**`Array<T>` stays in the runtime.** It could be Gyro, but when this was
+decided a slice could not be built from a pointer and a length, so `slice()`
+and indexing needed the runtime's handle. `slice_from_raw` (#110) removes
+that obstacle; the array has not moved yet. What moves is the memory: `rt.c` calls the
 recorded procedure where it used to call `malloc`, `realloc` and `free`.
 The procedure takes its mode by address, because a Gyro enum crosses a
 call like an aggregate.
@@ -787,7 +792,7 @@ long-lived containers.
 
 **Rejected: an allocator argument on `push` and `free`** (Zig's managed
 containers, unmanaged). It is what #91 removed. **Rejected: moving
-`Array<T>` into Gyro** for now, for the slice reason above.
+`Array<T>` into Gyro** for now; the slice reason no longer holds.
 **Rejected: allocating the header from the process heap** so that `free`
 could release it, since the container would then use two allocators.
 
@@ -900,6 +905,16 @@ access (#99) and raw system calls (#103) add primitives to the module.
 other way to get an address to give `ptr_from_int`, and a test of the second
 needs the first. METALS has no instruction between an integer and a pointer,
 so both are runtime functions.
+
+**`slice_from_raw` (#110)** makes a `T[]` from an address and a length, for
+memory that comes from outside a Gyro value: a mapped buffer, an SDL surface.
+Lowering answers it with a new METALS instruction, `slice.from`, over a
+`ptr<T>` and a `usize`; it is not a runtime function, since a slice is a
+pointer and a length and nothing needs the runtime to say so. Its result has
+no origin, like `ptr_from_int`'s. **Rejected: widening `slice.of` to take a
+length**, because its array operand carries a static extent and one
+instruction would then have two meanings for the second word. **Rejected: a
+checked form**, since nothing about a raw address says how much lives there.
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -3945,3 +3960,32 @@ and bound imports opaquely; it is deleted.
 | a pointer that has left its object | `ptr.offset` past an extent and a `ptr.cast` naming the wrong type are a producer's claim and nothing verifies either |
 | green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
 | a fair `select` in the native runtime | the choice among ready arms is unspecified, so in-order polling conforms — but it can starve an arm behind a busy one, and fixing that means arms become a descriptor table the runtime chooses from |
+
+### Debug information is line tables, from a `loc` instruction, always on *(new)*
+
+**Status: decided, done (#112).** METALS has an optional `loc "file" N`
+instruction naming the source position of what follows it. Lowering emits one
+before every statement and at the top of every function; the native backend
+writes it as NASM's `%line` and assembles with `-g -F dwarf`, so `gdb`
+backtraces show Gyro file and line. Appendix E has the details, including the
+two things the assembly does for the debugger.
+
+**Why an instruction.** A position belongs to the code it describes and has to
+survive linking, printing and parsing like the code does. An instruction does
+that with nothing new: it nests in blocks, the printer and parser round-trip
+it, and a producer without source (`.metals` by hand, the C front end) just
+omits it. The verifier accepts it anywhere and checks only that it is
+well-formed.
+
+**Why always on.** The cost is a few rows per statement in the object and no
+code, a flag would be a second configuration to test and a reason a crash
+report is useless, and `gyro run` would have to thread it too. A stripped
+binary is `strip`'s job.
+
+**Rejected: a position field on every instruction.** It touches every
+instruction type, the printer, the parser and the linker for something only
+one consumer reads. **Rejected: a side table keyed by function and index.**
+It breaks the moment a pass inserts an instruction, and the text format would
+need a second section. **Not here:** variable locations (a value's register or
+stack slot as a DWARF location) and a function-level DWARF description; line
+rows and sized symbols are what a backtrace needs.

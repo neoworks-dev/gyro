@@ -342,6 +342,38 @@ extension instruction; for a float it goes through `cvtsd2ss`/`movd`,
 because the pattern of an `f32` is the single's, not the double's the
 register holds.
 
+## Debug information
+
+`gyro build` and `gyro run` always emit DWARF line information, so a crash
+under `gdb` shows `file.gyro:line` for each frame and `bt` names the
+functions:
+
+```text
+#3  F_boom () at /tmp/dbg1.gyro:8
+#4  F_boom () at /tmp/dbg1.gyro:10
+#7  gy_user_main () at /tmp/dbg1.gyro:14
+```
+
+Lowering puts a `loc` instruction (appendix D) before every statement and
+at the top of every function. The backend writes each one as NASM's
+`%line N+0 "path"`, skipping a repeat of the position already in force, and
+assembles with `-g -F dwarf`; the linked binary carries the rows because
+nothing strips them. The file is the module's absolute path, so the
+debugger finds the source from any directory; a bundled module such as the
+standard library has no file and shows as `gyro:stdlib`.
+
+Two things in the assembly exist for the debugger. Each function is a
+`global` symbol with a size, because a debugger names a frame by the symbol
+nearest below its address and every local label is a symbol: an unsized
+function would be cut at its first `.L1`, and the frames above it lost.
+And the text ends in a one-byte `int3` under a `%line` of its own, which
+works around NASM 3.02 mis-encoding the line table's final advance when the
+last row is 128 to 255 bytes from the end of the section; the table is
+silently truncated there, and every row after it is lost.
+
+Variable locations are not emitted: a value lives in a register or a stack
+slot the backend knows, but no location expression describes it yet.
+
 ## v1 limitations
 
 All recorded in `decisions.md` as still open:

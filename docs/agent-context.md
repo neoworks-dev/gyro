@@ -536,7 +536,7 @@ struct an opaque handle is having no fields, not the module it lives in.
 Modules: `stdlib`, `mem`, `unsafe`, `fs`, `net`, `convert`, `time`, `os`, `fmt`, `math`.
 
 `unsafe` holds the unchecked primitives, all `unsafe fn` (chapter 4.6):
-`cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `copy_bytes`, the three
+`cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `copy_bytes`, `slice_from_raw`, the three
 `raw_` heap functions, `env_of` and `with_env`. `unsafe fn` is unsafe to
 call, `safe fn` may use unchecked things and vouches for callers, a plain
 `fn` may do neither; `unsafe` and `safe` are contextual words before `fn`
@@ -779,7 +779,7 @@ fn main(args: string[]) {
   defer lines.free()
   for line in lines.slice() {
     var clean = line.trim(heap())
-    if clean.len() == 0 || clean.starts_with(heap(), "#") { continue }
+    if clean.len() == 0 || clean.starts_with("#") { continue }
     println(clean.split(heap(), " ").get(0))
   }
 }

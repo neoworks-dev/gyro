@@ -92,10 +92,10 @@ export fn String::free(*self) !{}
 Extension methods on `string`, which have to be imported to be callable:
 
 ```gyro
-export fn string::starts_with(self, a: Allocator, prefix: string): bool !{}
-export fn string::ends_with(self, a: Allocator, suffix: string): bool !{}
-export fn string::index_of(self, a: Allocator, needle: string): usize? !{}
-export fn string::contains(self, a: Allocator, needle: string): bool !{}
+export fn string::starts_with(self, prefix: string): bool !{}
+export fn string::ends_with(self, suffix: string): bool !{}
+export fn string::index_of(self, needle: string): usize? !{}
+export fn string::contains(self, needle: string): bool !{}
 export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{}
 export fn string::trim(self, a: Allocator): string !{}
 export fn string::split(self, a: Allocator, sep: string): Array<string> !{}
@@ -320,6 +320,7 @@ export unsafe fn ptr_from_int<T>(address: usize): *T !{}
 export unsafe fn ptr_to_int(p: anyptr): usize !{}
 export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
 export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
+export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
 
 export unsafe fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export unsafe fn raw_free(pointer: anyptr) !{}
@@ -329,7 +330,7 @@ export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
 ```
 
-`cast` and `env_of`/`with_env` are answered by lowering. `ptr_from_int` is
+`cast`, `slice_from_raw` and `env_of`/`with_env` are answered by lowering. `ptr_from_int` is
 Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
 runtime functions: METALS has no instruction that makes a pointer of an
 integer.
@@ -345,7 +346,7 @@ export async fn get(url: string): (string, error?) !{ io }
 Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
 `align`, `panic`, and the `unsafe` module's `raw_alloc`/`raw_free`/`raw_resize`,
-`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `env_of` and `with_env` are
+`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `slice_from_raw`, `env_of` and `with_env` are
 lowering's),
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
 `net::get`, the `os` and `time` surfaces. The `math` functions are METALS

@@ -86,6 +86,8 @@ func Generate(module *metals.Module) (asm string, err error) {
 }
 
 type generator struct {
+	// at is the source position the line table currently credits.
+	at       metals.Loc
 	module   *metals.Module
 	regTypes map[string]map[string]metals.Type
 	types    map[string]*metals.TypeDecl
@@ -172,6 +174,13 @@ func (g *generator) assemble() string {
 
 	out.WriteString("\nsection .text\n")
 	out.WriteString(g.text.String())
+	if g.at != (metals.Loc{}) {
+		// NASM mis-encodes the line table's last advance when the final
+		// row sits between 128 and 255 bytes from the end of the section,
+		// which truncates the table and loses every row after it. A row
+		// one byte from the end makes that advance one byte.
+		out.WriteString("%line 1+0 \"gyro:end\"\n\tint3\n")
+	}
 	out.WriteString("\nsection .rodata\n")
 	out.WriteString(g.data.String())
 	if g.rwdata.Len() > 0 {
@@ -241,6 +250,18 @@ func (g *generator) ins(format string, args ...any) {
 	g.text.WriteString("\t")
 	fmt.Fprintf(&g.text, format, args...)
 	g.text.WriteString("\n")
+}
+
+// mark points the line table at a source line. NASM's %line sets the line
+// the following assembly lines are credited to, and +0 keeps it there
+// instead of counting up. A repeat of the position in force is not
+// written, so a statement that lowers to several Locs costs one.
+func (g *generator) mark(loc *metals.Loc) {
+	if g.at == *loc {
+		return
+	}
+	g.at = *loc
+	fmt.Fprintf(&g.text, "%%line %d+0 %s\n", loc.Line, strconv.Quote(loc.File))
 }
 
 func (g *generator) label(name string) {

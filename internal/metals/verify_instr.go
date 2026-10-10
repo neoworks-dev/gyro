@@ -506,6 +506,29 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fv.def(state, i.Dst, &SliceOf{Elem: array.Elem})
 
+	case *SliceFrom:
+		typ, err := fv.use(state, i.Ptr)
+		if err != nil {
+			return err
+		}
+		pointer, ok := typ.(*Ptr)
+		if !ok {
+			return fmt.Errorf("slice.from wants a pointer to the first element, not %s", typ)
+		}
+		if _, isArray := pointer.Elem.(*ArrayOf); isArray {
+			// A pointer to an array is slice.of's operand, and its
+			// extent is the type's, not a run-time length.
+			return fmt.Errorf("slice.from wants a pointer to an element, not to %s; slice.of views an array", pointer.Elem)
+		}
+		lenType, err := fv.use(state, i.Len)
+		if err != nil {
+			return err
+		}
+		if !isUsize(lenType) {
+			return fmt.Errorf("slice.from length is usize, not %s", lenType)
+		}
+		return fv.def(state, i.Dst, &SliceOf{Elem: pointer.Elem})
+
 	case *SliceSub:
 		typ, err := fv.use(state, i.X)
 		if err != nil {
@@ -685,6 +708,15 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 			return fmt.Errorf("return of %s from a function returning %s", typ, fv.fn.Result)
 		}
 		state.unreachable = true
+		return nil
+
+	case *Loc:
+		if i.Line < 1 {
+			return fmt.Errorf("loc lines count from 1, not %d", i.Line)
+		}
+		if i.File == "" {
+			return fmt.Errorf("loc wants a file name")
+		}
 		return nil
 
 	case *Abort:

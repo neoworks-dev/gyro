@@ -438,6 +438,21 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 	switch decl.Name {
 	case "env_of", "with_env":
 		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
+	case "slice_from_raw":
+		bound := resolved.Bindings["T"]
+		if bound == nil {
+			f.l.fail("@%s: slice_from_raw without a bound T", f.fn.Name)
+		}
+		target := f.l.metalsType(&types.Pointer{Elem: bound})
+		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
+		length := f.lowerExpr(call.Args[1].Value, types.USize)
+		return func() string {
+			first := f.newReg("first")
+			f.emit(&metals.PtrCast{Dst: first, X: address, To: target})
+			out := f.newReg("raw")
+			f.emit(&metals.SliceFrom{Dst: out, Ptr: first, Len: length})
+			return out
+		}
 	case "cast":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

@@ -2,7 +2,7 @@
 // safe fn may do unchecked things and vouches for its callers, and a plain
 // fn may do neither. Nothing here is an effect: no row mentions it.
 
-import { cast, offset, ptr_from_int, raw_alloc } from "unsafe"
+import { cast, offset, ptr_from_int, raw_alloc, slice_from_raw } from "unsafe"
 
 struct Cell {
   value: i32
@@ -67,12 +67,14 @@ fn primitives(p: anyptr, n: usize) {
   var b = ptr_from_int<Cell>(n)  //~ E0618 ptr_from_int is unsafe to call; this function is a plain fn
   var c = offset(p, n)           //~ E0618 offset is unsafe to call; this function is a plain fn
   var d = raw_alloc(8, 8)        //~ E0618 raw_alloc is unsafe to call; this function is a plain fn
+  var e = slice_from_raw<i32>(p, n) //~ E0618 slice_from_raw is unsafe to call; this function is a plain fn
 }
 
 safe fn contained(p: anyptr, n: usize): i32 {
   var a = cast<Cell>(offset(p, n))
   var b = ptr_from_int<Cell>(n)
-  return a.value + b.value
+  var s = slice_from_raw<i32>(p, n)
+  return a.value + b.value + s[0]
 }
 
 // ---------------------------------------------------------------------

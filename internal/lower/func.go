@@ -95,6 +95,7 @@ func (l *lowerer) lowerFunc(item workItem) {
 
 	f.blocks = []*[]metals.Instr{&f.fn.Body}
 	f.pushScope()
+	f.mark(decl.Pos())
 
 	if decl.Recv != nil {
 		f.declareReceiver()
@@ -440,7 +441,25 @@ func stmtIsJump(s ast.Stmt) bool {
 	return false
 }
 
+// mark records the source line the instructions that follow come from.
+// Code with no declaration behind it, and foreign modules, have none.
+func (f *funcLowerer) mark(offset int) {
+	if f.decl == nil {
+		return
+	}
+	module := f.l.moduleOf[f.decl]
+	if module == nil || module.File == nil || module.Foreign != nil {
+		return
+	}
+	position := module.File.Position(offset)
+	// The module's path is absolute for a file on disk, which is what a
+	// debugger needs to find the source from anywhere; a bundled module
+	// has none and keeps its "gyro:" name.
+	f.emit(&metals.Loc{File: module.Path, Line: position.Line})
+}
+
 func (f *funcLowerer) stmt(s ast.Stmt) {
+	f.mark(s.Pos())
 	switch s := s.(type) {
 	case *ast.VarDecl:
 		f.localVar(s)

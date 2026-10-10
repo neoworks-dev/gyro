@@ -133,7 +133,19 @@ func (g *generator) genFunc(fn *metals.Func) {
 
 	g.text.WriteString("\n")
 	g.comment("fn @%s", fn.Name)
-	g.label(g.symbolFor(fn.Name))
+	// The prologue belongs to the line the function is declared on, so
+	// the position goes before it rather than with the first statement.
+	if len(fn.Body) > 0 {
+		if loc, ok := fn.Body[0].(*metals.Loc); ok {
+			g.mark(loc)
+		}
+	}
+	// A debugger names a frame by the symbol nearest below its pc, and
+	// every local label is one. A function that says how long it is is
+	// the symbol that covers its own labels.
+	symbol := g.symbolFor(fn.Name)
+	g.text.WriteString("global " + symbol + ":function (" + symbol + ".end - " + symbol + ")\n")
+	g.label(symbol)
 	g.ins("push rbp")
 	g.ins("mov rbp, rsp")
 	g.ins("sub rsp, %d", f.size)
@@ -152,6 +164,7 @@ func (g *generator) genFunc(fn *metals.Func) {
 	g.ins("leave")
 	g.ins("ret")
 	f.emitPanicLabels()
+	g.label(symbol + ".end")
 }
 
 // saveCallee parks the callee-saved registers the homes took over. They
@@ -780,6 +793,12 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("mov %s, rax", f.slot(i.Dst))
 		f.storeWord(f.slot(i.Dst).plus(8), length)
 
+	case *metals.SliceFrom:
+		g.ins("mov rax, %s", f.slot(i.Ptr))
+		g.ins("mov rcx, %s", f.slot(i.Len))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+		g.ins("mov %s, rcx", f.slot(i.Dst).plus(8))
+
 	case *metals.SliceSub:
 		f.emitSliceSub(i)
 
@@ -840,6 +859,9 @@ func (f *frame) instr(instr metals.Instr) {
 
 	case *metals.Return:
 		f.emitReturn(i)
+
+	case *metals.Loc:
+		g.mark(i)
 
 	case *metals.Abort:
 		f.emitAbort(i.Message)

@@ -96,17 +96,19 @@ U+FFFD — matching what `runes()` produces for an invalid sequence.
 
 `split`, `trim`, `contains`, `starts_with`, `ends_with`, `index_of`,
 `substring` and `repeat` are extension methods on `string`, written in Gyro,
-and **have to be imported**. Each takes the allocator it builds from as its
-first argument after the receiver, because each one copies bytes out
-(`bytes`) or builds text (`split`, `trim`, `substring`, `repeat`), and a
-function allocates exactly when it is handed an allocator:
+and **have to be imported**. The ones that build text (`split`, `trim`,
+`substring`, `repeat`) take the allocator they build from as their first
+argument after the receiver, and a function allocates exactly when it is
+handed one. The predicates `contains`, `starts_with`, `ends_with` and
+`index_of` only answer a question, so they take none and compare the two
+strings' bytes in place:
 
 ```gyro
 import { split, trim, starts_with } from "stdlib"
 import { heap } from "mem"
 
 var clean = line.trim(heap())
-if clean.starts_with(heap(), "#") { continue }
+if clean.starts_with("#") { continue }
 var parts = clean.split(heap(), " ")
 defer parts.free()
 ```
@@ -119,8 +121,9 @@ passed — free it. `index_of` returns
 `join(a, parts, sep)` stays a plain function rather than an extension,
 because its receiver would be the slice rather than a string.
 
-The whole of this layer is built on `Array<u8>`, `bytes` and one
-intrinsic, `from_utf8(a: Allocator, bytes: u8[]): string`. A bundled module is only a
+The whole of this layer is built on `Array<u8>`, `bytes`, a private
+non-copying view of a string's bytes and one intrinsic,
+`from_utf8(a: Allocator, bytes: u8[]): string`. A bundled module is only a
 declaration stub where a declaration has no body — and here almost nothing
 is.
 

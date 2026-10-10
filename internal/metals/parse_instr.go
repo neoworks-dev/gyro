@@ -358,6 +358,17 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		return p.line(&IndexGet{Dst: dst, X: x, Index: index}, err)
 
+	case "slice.from":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		n, err := p.reg()
+		return p.line(&SliceFrom{Dst: dst, Ptr: ptr, Len: n}, err)
+
 	case "slice.sub":
 		x, err := p.reg()
 		if err != nil {
@@ -597,6 +608,18 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 			return p.line(&Return{Val: val}, nil)
 		}
 		return p.line(&Return{}, nil)
+
+	case "loc":
+		file := p.scan.next()
+		if file.kind != tString {
+			return nil, p.errf("loc wants its quoted file name")
+		}
+		line := p.scan.next()
+		n, err := strconv.Atoi(line.text)
+		if line.kind != tNumber || err != nil {
+			return nil, p.errf("loc wants a line number, found %q", line.text)
+		}
+		return p.line(&Loc{File: file.text, Line: n}, nil)
 
 	case "abort":
 		message := p.scan.next()

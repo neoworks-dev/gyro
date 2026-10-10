@@ -562,6 +562,14 @@ void gy_str_bytes(void **out, const gy_str *s, const gy_allocator *a) {
     out[1] = (void *)s->len;
 }
 
+/* gy_str_view is gy_str_bytes without the copy: a slice over the string's
+ * own bytes, for a function that only reads them. The view borrows the
+ * string, which is immutable, so nothing can write through it. */
+void gy_str_view(void **out, const gy_str *s) {
+    out[0] = (void *)s->bytes;
+    out[1] = (void *)s->len;
+}
+
 /* gy_from_utf8 is the other direction, and the bytes are the bytes. The
  * copy is what makes the result own what it holds. */
 const gy_str *gy_from_utf8(const gy_allocator *a, const void **slice) {

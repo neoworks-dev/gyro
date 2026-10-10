@@ -276,6 +276,10 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = array<%s>(%s)", reg(i.Dst), i.Elem, regs(i.Args))
 	case *Slice:
 		p.printf("%s = slice.of %s", reg(i.Dst), reg(i.X))
+	case *Loc:
+		p.printf("loc %s %d", strconv.Quote(i.File), i.Line)
+	case *SliceFrom:
+		p.printf("%s = slice.from %s, %s", reg(i.Dst), reg(i.Ptr), reg(i.Len))
 	case *SliceSub:
 		p.printf("%s = slice.sub %s, %s, %s", reg(i.Dst), reg(i.X), reg(i.Lo), reg(i.Hi))
 	case *IndexGet:

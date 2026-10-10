@@ -68,7 +68,7 @@ had to come from some module, and naming it `unsafe` makes every file that
 uses them findable from its imports. Every export is an `unsafe fn`.
 
 ```gyro
-import { cast, offset, ptr_from_int, ptr_to_int } from "unsafe"
+import { cast, offset, ptr_from_int, ptr_to_int, slice_from_raw } from "unsafe"
 ```
 
 | function | what it does |
@@ -77,6 +77,7 @@ import { cast, offset, ptr_from_int, ptr_to_int } from "unsafe"
 | `ptr_from_int<T>(address: usize): *T` | makes a pointer from an integer |
 | `ptr_to_int(p: anyptr): usize` | the address a pointer holds, as an integer |
 | `offset(base: anyptr, bytes: usize): anyptr` | the address `bytes` past `base` |
+| `slice_from_raw<T>(p: anyptr, len: usize): T[]` | views `len` values of `T` at an address as a slice |
 | `copy_bytes(to, from: anyptr, bytes: usize)` | copies bytes; the ranges may overlap |
 | `raw_alloc`, `raw_free`, `raw_resize` | the process heap, which every allocator bottoms out in |
 | `env_of<F>(f: F): anyptr?`, `with_env<F>(f: F, env: anyptr?): F` | read and replace a `fn` value's environment |
@@ -92,6 +93,19 @@ allocation: a device register, a page table. The borrow analysis cannot see
 where such a pointer points, so it treats the result as coming from outside
 the program, the way it treats an `@extern` result: a function whose row
 names no borrow gives the caller's analysis nothing to follow.
+
+`slice_from_raw` is for memory that arrives as an address and a length: a
+mapped GPU buffer, an SDL surface, an `mmap`. Nothing checks that the memory
+holds `len` values of `T` or that it outlives the slice, so the call is the
+program's claim, and the result is treated as coming from outside the
+program, like a `ptr_from_int` result. Once made, the slice is an ordinary
+`T[]`: indexing and narrowing are checked against `len`.
+
+```gyro
+safe fn pixels(buffer: anyptr, count: usize): u32[] {
+  return slice_from_raw<u32>(buffer, count)
+}
+```
 
 `offset` and the raw heap functions are what `mem` is written over
 ([chapter 4.5](ch04-05-allocators.md)); they were `mem`'s own, and are here

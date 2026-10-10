@@ -70,6 +70,11 @@ both bounds and the length — the two ways to be wrong are different
 questions, and one of them (`xs[2..1]`, both inside the length) has nothing
 an "index out of range" could say about it.
 
+A slice over memory that does not come from a Gyro array, such as a mapped
+buffer a library hands over as an address and a length, is made with
+`slice_from_raw` from the `unsafe` module
+([chapter 4.6](ch04-06-unsafe.md)).
+
 A window is a **value, not a place**. `xs[0..2] = ys` is an error and so is
 `&xs[0..2]`: there is no storage of its own to assign into or take the
 address of. Its elements are places, as they always were.
