@@ -1,0 +1,48 @@
+// slice_from_raw turns an address and a length into a slice. The buffer
+// stands in for memory that comes from outside Gyro, such as a mapped
+// framebuffer: the program is handed an address and a count of pixels and
+// writes them through a u32[] without ever holding an Array. main vouches
+// for the buffer it allocates itself.
+
+import { println } from "stdlib"
+import { raw_alloc, raw_free, slice_from_raw } from "unsafe"
+
+// pixels vouches that the buffer holds `count` u32 values.
+safe fn pixels(buffer: anyptr, count: usize): u32[] {
+  return slice_from_raw<u32>(buffer, count)
+}
+
+fn fill(view: u32[]) {
+  var i: usize = 0
+  while i < view.len() {
+    view[i] = (i as u32) * 10 + 1
+    i += 1
+  }
+}
+
+safe fn main() {
+  const count: usize = 5
+  const maybe = raw_alloc(count * 4, 4)
+  if maybe == null {
+    return
+  }
+  const buffer = maybe
+  var view = pixels(buffer, count)
+  fill(view)
+
+  // A second view over the same bytes sees what the first wrote.
+  var again = pixels(buffer, count)
+  println(again.len())
+  println(again[0])
+  println(again[4])
+
+  // Narrowing a raw slice is checked like any other.
+  var middle = again[1..4]
+  println(middle.len())
+  println(middle[0])
+  println(middle[2])
+
+  again[2] = 7
+  println(view[2])
+  raw_free(buffer)
+}
