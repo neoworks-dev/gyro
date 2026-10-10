@@ -354,7 +354,7 @@ func (p *Parser) parseBound() ast.Type {
 			},
 		}
 	}
-	return &ast.NamedType{Offset: offset, Path: p.parseTypePathInType()}
+	return &ast.NamedType{Offset: offset, Path: p.parseTypePathWith(true)}
 }
 
 // parseTraitDecl parses `trait Name<T>: Super & Super { fn method(self) ... }`.
@@ -396,8 +396,10 @@ func (p *Parser) parseTraitDecl() *ast.TraitDecl {
 			}
 			method.OwnerParams = owner
 			decl.Methods = append(decl.Methods, method)
+		} else if p.atAssocType() {
+			decl.Assoc = append(decl.Assoc, p.parseAssocDecl(true))
 		} else {
-			p.errorf(p.offset(), "expected a method in the trait, found %s", describe(p.tok()))
+			p.errorf(p.offset(), "expected a method or an associated type in the trait, found %s", describe(p.tok()))
 			p.syncStatement()
 		}
 		p.skipTerminators()
@@ -439,8 +441,10 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 			method.Impl = decl
 			method.Owner, method.OwnerParams = owner, ownerParams
 			decl.Methods = append(decl.Methods, method)
+		} else if p.atAssocType() {
+			decl.Assoc = append(decl.Assoc, p.parseAssocDecl(false))
 		} else {
-			p.errorf(p.offset(), "expected a method in the impl, found %s", describe(p.tok()))
+			p.errorf(p.offset(), "expected a method or an associated type in the impl, found %s", describe(p.tok()))
 			p.syncStatement()
 		}
 		p.skipTerminators()
@@ -450,6 +454,46 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	}
 
 	p.expect(token.RBrace)
+	return decl
+}
+
+// atAssocType reports the start of an associated type in a trait or an impl.
+// `type` is contextual: it means this only as the first word of a member,
+// followed by the name, and is an ordinary identifier everywhere else.
+func (p *Parser) atAssocType() bool {
+	return p.at(token.Ident) && p.tok().Text == "type" && p.peekAt(1).Kind == token.Ident
+}
+
+// parseAssocDecl parses `type Item: Bound & Bound` in a trait, and
+// `type Item = T` in an impl.
+func (p *Parser) parseAssocDecl(inTrait bool) *ast.AssocDecl {
+	decl := &ast.AssocDecl{Offset: p.offset()}
+	p.next() // type
+	decl.Name, _ = p.expectIdent()
+
+	if inTrait {
+		if p.accept(token.Colon) {
+			decl.Bounds = append(decl.Bounds, p.parseBound())
+			for p.accept(token.Amp) {
+				decl.Bounds = append(decl.Bounds, p.parseBound())
+			}
+		}
+		if p.at(token.Assign) {
+			p.errorf(p.offset(), "a trait declares an associated type without giving it; the impl writes type %s = ...", decl.Name)
+			p.next()
+			p.parseType()
+		}
+	} else {
+		if p.at(token.Colon) {
+			p.errorf(p.offset(), "an impl gives an associated type; its bounds are the trait's")
+			p.next()
+			p.parseBound()
+		}
+		if p.expect(token.Assign).Kind == token.Assign {
+			decl.Type = p.parseType()
+		}
+	}
+	p.expectTerminator()
 	return decl
 }
 
