@@ -18,7 +18,7 @@ assume `./bin/gyro`.
 | you want to | you also need |
 | --- | --- |
 | `gyro check`, `gyro metals`, `gyro cc` | nothing |
-| `gyro build`, `gyro run` | `nasm` and a C compiler, on Linux x86-64 |
+| `gyro build`, `gyro run` | a C compiler, on Linux x86-64 |
 | a program that imports a `.c` file | a C compiler for the link step |
 | regenerating a tree-sitter grammar | `npm`, once per grammar directory |
 

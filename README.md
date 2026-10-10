@@ -125,8 +125,8 @@ grammar of its own.
 
 ## Getting started
 
-Requires Go 1.26.5 or newer. `gyro build` additionally needs `nasm` and a C
-compiler, on Linux x86-64.
+Requires Go 1.26.5 or newer. `gyro build` additionally needs a C compiler,
+on Linux x86-64.
 
 ```sh
 git clone https://github.com/gyro-lang/gyro
