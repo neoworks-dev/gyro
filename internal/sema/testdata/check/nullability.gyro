@@ -75,3 +75,16 @@ fn narrowingStaysInsideTheCheck(n: *Node?) {
   }
   var v = n.value                //~ may be null
 }
+
+// A pointer to a nullable is spelled with parentheses, since `?` binds to
+// the outermost type, and a diagnostic spells it the same way.
+fn fillSlot(slot: *(i32?)) {
+  *slot = null
+}
+
+fn slotMustHoldNullable() {
+  var plain: i32 = 1
+  fillSlot(&plain)               //~ cannot use *i32 as *(i32?)
+  var maybe: i32? = 1
+  fillSlot(&maybe)
+}

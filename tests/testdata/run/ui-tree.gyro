@@ -1,0 +1,188 @@
+// What examples/window.gyro does, without a window: a tree of elements of
+// different types behind one trait is rebuilt every frame from an arena,
+// takes a few clicks, and paints into a framebuffer it reaches through a
+// raw slice. The pixels hold characters instead of colours, so a frame
+// prints as text.
+//
+// The toolbar holds two buttons, and the meter under it fills two cells
+// for every click. A button the mouse is over paints as + instead of #.
+
+import { println, Array, String } from "stdlib"
+import { heap, format, Allocator, Arena } from "mem"
+import { raw_alloc, raw_free, slice_from_raw } from "unsafe"
+
+const WIDTH: i32 = 12
+const HEIGHT: i32 = 5
+
+struct Rect {
+  x: i32
+  y: i32
+  w: i32
+  h: i32
+}
+
+fn Rect::contains(self, x: f32, y: f32): bool {
+  var px = x as i32
+  var py = y as i32
+  return px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
+}
+
+struct Canvas {
+  pixels: u32[]
+  texts: Array<string>
+}
+
+fn Canvas::fill(*self, r: Rect, pixel: rune) {
+  for var y = r.y; y < r.y + r.h; y += 1 {
+    for var x = r.x; x < r.x + r.w; x += 1 {
+      self.pixels[(y * WIDTH + x) as usize] = pixel as u32
+    }
+  }
+}
+
+struct Mouse {
+  x: f32
+  y: f32
+  clicked: bool
+}
+
+trait Element {
+  fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse)
+  fn press(*self, mouse: Mouse): bool
+}
+
+struct Button {
+  rect: Rect
+  label: string
+  clicks: i32
+}
+
+impl Element for Button {
+  fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse) {
+    var pixel = '#'
+    if self.rect.contains(mouse.x, mouse.y) {
+      pixel = '+'
+    }
+    canvas.fill(self.rect, pixel)
+    canvas.texts.push(format(frame, "#{self.label} (#{self.clicks})"))
+  }
+
+  fn press(*self, mouse: Mouse): bool {
+    if !self.rect.contains(mouse.x, mouse.y) {
+      return false
+    }
+    self.clicks += 1
+    return true
+  }
+}
+
+struct Meter {
+  rect: Rect
+  level: i32
+  capacity: i32
+}
+
+impl Element for Meter {
+  fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse) {
+    canvas.fill(self.rect, '-')
+    var filled = self.rect.w * self.level / self.capacity
+    canvas.fill(Rect{ x: self.rect.x, y: self.rect.y, w: filled, h: self.rect.h }, '=')
+    canvas.texts.push(format(frame, "#{self.level} of #{self.capacity}"))
+  }
+
+  fn press(*self, mouse: Mouse): bool {
+    return false
+  }
+}
+
+struct Panel {
+  rect: Rect
+  pixel: rune
+  children: Array<dyn Element>
+}
+
+impl Element for Panel {
+  fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse) {
+    canvas.fill(self.rect, self.pixel)
+    for i in 0..self.children.len() {
+      self.children.get(i).paint(canvas, frame, mouse)
+    }
+  }
+
+  fn press(*self, mouse: Mouse): bool {
+    if !self.rect.contains(mouse.x, mouse.y) {
+      return false
+    }
+    for i in 0..self.children.len() {
+      var child = self.children.get(i)
+      if child.press(mouse) {
+        return true
+      }
+    }
+    return false
+  }
+}
+
+fn show(canvas: Canvas, frame: Allocator) {
+  for y in 0..HEIGHT {
+    var row = String::new(frame)
+    for x in 0..WIDTH {
+      row.push_rune(canvas.pixels[(y * WIDTH + x) as usize] as rune)
+    }
+    println(row.text(frame))
+  }
+  for i in 0..canvas.texts.len() {
+    println(canvas.texts.get(i))
+  }
+}
+
+// The framebuffer stands in for memory the program is handed, the way a
+// locked texture or a mapped display is: an address and a size. main
+// allocates it itself, so it vouches for both.
+safe fn main() {
+  const count = (WIDTH * HEIGHT) as usize
+  const maybe = raw_alloc(count * 4, 4)
+  if maybe == null {
+    return
+  }
+  const buffer = maybe
+  var pixels = slice_from_raw<u32>(buffer, count)
+
+  var a = Button{ rect: Rect{ x: 1, y: 1, w: 4, h: 1 }, label: "A", clicks: 0 }
+  var b = Button{ rect: Rect{ x: 6, y: 1, w: 4, h: 1 }, label: "B", clicks: 0 }
+  var meter = Meter{ rect: Rect{ x: 1, y: 4, w: 10, h: 1 }, level: 0, capacity: 5 }
+
+  var mice = [
+    Mouse{ x: -1.0, y: -1.0, clicked: false },
+    Mouse{ x: 2.0, y: 1.0, clicked: true },
+    Mouse{ x: 7.0, y: 1.0, clicked: true },
+    Mouse{ x: 7.0, y: 1.0, clicked: true },
+    Mouse{ x: 11.0, y: 4.0, clicked: true },
+  ]
+
+  var arena = Arena::new(heap(), 4096)
+  for mouse in mice {
+    var frame = arena.allocator()
+
+    var toolbar = Panel{ rect: Rect{ x: 0, y: 0, w: WIDTH, h: 3 }, pixel: ':', children: Array<dyn Element>::new(frame) }
+    toolbar.children.push(&a as dyn Element)
+    toolbar.children.push(&b as dyn Element)
+
+    var root = Panel{ rect: Rect{ x: 0, y: 0, w: WIDTH, h: HEIGHT }, pixel: '.', children: Array<dyn Element>::new(frame) }
+    root.children.push(&toolbar as dyn Element)
+    root.children.push(&meter as dyn Element)
+
+    if mouse.clicked {
+      println("pressed: #{root.press(mouse)}")
+      meter.level = a.clicks + b.clicks
+    }
+
+    var canvas = Canvas{ pixels: pixels, texts: Array<string>::new(frame) }
+    root.paint(&canvas, frame, mouse)
+    show(canvas, frame)
+
+    arena.free_all()
+  }
+  arena.free()
+  raw_free(buffer)
+}
