@@ -310,9 +310,14 @@ func (h *headerGen) spell(t metals.Type) (string, error) {
 	case *metals.Ptr:
 		// `?` binds to the outermost type in Gyro, so an opt<ptr<T>> —
 		// which is what a C pointer is — spells as *T? and not *(T?).
+		// A pointer to a nullable, which is what C's `void **` is, needs
+		// the parentheses: *anyptr?? would read as a nullable nullable.
 		elem, err := h.spell(t.Elem)
 		if err != nil {
 			return "", err
+		}
+		if isOpt(t.Elem) {
+			return "*(" + elem + ")", nil
 		}
 		return "*" + elem, nil
 	case *metals.ArrayOf:
@@ -375,6 +380,11 @@ func isBareSpelling(t metals.Type) bool {
 		return true
 	}
 	return false
+}
+
+func isOpt(t metals.Type) bool {
+	_, ok := t.(*metals.Opt)
+	return ok
 }
 
 // endsInAType reports whether a Gyro spelling finishes with a nested

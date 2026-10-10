@@ -174,7 +174,14 @@ type TypeParam struct {
 	Bounds []*TraitRef
 }
 
-func (p *Pointer) String() string   { return "*" + p.Elem.String() }
+// A pointer to a nullable needs its parentheses: `?` binds to the
+// outermost type, so *T? is a nullable pointer.
+func (p *Pointer) String() string {
+	if _, nullable := p.Elem.(*Optional); nullable {
+		return "*(" + p.Elem.String() + ")"
+	}
+	return "*" + p.Elem.String()
+}
 func (o *Optional) String() string  { return o.Elem.String() + "?" }
 func (s *Slice) String() string     { return s.Elem.String() + "[]" }
 func (c *Chan) String() string      { return "chan<" + c.Elem.String() + ">" }

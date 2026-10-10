@@ -6,7 +6,7 @@
 import { println } from "stdlib"
 import { cast } from "unsafe"
 import safe { frexp } from "<math.h>"
-import safe { qsort } from "<stdlib.h>"
+import safe { qsort, posix_memalign, free } from "<stdlib.h>"
 import safe { memcpy } from "<string.h>"
 
 // C calls this one, on C's terms: two addresses into the array it was
@@ -65,4 +65,11 @@ fn main() {
   var into = memcpy(&copy[0] as anyptr, &xs[0] as anyptr, 20)
   show(copy)
   println(into == (&copy[0] as anyptr))
+
+  // A pointer to a pointer: C allocates and writes the address through
+  // the `void **` it was handed, into a variable that may hold null.
+  var block: anyptr? = null
+  println(posix_memalign(&block, 16, 64))
+  println(block != null)
+  free(block)
 }
