@@ -1549,12 +1549,15 @@ func anyPayload(t types.Type) bool {
 	return true
 }
 
-// isRuntimeHandle reports a bundled struct the runtime owns — Array,
-// Mutex, File. It has no fields to carry, so it is a reference the runtime
-// hands out, and putting one in an any would copy a handle rather than a
-// value.
+// isRuntimeHandle reports a bundled struct that is a reference rather than
+// a value — a Mutex, or an Array, which is written in Gyro but is still a
+// pointer to a header the program shares. Putting one in an any would copy
+// a handle rather than a value.
 func isRuntimeHandle(t *types.Struct) bool {
-	return stdlib.IsBundled(t.Module) && len(t.Fields) == 0
+	if !stdlib.IsBundled(t.Module) {
+		return false
+	}
+	return len(t.Fields) == 0 || arrayElem(t) != nil
 }
 
 func castable(t types.Type) bool {
