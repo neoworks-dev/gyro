@@ -311,8 +311,6 @@ func (l *linker) strayName(importer, exporter *Module, t Type) string {
 		return l.strayName(importer, exporter, t.Elem)
 	case *ChanOf:
 		return l.strayName(importer, exporter, t.Elem)
-	case *FutureOf:
-		return l.strayName(importer, exporter, t.Result)
 	case *TupleOf:
 		for _, elem := range t.Elems {
 			if bad := l.strayName(importer, exporter, elem); bad != "" {
@@ -483,7 +481,6 @@ func (l *linker) function(fn *Func) *Func {
 		// exported main from a dependency is an ordinary function once
 		// its name is qualified.
 		Export: fn.Export,
-		Async:  fn.Async,
 		Params: params,
 		Result: l.rewrite(fn.Result),
 		Body:   l.body(fn.Body),
@@ -545,8 +542,6 @@ func (l *linker) rewrite(t Type) Type {
 		return &ArrayOf{Elem: l.rewrite(t.Elem), Len: t.Len}
 	case *ChanOf:
 		return &ChanOf{Elem: l.rewrite(t.Elem)}
-	case *FutureOf:
-		return &FutureOf{Result: l.rewrite(t.Result)}
 	case *TupleOf:
 		elems := make([]Type, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -558,7 +553,7 @@ func (l *linker) rewrite(t Type) Type {
 		for i, param := range t.Params {
 			params[i] = l.rewrite(param)
 		}
-		return &FnType{Params: params, Result: l.rewrite(t.Result), Async: t.Async}
+		return &FnType{Params: params, Result: l.rewrite(t.Result)}
 	case *CodeType:
 		params := make([]Type, len(t.Params))
 		for i, param := range t.Params {

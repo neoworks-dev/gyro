@@ -336,7 +336,7 @@ func (p *parser) module() (*Module, error) {
 			err = p.globalDecl(m, true)
 		case "init":
 			err = p.initDecl(m)
-		case "export", "async", "fn":
+		case "export", "fn":
 			err = p.funcDecl(m)
 		default:
 			err = p.errf("unknown declaration %q", tok.text)
@@ -381,11 +381,6 @@ func (p *parser) importDecl(m *Module) error {
 			continue
 		}
 
-		async := false
-		if p.scan.peek().text == "async" {
-			p.scan.next()
-			async = true
-		}
 		if err := p.word("fn"); err != nil {
 			return err
 		}
@@ -393,7 +388,7 @@ func (p *parser) importDecl(m *Module) error {
 		if err != nil {
 			return err
 		}
-		sig, err := p.signature(async)
+		sig, err := p.signature()
 		if err != nil {
 			return err
 		}
@@ -405,11 +400,11 @@ func (p *parser) importDecl(m *Module) error {
 }
 
 // signature parses "(T, T) -> R" with unnamed parameters.
-func (p *parser) signature(async bool) (*FnType, error) {
+func (p *parser) signature() (*FnType, error) {
 	if err := p.punct("("); err != nil {
 		return nil, err
 	}
-	sig := &FnType{Async: async}
+	sig := &FnType{}
 	for !p.atPunct(")") {
 		if len(sig.Params) > 0 {
 			if err := p.punct(","); err != nil {
@@ -684,11 +679,6 @@ func (p *parser) funcDecl(m *Module) error {
 			fn.Export = true
 			continue
 		}
-		if tok.text == "async" {
-			p.scan.next()
-			fn.Async = true
-			continue
-		}
 		break
 	}
 	if err := p.word("fn"); err != nil {
@@ -785,9 +775,6 @@ func (p *parser) typeExpr() (Type, error) {
 	case "chan":
 		elem, err := p.angled()
 		return &ChanOf{Elem: elem}, err
-	case "future":
-		elem, err := p.angled()
-		return &FutureOf{Result: elem}, err
 	case "array":
 		if err := p.punct("<"); err != nil {
 			return nil, err
@@ -827,18 +814,13 @@ func (p *parser) typeExpr() (Type, error) {
 		p.scan.next() // >
 		return tuple, nil
 	case "fn":
-		return p.signature(false)
+		return p.signature()
 	case "code":
-		sig, err := p.signature(false)
+		sig, err := p.signature()
 		if err != nil {
 			return nil, err
 		}
 		return &CodeType{Params: sig.Params, Result: sig.Result}, nil
-	case "async":
-		if err := p.word("fn"); err != nil {
-			return nil, err
-		}
-		return p.signature(true)
 	}
 	return nil, p.errf("unknown type %q", tok.text)
 }

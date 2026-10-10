@@ -958,12 +958,6 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("mov rdi, %s", f.slot(i.Ch))
 		g.ins("call %s", g.extern("gy_chan_close"))
 
-	case *metals.Await:
-		g.ins("mov rdi, %s", f.slot(i.X))
-		g.ins("lea rsi, %s", f.elementIn(i.Dst))
-		g.ins("call %s", g.extern("gy_future_get"))
-		f.elementBack(i.Dst)
-
 	case *metals.Select:
 		f.emitSelect(i)
 

@@ -135,10 +135,7 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.MatchExpr:
 		return f.evalMatch(e, want)
 	case *ast.AwaitExpr:
-		future := f.lowerExpr(e.X, nil)
-		out := f.newReg("awaited")
-		f.emit(&metals.Await{Dst: out, X: future})
-		return out
+		return f.await(e)
 	case *ast.RecvExpr:
 		pair := f.recvPair(e)
 		out := f.newReg("recvd")

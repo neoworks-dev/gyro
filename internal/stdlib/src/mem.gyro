@@ -10,7 +10,7 @@
 // size and alignment asked for, or null, and that nothing else gets through.
 
 import { shortest } from "float"
-import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, text_bytes, text_seal, text_size, with_env } from "unsafe"
+import { atomic_load, atomic_store, cast, copy_bytes, env_of, futex_wait, futex_wake, offset, raw_alloc, raw_free, raw_resize, text_bytes, text_seal, text_size, thread_local, with_env } from "unsafe"
 
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
@@ -545,19 +545,56 @@ export safe fn release<F>(a: Allocator, f: F) !{} {
 // Threads
 // ---------------------------------------------------------------------------
 
-// start_thread runs entry(data) on a new thread. The runtime owns the thread; what
-// data points at is the caller's to keep alive until entry is done with it.
-fn start_thread(entry: code(anyptr?), data: anyptr?) !{ io }
+// start_thread runs entry(data) on a new thread, which ends when entry
+// returns. It is the METALS thread.start, and entry has to be a declared
+// function, written `&name`. The runtime owns the thread; what data points
+// at is the caller's to keep alive until entry is done with it.
+fn start_thread(entry: code(anyptr), data: anyptr) !{ io }
+
+// end_thread ends the calling thread: thread.exit.
+fn end_thread() !{ io }
+
+// set_abort_hook tells the C runtime what to call after it has printed a
+// panic. The hook returns when the panic is the program's to end, and does
+// not return when it ended a thread instead.
+fn set_abort_hook(hook: code()) !{ io }
+
+// What is true of a thread and not of the program.
+struct ThreadState {
+    // worker is set on a thread spawn or an async call started. A panic on
+    // one ends that thread and not the process.
+    worker: bool
+    // future is the future an async call started this thread to fulfil.
+    future: anyptr?
+}
+
+safe fn thread_state(): *ThreadState !{} {
+    return thread_local<ThreadState>()
+}
+
+// abort_hook is what a panic does on a worker: it fulfils the future the
+// thread was computing, so whoever awaits it is not left waiting, and ends
+// the thread. On the main thread it does nothing, and the process ends.
+safe fn abort_hook() !{ io } {
+    var state = thread_state()
+    if !state.worker {
+        return
+    }
+    var fut = state.future
+    if fut != null {
+        state.future = null
+        future_complete(fut)
+    }
+    end_thread()
+}
 
 struct Job {
     a: Allocator
     body: fn()
 }
 
-safe fn run(data: anyptr?) !{ io } {
-    if data == null {
-        return
-    }
+safe fn run(data: anyptr) !{ io } {
+    thread_state().worker = true
     var job = cast<Job>(data)
     var body = job.body
     body()
@@ -572,8 +609,88 @@ safe fn run(data: anyptr?) !{ io } {
 // in for the task's own effects, which no row can carry until effect
 // polymorphism reaches function values.
 export fn spawn(a: Allocator, body: fn()) !{ io } {
+    set_abort_hook(&abort_hook)
     var job = alloc<Job>(a)
     job.a = a
     job.body = keep(a, body)
     start_thread(&run, job as anyptr)
+}
+
+// ---------------------------------------------------------------------------
+// Futures
+// ---------------------------------------------------------------------------
+
+// An async call starts a thread and hands back a future, which lowering
+// builds out of the functions below: future_new makes the cell, the thread
+// runs future_enter, stores its result where future_result says and ends
+// with future_leave, and await is future_wait. The result is raw bytes of a
+// size lowering knows, copied out when the future is awaited.
+struct Future {
+    // done is a futex word: 0 until the result is there, then 1.
+    done: u32
+    size: usize
+    result: anyptr?
+}
+
+safe fn future_new(bytes: usize): anyptr !{ io } {
+    set_abort_hook(&abort_hook)
+    // Nothing frees a future, as nothing frees a mutex: the cell is raw
+    // memory so that the leak analysis does not take it for a mistake.
+    var block = raw_alloc(size<Future>(), 16)
+    if block == null {
+        panic("allocation of a future failed")
+    }
+    var fut = cast<Future>(block)
+    fut.size = bytes
+    if bytes > 0 {
+        var cell = raw_alloc(bytes, 16)
+        if cell == null {
+            panic(format(heap(), "allocation of #{bytes} bytes failed"))
+        }
+        fut.result = cell
+    }
+    return block
+}
+
+// future_enter marks the calling thread as the one computing fut.
+safe fn future_enter(fut: anyptr) !{} {
+    var state = thread_state()
+    state.worker = true
+    state.future = fut
+}
+
+safe fn future_result(fut: anyptr): anyptr !{} {
+    var result = cast<Future>(fut).result
+    if result == null {
+        panic("an async call without a result has none to store")
+        return fut
+    }
+    return result
+}
+
+// future_complete wakes everyone waiting for fut.
+safe fn future_complete(fut: anyptr) !{} {
+    var cell = cast<Future>(fut)
+    atomic_store(&cell.done, 1)
+    futex_wake(&cell.done, 2147483647)
+}
+
+// future_leave is the end of the thread's work on fut.
+safe fn future_leave(fut: anyptr) !{} {
+    thread_state().future = null
+    future_complete(fut)
+}
+
+// future_wait waits for fut and copies its result into out, which is null
+// for an async call that has none.
+safe fn future_wait(fut: anyptr, out: anyptr?) !{} {
+    var cell = cast<Future>(fut)
+    while atomic_load(&cell.done) == 0 {
+        futex_wait(&cell.done, 0)
+    }
+    var result = cell.result
+    var dest = out
+    if result != null && dest != null {
+        copy_bytes(dest, result, cell.size)
+    }
 }

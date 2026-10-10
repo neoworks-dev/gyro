@@ -20,26 +20,24 @@ func Generate(module *metals.Module) (asm string, err error) {
 	}
 
 	g := &generator{
-		module:         module,
-		regTypes:       registerTypes,
-		types:          map[string]*metals.TypeDecl{},
-		imports:        map[string]*metals.FnType{},
-		funcs:          map[string]*metals.Func{},
-		symbols:        map[string]string{},
-		usedSyms:       map[string]bool{},
-		externs:        map[string]bool{},
-		externSyms:     map[string]bool{},
-		strLits:        map[string]string{},
-		cstrs:          map[string]string{},
-		anyTypes:       map[string]string{},
-		buildingAny:    map[string]bool{},
-		eqHelpers:      map[string]string{},
-		thunks:         map[string]string{},
-		indirectThunks: map[string]string{},
-		globals:        map[string]*metals.Global{},
-		globalSyms:     map[string]string{},
-		memories:       map[string]*metals.Memory{},
-		memorySyms:     map[string]string{},
+		module:      module,
+		regTypes:    registerTypes,
+		types:       map[string]*metals.TypeDecl{},
+		imports:     map[string]*metals.FnType{},
+		funcs:       map[string]*metals.Func{},
+		symbols:     map[string]string{},
+		usedSyms:    map[string]bool{},
+		externs:     map[string]bool{},
+		externSyms:  map[string]bool{},
+		strLits:     map[string]string{},
+		cstrs:       map[string]string{},
+		anyTypes:    map[string]string{},
+		buildingAny: map[string]bool{},
+		eqHelpers:   map[string]string{},
+		globals:     map[string]*metals.Global{},
+		globalSyms:  map[string]string{},
+		memories:    map[string]*metals.Memory{},
+		memorySyms:  map[string]string{},
 	}
 	for _, global := range module.Globals {
 		g.globals[global.Name] = global
@@ -134,11 +132,7 @@ type generator struct {
 	labelN      int
 
 	eqHelpers map[string]string // type string -> helper symbol
-	thunks    map[string]string // async callee -> thunk symbol
-	// indirectThunks keys on the signature instead: a call through a
-	// function value has no callee symbol to name.
-	indirectThunks map[string]string
-	pending        []func() // helpers and thunks queued during emission
+	pending   []func()          // helpers queued during emission
 }
 
 type genError struct{ err error }

@@ -88,7 +88,7 @@ func (l *lowerer) lowerFunc(item workItem) {
 		l:        l,
 		decl:     decl,
 		inst:     inst,
-		fn:       &metals.Func{Name: item.name, Export: item.name == "main", Async: decl.Async},
+		fn:       &metals.Func{Name: item.name, Export: item.name == "main"},
 		regCount: map[string]int{},
 	}
 	f.result = f.localType(decl, "return")
@@ -609,7 +609,7 @@ func (f *funcLowerer) evalVoid(e ast.Expr) {
 	case *ast.BlockExpr:
 		f.block(e.Block)
 	case *ast.AwaitExpr:
-		f.lowerExpr(e.X, nil)
+		f.await(e)
 	default:
 		f.lowerExpr(e, nil)
 	}

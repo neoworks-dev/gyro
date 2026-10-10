@@ -141,8 +141,6 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		switch {
 		case init == nil:
 			return nil, fmt.Errorf("init names @%s, which this module does not declare", m.Init)
-		case init.Async:
-			return nil, fmt.Errorf("init @%s is async, and nothing exists yet to await it", m.Init)
 		case len(init.Params) > 0 || init.Result != nil:
 			return nil, fmt.Errorf("init @%s takes %s, and must take and return nothing",
 				m.Init, init.Sig())
@@ -222,7 +220,7 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 			return t
 		}
 		return nil
-	case *Ptr, *AnyPtr, *ChanOf, *FutureOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
+	case *Ptr, *AnyPtr, *ChanOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
 		return t
 	case *Opt:
 		return pointerInside(m, t.Elem, seen)
@@ -419,8 +417,6 @@ func (v *verifier) checkType(t Type) error {
 		return v.checkType(t.Elem)
 	case *ChanOf:
 		return v.checkType(t.Elem)
-	case *FutureOf:
-		return v.checkType(t.Result)
 	case *TupleOf:
 		for _, elem := range t.Elems {
 			if err := v.checkType(elem); err != nil {
@@ -462,10 +458,7 @@ func (v *verifier) checkSigTypes(name string, sig *FnType) error {
 //
 // `native` says the far side is a linked C library rather than another
 // runtime — same process, same address space, same allocator — which is
-// what decides whether an address may cross. See NativeLibrary. A
-// channel and a future are refused either way: those are Gyro runtime
-// objects with no C representation, which is a different reason than the
-// heap.
+// what decides whether an address may cross. See NativeLibrary.
 //
 // The verifier calls this on an import out of another runtime and the
 // linker on the export it resolves to; both of them are the side that
@@ -509,8 +502,6 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool, 
 		}
 		return t.String()
 	case *ChanOf:
-		return t.String()
-	case *FutureOf:
 		return t.String()
 	case *CodeType:
 		// An address of code means what a pointer means: something in
@@ -716,11 +707,7 @@ func (fv *funcVerifier) checkCallShape(state *regState, sig *FnType, args []stri
 	if sig.Result == nil {
 		return fmt.Errorf("%s returns nothing; there is no value to bind", what)
 	}
-	result := sig.Result
-	if sig.Async {
-		result = &FutureOf{Result: result}
-	}
-	return fv.def(state, dst, result)
+	return fv.def(state, dst, sig.Result)
 }
 
 func (fv *funcVerifier) hasLabel(label string) bool {

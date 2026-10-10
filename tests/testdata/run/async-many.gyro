@@ -1,0 +1,38 @@
+// Many async calls in flight at once, with arguments of several shapes and
+// results that are scalars, tuples and a method's. Each runs on a thread
+// of its own and awaiting joins it.
+
+import { println } from "stdlib"
+import { format, heap } from "mem"
+
+struct Scale {
+    factor: i64
+}
+
+async fn Scale::apply(self, n: i64): i64 {
+    return self.factor * n
+}
+
+async fn square(n: i64): i64 {
+    return n * n
+}
+
+async fn label(n: i64, text: string): (string, i64) {
+    return format(heap(), "#{text}#{n}"), n
+}
+
+async fn main() {
+    var total: i64 = 0
+    var running = [square(1), square(2), square(3), square(4), square(5)]
+    for each in running {
+        total += await each
+    }
+    println(total)
+
+    var scale = Scale{ factor: 3 }
+    println(await scale.apply(14))
+
+    var name, n = await label(7, "item")
+    println(name)
+    println(n)
+}

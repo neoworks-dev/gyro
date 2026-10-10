@@ -46,6 +46,8 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		anyVariant:    map[string]int{},
 		vtables:       map[string]*vtable{},
 		eqs:           map[string]bool{},
+		threadLocals:  map[string]bool{},
+		asyncThunks:   map[string]*asyncThunk{},
 	}
 	defer func() {
 		switch failure := recover().(type) {
@@ -75,6 +77,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 	l.finishAnyType()
 	// The printers just built may name leaves that are Gyro, not yet lowered.
 	l.drain()
+	l.finishAsync()
 	l.attachImports()
 
 	// A program that imports another language is several METALS modules,
@@ -188,6 +191,14 @@ type lowerer struct {
 	// and vtableOrder the same in the order they were asked for.
 	vtables     map[string]*vtable
 	vtableOrder []*vtable
+
+	// threadLocals names the thread_local globals declared so far, and
+	// asyncThunks the entry points synthesized for async calls (asyncOrder
+	// in the order they were asked for, asyncBuilt how many have bodies).
+	threadLocals map[string]bool
+	asyncThunks  map[string]*asyncThunk
+	asyncOrder   []*asyncThunk
+	asyncSizes   []asyncSize
 
 	synthetic int
 }
@@ -367,7 +378,8 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 		}
 		return code
 	case *types.Future:
-		return &metals.FutureOf{Result: l.metalsType(t.Result)}
+		// A future is an address the runtime in mem knows the layout of.
+		return &metals.AnyPtr{}
 	case *types.Struct:
 		return l.metalsStruct(t)
 	case *types.Union:
@@ -427,7 +439,7 @@ func (l *lowerer) metalsBasic(t *types.Basic) metals.Type {
 }
 
 func (l *lowerer) metalsFnType(t *types.Func) *metals.FnType {
-	out := &metals.FnType{Async: t.Async}
+	out := &metals.FnType{}
 	for _, param := range t.Params {
 		out.Params = append(out.Params, l.metalsType(param))
 	}
@@ -685,7 +697,7 @@ func nativeImport(foreign *metals.Module, name string) (string, *metals.FnType) 
 // the call site. See docs/decisions.md, "Varargs are an array a caller
 // builds".
 func (l *lowerer) variadicFnType(sig *types.Func) *metals.FnType {
-	out := &metals.FnType{Async: sig.Async}
+	out := &metals.FnType{}
 	for _, param := range sig.Params[:len(sig.Params)-1] {
 		out.Params = append(out.Params, l.metalsType(param))
 	}
@@ -749,8 +761,6 @@ func (l *lowerer) importNamed(foreign *metals.Module, t metals.Type) {
 		l.importNamed(foreign, t.Elem)
 	case *metals.ChanOf:
 		l.importNamed(foreign, t.Elem)
-	case *metals.FutureOf:
-		l.importNamed(foreign, t.Result)
 	case *metals.TupleOf:
 		for _, elem := range t.Elems {
 			l.importNamed(foreign, elem)

@@ -20,11 +20,7 @@ func Print(m *Module) string {
 			p.typeDecl(decl)
 		}
 		for _, fn := range imp.Funcs {
-			prefix := "fn "
-			if fn.Sig.Async {
-				prefix = "async fn "
-			}
-			p.line(prefix + at(fn.Name) + sigSuffix(fn.Sig))
+			p.line("fn " + at(fn.Name) + sigSuffix(fn.Sig))
 		}
 		p.indent--
 		p.line("}")
@@ -167,9 +163,6 @@ func (p *printer) function(fn *Func) {
 	header := ""
 	if fn.Export {
 		header += "export "
-	}
-	if fn.Async {
-		header += "async "
 	}
 	params := make([]string, len(fn.Params))
 	for i, param := range fn.Params {
@@ -389,8 +382,6 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = recv %s", reg(i.Dst), reg(i.Ch))
 	case *ChanClose:
 		p.printf("chan.close %s", reg(i.Ch))
-	case *Await:
-		p.printf("%s = await %s", reg(i.Dst), reg(i.X))
 	case *Select:
 		p.line("select {")
 		p.indent++

@@ -1,0 +1,14 @@
+// A panic on a spawned thread prints and ends that thread. The process
+// goes on: main is still here to say so, and exits 0.
+
+import { println } from "stdlib"
+import { heap, panic, spawn } from "mem"
+import { sleep } from "time"
+
+fn main() {
+    spawn(heap(), fn() {
+        panic("the worker failed")
+    })
+    sleep(100)
+    println("main is still running")
+}

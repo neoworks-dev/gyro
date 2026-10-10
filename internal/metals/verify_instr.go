@@ -744,9 +744,6 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !ok {
 			return fmt.Errorf("unknown function @%s", i.Callee)
 		}
-		if sig.Async {
-			return fmt.Errorf("code.ref @%s: an async function is started, not called, so its address is not a code pointer", i.Callee)
-		}
 		return fv.def(state, i.Dst, &CodeType{Params: sig.Params, Result: sig.Result})
 
 	case *MakeClosure:
@@ -771,7 +768,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !TypesEqual(envType, sig.Params[0]) {
 			return fmt.Errorf("closure environment is %s, @%s wants %s", envType, i.Callee, sig.Params[0])
 		}
-		return fv.def(state, i.Dst, &FnType{Params: sig.Params[1:], Result: sig.Result, Async: sig.Async})
+		return fv.def(state, i.Dst, &FnType{Params: sig.Params[1:], Result: sig.Result})
 
 	case *CallIndirect:
 		typ, err := fv.use(state, i.Fn)
@@ -833,7 +830,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !ok {
 			return fmt.Errorf("unknown function @%s", i.Body)
 		}
-		if sig.Async || sig.Result != nil || len(sig.Params) != 1 || !TypesEqual(sig.Params[0], &AnyPtr{}) {
+		if sig.Result != nil || len(sig.Params) != 1 || !TypesEqual(sig.Params[0], &AnyPtr{}) {
 			return fmt.Errorf("thread.start's body takes one anyptr and returns nothing, but @%s is %s", i.Body, sig)
 		}
 		dataType, err := fv.use(state, i.Data)
@@ -981,20 +978,6 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 	case *ChanClose:
 		_, err := fv.chanElem(state, i.Ch)
 		return err
-
-	case *Await:
-		if !fv.fn.Async {
-			return fmt.Errorf("await only works inside an async fn")
-		}
-		typ, err := fv.use(state, i.X)
-		if err != nil {
-			return err
-		}
-		future, ok := typ.(*FutureOf)
-		if !ok {
-			return fmt.Errorf("await wants a future, not %s", typ)
-		}
-		return fv.def(state, i.Dst, future.Result)
 
 	case *Select:
 		for _, arm := range i.Arms {

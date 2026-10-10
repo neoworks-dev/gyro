@@ -408,7 +408,6 @@ type (
 	Send      struct{ Ch, Val string }
 	Recv      struct{ Dst, Ch string } // -> tuple<T, bool>
 	ChanClose struct{ Ch string }
-	Await     struct{ Dst, X string }
 	Select    struct {
 		Arms    []SelectArm
 		Default []Instr
@@ -525,7 +524,6 @@ func (*ChanNew) isInstr()      {}
 func (*Send) isInstr()         {}
 func (*Recv) isInstr()         {}
 func (*ChanClose) isInstr()    {}
-func (*Await) isInstr()        {}
 func (*Select) isInstr()       {}
 func (*OptWrap) isInstr()      {}
 func (*OptUnwrap) isInstr()    {}

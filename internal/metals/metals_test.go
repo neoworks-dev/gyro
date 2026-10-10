@@ -213,23 +213,6 @@ import "gyro:rt" {
   fn @spawn(fn())
 }
 
-async fn @first(%ch: chan<i32>) -> i32 {
-  %t = recv %ch
-  %v = tuple.get %t, 0
-  %open = tuple.get %t, 1
-  if %open {
-    return %v
-  }
-  %zero = const.i32 0
-  return %zero
-}
-
-async fn @relay(%ch: chan<i32>) -> i32 {
-  %f = call @first(%ch)
-  %v = await %f
-  return %v
-}
-
 fn @pump(%vals: chan<i32>, %quit: chan<bool>) {
   %yes = const.bool true
   select {
@@ -449,20 +432,6 @@ func TestVerifierCatchesUnknownLabel(t *testing.T) {
   return
 }
 `, "no enclosing label $b")
-}
-
-func TestVerifierCatchesAwaitOutsideAsync(t *testing.T) {
-	verifyError(t, header+`async fn @g() -> i32 {
-  %one = const.i32 1
-  return %one
-}
-
-fn @f() -> i32 {
-  %fut = call @g()
-  %v = await %fut
-  return %v
-}
-`, "await only works inside an async fn")
 }
 
 func TestVerifierEnforcesBoundaryRules(t *testing.T) {

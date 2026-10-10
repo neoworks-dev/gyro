@@ -26,7 +26,7 @@ func (f *funcLowerer) evalClosure(e *ast.ClosureExpr) string {
 	captured := f.freeVars(e)
 	liftedName := f.l.syntheticName(f.fn.Name + "::closure")
 
-	if len(captured) == 0 && !e.Async {
+	if len(captured) == 0 {
 		f.liftClosureBody(e, sig, liftedName, "", nil)
 		out := f.newReg("closure")
 		f.emit(&metals.FnRef{Dst: out, Callee: liftedName})
@@ -76,7 +76,7 @@ func (f *funcLowerer) liftClosureBody(e *ast.ClosureExpr, sig *types.Func, lifte
 		l:        f.l,
 		decl:     f.decl,
 		inst:     f.inst,
-		fn:       &metals.Func{Name: liftedName, Async: e.Async},
+		fn:       &metals.Func{Name: liftedName},
 		regCount: map[string]int{},
 		result:   sig.Result,
 	}

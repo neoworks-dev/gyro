@@ -60,6 +60,12 @@ export unsafe fn text_seal(block: anyptr, len: usize): string !{}
 // through it, and it is valid only as long as the string is.
 export unsafe fn text_bytes(text: string): u8[] !{}
 
+// thread_local is the calling thread's own T: a cell every thread has,
+// zeroed when the thread starts, one per type T. It is how the runtime keeps
+// what is true of a thread and not of the program, and a pointer to it is
+// good on the thread that asked and on no other.
+export unsafe fn thread_local<T>(): *T !{}
+
 // ---------------------------------------------------------------------------
 // The process heap
 // ---------------------------------------------------------------------------

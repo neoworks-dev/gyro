@@ -487,9 +487,6 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{defs: []string{i.Dst}, uses: []string{i.Ch}, mem: []string{i.Dst}}
 	case *metals.ChanClose:
 		return roles{uses: []string{i.Ch}}
-	case *metals.Await:
-		// gy_future_get fills the destination through a pointer.
-		return roles{defs: []string{i.Dst}, uses: []string{i.X}, mem: []string{i.Dst}}
 	case *metals.Select:
 		return g.selectRoles(i)
 	case *metals.OptWrap:
@@ -530,9 +527,8 @@ func (g *generator) callRoles(i *metals.Call) roles {
 		return r
 	}
 	sig := g.imports[i.Callee]
-	if sig == nil || sig.Async {
-		// An unknown callee fails in the emitter; an async import
-		// marshals through a heap buffer and takes no slot addresses.
+	if sig == nil {
+		// An unknown callee fails in the emitter.
 		return r
 	}
 	plan := g.nativePlanFor(i.Callee, sig)

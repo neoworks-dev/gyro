@@ -45,12 +45,6 @@ static gy_str *gy_str_c(const char *text) { return gy_str_from(text, strlen(text
 /* goroutine recovery.                                                */
 /* ------------------------------------------------------------------ */
 
-typedef struct gy_future gy_future;
-static void gy_future_fulfill(gy_future *fut);
-
-static __thread int gy_on_worker_thread = 0;
-static __thread gy_future *gy_current_future = NULL;
-
 /* The Gyro output layer buffers standard output and registers what writes
  * it out here, the first time it prints. The program ending, a panic, and
  * a call into a C library are the points where the C runtime asks for it. */
@@ -58,18 +52,23 @@ void (*gy_flush_hook)(void) = NULL;
 
 void gy_set_flush_hook(void (*hook)(void)) { gy_flush_hook = hook; }
 
+/* What to do after a panic is printed, set by the Gyro runtime in mem. It
+ * returns when the panic is the process's to end, and does not return when
+ * it has ended a worker thread instead: which of the two is the state of the
+ * thread, and that is Gyro's. */
+static void (*gy_abort_hook)(void) = NULL;
+
+void gy_set_abort_hook(void (*hook)(void)) { gy_abort_hook = hook; }
+
 _Noreturn void gy_abort(const gy_str *message) {
     if (gy_flush_hook != NULL) {
         gy_flush_hook();
     }
     fprintf(stderr, "panic: %.*s\n", (int)message->len, message->bytes);
-    if (!gy_on_worker_thread) {
-        exit(1);
+    if (gy_abort_hook != NULL) {
+        gy_abort_hook();
     }
-    if (gy_current_future != NULL) {
-        gy_future_fulfill(gy_current_future);
-    }
-    pthread_exit(NULL);
+    exit(1);
 }
 
 _Noreturn static void gy_abort_c(const char *message) { gy_abort(gy_str_c(message)); }
@@ -655,28 +654,15 @@ int64_t gy_chan_try_recv(gy_chan *ch, void *out) {
 void gy_select_pause(void) { usleep(200); }
 
 /* ------------------------------------------------------------------ */
-/* spawn and futures.                                                 */
+/* Threads: the one place that knows how one begins and ends.         */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    void (*entry)(void *);
-    void *data;
-} gy_start_arg;
-
-static void *gy_start_main(void *raw) {
-    gy_start_arg arg = *(gy_start_arg *)raw;
-    free(raw);
-    gy_on_worker_thread = 1;
-    arg.entry(arg.data);
-    return NULL;
-}
-
-/* thread.start and thread.exit: the one place that knows how a thread
- * begins and ends. The backend implements the METALS instructions with
- * libc's threads for as long as the program links libc (#142). The stack
- * the instruction offers is ignored: libc gives every thread its own. The
- * body is called through a pointer to a function returning void *, which
- * the generated code is ABI-compatible with; its return value is ignored. */
+/* thread.start and thread.exit. The backend implements the METALS
+ * instructions with libc's threads for as long as the program links libc
+ * (#142). The stack the instruction offers is ignored: libc gives every
+ * thread its own. The body is called through a pointer to a function
+ * returning void *, which the generated code is ABI-compatible with; its
+ * return value is ignored. */
 uint64_t gy_thread_start(void (*body)(void *), void *data) {
     pthread_t thread;
     pthread_attr_t attrs;
@@ -691,80 +677,6 @@ uint64_t gy_thread_start(void (*body)(void *), void *data) {
 }
 
 _Noreturn void gy_thread_exit(void) { pthread_exit(NULL); }
-
-/* gy_start runs entry(data) on a detached thread. */
-void gy_start(void (*entry)(void *), void *data) {
-    gy_start_arg *arg = calloc(1, sizeof(gy_start_arg));
-    arg->entry = entry;
-    arg->data = data;
-    pthread_t thread;
-    pthread_attr_t attrs;
-    pthread_attr_init(&attrs);
-    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&thread, &attrs, gy_start_main, arg);
-    pthread_attr_destroy(&attrs);
-}
-
-struct gy_future {
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    int done;
-    int64_t size;
-    char *result;
-};
-
-static void gy_future_fulfill(gy_future *fut) {
-    pthread_mutex_lock(&fut->mutex);
-    fut->done = 1;
-    pthread_cond_broadcast(&fut->cond);
-    pthread_mutex_unlock(&fut->mutex);
-}
-
-typedef struct {
-    void (*thunk)(void *, void *);
-    void *args;
-    gy_future *fut;
-} gy_future_arg;
-
-static void *gy_future_main(void *raw) {
-    gy_future_arg arg = *(gy_future_arg *)raw;
-    free(raw);
-    gy_on_worker_thread = 1;
-    gy_current_future = arg.fut;
-    arg.thunk(arg.args, arg.fut->result);
-    gy_current_future = NULL;
-    gy_future_fulfill(arg.fut);
-    return NULL;
-}
-
-void *gy_future_start(void (*thunk)(void *, void *), void *args, int64_t resultSize) {
-    gy_future *fut = calloc(1, sizeof(gy_future));
-    pthread_mutex_init(&fut->mutex, NULL);
-    pthread_cond_init(&fut->cond, NULL);
-    fut->size = resultSize;
-    fut->result = calloc(1, (size_t)(resultSize > 0 ? resultSize : 8));
-
-    gy_future_arg *arg = calloc(1, sizeof(gy_future_arg));
-    arg->thunk = thunk;
-    arg->args = args;
-    arg->fut = fut;
-    pthread_t thread;
-    pthread_attr_t attrs;
-    pthread_attr_init(&attrs);
-    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&thread, &attrs, gy_future_main, arg);
-    pthread_attr_destroy(&attrs);
-    return fut;
-}
-
-void gy_future_get(gy_future *fut, void *out) {
-    pthread_mutex_lock(&fut->mutex);
-    while (!fut->done) {
-        pthread_cond_wait(&fut->cond, &fut->mutex);
-    }
-    pthread_mutex_unlock(&fut->mutex);
-    memcpy(out, fut->result, (size_t)fut->size);
-}
 
 /* ------------------------------------------------------------------ */
 /* any: the open dynamic value.                                       */
