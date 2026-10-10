@@ -92,6 +92,7 @@ var codes = map[string]diag.Code{
 	"%s does not match the trait: expected %s, found %s":                               diag.EImplMismatch,
 	"%s cannot be used as dyn: %s":                                                     diag.ENotObjectSafe,
 	"%s as %s needs a pointer to the value, not %s":                                    diag.EDynConversion,
+	"%s cannot be a system call argument; it takes an integer, a bool or a pointer":   diag.ESyscallArgument,
 	"operator %s orders two values of one type, not %s and %s":                         diag.EBadOperands,
 	"operator %s does not apply to %s":                                                 diag.EBadOperands,
 

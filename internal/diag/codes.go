@@ -92,6 +92,7 @@ const (
 	EImplConflict        Code = "E0529"
 	ENotObjectSafe       Code = "E0530"
 	EDynConversion       Code = "E0531"
+	ESyscallArgument     Code = "E0536"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -276,6 +277,8 @@ var explanations = map[Code]explanation{
 		"A trait value is a pointer and a table with one entry per method, so\nevery method has to be callable without knowing the type behind it: it\ntakes a receiver, has no type parameters of its own, and mentions Self\nnowhere but the receiver. The capability traits the compiler answers\nstatically are not trait values either."},
 	EDynConversion: {"value cannot become a trait value",
 		"`pointer as dyn Trait` makes a trait value of a pointer to a type that\nimplements the trait. The trait value borrows what the pointer points at."},
+	ESyscallArgument: {"value cannot be a system call argument",
+		"The kernel reads each argument of a system call from one register, so\nan argument is an integer, a bool or a pointer, nullable or not. A string,\na slice, a struct or a float does not fit in one; pass the pointer to its\ndata and its length instead. Inside a generic function the check waits for\nthe concrete types each instantiation brings."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",

@@ -65,3 +65,20 @@ export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align
 // code over another. mem's keep and release are written over them.
 export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
+
+// ---------------------------------------------------------------------------
+// System calls
+// ---------------------------------------------------------------------------
+
+// syscallN asks the Linux kernel for call `number` with N arguments, each
+// an integer, a bool or a pointer, and answers the kernel's raw result:
+// zero or more on success, an error number negated on failure. Each
+// argument keeps its own type, so a buffer goes in as the pointer it is.
+// They are lowering's: each is one METALS syscall instruction.
+export unsafe fn syscall0(number: usize): i64 !{ io }
+export unsafe fn syscall1<A>(number: usize, a: A): i64 !{ io }
+export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): i64 !{ io }
+export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): i64 !{ io }
+export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): i64 !{ io }
+export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): i64 !{ io }
+export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): i64 !{ io }

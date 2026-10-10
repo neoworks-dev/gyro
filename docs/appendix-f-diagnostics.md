@@ -88,6 +88,7 @@ A sample, so the ranges have a shape:
 | E0529 | an impl that cannot be written: a duplicate, a built-in type, or a derivation the fields do not allow |
 | E0530 | a trait that cannot be used as `dyn` |
 | E0531 | a value that cannot become a trait value |
+| E0536 | a system call argument that is not an integer, a bool or a pointer |
 | E0517 | an error result dropped |
 | E0521 | a match over an enum that is not exhaustive |
 | E0522 | a read of a variable no path has written |

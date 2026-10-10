@@ -1,0 +1,37 @@
+// A system call's arguments are what one register carries: an integer, a
+// bool, or a pointer of any kind. Everything else is refused at the call,
+// because the kernel would have nowhere to read it from.
+
+import { syscall0, syscall1, syscall2, syscall3 as sys3 } from "unsafe"
+
+struct Cell {
+  value: i32
+}
+
+unsafe fn accepted(cell: *Cell, maybe: *Cell?, raw: anyptr, none: anyptr?, small: u8, flag: bool) {
+  var _ = syscall0(39)
+  var _ = syscall1(3, -1)
+  var _ = syscall2(1, small, flag)
+  var _ = sys3(0, cell, maybe, raw)
+  var _ = syscall1(0, none)
+}
+
+unsafe fn refused(cell: Cell, text: string, bytes: u8[], ratio: f64, count: i32?) {
+  var _ = syscall1(0, cell)       //~ E0536 Cell cannot be a system call argument; it takes an integer, a bool or a pointer
+  var _ = syscall1(0, text)       //~ E0536 string cannot be a system call argument
+  var _ = syscall1(0, bytes)      //~ E0536 u8[] cannot be a system call argument
+  var _ = sys3(0, 1, ratio, 2)    //~ E0536 f64 cannot be a system call argument
+  var _ = syscall1(0, count)      //~ E0536 i32? cannot be a system call argument
+}
+
+// Inside a generic function the check waits for the types an
+// instantiation brings: the argument is refused in the body, and the call
+// that brought the type is named beside it.
+unsafe fn forward<T>(value: T): i64 {
+  return syscall1(0, value)       //~ E0536 string cannot be a system call argument
+}
+
+unsafe fn instantiate() {
+  var _ = forward(7)
+  var _ = forward("text")         //~ E0505 in the instantiation forward<string> required here
+}
