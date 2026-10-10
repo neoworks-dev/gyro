@@ -132,3 +132,25 @@ Because a view never owns, a function that means to give the caller
 ownership returns `Array<T>` or `String`, not a slice or a `string`. The
 exception is a view of something static, like a string literal, which no
 frame owns.
+
+The view need not be the result. A struct, a tuple or an `any` holding one
+carries it out of the function, so it takes the same row, and a view put
+into a field or a container that outlives the frame is refused where it goes
+in ([chapter 12](ch12-00-effect-rows.md)):
+
+```gyro
+struct Window { data: i32[] }
+
+fn window(xs: i32[]): Window !{ &xs } {
+  return Window{ data: xs }
+}
+
+fn remember(out: Array<i32[]>) {
+  var buf = [1, 2, 3]
+  out.push(buf)      // error: buf ends with this function, out does not
+}
+```
+
+Two things stay outside it. A view stored by a function it was passed to is
+not followed into that function, and nothing here notices that the memory
+behind a view was freed while the view was still in use.

@@ -86,9 +86,13 @@ A sample, so the ranges have a shape:
 | E0522 | a read of a variable no path has written |
 | E0523 | a `main` with a signature nothing can call |
 | E0607 | a private field used from another module |
-| E0609 | a returned view whose source the row does not name |
+| E0609 | a returned view, or an aggregate holding one, whose source the row does not name |
 | E0610 | a returned view of this frame's storage |
 | E0612 | an unknown entry in an effect row |
+| E0630 | a view of this frame stored where it outlives the frame |
+| E0631 | a value returned or stored past the arena it was allocated from |
+| E0632 | a view written in a loop body stored outside the loop |
+| E0633 | a value used after its arena was freed or reset |
 | E0614 | an `@extern` signature carrying something that cannot cross |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |

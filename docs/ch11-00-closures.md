@@ -203,23 +203,46 @@ Every record starts with a header word holding its size in bytes. That is
 what lets `keep` be ordinary Gyro: the type `fn(i32): i32` does not say how
 big the record is, and the header does. Records are word aligned.
 
-### The hole it shares with slices
+### Storing a closure
 
-The analysis follows a closure through locals and returns. It does not
-follow one into a struct field or a container, which is the same gap a slice
-has ([appendix G](appendix-g-known-gaps.md)). A closure written in a loop body
-and pushed into an `Array` without `keep` leaves every element pointing at
-the same record in the same frame:
+The analysis follows a closure through locals, returns, struct fields and
+containers, the way it follows a slice of an array literal
+([chapter 12](ch12-00-effect-rows.md)). A closure that borrows the frame
+cannot be returned, inside a struct or a container as well as by itself, and
+cannot be stored into anything that outlives the frame: a parameter, the
+receiver, a module-level variable. **Storing a closure takes `keep`.**
 
 ```gyro
-for i in 0..3 {
-  fns.push(fn() i)       // all three share one record, and it dies with the frame
+fn on_open(handlers: Array<fn(): i32>, n: i32) {
+  handlers.push(fn(): i32 { return n })              // error: n lives in this frame
+  handlers.push(keep(heap(), fn(): i32 { return n }))   // fine
+}
+
+fn parser_for(a: Allocator, depth: i32): Handlers {
+  return Handlers{
+    on_open: keep(a, fn(): i32 { return depth }),
+    on_close: keep(a, fn(): i32 { return depth + 1 }),
+  }
 }
 ```
 
-Keep the closure before storing it, with `keep(a, fn(): i32 { return i })`.
+A closure written in a loop body and pushed into a container declared
+outside the loop is refused even when the container never leaves the
+function. The loop writes one record in the frame, so without `keep` every
+element would point at it and see the last iteration's captures.
+
+```gyro
+for i in 0..3 {
+  fns.push(fn(): i32 { return i })               // error: one record, shared
+  fns.push(keep(a, fn(): i32 { return i }))      // fine: one record each
+}
+```
+
 `keep` is generic over the closure's type, so a closure written inside the
-call states its own parameter and result types.
+call states its own parameter and result types. A closure that captures
+nothing has no record and stores freely. What is
+still not followed is a closure handed to a function that stores it
+([appendix G](appendix-g-known-gaps.md)).
 
 Futures and channels are not part of this; they still use the process heap
 ([appendix G](appendix-g-known-gaps.md)).
