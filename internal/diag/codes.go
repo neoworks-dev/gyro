@@ -119,6 +119,9 @@ const (
 	// Format values
 	EFormatEscapes Code = "E0616"
 
+	// Constructs implemented in stdlib
+	EStdlibNotLoaded Code = "E0620"
+
 	// Unsafe code
 	EUnsafeOperation Code = "E0618"
 	EVouchGyro       Code = "E0619"
@@ -338,6 +341,8 @@ var explanations = map[Code]explanation{
 		"A value allocated from arena.allocator() sits in the arena and goes\nwith it. When the arena is local to this function it ends with the\nfunction, so returning the value, or storing it into something that\noutlives the function, hands out memory that is gone.\n\nTake the allocator as a parameter and the arena belongs to the caller.\nA value from heap() is not in an arena."},
 	EArenaUseAfterEnd: {"value used after its arena was freed or reset",
 		"Freeing an arena returns the buffer, and free_all hands the same bytes\nout again, so everything allocated from it before is gone. Reading such a\nvalue after the call reads memory that is freed or reused.\n\nThis follows the function's own statements in order; it does not see a\nloop carrying a value from one iteration to the next, or a free inside a\ncallee.\n\nAn allocator is not a value allocated from the arena: after free_all it\ncan allocate again."},
+	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",
+		"A channel, a send, a receive, closing or iterating a channel, a select, an\nasync function and an await are written in Gyro, and their code is in\nstdlib. The compiler never loads a module the program did not import, so a\nprogram that uses one has to load stdlib itself.\n\nImport something from it, such as println: import { println } from \"stdlib\""},
 	EFormatEscapes: {"format value outlives its statement",
 		"A string literal with a #{} in it is a Format: a record of its pieces\nthat borrows what it names and allocates nothing. It lives in the frame of\nthe statement that wrote it, so it can only be passed on as an argument.\nBinding, returning, storing, sending or capturing it would keep the\nborrow past the statement.\n\nTo get text, call format(allocator, ...) from mem, which builds a string\nin the allocator it is given."},
 	EEscapingLocalView: {"view outlives the storage behind it",

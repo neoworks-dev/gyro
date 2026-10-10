@@ -1,3 +1,5 @@
+import { println } from "stdlib"
+
 // `code(A, B): C` is the address of a function and nothing beside it.
 // `&f` on a declared function is how one is made, and the refusals are
 // the things a bare address cannot answer.

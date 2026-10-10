@@ -172,7 +172,9 @@ are functions of this module too: `chan_new`, `chan_send`, `chan_recv`,
 not exported, and a program does not call them: lowering does, for `chan<T>`,
 `<-`, `close`, `for..in` and `select`. They take and answer addresses,
 because a channel moves the bytes of an element and knows nothing of `T`
-but its size.
+but its size. A program that uses any of these constructs, or an `async`
+function or an `await`, has to load `stdlib` (E0620 otherwise): the compiler
+never loads a module the program did not import.
 
 Atomics ([chapter 13.1](ch13-01-threads.md)):
 

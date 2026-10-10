@@ -46,11 +46,6 @@ type File struct {
 	Name    string
 	Imports []*Import
 	Decls   []Decl
-	// Concurrent is set when the file contains something whose operations
-	// are library code in stdlib rather than syntax with a meaning of its
-	// own: a channel, a send or a receive, a select, an async function or
-	// an await. The loader brings stdlib into a program that has one.
-	Concurrent bool
 }
 
 func (f *File) Pos() int { return 0 }

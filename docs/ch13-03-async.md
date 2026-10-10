@@ -20,6 +20,11 @@ export async fn fetch_all(urls: string[]): (Array<string>, error?) {
 }
 ```
 
+An `async` function and an `await` are implemented in `stdlib`, so a
+program that writes either has to load it: any import from `stdlib` does.
+Without one the compiler reports E0620 at the construct rather than loading
+the module itself.
+
 `async fn main` is allowed; the runtime drives it.
 
 ```gyro

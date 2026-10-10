@@ -98,6 +98,7 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 		return c.recvExpr(e)
 
 	case *ast.ChanLit:
+		c.requireStdlib(e.Pos(), "a channel")
 		elem := c.resolveType(e.Elem)
 		if e.Cap != nil {
 			capType := c.expr(e.Cap)
@@ -1411,6 +1412,7 @@ func (c *checker) namedStructLit(e *ast.StructLit, strct *types.Struct) {
 // ---------------------------------------------------------------------------
 
 func (c *checker) recvExpr(e *ast.RecvExpr) types.Type {
+	c.requireStdlib(e.Offset, "a receive")
 	operand := c.expr(e.Chan)
 	if channel, ok := operand.(*types.Chan); ok {
 		return channel.Elem
@@ -1422,6 +1424,7 @@ func (c *checker) recvExpr(e *ast.RecvExpr) types.Type {
 }
 
 func (c *checker) awaitExpr(e *ast.AwaitExpr) types.Type {
+	c.requireStdlib(e.Offset, "an await")
 	if c.fn != nil && !c.fn.async {
 		c.errorf(e.Offset, "await only works inside an async fn")
 	}
@@ -1705,6 +1708,9 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 		c.settleAllocation(captured)
 	}
 
+	if e.Async {
+		c.requireStdlib(e.Pos(), "an async function")
+	}
 	sig := &types.Func{Async: e.Async, Required: len(e.Params)}
 
 	savedFn, savedFacts, savedFloor := c.fn, c.facts, c.allocFloor

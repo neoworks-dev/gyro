@@ -116,6 +116,8 @@ rendezvous, and a thread that has to wait sleeps on a futex word rather than
 spinning. A closed channel yields zeroed memory with `open` false — which is
 exactly why the language makes reading that value a compile error.
 
-A program that uses a channel, a `select`, an `async` function or an `await`
-gets `stdlib` loaded whether or not it imports anything from it, since the
-library is what implements them; nothing is brought into scope by that.
+A program that creates, sends on, receives from, closes or iterates a
+channel, or writes a `select`, has to load `stdlib`, since the library is
+what implements them. The compiler loads nothing on a program's behalf, so
+a program that imports nothing from `stdlib` is rejected at the construct
+(E0620), the way string interpolation is rejected when `mem` is not loaded.

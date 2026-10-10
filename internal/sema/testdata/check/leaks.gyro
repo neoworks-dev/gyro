@@ -3,6 +3,7 @@
 // program from compiling.
 
 import { alloc, free, heap } from "mem"
+import { println } from "stdlib"
 
 struct Node {
     value: i32

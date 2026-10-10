@@ -4170,15 +4170,17 @@ one cell per type, a `thread_local` global named for the type.
 **`await` of a call that returns nothing now waits.** It used to evaluate
 the call and join nothing, which the chapter on async said it did not do.
 
-**`stdlib` is loaded for a program that needs it.** The library is what
-implements a channel, so a file that writes one needs the module whether or
-not it imports a name from it. A file with a `chan`, `select`, `await`,
-`async` or `<-` token makes the loader add `stdlib` to the program, ahead of
-the root, without binding anything in scope. Several corpus programs use
-channels with no import at all. **Rejected: loading `stdlib` always**, which
-would make "this program does not load mem" (E0616) impossible to reach.
-**Rejected: a diagnostic for a program that uses a channel and does not
-import `stdlib`**, which would reject programs the corpus already holds.
+**A program that uses these constructs must load `stdlib`.** The library is
+what implements a channel, a `select`, an async function and an `await`, and
+the compiler loads no module on a program's behalf. A program whose graph
+does not contain `stdlib` gets E0620 at each such construct, worded like the
+E0616 for string interpolation without `mem`: "a channel is implemented in
+stdlib; this program does not load stdlib". **Rejected: the loader adding
+`stdlib` when a file has a `chan`, `select`, `await`, `async` or `<-`
+token**, which was built first: it makes what a program contains depend on
+what it happens to write, and it is the only place the compiler would load
+anything unasked. **Rejected: loading `stdlib` always**, which would make
+"this program does not load mem" (E0616) impossible to reach.
 
 **Rejected: keeping the IR instructions and having the backend call Gyro
 functions for them.** The backend would need to know the names of library

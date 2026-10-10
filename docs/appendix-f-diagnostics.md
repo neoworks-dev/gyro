@@ -107,6 +107,7 @@ A sample, so the ranges have a shape:
 | E0633 | a value used after its arena was freed or reset |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
+| E0620 | a channel, send, receive, select, async function or await in a program that does not load `stdlib` |
 | W0701 | a possible leak |
 | W0801 | a spawned closure sharing a reference |
 
