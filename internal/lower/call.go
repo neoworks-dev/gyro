@@ -646,10 +646,6 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		Result: metals.TStr,
 	}
 	sw := &metals.Switch{X: "tag"}
-	sw.Cases = append(sw.Cases, metals.SwitchCase{Value: 0, Body: []metals.Instr{
-		&metals.VariantField{Dst: "native", X: "e", Variant: 0, Index: 0},
-		&metals.Return{Val: "native"},
-	}})
 
 	for _, errType := range f.l.errTypes {
 		index := f.l.errVariant[errType]

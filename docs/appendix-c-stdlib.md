@@ -188,7 +188,11 @@ export fn align<T>(): usize !{}
 
 export fn panic(message: string) !{}
 
-export fn format(a: Allocator, value: Format): string !{}
+export safe fn format(a: Allocator, value: Format): string !{}
+
+// A string between double quotes, as a string shows inside a composite:
+// \", \\, \n, \r and \t escaped, any other control byte as \xNN.
+export safe fn quote(a: Allocator, text: string): string !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
@@ -355,6 +359,30 @@ number is `"abc" is not an i32`. A radix outside 2 to 36 is a bug in the
 caller and panics. Every failure allocates its message on the heap, and the
 error is a `ParseError`.
 
+### `float`
+
+Writing and reading a `f64`, exactly, in Gyro over big naturals. `println`
+and `convert` are written over it; a program may use it for the same.
+
+```gyro
+export safe fn shortest(v: f64): string !{}
+export safe fn write(v: f64, to: anyptr): usize !{}
+export safe fn parse(text: string): (f64, i32) !{}
+export const READ_OK: i32 = 0
+export const READ_SYNTAX: i32 = 1
+export const READ_RANGE: i32 = 2
+```
+
+`shortest` is the fewest digits that read back as `v`, the nearest of those,
+and the even digit on an exact tie, with the exponent form from `1e+06` up and
+from `1e-05` down: `12.56636`, `12`, `1e+21`, `1e-05`, `NaN`, `+Inf`, `-0`.
+`write` puts the same text at an address that has room for forty bytes and
+answers its length. `parse` reads a sign, digits, a point, an exponent, or
+`inf`, `infinity` or `nan` in either case, rounds once to nearest with ties
+to even whatever the length, and says how it ended. A value that overflows,
+or falls into the subnormals or to zero and loses digits, ends as
+`READ_RANGE`, with the value that rounding gave.
+
 ### `unsafe`
 
 The operations the compiler cannot check, each an `unsafe fn`
@@ -368,6 +396,10 @@ export unsafe fn ptr_to_int(p: anyptr): usize !{}
 export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
 export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
+
+export unsafe fn text_size(len: usize): usize !{}
+export unsafe fn text_seal(block: anyptr, len: usize): string !{}
+export unsafe fn text_bytes(text: string): u8[] !{}
 
 export unsafe fn raw_alloc(size: usize, align: usize): anyptr? !{}
 export unsafe fn raw_free(pointer: anyptr) !{}
@@ -385,12 +417,14 @@ export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, 
 export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }
 ```
 
-`cast`, `slice_from_raw`, `env_of`/`with_env` and the `syscall` functions
-are answered by lowering; each `syscall` is the METALS `syscall`
-instruction, and its arguments must be integers, `bool`s or pointers. `ptr_from_int` is
-Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
-runtime functions: METALS has no instruction that makes a pointer of an
-integer.
+`cast`, `offset`, `slice_from_raw`, `env_of`/`with_env` and the `syscall`
+functions are answered by lowering; each `syscall` is the METALS `syscall`
+instruction, and its arguments must be integers, `bool`s or pointers.
+`offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
+Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
+`ptr_from_int` is Gyro over `cast` and a private intrinsic, `ptr_to_int`,
+`text_seal`, `text_bytes` and the rest are runtime functions: METALS has no
+instruction that makes a pointer of an integer or a string of an address.
 
 ### `cstring`
 
