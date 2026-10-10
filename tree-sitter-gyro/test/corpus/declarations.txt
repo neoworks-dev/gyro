@@ -971,6 +971,132 @@ export trait Widget<T>: Element & Named {
               (type_identifier))))))))
 
 ==================
+trait with associated types
+==================
+
+trait Container {
+  type Item
+  type Iter: Iterator<Self::Item> & Named
+  fn first(self): Self::Item
+}
+
+---
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (trait_body
+      (associated_type
+        (type_identifier))
+      (associated_type
+        (type_identifier)
+        (bounds
+          (named_type
+            (type_identifier)
+            (type_arguments
+              (named_type
+                (type_identifier)
+                (type_identifier))))
+          (named_type
+            (type_identifier))))
+      (function_declaration
+        (identifier)
+        (parameter_list
+          (receiver))
+        (named_type
+          (type_identifier)
+          (type_identifier))))))
+
+==================
+impl giving an associated type
+==================
+
+impl Container for Box<T> {
+  type Item = T
+}
+
+---
+
+(source_file
+  (impl_declaration
+    (named_type
+      (type_identifier))
+    (named_type
+      (type_identifier)
+      (type_arguments
+        (named_type
+          (type_identifier))))
+    (impl_body
+      (associated_type
+        (type_identifier)
+        (named_type
+          (type_identifier))))))
+
+==================
+bound pinning an associated type
+==================
+
+fn total<C: Pair<i32, Item = string>>(c: C): i32 {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (type_parameters
+      (type_parameter
+        (type_identifier)
+        (bounds
+          (named_type
+            (type_identifier)
+            (type_arguments
+              (named_type
+                (type_identifier))
+              (associated_type_binding
+                (type_identifier)
+                (named_type
+                  (type_identifier))))))))
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block)))
+
+==================
+type is an ordinary identifier outside a member
+==================
+
+fn f(e: Event): i32 {
+  var type = e.type
+  return type
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (block
+      (variable_declaration
+        (identifier)
+        (field_expression
+          (identifier)
+          (identifier)))
+      (return_statement
+        (identifier)))))
+
+==================
 impl blocks and derived impls
 ==================
 

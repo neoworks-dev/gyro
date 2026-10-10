@@ -152,6 +152,10 @@
 
 "chan" @keyword.type
 
+; `type` is contextual: it is a keyword only as the first word of an
+; associated type in a trait or an impl.
+(associated_type "type" @keyword.type)
+
 ; `code` is contextual: this only fires inside a code pointer type, so a
 ; variable called code is still a variable.
 (code_type "code" @keyword.type)
