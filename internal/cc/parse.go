@@ -43,6 +43,8 @@ type parser struct {
 	anonymous int
 	// asmLabel is the symbol the last declarator was renamed to.
 	asmLabel string
+	// poisoned is the tags of aggregates a tolerant parse dropped.
+	poisoned map[string]bool
 
 	// tolerant is the mode a header is read in. A header declares far
 	// more than any program uses, written in whatever C its library
@@ -199,6 +201,8 @@ func (p *parser) attempt(step func()) (reason string) {
 // consumes something, which is what keeps a header made of nothing but
 // unreadable declarations from looping.
 func (p *parser) skipDeclaration() {
+	start := p.i
+	defer func() { p.poison(p.toks[start:p.i]) }()
 	depth := 0
 	beforeBrace := ""
 	prev := ""
@@ -225,6 +229,41 @@ func (p *parser) skipDeclaration() {
 			return
 		}
 		prev = tok.text
+	}
+}
+
+// poison remembers the tags a dropped declaration was defining. A later
+// mention of one would open it afresh as an incomplete type, and a header
+// whose struct could not be read would then appear to declare an opaque
+// one — which says something false about it.
+func (p *parser) poison(skipped []token) {
+	for i := 0; i < len(skipped); i++ {
+		if !skipped[i].is("struct") && !skipped[i].is("union") {
+			continue
+		}
+		j := i + 1
+		for j < len(skipped) && skipped[j].kind == tokIdent &&
+			(skipped[j].text == "__attribute__" || skipped[j].text == "__attribute") {
+			depth := 0
+			j++
+			for ; j < len(skipped); j++ {
+				if skipped[j].is("(") {
+					depth++
+				} else if skipped[j].is(")") {
+					depth--
+					if depth == 0 {
+						j++
+						break
+					}
+				}
+			}
+		}
+		if j+1 < len(skipped) && skipped[j].kind == tokIdent && skipped[j+1].is("{") {
+			if p.poisoned == nil {
+				p.poisoned = map[string]bool{}
+			}
+			p.poisoned[skipped[j].text] = true
+		}
 	}
 }
 
@@ -695,6 +734,9 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 		tag = fmt.Sprintf("%s$anon%d", p.stem, p.anonymous)
 	}
 
+	if p.poisoned[tag] {
+		p.fail(pos, "%s %s could not be read where it was defined, so nothing that mentions it can be", keyword, tag)
+	}
 	typ, known := p.structs[tag]
 	if !known {
 		typ = &ctype{kind: kind, tag: tag}
