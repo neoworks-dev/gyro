@@ -132,7 +132,7 @@ func parseUnit(path, source string, opt *Options) (*translation, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsed, err := parse(path, toks)
+	parsed, err := parse(path, toks, opt.tolerant())
 	if err != nil {
 		return nil, err
 	}

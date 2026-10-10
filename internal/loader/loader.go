@@ -33,6 +33,13 @@ type Module struct {
 	// generated body-less declarations the checker sees instead of
 	// source the user wrote.
 	Foreign *metals.Module
+	// Header is set on a module read from C headers. Problems maps each
+	// name an importer asked for that the headers declare and no import
+	// can bring in, or do not declare at all, to why; the checker reports
+	// it where the name is imported, since that is where it means
+	// something.
+	Header   bool
+	Problems map[string]string
 }
 
 // Program is a root module plus everything it transitively imports.
@@ -80,8 +87,10 @@ func LoadFromSource(resolver Resolver, rootPath string, source string, bag *diag
 		bag:      bag,
 		modules:  map[string]*Module{},
 		loading:  map[string]bool{},
+		headers:  map[string]*headerImport{},
 	}
 	root := state.add(absolute, source)
+	state.finishHeaders()
 	return &Program{Root: root, Modules: state.order}, nil
 }
 
@@ -95,6 +104,12 @@ type loadState struct {
 	// chain is the stack of in-progress module paths, for the cycle trace.
 	chain []string
 	order []*Module
+	// headers are the C headers the program imports, keyed by specifier,
+	// and pending are the ones not read yet. A header is read after the
+	// whole graph is loaded, since what it provides is what every
+	// importer asks of it.
+	headers map[string]*headerImport
+	pending []*headerImport
 }
 
 // add parses a module and recursively loads its dependencies, appending the
@@ -121,17 +136,26 @@ func (s *loadState) add(path, source string) *Module {
 
 func (s *loadState) resolveDependencies(module *Module) {
 	for _, imp := range module.Tree.Imports {
-		s.dependency(module, imp.Path, imp.Offset)
+		s.dependency(module, imp.Path, imp.Offset, imp.Names, imp.Wildcard != "")
 	}
 	for _, decl := range module.Tree.Decls {
 		if export, ok := decl.(*ast.ExportDecl); ok && export.Path != "" {
-			s.dependency(module, export.Path, export.Offset)
+			s.dependency(module, export.Path, export.Offset, export.Names, export.Star)
 		}
 	}
 }
 
-func (s *loadState) dependency(from *Module, specifier string, offset int) {
-	if specifier == "" || from.Deps[specifier] != nil {
+func (s *loadState) dependency(from *Module, specifier string, offset int, names []ast.ImportName, wildcard bool) {
+	if specifier == "" {
+		return
+	}
+	// A header is asked once for everything its importers name, so each
+	// import of it adds to the request even when the module exists.
+	if isHeaderSpecifier(specifier) {
+		s.headerDependency(from, specifier, offset, names)
+		return
+	}
+	if from.Deps[specifier] != nil {
 		return
 	}
 

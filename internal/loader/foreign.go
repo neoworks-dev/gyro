@@ -37,7 +37,14 @@ func compileForeign(path, source string) (*metals.Module, error) {
 	if foreignProducer(path) != "cc" {
 		return nil, fmt.Errorf("%s: no compiler for this kind of module", path)
 	}
-	module, err := cc.Compile(path, source, nil)
+	// A C file includes the system's headers like any other, so the
+	// compiler is asked where they are. A machine without one compiles
+	// the files that include nothing.
+	opt := &cc.Options{}
+	if dirs, err := cc.SystemInclude(); err == nil {
+		opt.Include = dirs
+	}
+	module, err := cc.Compile(path, source, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -96,43 +103,15 @@ func header(module *metals.Module) (string, error) {
 		if variadic {
 			declared = declared[:len(declared)-2]
 		}
-
-		params := make([]string, len(declared))
-		spellable := true
+		types := make([]metals.Type, len(declared))
 		for i, param := range declared {
-			spelling, err := h.spell(param.Type)
-			if err != nil {
-				spellable = false
-				break
-			}
-			params[i] = fmt.Sprintf("a%d: %s", i, spelling)
+			types[i] = param.Type
 		}
-		if !spellable {
+		text, err := h.function(fn.Name, types, fn.Result, variadic, fn.Async)
+		if err != nil {
 			continue
 		}
-		if variadic {
-			// C's `...` is spelled here as what the callee actually
-			// gets: the addresses of the arguments after the last named
-			// one. C hides that and reads through them anyway, so a
-			// caller that writes the addresses is writing what happens —
-			// and, unlike C, has somewhere the values demonstrably live.
-			params = append(params, fmt.Sprintf("a%d: ...anyptr", len(declared)))
-		}
-
-		result := ""
-		if fn.Result != nil {
-			spelling, err := h.spell(fn.Result)
-			if err != nil {
-				continue
-			}
-			result = ": " + spelling
-		}
-
-		prefix := ""
-		if fn.Async {
-			prefix = "async "
-		}
-		fmt.Fprintf(&decls, "export unsafe %sfn %s(%s)%s\n", prefix, fn.Name, strings.Join(params, ", "), result)
+		decls.WriteString(text)
 	}
 
 	var out strings.Builder
@@ -145,6 +124,44 @@ func header(module *metals.Module) (string, error) {
 	}
 	out.WriteString(decls.String())
 	return out.String(), nil
+}
+
+// function renders one body-less declaration, or says why it has no
+// spelling. Each is an `unsafe fn`: nothing about the C behind it is
+// knowable, and an `import safe` is what vouches for the ones a program
+// uses.
+func (h *headerGen) function(name string, declared []metals.Type, result metals.Type, variadic, async bool) (string, error) {
+	params := make([]string, len(declared))
+	for i, param := range declared {
+		spelling, err := h.spell(param)
+		if err != nil {
+			return "", err
+		}
+		params[i] = fmt.Sprintf("a%d: %s", i, spelling)
+	}
+	if variadic {
+		// C's `...` is spelled here as what the callee actually
+		// gets: the addresses of the arguments after the last named
+		// one. C hides that and reads through them anyway, so a
+		// caller that writes the addresses is writing what happens —
+		// and, unlike C, has somewhere the values demonstrably live.
+		params = append(params, fmt.Sprintf("a%d: ...anyptr", len(declared)))
+	}
+
+	out := ""
+	if result != nil {
+		spelling, err := h.spell(result)
+		if err != nil {
+			return "", err
+		}
+		out = ": " + spelling
+	}
+
+	prefix := ""
+	if async {
+		prefix = "async "
+	}
+	return fmt.Sprintf("export unsafe %sfn %s(%s)%s\n", prefix, name, strings.Join(params, ", "), out), nil
 }
 
 // isVariadic reports whether an export is a C variadic function. METALS

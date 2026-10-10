@@ -580,50 +580,6 @@ const gy_str *gy_from_utf8(const gy_allocator *a, const void **slice) {
     return out;
 }
 
-/* ------------------------------------------------------------------ */
-/* The foreign boundary: marshalling for @extern.                     */
-/* ------------------------------------------------------------------ */
-
-/* One conversion is left here, and C's own representation forces it: a
- * Gyro string is length-prefixed where C wants a NUL, so it cannot be
- * lent out as it stands. The copy lives for the duration of the call and
- * gy_ffi_release ends it. A slice needs no copy at all — its elements are
- * already laid out the way C reads them — so gy_ffi_data lends the
- * pointer, and a foreign function that keeps it keeps a dangling one. */
-
-/* The other direction, for a foreign function that returns text. The
- * bytes belong to the library and may be reused on its next call, so the
- * string Gyro sees is a copy; a null pointer becomes the empty string,
- * since a Gyro string is never absent. */
-const gy_str *gy_ffi_from_cstr(const char *text) {
-    return text ? gy_str_c(text) : gy_str_alloc(0);
-}
-
-void *gy_ffi_cstr(const gy_str *s) {
-    char *out = malloc((size_t)s->len + 1);
-    memcpy(out, s->bytes, (size_t)s->len);
-    out[s->len] = '\0';
-    return out;
-}
-
-/* The elements are the bytes C reads, so this is the slice's own data
- * pointer and nothing is copied or released. */
-void *gy_ffi_data(const void **slice) { return (void *)slice[0]; }
-
-void gy_ffi_release(void *buffer) { free(buffer); }
-
-/* An opt<T> is { flag, payload } with flag 0 for null, and C's one
- * absent value is the null pointer, so the two convert both ways. */
-void *gy_ffi_opt_handle(const void **opt) {
-    return opt[0] ? (void *)opt[1] : NULL;
-}
-
-void gy_ffi_handle_opt(void *out, void *handle) {
-    void **cell = out;
-    cell[0] = (void *)(intptr_t)(handle != NULL);
-    cell[1] = handle;
-}
-
 /* gy_str_runes decodes UTF-8 into a heap slice of code points, Go
  * semantics: an invalid sequence yields U+FFFD and consumes one byte. */
 void gy_str_runes(void *out, const gy_str *s, const gy_allocator *a) {

@@ -257,9 +257,10 @@ Obligations beyond the obvious:
 
 ## Foreign calls
 
-A program that calls a C function ([chapter 15](ch15-00-c-interop.md))
-adds two pieces to a build, and both live in `internal/crt` rather than
-in the backend, because neither is codegen.
+A program that calls a C function ([chapter 15](ch15-00-c-interop.md)),
+by importing a header or because a `.c` file calls one it does not define,
+adds a generated shim to a build, and it lives in `internal/crt` rather
+than in the backend, because it is not codegen.
 
 **A generated shim, one wrapper per foreign symbol.** `internal/crt`'s
 `Shim` renders it from the module's `c:`-scheme imports; it is compiled
@@ -294,19 +295,15 @@ qsort's comparator. Writing either the other way round compiles to
 something else that also compiles, which is why the shim builds a real
 declarator rather than concatenating.
 
-The libraries come from the same imports and become `-l` flags. Nothing
-in the backend knows what SDL is.
+A `_Bool` is declared `_Bool` and not `int`: a callee sets the low byte
+of the register and leaves the rest, so the wrapper has to read exactly
+what it wrote.
 
-**Marshalling as ordinary runtime calls.** `internal/lower` wraps a
-foreign call in `ffi.cstr`, `ffi.data` and `ffi.release`, so what reaches
-codegen has scalar, handle and record arguments only. `gy_ffi_cstr`
-NUL-terminates a copy of a string's bytes, `gy_ffi_from_cstr` copies text
-back the other way, and `gy_ffi_opt_handle`/`gy_ffi_handle_opt` convert
-between a null pointer and `opt<T>`'s flag. A slice needs no conversion
-at all — its elements are already what C reads — so `gy_ffi_data` lends
-the slice's own pointer and nothing is released. The string copy is
-released after the call returns: a library that keeps that pointer, or
-the slice's, keeps a dangling one.
+The import's module names the library: `c:c` is the C library and the math
+library, which are always linked, and `c:<package>` is a pkg-config
+package, whose `--libs` are appended to the link line. Nothing in the
+backend knows what SDL is, and nothing converts a value: a call's arguments
+are the C types the header declared, so there is no marshalling to do.
 
 ## Linear memory
 

@@ -1,28 +1,21 @@
-// A linked C library shares this address space, so an address crosses
-// `@extern` as itself: an out-parameter is the pointer C declared, and a
-// callback is the one word C has room for. Nothing is copied, because
+// A linked C library shares this address space, so an address crosses a
+// header import as itself: an out-parameter is the pointer C declared, and
+// a callback is the one word C has room for. Nothing is copied, because
 // there is no second heap to copy into.
 
 import { println } from "stdlib"
 import { cast } from "unsafe"
-
-// An out-parameter. frexp answers the fraction and writes the exponent
-// through the caller's `int *`.
-@extern("m")
-safe fn frexp(value: f64, exponent: *i32): f64 !{}
-
-// A callback, and `void *` at both ends of it. qsort is the API that
-// motivated every part of this: it takes the base as an address, the
-// stride as a byte count, and a comparator it calls per pair.
-@extern("c")
-safe fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
-
-@extern("c")
-safe fn memcpy(to: anyptr, from: anyptr, size: usize): anyptr !{}
+import safe { frexp } from "<math.h>"
+import safe { qsort } from "<stdlib.h>"
+import safe { memcpy } from "<string.h>"
 
 // C calls this one, on C's terms: two addresses into the array it was
-// handed, and a sign for the answer.
-safe fn ascending(a: anyptr, b: anyptr): i32 {
+// handed, and a sign for the answer. The comparator's type is the one
+// the header gave qsort: a code pointer over two nullable addresses.
+safe fn ascending(a: anyptr?, b: anyptr?): i32 {
+  if a == null || b == null {
+    return 0
+  }
   var left = cast<i32>(a)
   var right = cast<i32>(b)
   if *left < *right {
@@ -34,7 +27,7 @@ safe fn ascending(a: anyptr, b: anyptr): i32 {
   return 0
 }
 
-fn descending(a: anyptr, b: anyptr): i32 {
+fn descending(a: anyptr?, b: anyptr?): i32 {
   return 0 - ascending(a, b)
 }
 

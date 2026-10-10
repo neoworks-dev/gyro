@@ -784,7 +784,7 @@ unsafe and safe functions
 unsafe fn danger(p: anyptr): i32 !{}
 export safe fn vouched() {}
 safe async fn later() {}
-@extern("m")
+@gpu("m")
 safe fn sqrt(x: f64): f64 !{}
 unsafe fn Cell::peek(self): i32 {}
 

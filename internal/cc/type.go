@@ -35,6 +35,7 @@ const (
 	kULong
 	kFloat
 	kDouble
+	kLongDouble
 	kPtr
 	kArray
 	kStruct
@@ -44,6 +45,9 @@ const (
 
 type ctype struct {
 	kind typeKind
+	// usize marks an unsigned long that a header called size_t, which
+	// METALS spells with its own pointer-sized type.
+	usize bool
 	// elem is a pointer's target or an array's element type.
 	elem *ctype
 	// length is an array's element count, or -1 for the unspecified
@@ -119,6 +123,10 @@ var (
 	typeULong  = &ctype{kind: kULong}
 	typeFloat  = &ctype{kind: kFloat}
 	typeDouble = &ctype{kind: kDouble}
+	// typeLongDouble can be named and held in a declaration. It has no
+	// METALS type, so anything that would need one is refused where it
+	// is lowered.
+	typeLongDouble = &ctype{kind: kLongDouble}
 )
 
 func pointerTo(elem *ctype) *ctype { return &ctype{kind: kPtr, elem: elem} }
@@ -303,6 +311,8 @@ func (t *ctype) String() string {
 		return "float"
 	case kDouble:
 		return "double"
+	case kLongDouble:
+		return "long double"
 	case kPtr:
 		return t.elem.String() + " *"
 	case kArray:
@@ -374,6 +384,9 @@ func (t *ctype) metalsType() metals.Type {
 	case kLong:
 		return metals.TInt64
 	case kULong:
+		if t.usize {
+			return metals.TUsize
+		}
 		return metals.TUint64
 	case kFloat:
 		return metals.TF32
@@ -417,6 +430,8 @@ func (t *ctype) metalsType() metals.Type {
 		return &metals.ArrayOf{Elem: t.elem.metalsType(), Len: t.length}
 	case kStruct, kUnion:
 		return &metals.Named{Name: t.tag}
+	case kLongDouble:
+		panic(failure{errorAt(position{}, "long double is the x87 80-bit type, which METALS has no primitive for")})
 	}
 	return nil
 }

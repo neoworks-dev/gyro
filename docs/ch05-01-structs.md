@@ -118,5 +118,6 @@ overloading, and no interface a struct declares it satisfies. A struct is
 data; anything a contract is needed for is duck-typed on the methods that
 exist ([chapter 1.1](ch01-01-what-is-gyro.md)).
 
-A fieldless struct marked `@extern` is a special case: an opaque handle to
-something a C library owns ([chapter 15](ch15-00-c-interop.md)).
+A struct imported from a C header that the header never completes arrives
+fieldless: an opaque handle to something a C library owns
+([chapter 15](ch15-00-c-interop.md)).

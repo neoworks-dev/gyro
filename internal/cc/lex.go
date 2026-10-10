@@ -1,6 +1,8 @@
 package cc
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -29,6 +31,9 @@ const (
 	tokChar
 	tokStr
 	tokPunct
+	// tokInvalid is a run of characters that scans as one token and is
+	// not one the language has. It carries its complaint in sval.
+	tokInvalid
 )
 
 type token struct {
@@ -149,12 +154,10 @@ func (s *scanner) next() (token, error) {
 		for s.pos < len(s.src) && isIdentPart(s.src[s.pos]) {
 			s.pos++
 		}
-		text := s.src[start:s.pos]
-		kind := tokIdent
-		if keywords[text] {
-			kind = tokKeyword
-		}
-		return mark(token{kind: kind, text: text}), nil
+		// A keyword is an identifier here. The preprocessor works on
+		// names, and a macro's parameter may be spelled `signed`;
+		// what is a keyword is decided once the expansion is done.
+		return mark(token{kind: tokIdent, text: s.src[start:s.pos]}), nil
 
 	case ch >= '0' && ch <= '9',
 		ch == '.' && s.pos+1 < len(s.src) && isDigit(s.src[s.pos+1]):
@@ -309,16 +312,27 @@ func (s *scanner) number(pos position) (token, error) {
 		s.pos++
 	}
 done:
-	if s.pos < len(s.src) && isIdentPart(s.src[s.pos]) {
-		return token{}, errorAt(pos, "%q is not a number", s.src[start:s.pos+1])
+	if s.pos < len(s.src) && (isIdentPart(s.src[s.pos]) || s.src[s.pos] == '.') {
+		// A run like `32.h` is a preprocessing number: C scans it as one
+		// token and only complains if something tries to read it as a
+		// number, which text in a branch that is not taken never does.
+		// So it is a token that says what is wrong with it, and the
+		// parser reports that if the token ever reaches it.
+		for s.pos < len(s.src) && (isIdentPart(s.src[s.pos]) || s.src[s.pos] == '.') {
+			s.pos++
+		}
+		raw := s.src[start:s.pos]
+		return token{kind: tokInvalid, text: raw, sval: fmt.Sprintf("%q is not a number", raw)}, nil
 	}
 	tok.text = s.src[start:s.pos]
 
 	if float {
 		value, err := strconv.ParseFloat(digits, 64)
-		if err != nil {
+		if err != nil && !math.IsInf(value, 0) {
 			return token{}, errorAt(pos, "%s is not a number this compiler can read", digits)
 		}
+		// A literal too large for a double is infinity, which is what
+		// <math.h> writes HUGE_VAL as: `1e10000`.
 		tok.kind = tokFloat
 		tok.fval = value
 		return tok, nil
@@ -374,6 +388,14 @@ func (s *scanner) stringLiteral(pos position) (token, error) {
 		if s.src[s.pos] == '"' {
 			s.pos++
 			return token{kind: tokStr, text: s.src[start:s.pos], sval: out.String()}, nil
+		}
+		// A backslash at the end of a line splices it to the next, in
+		// the middle of a string as anywhere else.
+		if s.src[s.pos] == '\\' && s.lineBreakAt(s.pos+1) > 0 {
+			s.pos += 1 + s.lineBreakAt(s.pos+1)
+			s.line++
+			s.lineStart = s.pos
+			continue
 		}
 		ch, err := s.escapedByte(pos)
 		if err != nil {

@@ -77,6 +77,7 @@ A sample, so the ranges have a shape:
 | E0218 | a function marked both `unsafe` and `safe` |
 | E0303 | circular import |
 | E0305 | not exported by that module |
+| E0307 | a name that cannot be imported from a C header, with the reason |
 | E0401 | undeclared name |
 | E0501 | mismatched types |
 | E0502 | literal out of range for its type |
@@ -93,7 +94,6 @@ A sample, so the ranges have a shape:
 | E0631 | a value returned or stored past the arena it was allocated from |
 | E0632 | a view written in a loop body stored outside the loop |
 | E0633 | a value used after its arena was freed or reset |
-| E0614 | an `@extern` signature carrying something that cannot cross |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
 | W0701 | a possible leak |

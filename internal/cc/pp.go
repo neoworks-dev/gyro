@@ -42,6 +42,25 @@ type Options struct {
 	// translation unit finds the ones it links against. Nil means the
 	// filesystem, as for Read.
 	List func(dir string) ([]string, error)
+	// Package names the pkg-config package whose library a function the
+	// program declares and nothing defines is resolved against. Empty
+	// means the C library, which is always linked.
+	Package string
+	// Declarations reads the translation unit as a header: what it
+	// cannot read is dropped rather than refused, and function bodies
+	// are skipped.
+	Declarations bool
+}
+
+// tolerant says the translation unit is a header being imported rather
+// than a program being compiled; see parser.tolerant.
+func (o *Options) tolerant() bool { return o != nil && o.Declarations }
+
+func (o *Options) library() string {
+	if o == nil || o.Package == "" {
+		return "c"
+	}
+	return o.Package
 }
 
 func (o *Options) read(path string) (string, error) {
@@ -103,6 +122,14 @@ type preprocessor struct {
 }
 
 func preprocess(file, source string, opt *Options) ([]token, error) {
+	toks, _, err := preprocessKeeping(file, source, opt)
+	return toks, err
+}
+
+// preprocessKeeping is preprocess that also hands back the preprocessor,
+// whose macro table is what an import of a header reads its constants
+// from.
+func preprocessKeeping(file, source string, opt *Options) ([]token, *preprocessor, error) {
 	pp := &preprocessor{
 		opt:    opt,
 		macros: map[string]*macro{},
@@ -113,18 +140,18 @@ func preprocess(file, source string, opt *Options) ([]token, error) {
 	if opt != nil {
 		for _, d := range opt.Define {
 			if err := pp.commandLineDefine(d); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
 
 	toks, err := scan(file, source)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out, err := pp.run(toks)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// A macro may produce a keyword, and `##` may paste one together, so
 	// what is a keyword is decided after expansion rather than during the
@@ -134,7 +161,7 @@ func preprocess(file, source string, opt *Options) ([]token, error) {
 			out[i].kind = tokKeyword
 		}
 	}
-	return append(out, token{kind: tokEOF, pos: position{file: file}}), nil
+	return append(out, token{kind: tokEOF, pos: position{file: file}}), pp, nil
 }
 
 // predefine is the macro set a C program may assume. The target ones say
@@ -163,6 +190,42 @@ func (pp *preprocessor) predefine() {
 		"__BYTE_ORDER__":          "1234",
 		"__ORDER_LITTLE_ENDIAN__": "1234",
 		"__ORDER_BIG_ENDIAN__":    "4321",
+		"__WCHAR_MAX__":           "2147483647",
+		"__WCHAR_MIN__":           "(-2147483647 - 1)",
+		"__WINT_MAX__":            "4294967295U",
+		"__WINT_MIN__":            "0U",
+		"__SCHAR_MAX__":           "127",
+		"__SHRT_MAX__":            "32767",
+		"__INT_MAX__":             "2147483647",
+		"__LONG_MAX__":            "9223372036854775807L",
+		"__LONG_LONG_MAX__":       "9223372036854775807LL",
+		"__SIZE_MAX__":            "18446744073709551615UL",
+		"__PTRDIFF_MAX__":         "9223372036854775807L",
+		"__INTPTR_MAX__":          "9223372036854775807L",
+		"__UINTPTR_MAX__":         "18446744073709551615UL",
+		"__INTMAX_MAX__":          "9223372036854775807L",
+		"__UINTMAX_MAX__":         "18446744073709551615UL",
+		"__INT8_MAX__":            "127",
+		"__INT16_MAX__":           "32767",
+		"__INT32_MAX__":           "2147483647",
+		"__INT64_MAX__":           "9223372036854775807L",
+		"__UINT8_MAX__":           "255",
+		"__UINT16_MAX__":          "65535",
+		"__UINT32_MAX__":          "4294967295U",
+		"__UINT64_MAX__":          "18446744073709551615UL",
+		"__SIZE_TYPE__":           "unsigned long",
+		"__PTRDIFF_TYPE__":        "long",
+		"__WCHAR_TYPE__":          "int",
+		"__WINT_TYPE__":           "unsigned int",
+		"__INTMAX_TYPE__":         "long",
+		"__UINTMAX_TYPE__":        "unsigned long",
+		"__INTPTR_TYPE__":         "long",
+		"__UINTPTR_TYPE__":        "unsigned long",
+		"__SIZEOF_WCHAR_T__":      "4",
+		"__SIZEOF_WINT_T__":       "4",
+		"__SIZEOF_SIZE_T__":       "8",
+		"__SIZEOF_PTRDIFF_T__":    "8",
+		"__SIZEOF_LONG_DOUBLE__":  "16",
 		// The one a header can test to find out it is being read by this
 		// compiler rather than by clang through the wasm bridge.
 		"__gyro_cc__": "1",
@@ -212,7 +275,7 @@ func dropEOF(toks []token) []token {
 // The directive loop
 // ---------------------------------------------------------------------------
 
-func (pp *preprocessor) run(toks []token) ([]token, error) {
+func (pp *preprocessor) run(input []token) ([]token, error) {
 	var out []token
 	var conds []*condition
 
@@ -225,51 +288,82 @@ func (pp *preprocessor) run(toks []token) ([]token, error) {
 		return true
 	}
 
-	i := 0
-	for i < len(toks) {
-		tok := toks[i]
-		if tok.kind == tokEOF {
+	// The input is a queue with a front to push onto: an include or a
+	// macro expansion puts its tokens ahead of what is left, and doing
+	// that by copying the rest of the stream each time is quadratic in
+	// the size of the headers, which is what a real libc is.
+	q := &tokenQueue{buf: input}
+	for {
+		toks := q.rest()
+		if len(toks) == 0 || toks[0].kind == tokEOF {
 			break
 		}
+		tok := toks[0]
 
 		if tok.bol && tok.is("#") {
-			line, next := directiveLine(toks, i+1)
-			i = next
+			line, next := directiveLine(toks, 1)
+			q.drop(next)
 			var err error
 			conds, err = pp.directive(tok, line, conds, active())
 			if err != nil {
 				return nil, err
 			}
 			if pp.pending != nil {
-				toks = splice(toks, i, 0, pp.pending)
+				q.pushFront(pp.pending)
 				pp.pending = nil
 			}
 			continue
 		}
 
 		if !active() {
-			i++
+			q.drop(1)
 			continue
 		}
 
 		if tok.kind == tokIdent {
-			replacement, consumed, ok, err := pp.expandAt(toks, i)
+			replacement, consumed, ok, err := pp.expandAt(toks, 0)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
-				toks = splice(toks, i, consumed, replacement)
+				q.drop(consumed)
+				q.pushFront(replacement)
 				continue
 			}
 		}
 		out = append(out, tok)
-		i++
+		q.drop(1)
 	}
 
 	if len(conds) > 0 {
 		return nil, errorAt(conds[len(conds)-1].pos, "this conditional is never closed")
 	}
 	return out, nil
+}
+
+// tokenQueue is the preprocessor's input: tokens come off the front, and
+// an expansion or an included file goes back on it.
+type tokenQueue struct {
+	buf  []token
+	head int
+}
+
+func (q *tokenQueue) rest() []token { return q.buf[q.head:] }
+func (q *tokenQueue) drop(n int)    { q.head += n }
+
+func (q *tokenQueue) pushFront(with []token) {
+	if len(with) == 0 {
+		return
+	}
+	if q.head < len(with) {
+		remaining := q.buf[q.head:]
+		room := len(with) + len(remaining)/2 + 1024
+		grown := make([]token, room+len(remaining))
+		copy(grown[room:], remaining)
+		q.buf, q.head = grown, room
+	}
+	q.head -= len(with)
+	copy(q.buf[q.head:], with)
 }
 
 // directiveLine takes the rest of a directive's logical line: every token
@@ -369,7 +463,10 @@ func (pp *preprocessor) directive(hash token, line []token, conds []*condition, 
 
 	switch name {
 	case "include":
-		return conds, pp.include(line[0], rest)
+		return conds, pp.include(line[0], rest, false)
+
+	case "include_next":
+		return conds, pp.include(line[0], rest, true)
 
 	case "define":
 		return conds, pp.define(rest)
@@ -408,7 +505,7 @@ func (pp *preprocessor) directive(hash token, line []token, conds []*condition, 
 // #include
 // ---------------------------------------------------------------------------
 
-func (pp *preprocessor) include(directive token, rest []token) error {
+func (pp *preprocessor) include(directive token, rest []token, next bool) error {
 	path, angled, err := pp.includePath(directive, rest)
 	if err != nil {
 		return err
@@ -416,10 +513,15 @@ func (pp *preprocessor) include(directive token, rest []token) error {
 
 	// A bundled header answers before the search does, and only for an
 	// angled include: `"stdarg.h"` beside the program is the program's.
-	resolved, source, ok := bundledHeader(path, angled)
+	// An include_next is a header asking for the one it shadows, so the
+	// bundled set is the one thing it must not find.
+	resolved, source, ok := "", "", false
+	if !next {
+		resolved, source, ok = bundledHeader(path, angled)
+	}
 	if !ok {
 		var err error
-		resolved, source, err = pp.find(directive.pos.file, path, angled)
+		resolved, source, err = pp.find(directive.pos.file, path, angled, next)
 		if err != nil {
 			return err
 		}
@@ -474,7 +576,11 @@ func (pp *preprocessor) includePath(directive token, rest []token) (path string,
 	return "", false, errorAt(directive.pos, "#include names neither \"a file\" nor <a file>")
 }
 
-func (pp *preprocessor) find(from, path string, angled bool) (resolved, source string, err error) {
+// find searches for a header. An include_next continues the search after
+// the directory the including file was found in, which is how a header
+// wraps the system's header of the same name; a file that no directory
+// of the list holds, as a bundled one does not, starts from the top.
+func (pp *preprocessor) find(from, path string, angled, next bool) (resolved, source string, err error) {
 	var tried []string
 
 	try := func(candidate string) (string, string, bool) {
@@ -497,7 +603,16 @@ func (pp *preprocessor) find(from, path string, angled bool) (resolved, source s
 			}
 		}
 		if pp.opt != nil {
-			for _, dir := range pp.opt.Include {
+			dirs := pp.opt.Include
+			if next {
+				for i, dir := range dirs {
+					if filepath.Dir(from) == filepath.Join(dir, filepath.Dir(path)) {
+						dirs = dirs[i+1:]
+						break
+					}
+				}
+			}
+			for _, dir := range dirs {
 				if resolved, source, ok := try(filepath.Join(dir, path)); ok {
 					return resolved, source, nil
 				}
@@ -576,7 +691,9 @@ func (pp *preprocessor) define(rest []token) error {
 		rest = rest[i:]
 	}
 
-	m.body = rest
+	// A copy: the line is a view into the input queue, and the queue
+	// writes over what it has already consumed.
+	m.body = append([]token(nil), rest...)
 	if len(m.body) > 0 {
 		if m.body[0].is("##") || m.body[len(m.body)-1].is("##") {
 			return errorAt(m.pos, "## joins two tokens and has nothing on one side here")

@@ -1,0 +1,35 @@
+// A real library, reached through its own headers. The import names a
+// pkg-config package in its path, so the include directories come from
+// `pkg-config --cflags sdl3` and the library linked is the one
+// `pkg-config --libs sdl3` names; nothing else in the program says SDL3
+// is a dependency.
+//
+// Nothing here opens a window. SDL_Init(0) starts no subsystem, which
+// works on a machine with no display, and the rest reads constants and
+// types the header declares.
+
+import { println } from "stdlib"
+import safe {
+  SDL_GetVersion, SDL_Init, SDL_Quit, SDL_PollEvent,
+  SDL_Event, SDL_FRect, SDL_INIT_VIDEO, SDL_EVENT_QUIT,
+} from "pkg:sdl3/SDL3/SDL.h"
+
+fn main() {
+  // SDL_GetVersion answers major * 1000000 + minor * 1000 + micro.
+  println(SDL_GetVersion() / 1000000)
+
+  println(SDL_Init(0))
+  SDL_Quit()
+
+  // SDL_INIT_VIDEO is a macro, SDL_EVENT_QUIT an enumerator.
+  println(SDL_INIT_VIDEO)
+  println(SDL_EVENT_QUIT)
+
+  // The event union is the one the header laid out. With no subsystem
+  // started the queue holds nothing.
+  var event = SDL_Event{ type: 0 }
+  println(SDL_PollEvent(&event))
+
+  var rect = SDL_FRect{ x: 1.5, y: 2.5, w: 10.0, h: 20.0 }
+  println(rect.x + rect.w)
+}

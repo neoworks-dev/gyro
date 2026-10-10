@@ -6,6 +6,9 @@
 import { println } from "stdlib"
 import { alloc, free, heap } from "mem"
 import { cast, offset, ptr_from_int, ptr_to_int } from "unsafe"
+import { c_string, c_data } from "cstring"
+import safe { sqrt } from "<math.h>"
+import { strlen } from "<string.h>"
 
 struct Packet {
   tag: u8
@@ -39,16 +42,14 @@ safe fn byte_at_address(address: usize): u8 {
   return *ptr_from_int<u8>(address)
 }
 
-// An @extern is unsafe to call unless it is written safe: sqrt cannot be
-// misused, strlen reads through an address it is trusted to be handed.
-@extern("m")
-safe fn sqrt(value: f64): f64 !{}
-
-@extern("c")
-fn strlen(text: string): usize !{}
-
+// A header's function is unsafe to call unless the import vouches for it:
+// sqrt cannot be misused, so its import says safe, while strlen reads
+// through an address it is trusted to be handed, so its import does not
+// and the call needs a safe fn around it.
 safe fn length_of(text: string): usize {
-  return strlen(text)
+  var bytes = c_string(heap(), text)
+  defer bytes.free()
+  return strlen(c_data(bytes))
 }
 
 fn main() {

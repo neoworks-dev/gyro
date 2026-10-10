@@ -118,6 +118,9 @@ func Link(modules []*Module) (*Module, error) {
 					continue
 				}
 				seenImport[key] = true
+				// Its signature may name a type this module declares or
+				// imported, which is spelled differently in the program.
+				fn.Sig = l.rewrite(fn.Sig).(*FnType)
 				out.addImport(imp.Module, fn)
 			}
 		}
@@ -218,9 +221,9 @@ func (l *linker) check(m *Module) error {
 		exporter, internal := l.byName[imp.Module]
 		if !internal {
 			// A native library declares nothing this pass can read, so an
-			// import of one has no type to reuse. A module that wants
-			// C's `struct timespec` beside an `@extern` call declares its
-			// own; nothing over there would have agreed to anything.
+			// import of one has no type to reuse. The module a header was
+			// read into declares the types, and the natives it calls are
+			// imported beside them.
 			if len(imp.Types) > 0 {
 				return fmt.Errorf("link: %s imports %%%s from %q, which is not a module in this program",
 					m.Name, imp.Types[0].Name, imp.Module)
@@ -443,6 +446,15 @@ func (l *linker) callee(name string) string {
 	for _, imp := range l.current.Imports {
 		exporter, internal := l.byName[imp.Module]
 		if !internal {
+			// An import that survives the link is a symbol of the
+			// runtime or of a native library, and has one name in the
+			// program whichever module asked for it. Qualifying it with
+			// the asker's name would name a function nobody declared.
+			for _, fn := range imp.Funcs {
+				if fn.Name == name {
+					return name
+				}
+			}
 			continue
 		}
 		for _, fn := range imp.Funcs {

@@ -4,9 +4,9 @@
 // Nothing here is written for Gyro and nothing is marshalled. An `int`
 // is an i32 because that is what an int is, a `long` is an i64, and an
 // `int *` is a pointer into the same heap the caller allocated from —
-// which is why divmod below can write its answers through one. That is
-// the difference between this and @extern: a C library reached through
-// the FFI cannot take an out-parameter at all.
+// which is why divmod below can write its answers through one. The
+// source is here, so the call is checked against it; a library reached
+// through its header is trusted to be the one the header describes.
 
 int add(int a, int b) { return a + b; }
 

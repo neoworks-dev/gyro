@@ -30,7 +30,6 @@ import (
 // could bind; an unknown name is an error rather than a lookup failure.
 var decorators = map[string]bool{
 	"comptime": true, "gpu": true, "concurrent": true, "distributed": true,
-	"extern": true,
 }
 
 type symbolKind int
@@ -274,6 +273,10 @@ type checker struct {
 	// another language produced, which is the only kind `import safe`
 	// has anything to vouch for.
 	foreign map[string]bool
+	// headers holds the specifiers that resolved to C headers, and
+	// headerProblems what each says about the names that cannot cross.
+	headers        map[string]bool
+	headerProblems map[string]map[string]string
 
 	// unionWrites holds the selectors that store into a union member, which
 	// is safe where reading one is not.
@@ -320,6 +323,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		guarded:         map[*symbol][]*symbol{},
 		importPaths:     map[string]string{},
 		foreign:         map[string]bool{},
+		headers:         map[string]bool{},
+		headerProblems:  map[string]map[string]string{},
 		unionWrites:     map[*ast.SelectorExpr]int{},
 		reportedLeaks:   map[*symbol]bool{},
 		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
@@ -341,7 +346,11 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 		imports := map[string]*Exports{}
 		paths := map[string]string{}
 		foreign := map[string]bool{}
+		headers := map[string]bool{}
+		problems := map[string]map[string]string{}
 		for specifier, dependency := range module.Deps {
+			headers[specifier] = dependency.Header
+			problems[specifier] = dependency.Problems
 			imports[specifier] = computed[dependency]
 			paths[specifier] = dependency.Path
 			foreign[specifier] = dependency.Foreign != nil
@@ -349,6 +358,8 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 		c := newChecker(p, module.File, module.Path, imports)
 		c.importPaths = paths
 		c.foreign = foreign
+		c.headers = headers
+		c.headerProblems = problems
 		computed[module] = c.run(module.Tree)
 		checkers[i] = c
 	}
@@ -521,6 +532,10 @@ func (c *checker) collectImport(imp *ast.Import) {
 		}, "import safe vouches for a C file's functions; %q is a Gyro module", imp.Path)
 	}
 
+	if imp.Wildcard != "" && c.headers[imp.Path] {
+		c.errorf(imp.Offset, "%s declares more than a program wants; name what is imported from a header", imp.Path)
+	}
+
 	if imp.Wildcard != "" {
 		c.declareSymbol(imp.Wildcard, &symbol{
 			kind:    symNamespace,
@@ -542,8 +557,12 @@ func (c *checker) collectImport(imp *ast.Import) {
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {
-				c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(exports)),
-					"%q does not export %s", imp.Path, name.Name)
+				if why, problem := c.headerProblems[imp.Path][name.Name]; problem {
+					c.errorf(name.Offset, "%s cannot be imported from a C header: it %s", name.Name, why)
+				} else {
+					c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(exports)),
+						"%q does not export %s", imp.Path, name.Name)
+				}
 			} else {
 				local.kind = entry.kind
 				local.decl = entry.decl
@@ -666,7 +685,6 @@ func (c *checker) checkDecls(tree *ast.File) {
 			c.checkFuncDecl(d)
 		case *ast.StructDecl:
 			c.checkDecorators(d.Decorators)
-			c.checkExternStruct(d)
 		case *ast.UnionDecl:
 			c.checkDecorators(d.Decorators)
 		case *ast.EnumDecl:
@@ -696,13 +714,8 @@ func (c *checker) checkExport(decl *ast.ExportDecl) {
 func (c *checker) checkDecorators(list []*ast.Decorator) {
 	for _, decorator := range list {
 		if !decorator.Name.IsPlainName() || !decorators[decorator.Name.Segments[0].Name] {
-			c.errorf(decorator.Offset, "unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent, @distributed and @extern",
+			c.errorf(decorator.Offset, "unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed",
 				decoratorName(decorator))
-			continue
-		}
-		// @extern's arguments name a library and a symbol, which are not
-		// expressions to type; checkExternFunc reads them itself.
-		if decorator.Name.Segments[0].Name == "extern" {
 			continue
 		}
 		for _, arg := range decorator.Args {

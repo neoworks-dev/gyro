@@ -1,0 +1,57 @@
+// Importing the C library's own headers: every kind of value that crosses
+// to libc and libm. A header is how C says what its functions take, so
+// there is nothing to declare here; the import names what it uses and the
+// header's prototypes are the signatures.
+//
+// A `const char *` arrives as a nullable pointer to a byte, because that
+// is what the header says, so a Gyro string crosses by being copied into
+// bytes C can read, and comes back by being copied out of them.
+
+import { println } from "stdlib"
+import { heap } from "mem"
+import { c_string, c_data } from "cstring"
+import safe { puts } from "<stdio.h>"
+import safe { abs, malloc, free } from "<stdlib.h>"
+import safe { strlen, memcmp } from "<string.h>"
+import safe { sqrt, ldexp } from "<math.h>"
+
+// The copy lives exactly as long as the call needs it, and the function
+// that makes it is the one that vouches that it does.
+safe fn say(text: string): i32 {
+  var bytes = c_string(heap(), text)
+  defer bytes.free()
+  return puts(c_data(bytes))
+}
+
+safe fn length_of(text: string): usize {
+  var bytes = c_string(heap(), text)
+  defer bytes.free()
+  return strlen(c_data(bytes))
+}
+
+fn main() {
+  var written = say("puts and println share one stdout")
+  println(written >= 0)
+
+  println(abs(0 - 42))
+  // Ten code points, eleven bytes: strlen counts what C sees.
+  println(length_of("répertoire"))
+
+  // Two arrays of bytes, compared by their addresses.
+  var left: u8[3] = [1, 2, 3]
+  var right: u8[3] = [1, 2, 4]
+  println(memcmp(&left[0] as anyptr, &left[0] as anyptr, 3))
+  println(memcmp(&left[0] as anyptr, &right[0] as anyptr, 3) < 0)
+
+  println(sqrt(2.0))
+  println(ldexp(0.75, 4))
+
+  // malloc may fail, so the block is nullable.
+  var block = malloc(64)
+  if block == null {
+    println("out of memory")
+    return
+  }
+  free(block)
+  println("freed")
+}

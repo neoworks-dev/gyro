@@ -87,18 +87,32 @@ attached — a skip is a program that will fail the day the gap closes
 
 ## Foreign functions
 
-`@extern` carries primitives, `string`, slices, structs by value, opaque
-handles, addresses (`*T`, `anyptr`) and code pointers, so out-parameters
-and callbacks work through it ([chapter 15](ch15-00-c-interop.md)).
+A header import carries what C's types are: integers and floats at their
+real widths, structs and unions by value, addresses (`*T`, `anyptr`) and
+code pointers, so out-parameters and callbacks work through it
+([chapter 15](ch15-00-c-interop.md)). It does not carry a Gyro runtime
+object — a channel, a future, a `fn` value, an `any` — at any depth.
 
-What it does not carry is a Gyro runtime object — a channel, a future, a
-`fn` value, an `any` — at any depth.
+**Nothing checks the library against its header.** The symbol is matched by
+name at link time and the signature is the header's, which is C's own
+arrangement and the reason `import "./x.c"` is the stronger route: there,
+the linker compares the declaration against the C the front end read.
 
-**Nothing checks an `@extern` declaration against the library.** The symbol
-is matched by name at link time and its signature is taken on trust, which
-is C's own arrangement and the reason `import "./x.c"` is the stronger
-route: there, the linker compares the declaration against the C the front
-end read.
+**What a header import cannot reach.** A variadic function (`printf`), a
+function taking a `va_list` or a `long double`, a function a header only
+defines as an inline, a function renamed with an `__asm__` label, a
+variable, a typedef of a scalar, a macro that is not an integer constant
+(a string, a float, a call), and the address of a function the program does
+not define. Each is refused at the name with the reason. A flexible array
+member ends the struct that has it, which is dropped.
+
+**Header types are per library.** Two headers of one library are one
+translation unit and share their types; two libraries that each declare a
+struct of the same name are two modules whose types the lowering does not
+tell apart, so a program that uses both would see the first.
+
+**Every import reads the header again.** Reading SDL3's takes about a
+second and a half, and nothing caches it between compiles.
 
 ## The C front end
 
@@ -113,8 +127,8 @@ Refused by name rather than mistranslated:
   is a flat list of labels and statements here.
 - **A variadic C function cannot cross into Gyro**: a `...` says nothing
   about what a call passes, so there is nothing for the far side to check.
-  Nor can a C `enum`: Gyro's is a tagged sum and the two are different
-  things. A `union` crosses as the type C declared
+  Nor can a C `enum` as a type: Gyro's is a tagged sum and the two are
+  different things. A header's enumerators cross as integer constants. A `union` crosses as the type C declared
   ([chapter 15](ch15-00-c-interop.md)). An export the generated header cannot
   spell is **skipped** rather than failing the module, and naming a skipped
   one is an error at the import — as is an array of anything whose Gyro

@@ -48,7 +48,7 @@ They are the shortest route to seeing real syntax:
 | `methods.gyro` | methods and extension methods |
 | `variadics.gyro` | `...T` packs, `...any`, `printf` |
 | `concurrency.gyro` | threads, channels, `select`, `async`/`await` |
-| `triangle.gyro` | a Gouraud-shaded triangle in an SDL window, through `@extern` |
+| `triangle.gyro` | a Gouraud-shaded triangle in an SDL3 window, through its header |
 
 ## The other make targets
 

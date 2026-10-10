@@ -416,7 +416,7 @@ func TestRefusesWhatIsNotLoweredYet(t *testing.T) {
 	refused(t, `int result(void) { int a[]; return 0; }`, "has no size")
 	refused(t, "#include <stdio.h>\nint result(void) { return 0; }", "cannot find <stdio.h>")
 	refused(t, `int result() { return 0; }`, "write (void)")
-	refused(t, `long double result(void) { return 0; }`, "not a type")
+	refused(t, `long double result(void) { return 0; }`, "long double is the x87")
 }
 
 func TestRefusesBadPrograms(t *testing.T) {

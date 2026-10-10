@@ -110,7 +110,7 @@ compiler-compiler.
 | pattern matching | `match subject { pattern: body }`, exhaustive over enums |
 | concurrency | threads, channels (`chan<T>`, `select`), `async` / `await` |
 | effects | `!{ io }` rows, checked; `!{ &xs }` says what the result borrows |
-| C | `@extern("SDL2")` links a symbol; `import "./x.c"` compiles the C in |
+| C | `import { f } from "pkg:sdl3/SDL3/SDL.h"` calls a library through its header; `import "./x.c"` compiles the C in |
 
 Two rules drive most of the rest:
 
@@ -175,7 +175,7 @@ syntax; each one is checked by the test suite.
 | `methods.gyro` | methods, duck-typed generics, `to_string` |
 | `variadics.gyro` | `...T` packs, `...any`, `printf` |
 | `concurrency.gyro` | threads, channels, `select`, `async` / `await` |
-| `triangle.gyro` | a Gouraud-shaded triangle in an SDL window, through `@extern` |
+| `triangle.gyro` | a Gouraud-shaded triangle in an SDL3 window, through its header |
 
 ## Architecture
 

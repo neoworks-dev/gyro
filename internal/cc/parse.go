@@ -41,9 +41,34 @@ type parser struct {
 	// anonymous numbers the structs written without a tag, so that two
 	// of them in one file get two METALS records.
 	anonymous int
+	// asmLabel is the symbol the last declarator was renamed to.
+	asmLabel string
+	// poisoned is the tags of aggregates a tolerant parse dropped.
+	poisoned map[string]bool
+
+	// tolerant is the mode a header is read in. A header declares far
+	// more than any program uses, written in whatever C its library
+	// needed, so a declaration this front end cannot read is dropped and
+	// the ones around it are kept: naming it is the error, and not
+	// owning a header that declares it. A `.c` file's own code is still
+	// refused whole, because there is nothing to drop it in favour of.
+	//
+	// It also skips function bodies. A header's inline functions are
+	// there for a C compiler to inline, not for this program to call.
+	tolerant bool
+	// extern is set by declSpecifiers when the declaration said so.
+	extern bool
+	// skipped is what tolerance dropped, with the reason.
+	skipped []skippedDecl
 }
 
-func parse(file string, toks []token) (out *unit, err error) {
+// skippedDecl is a declaration a tolerant parse could not read.
+type skippedDecl struct {
+	pos    position
+	reason string
+}
+
+func parse(file string, toks []token, tolerant bool) (out *unit, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			caught, ok := r.(failure)
@@ -61,6 +86,7 @@ func parse(file string, toks []token) (out *unit, err error) {
 		typedefs: map[string]*ctype{},
 		enums:    map[string]int64{},
 		enumTags: map[string]bool{},
+		tolerant: tolerant,
 	}
 	return p.unit(), nil
 }
@@ -123,6 +149,8 @@ func describe(t token) string {
 		return "a literal"
 	case tokStr:
 		return "a string"
+	case tokInvalid:
+		return t.sval
 	}
 	return "'" + t.text + "'"
 }
@@ -132,65 +160,213 @@ func describe(t token) string {
 // ---------------------------------------------------------------------------
 
 func (p *parser) unit() *unit {
-	out := &unit{}
+	out := &unit{externs: map[string]*ctype{}}
 	for p.peek().kind != tokEOF {
-		pos := p.peek().pos
-		base, static, isTypedef := p.declSpecifiers()
-
-		// A declaration with no declarator declares a type and nothing
-		// else: `struct Node;` opens a tag a later line will define, and
-		// `struct Node { ... };` or `enum E { ... };` closes one.
-		if p.accept(";") {
-			if !base.isMembered() && !base.isInteger() {
-				p.fail(pos, "this declaration declares nothing")
-			}
+		if !p.tolerant {
+			p.topLevel(out)
 			continue
 		}
-
-		// A definition is the one declarator that ends its declaration
-		// without a semicolon, and C says so by putting a block where the
-		// comma or the semicolon would have gone.
-		defined := false
-		for {
-			name, typ := p.declarator(base)
-
-			switch {
-			case isTypedef:
-				p.defineTypedef(name, typ, pos)
-
-			case typ.isFunc():
-				fn := &funcDecl{
-					name: name, result: typ.result, params: typ.params,
-					variadic: typ.variadic, static: static, pos: pos,
-				}
-				out.funcs = append(out.funcs, fn)
-				if !p.at(";") && !p.at(",") {
-					fn.body = p.block()
-					defined = true
-				}
-
-			default:
-				if typ.isVoid() {
-					p.fail(pos, "%s is declared void", name)
-				}
-				global := &globalDecl{name: name, typ: typ, static: static, pos: pos}
-				if p.accept("=") {
-					global.init = p.initializer()
-				}
-				out.globals = append(out.globals, global)
-			}
-
-			if defined || !p.accept(",") {
-				break
-			}
-		}
-		if !defined {
-			p.expect(";")
+		start := p.i
+		pos := p.peek().pos
+		if reason := p.attempt(func() { p.topLevel(out) }); reason != "" {
+			p.skipped = append(p.skipped, skippedDecl{pos: pos, reason: reason})
+			p.i = start
+			p.skipDeclaration()
 		}
 	}
 	out.structs = p.order
 	out.enums = p.enums
+	out.typedefs = p.typedefs
+	out.skipped = p.skipped
 	return out
+}
+
+// attempt runs one step of the parse and answers what stopped it, or "".
+func (p *parser) attempt(step func()) (reason string) {
+	defer func() {
+		if r := recover(); r != nil {
+			caught, ok := r.(failure)
+			if !ok {
+				panic(r)
+			}
+			reason = caught.err.Error()
+		}
+	}()
+	step()
+	return ""
+}
+
+// skipDeclaration moves past the declaration that did not read: through
+// its semicolon, or through the braces of a function body. It always
+// consumes something, which is what keeps a header made of nothing but
+// unreadable declarations from looping.
+func (p *parser) skipDeclaration() {
+	start := p.i
+	defer func() { p.poison(p.toks[start:p.i]) }()
+	depth := 0
+	beforeBrace := ""
+	prev := ""
+	for {
+		tok := p.next()
+		switch {
+		case tok.kind == tokEOF:
+			return
+		case tok.is("(") || tok.is("["):
+			depth++
+		case tok.is(")") || tok.is("]"):
+			depth--
+		case tok.is("{"):
+			if depth == 0 {
+				beforeBrace = prev
+			}
+			depth++
+		case tok.is("}"):
+			depth--
+			if depth == 0 && beforeBrace == ")" {
+				return
+			}
+		case tok.is(";") && depth <= 0:
+			return
+		}
+		prev = tok.text
+	}
+}
+
+// poison remembers the tags a dropped declaration was defining. A later
+// mention of one would open it afresh as an incomplete type, and a header
+// whose struct could not be read would then appear to declare an opaque
+// one — which says something false about it.
+func (p *parser) poison(skipped []token) {
+	for i := 0; i < len(skipped); i++ {
+		if !skipped[i].is("struct") && !skipped[i].is("union") {
+			continue
+		}
+		j := i + 1
+		for j < len(skipped) && skipped[j].kind == tokIdent &&
+			(skipped[j].text == "__attribute__" || skipped[j].text == "__attribute") {
+			depth := 0
+			j++
+			for ; j < len(skipped); j++ {
+				if skipped[j].is("(") {
+					depth++
+				} else if skipped[j].is(")") {
+					depth--
+					if depth == 0 {
+						j++
+						break
+					}
+				}
+			}
+		}
+		if j+1 < len(skipped) && skipped[j].kind == tokIdent && skipped[j+1].is("{") {
+			if p.poisoned == nil {
+				p.poisoned = map[string]bool{}
+			}
+			p.poisoned[skipped[j].text] = true
+		}
+	}
+}
+
+// skipBlock moves past a function body without reading it.
+func (p *parser) skipBlock() {
+	pos := p.expect("{").pos
+	depth := 1
+	for depth > 0 {
+		tok := p.next()
+		switch {
+		case tok.kind == tokEOF:
+			p.fail(pos, "this block is never closed")
+		case tok.is("{"):
+			depth++
+		case tok.is("}"):
+			depth--
+		}
+	}
+}
+
+// topLevel reads one declaration at file scope.
+func (p *parser) topLevel(out *unit) {
+	pos := p.peek().pos
+
+	if p.atIdent("_Static_assert") {
+		// A compile-time check on the header's own assumptions. The
+		// ones that matter hold, because the layout is the target's.
+		p.next()
+		p.skipBalanced()
+		p.expect(";")
+		return
+	}
+	if p.accept(";") {
+		return
+	}
+
+	base, static, isTypedef := p.declSpecifiers()
+	external := p.extern
+
+	// A declaration with no declarator declares a type and nothing
+	// else: `struct Node;` opens a tag a later line will define, and
+	// `struct Node { ... };` or `enum E { ... };` closes one.
+	if p.accept(";") {
+		if !base.isMembered() && !base.isInteger() {
+			p.fail(pos, "this declaration declares nothing")
+		}
+		return
+	}
+
+	// A definition is the one declarator that ends its declaration
+	// without a semicolon, and C says so by putting a block where the
+	// comma or the semicolon would have gone.
+	defined := false
+	for {
+		name, typ := p.declarator(base)
+		symbol := p.asmLabel
+		p.asmLabel = ""
+
+		switch {
+		case isTypedef:
+			p.defineTypedef(name, typ, pos)
+
+		case typ.isFunc():
+			fn := &funcDecl{
+				name: name, result: typ.result, params: typ.params,
+				variadic: typ.variadic, static: static, pos: pos,
+				label: symbol,
+			}
+			out.funcs = append(out.funcs, fn)
+			if !p.at(";") && !p.at(",") {
+				if p.tolerant {
+					p.skipBlock()
+					fn.inline = true
+				} else {
+					fn.body = p.block()
+				}
+				defined = true
+			}
+
+		case external && !p.at("="):
+			// `extern int errno;` says another module owns the object.
+			// This one has nowhere to put it, and reading it would be
+			// reading storage nobody gave an address in the IR.
+			out.externs[name] = typ
+
+		default:
+			if typ.isVoid() {
+				p.fail(pos, "%s is declared void", name)
+			}
+			global := &globalDecl{name: name, typ: typ, static: static, pos: pos}
+			if p.accept("=") {
+				global.init = p.initializer()
+			}
+			out.globals = append(out.globals, global)
+		}
+
+		if defined || !p.accept(",") {
+			break
+		}
+	}
+	if !defined {
+		p.expect(";")
+	}
 }
 
 // defineTypedef registers a type name. A struct written without a tag
@@ -198,6 +374,15 @@ func (p *parser) unit() *unit {
 // `typedef struct { ... } Point;` idiom produce a `%Point` record and
 // not an anonymous one.
 func (p *parser) defineTypedef(name string, typ *ctype, pos position) {
+	// In a header, the types C uses for sizes and addresses are the
+	// pointer-sized integer METALS has a name for, so a prototype that
+	// says size_t is a signature that says usize. Everything else about
+	// the type is unsigned long's.
+	if p.tolerant && (name == "size_t" || name == "uintptr_t") && typ.kind == kULong && !typ.usize {
+		clone := *typ
+		clone.usize = true
+		typ = &clone
+	}
 	if typ.isMembered() && strings.HasPrefix(typ.tag, p.stem+"$anon") {
 		delete(p.structs, typ.tag)
 		typ.tag = name
@@ -219,6 +404,7 @@ func (p *parser) declSpecifiers() (typ *ctype, static, isTypedef bool) {
 	pos := p.peek().pos
 	var words []string
 	var named *ctype
+	p.extern = false
 
 	// only guards the three spellings that are a whole type by
 	// themselves: a struct, an enum and a typedef name each stand alone
@@ -233,6 +419,9 @@ func (p *parser) declSpecifiers() (typ *ctype, static, isTypedef bool) {
 		tok := p.peek()
 
 		if tok.kind == tokIdent {
+			if p.skipDecoration() {
+				continue
+			}
 			// A typedef name is a type only where a type has not been
 			// spelled yet: in `unsigned x` the name is the declarator.
 			alias, known := p.typedefs[tok.text]
@@ -254,7 +443,10 @@ func (p *parser) declSpecifiers() (typ *ctype, static, isTypedef bool) {
 		case "static":
 			static = true
 			p.next()
-		case "extern", "const", "volatile", "register", "auto":
+		case "extern":
+			p.extern = true
+			p.next()
+		case "const", "volatile", "register", "auto":
 			p.next()
 
 		case "struct":
@@ -334,6 +526,69 @@ func (p *parser) enumType() *ctype {
 	return typeInt
 }
 
+// decorations are the words GNU and C99 put in front of and around a
+// declaration that say nothing a program here can act on: an inline
+// function is still a function, a restrict pointer is still a pointer,
+// and an attribute is the library talking to its own compiler. The
+// attributes that change the layout of what they decorate are the
+// exception, and are refused by name.
+var decorations = map[string]bool{
+	"inline": true, "__inline": true, "__inline__": true,
+	"restrict": true, "__restrict": true, "__restrict__": true,
+	"_Noreturn": true, "__extension__": true,
+	"__const": true, "__const__": true, "__volatile": true, "__volatile__": true,
+	"__signed": true, "__signed__": true,
+}
+
+func (p *parser) atIdent(name string) bool {
+	tok := p.peek()
+	return tok.kind == tokIdent && tok.text == name
+}
+
+// skipDecoration consumes one decoration, an attribute list or an
+// assembler label if the next token begins one.
+func (p *parser) skipDecoration() bool {
+	tok := p.peek()
+	if tok.kind != tokIdent {
+		return false
+	}
+	switch {
+	case decorations[tok.text]:
+		p.next()
+		return true
+	case tok.text == "__attribute__" || tok.text == "__attribute":
+		p.next()
+		start := p.i
+		p.skipBalanced()
+		for _, inner := range p.toks[start:p.i] {
+			switch inner.text {
+			case "packed", "__packed__", "aligned", "__aligned__", "vector_size", "__vector_size__",
+				"mode", "__mode__", "transparent_union", "__transparent_union__":
+				p.fail(tok.pos, "__attribute__((%s)) changes the layout of what it decorates, and this front end lays out C's defaults only", inner.text)
+			}
+		}
+		return true
+	case tok.text == "__asm__" || tok.text == "__asm" || tok.text == "asm":
+		p.next()
+		for p.peek().kind == tokKeyword && (p.at("volatile") || p.at("const")) || p.atIdent("__volatile__") {
+			p.next()
+		}
+		start := p.i
+		p.skipBalanced()
+		if label := p.toks[start+1 : p.i-1]; len(label) == 1 && label[0].kind == tokStr {
+			p.asmLabel = label[0].sval
+		}
+		return true
+	}
+	return false
+}
+
+// skipDecorations consumes all of them.
+func (p *parser) skipDecorations() {
+	for p.skipDecoration() {
+	}
+}
+
 // basicType resolves a set of type words. The set is what matters and
 // not the order, which is C's rule: `unsigned long int` and `long
 // unsigned` are one type.
@@ -352,6 +607,12 @@ func basicType(words []string) *ctype {
 	}
 	delete(counts, "unsigned")
 	delete(counts, "signed")
+	// `short int`, `long int` and `unsigned long long int` spell the
+	// type without the int, which is why int is dropped when another
+	// word already says which integer this is.
+	if counts["int"] > 0 && (longs > 0 || counts["short"] > 0) {
+		delete(counts, "int")
+	}
 
 	if len(counts) > 1 {
 		return nil
@@ -386,7 +647,12 @@ func basicType(words []string) *ctype {
 		}
 		// `long double` is the x87 80-bit type, which METALS has no
 		// primitive for and which no backend here would round the same
-		// way twice. Refused rather than silently narrowed to f64.
+		// way twice. It can be named, because a header does, and
+		// nothing that needs its value can be lowered: that is where
+		// it is refused, rather than silently narrowed to f64.
+		if longs == 1 {
+			return typeLongDouble
+		}
 		if longs > 0 {
 			return nil
 		}
@@ -452,6 +718,7 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 		keyword = "union"
 	}
 	pos := p.expect(keyword).pos
+	p.skipDecorations()
 
 	// One with no tag still needs a METALS name, so it gets one it
 	// cannot collide with. `typedef struct { ... } Point;` renames it to
@@ -467,6 +734,9 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 		tag = fmt.Sprintf("%s$anon%d", p.stem, p.anonymous)
 	}
 
+	if p.poisoned[tag] {
+		p.fail(pos, "%s %s could not be read where it was defined, so nothing that mentions it can be", keyword, tag)
+	}
 	typ, known := p.structs[tag]
 	if !known {
 		typ = &ctype{kind: kind, tag: tag}
@@ -491,6 +761,12 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 	for !p.at("}") {
 		if p.peek().kind == tokEOF {
 			p.fail(pos, "this %s is never closed", keyword)
+		}
+		if p.atIdent("_Static_assert") {
+			p.next()
+			p.skipBalanced()
+			p.expect(";")
+			continue
 		}
 		base, static, isTypedef := p.declSpecifiers()
 		if static || isTypedef {
@@ -536,6 +812,7 @@ func (p *parser) aggregateType(kind typeKind) *ctype {
 		p.expect(";")
 	}
 	p.expect("}")
+	p.skipDecorations()
 	if len(fields) == 0 {
 		p.fail(pos, "%s %s has no members, and METALS has no shape with none", keyword, tag)
 	}
@@ -597,7 +874,15 @@ func (p *parser) bitField(pos position, name string, declared *ctype) field {
 // been seen yet. So the inside is skipped, the suffix is applied, and
 // then the inside is read again against the type that produced.
 func (p *parser) declarator(base *ctype) (string, *ctype) {
+	name, typ := p.declaratorBody(base)
+	p.skipDecorations()
+	return name, typ
+}
+
+func (p *parser) declaratorBody(base *ctype) (string, *ctype) {
+	p.skipDecorations()
 	base = p.pointers(base)
+	p.skipDecorations()
 
 	// A `(` here opens a parenthesised declarator unless what follows is
 	// a type — `int (*)(int)` against `int (int)` — or nothing at all,
@@ -628,8 +913,10 @@ func (p *parser) pointers(typ *ctype) *ctype {
 		typ = pointerTo(typ)
 		// A qualifier binds to the pointer rather than the target here,
 		// and means as little in either place.
-		for p.at("const") || p.at("volatile") {
-			p.next()
+		for p.at("const") || p.at("volatile") || p.skipDecoration() {
+			if p.at("const") || p.at("volatile") {
+				p.next()
+			}
 		}
 	}
 	return typ
@@ -1295,8 +1582,133 @@ func foldConstant(e expr, enums map[string]int64) (int64, error) {
 		out, err := ppApply(token{kind: tokPunct, text: e.op, pos: e.pos},
 			ppValue{v: a}, ppValue{v: b}, true)
 		return out.v, err
+
+	case *sizeofExpr:
+		typ := e.typ
+		if typ == nil {
+			typ = staticType(e.x)
+		}
+		if typ != nil {
+			if size, _, ok := sizeAlign(typ); ok {
+				return size, nil
+			}
+		}
+		return 0, fmt.Errorf("this sizeof is not a constant this front end can fold")
+
+	case *castExpr:
+		x, err := foldConstant(e.x, enums)
+		if err != nil {
+			return 0, err
+		}
+		return truncateTo(e.typ, x)
 	}
 	return 0, fmt.Errorf("this is not a constant expression")
+}
+
+// staticType is the type of the few expressions whose type a parse can
+// know without a symbol table: a cast, and a member reached through one.
+// That is `sizeof(((T *)0)->member)`, which is how a header measures a
+// member without an object to measure it on.
+func staticType(e expr) *ctype {
+	switch e := e.(type) {
+	case *castExpr:
+		return e.typ
+	case *unaryExpr:
+		if e.op == "*" {
+			if inner := staticType(e.x); inner != nil && inner.isPointer() {
+				return inner.elem
+			}
+		}
+	case *memberExpr:
+		base := staticType(e.x)
+		if base == nil {
+			return nil
+		}
+		if e.arrow {
+			if !base.isPointer() {
+				return nil
+			}
+			base = base.elem
+		}
+		for _, f := range base.fields {
+			if f.name == e.name {
+				return f.typ
+			}
+		}
+	}
+	return nil
+}
+
+// truncateTo is what converting a constant to an integer type does to it.
+func truncateTo(t *ctype, v int64) (int64, error) {
+	switch t.kind {
+	case kBool:
+		return boolValue(v != 0), nil
+	case kChar:
+		return int64(int8(v)), nil
+	case kUChar:
+		return int64(uint8(v)), nil
+	case kShort:
+		return int64(int16(v)), nil
+	case kUShort:
+		return int64(uint16(v)), nil
+	case kInt:
+		return int64(int32(v)), nil
+	case kUInt:
+		return int64(uint32(v)), nil
+	case kLong, kULong, kPtr:
+		return v, nil
+	}
+	return 0, fmt.Errorf("a cast to %s is not an integer constant", t)
+}
+
+// sizeAlign is the size and alignment of a type that needs no layout
+// pass to answer: scalars, arrays and aggregates of them. It is what a
+// header's `char pad[3 * sizeof(int)]` needs while the parse is still
+// running, before any record has been laid out. A bit-field is the
+// reason an aggregate may not answer, because packing is the layout
+// pass's.
+func sizeAlign(t *ctype) (size, align int64, ok bool) {
+	switch t.kind {
+	case kBool, kChar, kUChar:
+		return 1, 1, true
+	case kShort, kUShort:
+		return 2, 2, true
+	case kInt, kUInt, kFloat:
+		return 4, 4, true
+	case kLong, kULong, kDouble, kPtr:
+		return 8, 8, true
+	case kLongDouble:
+		return 16, 16, true
+	case kArray:
+		if t.length < 0 {
+			return 0, 0, false
+		}
+		elem, a, ok := sizeAlign(t.elem)
+		return elem * t.length, a, ok
+	case kStruct, kUnion:
+		if t.fields == nil {
+			return 0, 0, false
+		}
+		var offset, strictest int64 = 0, 1
+		for _, f := range t.fields {
+			if f.bits != nil {
+				return 0, 0, false
+			}
+			s, a, ok := sizeAlign(f.typ)
+			if !ok {
+				return 0, 0, false
+			}
+			strictest = max(strictest, a)
+			if t.kind == kUnion {
+				offset = max(offset, s)
+				continue
+			}
+			offset = (offset+a-1)/a*a + s
+		}
+		return (offset + strictest - 1) / strictest * strictest, strictest, true
+	}
+	return 0, 0, false
 }
 
 // literalType is the type C gives an integer constant: the first of
@@ -1306,6 +1718,10 @@ func literalType(tok token) *ctype {
 	if tok.kind == tokChar {
 		return typeInt
 	}
+	// A constant written in hex or octal takes the unsigned type when the
+	// signed one is too small, and a decimal one does not; that is the
+	// difference between 0x80000000 and 2147483648.
+	notDecimal := len(tok.text) > 1 && tok.text[0] == '0'
 	switch {
 	case tok.unsigned && tok.wide:
 		return typeULong
@@ -1315,9 +1731,21 @@ func literalType(tok token) *ctype {
 		}
 		return typeUInt
 	case tok.wide:
+		if tok.ival > 0x7FFFFFFFFFFFFFFF {
+			return typeULong
+		}
+		return typeLong
+	}
+	if tok.ival > 0x7FFFFFFFFFFFFFFF {
+		return typeULong
+	}
+	if tok.ival > 0xFFFFFFFF {
 		return typeLong
 	}
 	if tok.ival > 0x7FFFFFFF {
+		if notDecimal {
+			return typeUInt
+		}
 		return typeLong
 	}
 	return typeInt

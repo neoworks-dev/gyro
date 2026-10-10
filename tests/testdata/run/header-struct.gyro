@@ -1,0 +1,37 @@
+// A struct crosses from a header by value, in both directions, because
+// the header's struct and Gyro's are the same type: the import declares
+// the struct the C front end laid out, so there is no second definition
+// to agree with and nothing is converted.
+
+import { println } from "stdlib"
+import { heap } from "mem"
+import { from_c } from "cstring"
+import safe { div, div_t } from "<stdlib.h>"
+import safe { inet_ntoa } from "<arpa/inet.h>"
+import { in_addr } from "<netinet/in.h>"
+
+// A struct wide enough that C returns it through a hidden pointer rather
+// than in registers, so the other half of the ABI is exercised too: ldiv
+// returns two longs and lldiv would too, and neither needs a Gyro copy.
+import safe { ldiv, ldiv_t } from "<stdlib.h>"
+
+safe fn dotted(addr: in_addr): string {
+  return from_c(heap(), inet_ntoa(addr))
+}
+
+fn main() {
+  var d = div(17, 5)
+  println(d.quot)
+  println(d.rem)
+
+  var negative = div(0 - 17, 5)
+  println(negative.quot)
+  println(negative.rem)
+
+  // The literal is 127.0.0.1 as a little-endian machine holds it.
+  var local = in_addr{ s_addr: 0x0100007F }
+  println(dotted(local))
+
+  var wide = ldiv(7, 2)
+  println(wide.quot + wide.rem)
+}

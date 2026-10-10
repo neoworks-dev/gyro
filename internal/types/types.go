@@ -276,10 +276,6 @@ type Struct struct {
 	// non-instances.
 	Origin *Struct
 	Args   []Type
-	// Extern names the C library a fieldless `@extern` struct stands in
-	// for. Such a struct is an opaque pointer: no literal, no fields, and
-	// only the library that produced one can do anything with it.
-	Extern string
 }
 
 // Union is one storage with several names for it. Every member begins
@@ -314,15 +310,6 @@ func (u *Union) MemberNamed(name string) *Field {
 		}
 	}
 	return nil
-}
-
-// Extern is what `@extern("SDL2", symbol = "SDL_Delay")` says about a
-// declaration: the library it is linked from, spelled as the linker wants
-// it without the `lib` prefix, and the C symbol it names — the
-// declaration's own name unless `symbol =` gave another.
-type Extern struct {
-	Library string
-	Symbol  string
 }
 
 // Variant is one enum case.

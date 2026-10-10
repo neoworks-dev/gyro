@@ -2,6 +2,7 @@ package cc
 
 import (
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/gyro-lang/gyro/internal/metals"
@@ -62,6 +63,11 @@ type lowerer struct {
 	// statics records the symbols static locals have taken, so two blocks
 	// of one function may each declare the same name.
 	statics map[string]bool
+	// natives are the functions the program calls and no unit defines:
+	// C's undefined symbols. They become one import from the native
+	// library the program was compiled against, which is where a C
+	// linker would have looked for them too.
+	natives map[string]*metals.FnType
 	// layout answers sizeof. The arithmetic is METALS' and belongs to no
 	// producer: a second implementation here would agree with the
 	// backends' until the first struct that pads, and then the two would
@@ -81,7 +87,7 @@ func fail(pos position, format string, args ...any) {
 // checked against the definition it reaches, where a C linker matching
 // bare symbol names cannot check anything. See resolve.go for how the
 // set of files is found.
-func lower(name string, units []*translation) (module *metals.Module, err error) {
+func lower(name string, units []*translation, library string) (module *metals.Module, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			caught, ok := r.(failure)
@@ -97,6 +103,7 @@ func lower(name string, units []*translation) (module *metals.Module, err error)
 		records: map[string]*ctype{},
 		strings: map[string]string{},
 		statics: map[string]bool{},
+		natives: map[string]*metals.FnType{},
 	}
 
 	l.declareRecords(name, units)
@@ -132,6 +139,7 @@ func lower(name string, units []*translation) (module *metals.Module, err error)
 	}
 	l.scope = scopes[0]
 	l.emitInit(l.pending)
+	l.declareNatives(library)
 	return l.out, nil
 }
 
@@ -387,6 +395,26 @@ func (l *lowerer) declareGlobalName(table map[string]*globalDecl, g *globalDecl,
 		fail(g.pos, "%s is declared twice", g.name)
 	}
 	table[g.name] = g
+}
+
+// declareNatives files the undefined functions the program called as an
+// import from the native library. The name is the C symbol, and the
+// signature is the one the prototype declared, with C's own types — the
+// backend's generated wrapper is what turns it into a call in C's ABI.
+func (l *lowerer) declareNatives(library string) {
+	if len(l.natives) == 0 {
+		return
+	}
+	names := make([]string, 0, len(l.natives))
+	for name := range l.natives {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	imp := &metals.Import{Module: metals.ExternModule(library)}
+	for _, name := range names {
+		imp.Funcs = append(imp.Funcs, metals.ImportedFunc{Name: name, Sig: l.natives[name]})
+	}
+	l.out.Imports = append(l.out.Imports, imp)
 }
 
 // declareGlobal reserves module storage and decides how it starts: as

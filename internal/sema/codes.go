@@ -9,24 +9,11 @@ var codes = map[string]diag.Code{
 	// Names. The undeclared-name and already-declared diagnostics are built
 	// by hand in suggest.go and sema.go, and the leak warning in leak.go, so
 	// their codes sit at those sites rather than here.
-	"cannot move %s: no such name in scope": diag.EMoveUnknownName,
-	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent, @distributed and @extern": diag.EUnknownDecorator,
+	"cannot move %s: no such name in scope":                                                   diag.EMoveUnknownName,
+	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed": diag.EUnknownDecorator,
 
-	// Foreign functions. The declaration errors say what @extern may sit
-	// on; the signature errors say what may cross to C.
-	"@extern %s has a body; a foreign function is declared, not written":                         diag.EExternDeclaration,
-	"@extern %s is a method; C has no receiver to bind":                                          diag.EExternDeclaration,
-	"@extern %s is generic; a library exports one symbol, not a family":                          diag.EExternDeclaration,
-	"@extern %s is async; a foreign call is an ordinary call":                                    diag.EExternDeclaration,
-	"@extern %s returns several values; a C function returns one":                                diag.EExternDeclaration,
-	"@extern %s states no effect row":                                                            diag.EExternDeclaration,
-	"@extern %s is variadic; C's varargs do not have one calling convention":                     diag.EExternDeclaration,
-	"@extern struct %s declares fields":                                                          diag.EExternDeclaration,
-	"@extern struct %s is generic; an opaque pointer has no parameters":                          diag.EExternDeclaration,
-	"@extern names the library it links from":                                                    diag.EExternDeclaration,
-	"@extern's library is a plain string, spelled as the linker wants it: \"SDL2\" links -lSDL2": diag.EExternDeclaration,
-	"@extern's second argument is symbol = \"the_c_name\"":                                       diag.EExternDeclaration,
-	"%s cannot cross to C: %s":                                                                   diag.EExternSignature,
+	"%s cannot be imported from a C header: it %s":                               diag.EHeaderName,
+	"%s declares more than a program wants; name what is imported from a header": diag.EHeaderName,
 
 	// Format values. A string literal with a #{} borrows what it names, so
 	// it is only ever passed on.
