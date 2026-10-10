@@ -4,26 +4,26 @@
 import { println } from "stdlib"
 
 fn apply(v: i32, f: fn(i32): i32): i32 {
-  return f(v)
+    return f(v)
 }
 
 fn main() {
-  println(apply(21, fn(x) x * 2))
-  var add = fn(a: i32, b: i32): i32 { return a + b }
-  println(add(2, 3))
+    println(apply(21, fn(x) x * 2))
+    var add = fn(a: i32, b: i32): i32 { return a + b }
+    println(add(2, 3))
 
-  var count = 1
-  var show = fn() { println(count) }
-  count = 99
-  show()
-  println(count)
+    var count = 1
+    var show = fn() { println(count) }
+    count = 99
+    show()
+    println(count)
 
-  var total: i32 = 0
-  var bump = fn(): i32 {
-    total += 1
-    return total
-  }
-  println(bump())
-  println(bump())
-  println(total)
+    var total: i32 = 0
+    var bump = fn(): i32 {
+        total += 1
+        return total
+    }
+    println(bump())
+    println(bump())
+    println(total)
 }

@@ -361,3 +361,34 @@ func TestPositions(t *testing.T) {
 		t.Fatal("no var token produced")
 	}
 }
+
+func TestScanKeepsComments(t *testing.T) {
+	src := "var x = 1 // one\n/* two\n   lines */ var y = 2 /* a /* nested */ b */\n"
+
+	var plain, scanned diag.Bag
+	want := Tokens(diag.NewFile("test.gyro", src), &plain)
+	got, comments := Scan(diag.NewFile("test.gyro", src), &scanned)
+
+	if len(got) != len(want) {
+		t.Fatalf("Scan returned %d tokens, Tokens %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("token %d: Scan has %v, Tokens has %v", i, got[i], want[i])
+		}
+	}
+
+	wantComments := []Comment{
+		{Offset: strings.Index(src, "// one"), Text: "// one"},
+		{Offset: strings.Index(src, "/* two"), Text: "/* two\n   lines */", Block: true},
+		{Offset: strings.Index(src, "/* a"), Text: "/* a /* nested */ b */", Block: true},
+	}
+	if len(comments) != len(wantComments) {
+		t.Fatalf("got %d comments, want %d: %+v", len(comments), len(wantComments), comments)
+	}
+	for i := range wantComments {
+		if comments[i] != wantComments[i] {
+			t.Errorf("comment %d: got %+v, want %+v", i, comments[i], wantComments[i])
+		}
+	}
+}

@@ -6,30 +6,30 @@ import safe { add } from "./lib.c"
 import { twice } from "./lib.c"
 import safe * as vouching from "./lib.c"
 import * as plainly from "./lib.c"
-import safe { double } from "./helper.gyro"  //~ E0619 import safe vouches for a C file's functions; "./helper.gyro" is a Gyro module
+import safe { double } from "./helper.gyro" //~ E0619 import safe vouches for a C file's functions; "./helper.gyro" is a Gyro module
 
 fn vouched(): i32 {
-  return add(1, 2)
+    return add(1, 2)
 }
 
 fn unvouched(): i32 {
-  return twice(3)                //~ E0618 twice is unsafe to call; this function is a plain fn
+    return twice(3) //~ E0618 twice is unsafe to call; this function is a plain fn
 }
 
 safe fn contained(): i32 {
-  return twice(3)
+    return twice(3)
 }
 
 unsafe fn passed_on(): i32 {
-  return twice(4)
+    return twice(4)
 }
 
 fn plain(): i32 {
-  return double(2)
+    return double(2)
 }
 
 fn namespaces(): i32 {
-  var a = vouching::add(1, 2)
-  var b = plainly::add(1, 2)     //~ E0618 add is unsafe to call; this function is a plain fn
-  return a + b
+    var a = vouching::add(1, 2)
+    var b = plainly::add(1, 2) //~ E0618 add is unsafe to call; this function is a plain fn
+    return a + b
 }

@@ -34,6 +34,20 @@ type Lexer struct {
 	// lastKind is the kind of the most recently emitted token, used to
 	// decide whether a newline terminates a statement.
 	lastKind token.Kind
+
+	// comments collects every comment skipped so far, in source order.
+	// They never reach the token stream; Scan hands them out beside it.
+	comments []Comment
+}
+
+// Comment is a comment the lexer skipped over. Text is the whole source
+// text of the comment, delimiters included.
+type Comment struct {
+	Offset int
+	Text   string
+	// Block reports a /* ... */ comment; otherwise it is a // comment that
+	// runs to the end of its line.
+	Block bool
 }
 
 // New creates a lexer over the given file. Diagnostics are appended to bag.
@@ -57,6 +71,21 @@ func Tokens(file *diag.File, bag *diag.Bag) []token.Token {
 		tokens = append(tokens, tok)
 		if tok.Kind == token.EOF {
 			return tokens
+		}
+	}
+}
+
+// Scan is Tokens plus the comments the token stream leaves out. The token
+// stream is exactly Tokens' and does not depend on whether anyone asks for
+// the comments.
+func Scan(file *diag.File, bag *diag.Bag) ([]token.Token, []Comment) {
+	lexer := New(file, bag)
+	var tokens []token.Token
+	for {
+		tok := lexer.Next()
+		tokens = append(tokens, tok)
+		if tok.Kind == token.EOF {
+			return tokens, lexer.comments
 		}
 	}
 }
@@ -154,15 +183,20 @@ func (l *Lexer) skipSpaceAndComments() (sawNewline bool, newlineOffset int) {
 }
 
 func (l *Lexer) skipLineComment() {
+	start := l.offset
 	for l.ch != '\n' && l.ch != eof {
 		l.advance()
 	}
+	l.comments = append(l.comments, Comment{Offset: start, Text: l.src[start:l.offset]})
 }
 
 // skipBlockComment consumes a /* ... */ comment, which may nest, and reports
 // whether it spanned a newline.
 func (l *Lexer) skipBlockComment() (spannedNewline bool) {
 	start := l.offset
+	defer func() {
+		l.comments = append(l.comments, Comment{Offset: start, Text: l.src[start:l.offset], Block: true})
+	}()
 	l.advance() // '/'
 	l.advance() // '*'
 

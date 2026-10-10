@@ -2,10 +2,10 @@
 
 ```gyro
 var x: i32 = 0
-var y = 42            // inferred
-const MAX: i32 = 100  // compile-time constant
-var value, err = f()  // tuple destructuring
-var _, err = f()      // `_` discards explicitly
+var y = 42           // inferred
+const MAX: i32 = 100 // compile-time constant
+var value, err = f() // tuple destructuring
+var _, err = f()     // `_` discards explicitly
 ```
 
 Bindings are `var` and `const`; assignment is `=`. **There is no `:=`** —
@@ -24,12 +24,12 @@ the analysis is flow-sensitive. Nothing springs into existence unwritten.
 ```gyro
 var x: i32
 if cond {
-  x = 1
+    x = 1
 }
-println(x)        // error: not assigned when cond was false
+println(x) // error: not assigned when cond was false
 
 if cond { x = 1 } else { x = 2 }
-println(x)        // fine
+println(x) // fine
 ```
 
 The rules the checker follows:
@@ -64,9 +64,9 @@ block is an error.
 ```gyro
 var x = 1
 if cond {
-  var x = 2      // ok: inner scope
+    var x = 2 // ok: inner scope
 }
-var x = 3        // error: already declared in this block
+var x = 3 // error: already declared in this block
 ```
 
 ## Destructuring
@@ -75,7 +75,7 @@ A binding may take several names, which destructures a tuple:
 
 ```gyro
 var value, err = load(path)
-var _, err = load(path)      // the value is deliberately dropped
+var _, err = load(path) // the value is deliberately dropped
 ```
 
 `_` is not a name — it discards. That matters most for errors: dropping an

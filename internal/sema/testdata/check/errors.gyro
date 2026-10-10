@@ -2,41 +2,41 @@
 // Nothing is declared.
 
 struct WithMessage {
-  code: i32
+    code: i32
 }
 
 fn WithMessage::message(self): string {
-  return "e"
+    return "e"
 }
 
 struct Quiet {
-  code: i32
+    code: i32
 }
 
 fn structural(): (i32, error?) {
-  return 0, WithMessage{ code: 1 }
+    return 0, WithMessage{ code: 1 }
 }
 
 fn withoutAMessage(): (i32, error?) {
-  return 0, Quiet{ code: 1 }     //~ cannot use Quiet as error?
+    return 0, Quiet{ code: 1 } //~ cannot use Quiet as error?
 }
 
 fn fallible(): (i32, error?) {
-  return 0, null
+    return 0, null
 }
 
 // Dropping an error result is an error; discarding it takes an explicit _.
 fn dropped() {
-  fallible()                     //~ the error result is dropped here
+    fallible() //~ the error result is dropped here
 }
 
 fn discarded() {
-  var _, _ = fallible()
+    var _, _ = fallible()
 }
 
 fn handled() {
-  var v, err = fallible()
-  if err != null {
-    var m = err.message()
-  }
+    var v, err = fallible()
+    if err != null {
+        var m = err.message()
+    }
 }

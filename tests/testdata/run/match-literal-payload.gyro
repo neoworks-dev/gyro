@@ -6,46 +6,46 @@ import { println } from "stdlib"
 import { format, heap } from "mem"
 
 enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-  Point,
+    Circle(f64),
+    Rect(f64, f64),
+    Point,
 }
 
 fn describe(s: Shape): string {
-  return match s {
-    Shape::Circle(1.0): "unit circle"
-    Shape::Circle(r): format(heap(), "circle #{r}")
-    Shape::Rect(1.0, 1.0): "unit square"
-    Shape::Rect(1.0, h): format(heap(), "tall #{h}")
-    Shape::Rect(w, h): format(heap(), "rect #{w}x#{h}")
-    Shape::Point: "point"
-  }
+    return match s {
+        Shape::Circle(1.0): "unit circle"
+        Shape::Circle(r): format(heap(), "circle #{r}")
+        Shape::Rect(1.0, 1.0): "unit square"
+        Shape::Rect(1.0, h): format(heap(), "tall #{h}")
+        Shape::Rect(w, h): format(heap(), "rect #{w}x#{h}")
+        Shape::Point: "point"
+    }
 }
 
 enum Tagged {
-  Named(string, i32),
-  Empty,
+    Named(string, i32),
+    Empty,
 }
 
 fn label(t: Tagged): string {
-  return match t {
-    Tagged::Named("root", 0): "the root"
-    Tagged::Named("root", n): format(heap(), "root #{n}")
-    Tagged::Named(name, n): format(heap(), "#{name} #{n}")
-    Tagged::Empty: "empty"
-  }
+    return match t {
+        Tagged::Named("root", 0): "the root"
+        Tagged::Named("root", n): format(heap(), "root #{n}")
+        Tagged::Named(name, n): format(heap(), "#{name} #{n}")
+        Tagged::Empty: "empty"
+    }
 }
 
 fn main() {
-  println(describe(Shape::Circle(1.0)))
-  println(describe(Shape::Circle(2.0)))
-  println(describe(Shape::Rect(1.0, 1.0)))
-  println(describe(Shape::Rect(1.0, 3.0)))
-  println(describe(Shape::Rect(2.0, 3.0)))
-  println(describe(Shape::Point))
+    println(describe(Shape::Circle(1.0)))
+    println(describe(Shape::Circle(2.0)))
+    println(describe(Shape::Rect(1.0, 1.0)))
+    println(describe(Shape::Rect(1.0, 3.0)))
+    println(describe(Shape::Rect(2.0, 3.0)))
+    println(describe(Shape::Point))
 
-  println(label(Tagged::Named("root", 0)))
-  println(label(Tagged::Named("root", 7)))
-  println(label(Tagged::Named("leaf", 2)))
-  println(label(Tagged::Empty))
+    println(label(Tagged::Named("root", 0)))
+    println(label(Tagged::Named("root", 7)))
+    println(label(Tagged::Named("leaf", 2)))
+    println(label(Tagged::Empty))
 }

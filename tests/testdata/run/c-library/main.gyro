@@ -17,38 +17,38 @@ const ASCENDING = 0
 const DESCENDING = 1
 
 fn main() {
-  reset()
-  for value in [42, 7, 13, 99, 7, 1, 64, 28] {
-    push(value)
-  }
-  println(count())
+    reset()
+    for value in [42, 7, 13, 99, 7, 1, 64, 28] {
+        push(value)
+    }
+    println(count())
 
-  sort(ASCENDING)
-  println(at(0))
-  println(at(1))
-  println(at(7))
-  println(median())
+    sort(ASCENDING)
+    println(at(0))
+    println(at(1))
+    println(at(7))
+    println(median())
 
-  // Binary search over what the quicksort left behind.
-  println(find(13))
-  println(find(99))
-  println(find(5))
+    // Binary search over what the quicksort left behind.
+    println(find(13))
+    println(find(99))
+    println(find(5))
 
-  println(checksum())
+    println(checksum())
 
-  sort(DESCENDING)
-  println(at(0))
-  println(at(7))
-  println(checksum())
+    sort(DESCENDING)
+    println(at(0))
+    println(at(7))
+    println(checksum())
 
-  // The array is fixed, and the library says so rather than writing past
-  // it: 64 fit, and this program has already used eight of them.
-  var accepted = 0
-  var i = 0
-  while i < 100 {
-    accepted = accepted + push(i)
-    i = i + 1
-  }
-  println(accepted)
-  println(count())
+    // The array is fixed, and the library says so rather than writing past
+    // it: 64 fit, and this program has already used eight of them.
+    var accepted = 0
+    var i = 0
+    while i < 100 {
+        accepted = accepted + push(i)
+        i = i + 1
+    }
+    println(accepted)
+    println(count())
 }

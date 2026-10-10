@@ -5,49 +5,49 @@
 import { println, Print } from "stdlib"
 
 struct Inner {
-  label: string
-  count: i32
+    label: string
+    count: i32
 }
 
 impl Print for Inner
 
 struct Outer {
-  inner: Inner
-  tag: string
-  missing: i32?
-  present: i32?
+    inner: Inner
+    tag: string
+    missing: i32?
+    present: i32?
 }
 
 impl Print for Outer
 
 enum Wrapped {
-  One(Inner),
-  Pair(i32, string),
-  None,
+    One(Inner),
+    Pair(i32, string),
+    None,
 }
 
 impl Print for Wrapped
 
 fn main() {
-  var inner = Inner{ label: "a\"b", count: 2 }
-  println(inner)
-  println("interpolated: #{inner}")
+    var inner = Inner{ label: "a\"b", count: 2 }
+    println(inner)
+    println("interpolated: #{inner}")
 
-  println(Outer{ inner: inner, tag: "top", missing: null, present: 5 })
+    println(Outer{ inner: inner, tag: "top", missing: null, present: 5 })
 
-  var numbers = [1, 2, 3]
-  println(numbers)
+    var numbers = [1, 2, 3]
+    println(numbers)
 
-  var texts = ["x", "y"]
-  println(texts)
+    var texts = ["x", "y"]
+    println(texts)
 
-  println(Wrapped::One(inner))
-  println(Wrapped::Pair(1, "two"))
-  println(Wrapped::None)
+    println(Wrapped::One(inner))
+    println(Wrapped::Pair(1, "two"))
+    println(Wrapped::None)
 
-  var value: i32 = 7
-  println(&value)
+    var value: i32 = 7
+    println(&value)
 
-  var nothing: i32? = null
-  println(nothing)
+    var nothing: i32? = null
+    println(nothing)
 }

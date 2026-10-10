@@ -18,9 +18,9 @@ allocation is about to be lost.
 import { alloc, free, heap } from "mem"
 
 fn f(): i32 {
-  var node = alloc<Node>(heap())
-  defer free(heap(), node)
-  return node.value
+    var node = alloc<Node>(heap())
+    defer free(heap(), node)
+    return node.value
 }
 ```
 
@@ -32,19 +32,19 @@ tail is `next: *Node?`, and every walk of it has a check in it:
 
 ```gyro
 struct Node {
-  value: i32
-  next: *Node?      // nullable: the last node has no successor
+    value: i32
+    next: *Node? // nullable: the last node has no successor
 }
 
 export fn free_chain(head: *Node) {
-  var current: *Node? = head
-  while current != null {
-    // `current` is narrowed to *Node inside the check, so the field access
-    // needs no unwrapping.
-    var next = current.next
-    free(heap(), current)
-    current = next
-  }
+    var current: *Node? = head
+    while current != null {
+        // `current` is narrowed to *Node inside the check, so the field access
+        // needs no unwrapping.
+        var next = current.next
+        free(heap(), current)
+        current = next
+    }
 }
 ```
 
@@ -114,12 +114,12 @@ capture list can say:
 
 ```gyro
 export fn defer_release(value: i32): fn() {
-  var node = alloc<Node>(heap())
-  node.value = value
+    var node = alloc<Node>(heap())
+    node.value = value
 
-  return fn[move node]() {
-    free(heap(), node)
-  }
+    return fn[move node]() {
+        free(heap(), node)
+    }
 }
 ```
 

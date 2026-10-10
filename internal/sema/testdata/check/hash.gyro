@@ -3,56 +3,56 @@
 import { println, Array, Eq, Hash } from "stdlib"
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Eq for Point
 impl Hash for Point
 
 struct Held {
-  at: *Point
+    at: *Point
 }
 
 // Asking for the derived Hash is refused where a field has none.
-impl Hash for Held               //~ E0529 Hash cannot be derived
+impl Hash for Held //~ E0529 Hash cannot be derived
 
 enum Shape {
-  Circle(f64),
-  Dot,
+    Circle(f64),
+    Dot,
 }
 
 impl Hash for Shape
 
 // Without the impl a type is not Hash, however hashable its fields are.
 struct Silent {
-  n: i32
+    n: i32
 }
 
 fn silent(s: Silent): u64 {
-  return s.hash()                //~ E0405 Silent has no method hash
+    return s.hash() //~ E0405 Silent has no method hash
 }
 
 fn derived(p: Point, s: Shape, pair: (i32, string), text: string, n: i32, flag: bool): u64 {
-  return p.hash() + s.hash() + pair.hash() + text.hash() + n.hash() + flag.hash()
+    return p.hash() + s.hash() + pair.hash() + text.hash() + n.hash() + flag.hash()
 }
 
 // A literal receiver takes its default type, as it does anywhere else.
 fn literals(): u64 {
-  return 8.hash() + 1.5.hash()
+    return 8.hash() + 1.5.hash()
 }
 
 fn slicesHaveNone(xs: i32[]) {
-  println(xs.hash())              //~ E0405 i32[] has no method hash
+    println(xs.hash()) //~ E0405 i32[] has no method hash
 }
 
 // A struct is hashable only where every field is: a pointer compares by
 // address, which is not the same run to run.
 fn pointersHaveNone(held: Held) {
-  println(held.hash())            //~ E0405 Held has no method hash
+    println(held.hash()) //~ E0405 Held has no method hash
 }
 
 // An opaque runtime handle holds nothing to hash.
 fn handlesHaveNone(xs: Array<i32>) {
-  println(xs.hash())              //~ E0405 Array<i32> has no method hash
+    println(xs.hash()) //~ E0405 Array<i32> has no method hash
 }

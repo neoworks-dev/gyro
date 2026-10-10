@@ -8,14 +8,14 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-  var xs = Array<i32>::new(heap())
-  defer xs.free()
-  println(xs.is_empty())
+    var xs = Array<i32>::new(heap())
+    defer xs.free()
+    println(xs.is_empty())
 
-  xs.push(4)
-  println(xs.is_empty())
+    xs.push(4)
+    println(xs.is_empty())
 
-  var text = Array<string>::new(heap())
-  defer text.free()
-  println(text.is_empty())
+    var text = Array<string>::new(heap())
+    defer text.free()
+    println(text.is_empty())
 }

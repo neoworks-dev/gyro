@@ -49,41 +49,41 @@ const DIGIT_NINE: u8 = 57
 // exact as long as it neither overflows nor falls into the subnormal range;
 // the guards keep it in between.
 fn decompose(x: f64): (u64, i64) {
-  var y = x
-  var exponent: i64 = 0
+    var y = x
+    var exponent: i64 = 0
 
-  while y < 1.0 {
-    y = y * TWO64
-    exponent -= 64
-  }
-  while y >= TWO64 {
-    y = y / TWO64
-    exponent += 64
-  }
-  while y < TWO52 {
-    y = y * 2.0
-    exponent -= 1
-  }
-  while y >= TWO53 {
-    y = y / 2.0
-    exponent += 1
-  }
-  return (y as u64, exponent)
+    while y < 1.0 {
+        y = y * TWO64
+        exponent -= 64
+    }
+    while y >= TWO64 {
+        y = y / TWO64
+        exponent += 64
+    }
+    while y < TWO52 {
+        y = y * 2.0
+        exponent -= 1
+    }
+    while y >= TWO53 {
+        y = y / 2.0
+        exponent += 1
+    }
+    return (y as u64, exponent)
 }
 
 export fn is_nan(x: f64): bool {
-  return x != x
+    return x != x
 }
 
 export fn is_infinite(x: f64): bool {
-  return x > 1.7976931348623157e308 || x < -1.7976931348623157e308
+    return x > 1.7976931348623157e308 || x < -1.7976931348623157e308
 }
 
 export fn absolute(x: f64): f64 {
-  if x < 0.0 {
-    return 0.0 - x
-  }
-  return x
+    if x < 0.0 {
+        return 0.0 - x
+    }
+    return x
 }
 
 // ---------------------------------------------------------------------------
@@ -91,90 +91,90 @@ export fn absolute(x: f64): f64 {
 // ---------------------------------------------------------------------------
 
 fn from_u64(value: u64): Array<u64> {
-  var limbs = Array<u64>::new(heap())
-  var rest = value
-  while rest > 0 {
-    limbs.push(rest % BASE)
-    rest = rest / BASE
-  }
-  if limbs.len() == 0 {
-    limbs.push(0)
-  }
-  return limbs
+    var limbs = Array<u64>::new(heap())
+    var rest = value
+    while rest > 0 {
+        limbs.push(rest % BASE)
+        rest = rest / BASE
+    }
+    if limbs.len() == 0 {
+        limbs.push(0)
+    }
+    return limbs
 }
 
 fn multiply(limbs: Array<u64>, factor: u64) {
-  var carry: u64 = 0
-  for var i: usize = 0; i < limbs.len(); i += 1 {
-    var product = limbs.get(i) * factor + carry
-    limbs.set(i, product % BASE)
-    carry = product / BASE
-  }
-  while carry > 0 {
-    limbs.push(carry % BASE)
-    carry = carry / BASE
-  }
+    var carry: u64 = 0
+    for var i: usize = 0; i < limbs.len(); i += 1 {
+        var product = limbs.get(i) * factor + carry
+        limbs.set(i, product % BASE)
+        carry = product / BASE
+    }
+    while carry > 0 {
+        limbs.push(carry % BASE)
+        carry = carry / BASE
+    }
 }
 
 // power_of raises the limbs by `base^count`, in the largest chunks that
 // still fit one machine multiplication.
 fn scale(limbs: Array<u64>, chunk: u64, chunk_size: i64, single: u64, count: i64) {
-  var left = count
-  while left >= chunk_size {
-    multiply(limbs, chunk)
-    left -= chunk_size
-  }
-  while left > 0 {
-    multiply(limbs, single)
-    left -= 1
-  }
+    var left = count
+    while left >= chunk_size {
+        multiply(limbs, chunk)
+        left -= chunk_size
+    }
+    while left > 0 {
+        multiply(limbs, single)
+        left -= 1
+    }
 }
 
 fn push_digit(out: String, digit: u64) {
-  out.push_rune((DIGIT_ZERO + (digit as u8)) as rune)
+    out.push_rune((DIGIT_ZERO + (digit as u8)) as rune)
 }
 
 // push_limb writes one limb as nine digits, zero padded, which is what the
 // limbs below the most significant one are.
 fn push_limb(out: String, limb: u64) {
-  var divisor: u64 = 100000000
-  var rest = limb
-  while divisor > 0 {
-    push_digit(out, rest / divisor)
-    rest = rest % divisor
-    divisor = divisor / 10
-  }
+    var divisor: u64 = 100000000
+    var rest = limb
+    while divisor > 0 {
+        push_digit(out, rest / divisor)
+        rest = rest % divisor
+        divisor = divisor / 10
+    }
 }
 
 fn digit_string(limbs: Array<u64>): string {
-  var top = limbs.len()
-  while top > 1 && limbs.get(top - 1) == 0 {
-    top -= 1
-  }
-
-  var out = String::new(heap())
-  var head = limbs.get(top - 1)
-  if head == 0 {
-    out.push("0")
-  } else {
-    var divisor: u64 = 100000000
-    while divisor > head {
-      divisor = divisor / 10
+    var top = limbs.len()
+    while top > 1 && limbs.get(top - 1) == 0 {
+        top -= 1
     }
-    var rest = head
-    while divisor > 0 {
-      push_digit(out, rest / divisor)
-      rest = rest % divisor
-      divisor = divisor / 10
-    }
-  }
-  for var i = top - 1; i > 0; i -= 1 {
-    push_limb(out, limbs.get(i - 1))
-  }
 
-  var text = out.text(heap())
-  out.free()
-  return text
+    var out = String::new(heap())
+    var head = limbs.get(top - 1)
+    if head == 0 {
+        out.push("0")
+    } else {
+        var divisor: u64 = 100000000
+        while divisor > head {
+            divisor = divisor / 10
+        }
+        var rest = head
+        while divisor > 0 {
+            push_digit(out, rest / divisor)
+            rest = rest % divisor
+            divisor = divisor / 10
+        }
+    }
+    for var i = top - 1; i > 0; i -= 1 {
+        push_limb(out, limbs.get(i - 1))
+    }
+
+    var text = out.text(heap())
+    out.free()
+    return text
 }
 
 // ---------------------------------------------------------------------------
@@ -188,20 +188,20 @@ fn digit_string(limbs: Array<u64>): string {
 //
 // x must be finite and non-zero.
 export fn decimal_of(x: f64): (string, i64) {
-  var mantissa, exponent = decompose(absolute(x))
-  var limbs = from_u64(mantissa)
+    var mantissa, exponent = decompose(absolute(x))
+    var limbs = from_u64(mantissa)
 
-  var ten_exponent: i64 = 0
-  if exponent >= 0 {
-    scale(limbs, TWO29, 29, 2, exponent)
-  } else {
-    scale(limbs, FIVE13, 13, 5, 0 - exponent)
-    ten_exponent = exponent
-  }
+    var ten_exponent: i64 = 0
+    if exponent >= 0 {
+        scale(limbs, TWO29, 29, 2, exponent)
+    } else {
+        scale(limbs, FIVE13, 13, 5, 0 - exponent)
+        ten_exponent = exponent
+    }
 
-  var digits = digit_string(limbs)
-  limbs.free()
-  return (digits, (digits.len() as i64) - 1 + ten_exponent)
+    var digits = digit_string(limbs)
+    limbs.free()
+    return (digits, (digits.len() as i64) - 1 + ten_exponent)
 }
 
 // ---------------------------------------------------------------------------
@@ -215,52 +215,52 @@ export fn decimal_of(x: f64): (string, i64) {
 // Ties round to even, which is what glibc does with the default rounding
 // mode, and the expansion is exact, so a tie really is a tie.
 fn round_to(digits: u8[], precision: usize): (Array<u8>, bool) {
-  var kept = Array<u8>::new(heap())
-  for var i: usize = 0; i < precision; i += 1 {
-    if i < digits.len() {
-      kept.push(digits[i])
-    } else {
-      kept.push(DIGIT_ZERO)
+    var kept = Array<u8>::new(heap())
+    for var i: usize = 0; i < precision; i += 1 {
+        if i < digits.len() {
+            kept.push(digits[i])
+        } else {
+            kept.push(DIGIT_ZERO)
+        }
     }
-  }
-  if precision >= digits.len() {
-    return (kept, false)
-  }
+    if precision >= digits.len() {
+        return (kept, false)
+    }
 
-  var up = false
-  var next = digits[precision]
-  if next > DIGIT_ZERO + 5 {
-    up = true
-  } elif next == DIGIT_ZERO + 5 {
-    var rest_nonzero = false
-    for var i = precision + 1; i < digits.len(); i += 1 {
-      if digits[i] != DIGIT_ZERO {
-        rest_nonzero = true
-      }
+    var up = false
+    var next = digits[precision]
+    if next > DIGIT_ZERO + 5 {
+        up = true
+    } elif next == DIGIT_ZERO + 5 {
+        var rest_nonzero = false
+        for var i = precision + 1; i < digits.len(); i += 1 {
+            if digits[i] != DIGIT_ZERO {
+                rest_nonzero = true
+            }
+        }
+        if rest_nonzero {
+            up = true
+        } else {
+            up = (kept.get(precision - 1) - DIGIT_ZERO) % 2 == 1
+        }
     }
-    if rest_nonzero {
-      up = true
-    } else {
-      up = (kept.get(precision - 1) - DIGIT_ZERO) % 2 == 1
+    if !up {
+        return (kept, false)
     }
-  }
-  if !up {
-    return (kept, false)
-  }
 
-  var at = precision
-  while at > 0 {
-    var digit = kept.get(at - 1)
-    if digit < DIGIT_NINE {
-      kept.set(at - 1, digit + 1)
-      return (kept, false)
+    var at = precision
+    while at > 0 {
+        var digit = kept.get(at - 1)
+        if digit < DIGIT_NINE {
+            kept.set(at - 1, digit + 1)
+            return (kept, false)
+        }
+        kept.set(at - 1, DIGIT_ZERO)
+        at -= 1
     }
-    kept.set(at - 1, DIGIT_ZERO)
-    at -= 1
-  }
-  // Every digit was a nine: the value became 1 followed by zeros.
-  kept.set(0, DIGIT_ZERO + 1)
-  return (kept, true)
+    // Every digit was a nine: the value became 1 followed by zeros.
+    kept.set(0, DIGIT_ZERO + 1)
+    return (kept, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -268,92 +268,92 @@ fn round_to(digits: u8[], precision: usize): (Array<u8>, bool) {
 // ---------------------------------------------------------------------------
 
 fn push_exponent(out: String, exponent: i64) {
-  out.push("e")
-  var value = exponent
-  if value < 0 {
-    out.push("-")
-    value = 0 - value
-  } else {
-    out.push("+")
-  }
-  if value < 10 {
-    out.push("0")
-  }
-  // The exponent of a double never needs more than three digits.
-  if value >= 100 {
-    push_digit(out, (value / 100) as u64)
-    value = value % 100
-    push_digit(out, (value / 10) as u64)
+    out.push("e")
+    var value = exponent
+    if value < 0 {
+        out.push("-")
+        value = 0 - value
+    } else {
+        out.push("+")
+    }
+    if value < 10 {
+        out.push("0")
+    }
+    // The exponent of a double never needs more than three digits.
+    if value >= 100 {
+        push_digit(out, (value / 100) as u64)
+        value = value % 100
+        push_digit(out, (value / 10) as u64)
+        push_digit(out, (value % 10) as u64)
+        return
+    }
+    if value >= 10 {
+        push_digit(out, (value / 10) as u64)
+    }
     push_digit(out, (value % 10) as u64)
-    return
-  }
-  if value >= 10 {
-    push_digit(out, (value / 10) as u64)
-  }
-  push_digit(out, (value % 10) as u64)
 }
 
 // trimmed answers how many of the leading digits of a fraction are left
 // once the trailing zeros are dropped — what %g does without the # flag.
 fn trimmed(kept: Array<u8>, from: usize, to: usize): usize {
-  var stop = to
-  while stop > from && kept.get(stop - 1) == DIGIT_ZERO {
-    stop -= 1
-  }
-  return stop
+    var stop = to
+    while stop > from && kept.get(stop - 1) == DIGIT_ZERO {
+        stop -= 1
+    }
+    return stop
 }
 
 fn push_range(out: String, kept: Array<u8>, from: usize, to: usize) {
-  for var i = from; i < to; i += 1 {
-    out.push_rune(kept.get(i) as rune)
-  }
+    for var i = from; i < to; i += 1 {
+        out.push_rune(kept.get(i) as rune)
+    }
 }
 
 // format_g renders the expansion the way `printf("%.<precision>g")` does:
 // the %e form when the exponent leaves the window, the positional form
 // otherwise, and trailing zeros dropped either way.
 export fn format_g(digits: string, exponent: i64, negative: bool, precision: usize): string {
-  var kept, carried = round_to(digits.bytes(heap()), precision)
-  var scientific = exponent
-  if carried {
-    scientific += 1
-  }
-
-  var out = String::new(heap())
-  if negative {
-    out.push("-")
-  }
-
-  if scientific < -4 || scientific >= precision as i64 {
-    out.push_rune(kept.get(0) as rune)
-    var stop = trimmed(kept, 1, precision)
-    if stop > 1 {
-      out.push(".")
-      push_range(out, kept, 1, stop)
+    var kept, carried = round_to(digits.bytes(heap()), precision)
+    var scientific = exponent
+    if carried {
+        scientific += 1
     }
-    push_exponent(out, scientific)
-  } elif scientific >= 0 {
-    var whole = (scientific as usize) + 1
-    push_range(out, kept, 0, whole)
-    var stop = trimmed(kept, whole, precision)
-    if stop > whole {
-      out.push(".")
-      push_range(out, kept, whole, stop)
+
+    var out = String::new(heap())
+    if negative {
+        out.push("-")
     }
-  } else {
-    var stop = trimmed(kept, 0, precision)
-    out.push("0")
-    if stop > 0 {
-      out.push(".")
-      for var i: i64 = 0; i < (0 - scientific) - 1; i += 1 {
+
+    if scientific < -4 || scientific >= precision as i64 {
+        out.push_rune(kept.get(0) as rune)
+        var stop = trimmed(kept, 1, precision)
+        if stop > 1 {
+            out.push(".")
+            push_range(out, kept, 1, stop)
+        }
+        push_exponent(out, scientific)
+    } elif scientific >= 0 {
+        var whole = (scientific as usize) + 1
+        push_range(out, kept, 0, whole)
+        var stop = trimmed(kept, whole, precision)
+        if stop > whole {
+            out.push(".")
+            push_range(out, kept, whole, stop)
+        }
+    } else {
+        var stop = trimmed(kept, 0, precision)
         out.push("0")
-      }
-      push_range(out, kept, 0, stop)
+        if stop > 0 {
+            out.push(".")
+            for var i: i64 = 0; i < (0 - scientific) - 1; i += 1 {
+                out.push("0")
+            }
+            push_range(out, kept, 0, stop)
+        }
     }
-  }
 
-  kept.free()
-  var text = out.text(heap())
-  out.free()
-  return text
+    kept.free()
+    var text = out.text(heap())
+    out.free()
+    return text
 }

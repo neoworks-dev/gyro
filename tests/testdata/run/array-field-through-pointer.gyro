@@ -6,58 +6,58 @@
 import { println } from "stdlib"
 
 struct Buf {
-  tag: i32
-  data: i32[4]
+    tag: i32
+    data: i32[4]
 }
 
 fn Buf::set(*self, at: usize, value: i32) {
-  self.data[at] = value
+    self.data[at] = value
 }
 
 fn Buf::get(self, at: usize): i32 {
-  return self.data[at]
+    return self.data[at]
 }
 
 fn Buf::total(self): i32 {
-  var sum = 0
-  var i: usize = 0
-  while i < 4 {
-    sum += self.data[i]
-    i += 1
-  }
-  return sum
+    var sum = 0
+    var i: usize = 0
+    while i < 4 {
+        sum += self.data[i]
+        i += 1
+    }
+    return sum
 }
 
 // Accumulating in place is the loop the whole thing is for: no element
 // is loaded to write one, and the array is never copied.
 fn Buf::double(*self) {
-  var i: usize = 0
-  while i < 4 {
-    self.data[i] = self.data[i] * 2
-    i += 1
-  }
+    var i: usize = 0
+    while i < 4 {
+        self.data[i] = self.data[i] * 2
+        i += 1
+    }
 }
 
 fn main() {
-  var buf = Buf{ tag: 7, data: [1, 2, 3, 4] }
+    var buf = Buf{ tag: 7, data: [1, 2, 3, 4] }
 
-  println(buf.total())
+    println(buf.total())
 
-  // A method's write is the caller's value.
-  buf.set(0, 10)
-  println(buf.data[0])
-  println(buf.get(0))
-  println(buf.total())
+    // A method's write is the caller's value.
+    buf.set(0, 10)
+    println(buf.data[0])
+    println(buf.get(0))
+    println(buf.total())
 
-  // Writing an element does not disturb the field beside it.
-  println(buf.tag)
+    // Writing an element does not disturb the field beside it.
+    println(buf.tag)
 
-  buf.double()
-  println(buf.total())
-  println(buf.data[3])
+    buf.double()
+    println(buf.total())
+    println(buf.data[3])
 
-  // The last index is in range.
-  buf.set(3, 100)
-  println(buf.data[3])
-  println(buf.total())
+    // The last index is in range.
+    buf.set(3, 100)
+    println(buf.data[3])
+    println(buf.total())
 }

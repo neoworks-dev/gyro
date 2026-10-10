@@ -2,40 +2,40 @@
 // where it is not, and stated once for every instantiation.
 
 fn pick<T>(a: T, b: T, f: bool): T !{ &a, &b } {
-  if f {
-    return a
-  }
-  return b
+    if f {
+        return a
+    }
+    return b
 }
 
 fn identity<T>(x: T): T {
-  return x                       //~ E0609 this returns a view into x, which the row does not name
+    return x //~ E0609 this returns a view into x, which the row does not name
 }
 
 fn borrowingIdentity<T>(x: T): T !{ &x } {
-  return x
+    return x
 }
 
 // Vacuous at i32: the row says nothing and costs nothing.
 fn atScalar(): i32 {
-  return pick(1, 2, true)
+    return pick(1, 2, true)
 }
 
 // Load-bearing at string, which is a view.
 fn atView(x: string, y: string): string !{ &x, &y } {
-  return pick(x, y, true)
+    return pick(x, y, true)
 }
 
 fn atViewUnnamed(x: string, y: string): string {
-  return pick(x, y, true)        //~ E0609 this returns a view into x, which the row does not name
+    return pick(x, y, true) //~ E0609 this returns a view into x, which the row does not name
 }
 
 // The instantiation at a view type is what surfaces a missing row on the
 // generic itself.
 fn throughIdentity(s: string): string !{ &s } {
-  return identity(s)             //~ E0505 in the instantiation identity<string>
+    return identity(s) //~ E0505 in the instantiation identity<string>
 }
 
 fn throughBorrowingIdentity(s: string): string !{ &s } {
-  return borrowingIdentity(s)
+    return borrowingIdentity(s)
 }

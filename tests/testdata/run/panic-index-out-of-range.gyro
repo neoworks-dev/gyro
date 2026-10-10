@@ -3,8 +3,8 @@
 import { println } from "stdlib"
 
 fn main() {
-  println("before")
-  var xs = [1, 2, 3]
-  var at: usize = 7
-  println(xs[at])
+    println("before")
+    var xs = [1, 2, 3]
+    var at: usize = 7
+    println(xs[at])
 }

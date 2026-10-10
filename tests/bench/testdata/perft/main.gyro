@@ -36,23 +36,23 @@ const POSITION_6: string = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1Q
 const DEPTH: i32 = 3
 
 fn main() {
-  chess::init_all()
+    chess::init_all()
 
-  var start = monotonic()
-  var nodes: i64 = 0
-  nodes += count(START)
-  nodes += count(KIWIPETE)
-  nodes += count(POSITION_3)
-  nodes += count(POSITION_4)
-  nodes += count(POSITION_5)
-  nodes += count(POSITION_6)
-  var stop = monotonic()
+    var start = monotonic()
+    var nodes: i64 = 0
+    nodes += count(START)
+    nodes += count(KIWIPETE)
+    nodes += count(POSITION_3)
+    nodes += count(POSITION_4)
+    nodes += count(POSITION_5)
+    nodes += count(POSITION_6)
+    var stop = monotonic()
 
-  println(nodes)
-  eprintln("gyro:bench #{stop - start}")
+    println(nodes)
+    eprintln("gyro:bench #{stop - start}")
 }
 
 fn count(fen: string): i64 {
-  var board = chess::parse_fen(fen)
-  return chess::perft(&board, DEPTH, 0)
+    var board = chess::parse_fen(fen)
+    return chess::perft(&board, DEPTH, 0)
 }

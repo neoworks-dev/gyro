@@ -10,33 +10,33 @@ import { heap } from "mem"
 // lies before it. Two usize indexes cannot be subtracted that way, since
 // their difference would underflow.
 fn distance(from: usize, to: usize): isize {
-  return to as isize - from as isize
+    return to as isize - from as isize
 }
 
 fn main() {
-  var back: isize = -16
-  println(back)
-  println(distance(10, 3))
-  println(distance(3, 10))
+    var back: isize = -16
+    println(back)
+    println(distance(10, 3))
+    println(distance(3, 10))
 
-  // Division truncates toward zero, as for every signed integer.
-  println(back / 3)
-  println(back % 3)
-  println(back < 0)
+    // Division truncates toward zero, as for every signed integer.
+    println(back / 3)
+    println(back % 3)
+    println(back < 0)
 
-  var largest: isize = 9223372036854775807
-  println(largest)
-  println(back as i64 * 2)
+    var largest: isize = 9223372036854775807
+    println(largest)
+    println(back as i64 * 2)
 
-  // printf's %x shows the two's-complement bits at the type's own width.
-  printf("%d %x\n", back, back)
+    // printf's %x shows the two's-complement bits at the type's own width.
+    printf("%d %x\n", back, back)
 
-  var names = Map<isize, string>::new(heap())
-  defer names.free()
-  names.insert(-1, "before")
-  names.insert(1, "after")
-  var found = names.get(-1)
-  if found != null {
-    println(found)
-  }
+    var names = Map<isize, string>::new(heap())
+    defer names.free()
+    names.insert(-1, "before")
+    names.insert(1, "after")
+    var found = names.get(-1)
+    if found != null {
+        println(found)
+    }
 }

@@ -7,21 +7,21 @@ import { println, Array } from "stdlib"
 import { heap, keep, release, Allocator } from "mem"
 
 fn build(a: Allocator): Array<fn(): i32> {
-  var fns = Array<fn(): i32>::new(a)
-  for i in 0..3 {
-    fns.push(keep(a, fn(): i32 { return i }))
-  }
-  return fns
+    var fns = Array<fn(): i32>::new(a)
+    for i in 0..3 {
+        fns.push(keep(a, fn(): i32 { return i }))
+    }
+    return fns
 }
 
 fn main() {
-  var a = heap()
-  var fns = build(a)
-  println(fns.get(0)())
-  println(fns.get(1)())
-  println(fns.get(2)())
-  for i in 0..fns.len() {
-    release(a, fns.get(i))
-  }
-  fns.free()
+    var a = heap()
+    var fns = build(a)
+    println(fns.get(0)())
+    println(fns.get(1)())
+    println(fns.get(2)())
+    for i in 0..fns.len() {
+        release(a, fns.get(i))
+    }
+    fns.free()
 }

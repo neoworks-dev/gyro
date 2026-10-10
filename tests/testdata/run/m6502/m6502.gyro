@@ -67,236 +67,236 @@ const TOUCHED_LIMIT: usize = 64
 // ---------------------------------------------------------------------------
 
 export enum Mode {
-  Imp,
-  Acc,
-  Imm,
-  Zp,
-  Zpx,
-  Zpy,
-  Rel,
-  Abso,
-  Absx,
-  Absy,
-  Ind,
-  Indx,
-  Indy,
+    Imp,
+    Acc,
+    Imm,
+    Zp,
+    Zpx,
+    Zpy,
+    Rel,
+    Abso,
+    Absx,
+    Absy,
+    Ind,
+    Indx,
+    Indy,
 }
 
 impl Eq for Mode
 
 export enum Op {
-  Adc,
-  And,
-  Asl,
-  Bcc,
-  Bcs,
-  Beq,
-  Bit,
-  Bmi,
-  Bne,
-  Bpl,
-  Brk,
-  Bvc,
-  Bvs,
-  Clc,
-  Cld,
-  Cli,
-  Clv,
-  Cmp,
-  Cpx,
-  Cpy,
-  Dec,
-  Dex,
-  Dey,
-  Eor,
-  Inc,
-  Inx,
-  Iny,
-  Jmp,
-  Jsr,
-  Lda,
-  Ldx,
-  Ldy,
-  Lsr,
-  Nop,
-  Ora,
-  Pha,
-  Php,
-  Pla,
-  Plp,
-  Rol,
-  Ror,
-  Rti,
-  Rts,
-  Sbc,
-  Sec,
-  Sed,
-  Sei,
-  Sta,
-  Stx,
-  Sty,
-  Tax,
-  Tay,
-  Tsx,
-  Txa,
-  Txs,
-  Tya,
-  // The undocumented opcodes that behave predictably: each one is a
-  // documented pair run back to back.
-  Dcp,
-  Isb,
-  Lax,
-  Rla,
-  Rra,
-  Sax,
-  Slo,
-  Sre,
+    Adc,
+    And,
+    Asl,
+    Bcc,
+    Bcs,
+    Beq,
+    Bit,
+    Bmi,
+    Bne,
+    Bpl,
+    Brk,
+    Bvc,
+    Bvs,
+    Clc,
+    Cld,
+    Cli,
+    Clv,
+    Cmp,
+    Cpx,
+    Cpy,
+    Dec,
+    Dex,
+    Dey,
+    Eor,
+    Inc,
+    Inx,
+    Iny,
+    Jmp,
+    Jsr,
+    Lda,
+    Ldx,
+    Ldy,
+    Lsr,
+    Nop,
+    Ora,
+    Pha,
+    Php,
+    Pla,
+    Plp,
+    Rol,
+    Ror,
+    Rti,
+    Rts,
+    Sbc,
+    Sec,
+    Sed,
+    Sei,
+    Sta,
+    Stx,
+    Sty,
+    Tax,
+    Tay,
+    Tsx,
+    Txa,
+    Txs,
+    Tya,
+    // The undocumented opcodes that behave predictably: each one is a
+    // documented pair run back to back.
+    Dcp,
+    Isb,
+    Lax,
+    Rla,
+    Rra,
+    Sax,
+    Slo,
+    Sre,
 }
 
 const MODES: Mode[256] = [
-  // 0
-  Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // 1
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
-  // 2
-  Mode::Abso, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // 3
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
-  // 4
-  Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // 5
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
-  // 6
-  Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
-  Mode::Ind, Mode::Abso, Mode::Abso, Mode::Abso,
-  // 7
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
-  // 8
-  Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // 9
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpy, Mode::Zpy, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absy, Mode::Absy,
-  // a
-  Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // b
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpy, Mode::Zpy, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absy, Mode::Absy,
-  // c
-  Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // d
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
-  // e
-  Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
-  Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
-  Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
-  // f
-  Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
-  Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
-  Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // 0
+    Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // 1
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // 2
+    Mode::Abso, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // 3
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // 4
+    Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // 5
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // 6
+    Mode::Imp, Mode::Indx, Mode::Imp, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Acc, Mode::Imm,
+    Mode::Ind, Mode::Abso, Mode::Abso, Mode::Abso,
+    // 7
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // 8
+    Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // 9
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpy, Mode::Zpy, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absy, Mode::Absy,
+    // a
+    Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // b
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpy, Mode::Zpy, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absy, Mode::Absy,
+    // c
+    Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // d
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
+    // e
+    Mode::Imm, Mode::Indx, Mode::Imm, Mode::Indx, Mode::Zp, Mode::Zp,
+    Mode::Zp, Mode::Zp, Mode::Imp, Mode::Imm, Mode::Imp, Mode::Imm,
+    Mode::Abso, Mode::Abso, Mode::Abso, Mode::Abso,
+    // f
+    Mode::Rel, Mode::Indy, Mode::Imp, Mode::Indy, Mode::Zpx, Mode::Zpx,
+    Mode::Zpx, Mode::Zpx, Mode::Imp, Mode::Absy, Mode::Imp, Mode::Absy,
+    Mode::Absx, Mode::Absx, Mode::Absx, Mode::Absx,
 ]
 
 const OPS: Op[256] = [
-  // 0
-  Op::Brk, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
-  Op::Php, Op::Ora, Op::Asl, Op::Nop, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
-  // 1
-  Op::Bpl, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
-  Op::Clc, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
-  // 2
-  Op::Jsr, Op::And, Op::Nop, Op::Rla, Op::Bit, Op::And, Op::Rol, Op::Rla,
-  Op::Plp, Op::And, Op::Rol, Op::Nop, Op::Bit, Op::And, Op::Rol, Op::Rla,
-  // 3
-  Op::Bmi, Op::And, Op::Nop, Op::Rla, Op::Nop, Op::And, Op::Rol, Op::Rla,
-  Op::Sec, Op::And, Op::Nop, Op::Rla, Op::Nop, Op::And, Op::Rol, Op::Rla,
-  // 4
-  Op::Rti, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
-  Op::Pha, Op::Eor, Op::Lsr, Op::Nop, Op::Jmp, Op::Eor, Op::Lsr, Op::Sre,
-  // 5
-  Op::Bvc, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
-  Op::Cli, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
-  // 6
-  Op::Rts, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
-  Op::Pla, Op::Adc, Op::Ror, Op::Nop, Op::Jmp, Op::Adc, Op::Ror, Op::Rra,
-  // 7
-  Op::Bvs, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
-  Op::Sei, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
-  // 8
-  Op::Nop, Op::Sta, Op::Nop, Op::Sax, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
-  Op::Dey, Op::Nop, Op::Txa, Op::Nop, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
-  // 9
-  Op::Bcc, Op::Sta, Op::Nop, Op::Nop, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
-  Op::Tya, Op::Sta, Op::Txs, Op::Nop, Op::Nop, Op::Sta, Op::Nop, Op::Nop,
-  // a
-  Op::Ldy, Op::Lda, Op::Ldx, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
-  Op::Tay, Op::Lda, Op::Tax, Op::Nop, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
-  // b
-  Op::Bcs, Op::Lda, Op::Nop, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
-  Op::Clv, Op::Lda, Op::Tsx, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
-  // c
-  Op::Cpy, Op::Cmp, Op::Nop, Op::Dcp, Op::Cpy, Op::Cmp, Op::Dec, Op::Dcp,
-  Op::Iny, Op::Cmp, Op::Dex, Op::Nop, Op::Cpy, Op::Cmp, Op::Dec, Op::Dcp,
-  // d
-  Op::Bne, Op::Cmp, Op::Nop, Op::Dcp, Op::Nop, Op::Cmp, Op::Dec, Op::Dcp,
-  Op::Cld, Op::Cmp, Op::Nop, Op::Dcp, Op::Nop, Op::Cmp, Op::Dec, Op::Dcp,
-  // e
-  Op::Cpx, Op::Sbc, Op::Nop, Op::Isb, Op::Cpx, Op::Sbc, Op::Inc, Op::Isb,
-  Op::Inx, Op::Sbc, Op::Nop, Op::Sbc, Op::Cpx, Op::Sbc, Op::Inc, Op::Isb,
-  // f
-  Op::Beq, Op::Sbc, Op::Nop, Op::Isb, Op::Nop, Op::Sbc, Op::Inc, Op::Isb,
-  Op::Sed, Op::Sbc, Op::Nop, Op::Isb, Op::Nop, Op::Sbc, Op::Inc, Op::Isb,
+    // 0
+    Op::Brk, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
+    Op::Php, Op::Ora, Op::Asl, Op::Nop, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
+    // 1
+    Op::Bpl, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
+    Op::Clc, Op::Ora, Op::Nop, Op::Slo, Op::Nop, Op::Ora, Op::Asl, Op::Slo,
+    // 2
+    Op::Jsr, Op::And, Op::Nop, Op::Rla, Op::Bit, Op::And, Op::Rol, Op::Rla,
+    Op::Plp, Op::And, Op::Rol, Op::Nop, Op::Bit, Op::And, Op::Rol, Op::Rla,
+    // 3
+    Op::Bmi, Op::And, Op::Nop, Op::Rla, Op::Nop, Op::And, Op::Rol, Op::Rla,
+    Op::Sec, Op::And, Op::Nop, Op::Rla, Op::Nop, Op::And, Op::Rol, Op::Rla,
+    // 4
+    Op::Rti, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
+    Op::Pha, Op::Eor, Op::Lsr, Op::Nop, Op::Jmp, Op::Eor, Op::Lsr, Op::Sre,
+    // 5
+    Op::Bvc, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
+    Op::Cli, Op::Eor, Op::Nop, Op::Sre, Op::Nop, Op::Eor, Op::Lsr, Op::Sre,
+    // 6
+    Op::Rts, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
+    Op::Pla, Op::Adc, Op::Ror, Op::Nop, Op::Jmp, Op::Adc, Op::Ror, Op::Rra,
+    // 7
+    Op::Bvs, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
+    Op::Sei, Op::Adc, Op::Nop, Op::Rra, Op::Nop, Op::Adc, Op::Ror, Op::Rra,
+    // 8
+    Op::Nop, Op::Sta, Op::Nop, Op::Sax, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
+    Op::Dey, Op::Nop, Op::Txa, Op::Nop, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
+    // 9
+    Op::Bcc, Op::Sta, Op::Nop, Op::Nop, Op::Sty, Op::Sta, Op::Stx, Op::Sax,
+    Op::Tya, Op::Sta, Op::Txs, Op::Nop, Op::Nop, Op::Sta, Op::Nop, Op::Nop,
+    // a
+    Op::Ldy, Op::Lda, Op::Ldx, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
+    Op::Tay, Op::Lda, Op::Tax, Op::Nop, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
+    // b
+    Op::Bcs, Op::Lda, Op::Nop, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
+    Op::Clv, Op::Lda, Op::Tsx, Op::Lax, Op::Ldy, Op::Lda, Op::Ldx, Op::Lax,
+    // c
+    Op::Cpy, Op::Cmp, Op::Nop, Op::Dcp, Op::Cpy, Op::Cmp, Op::Dec, Op::Dcp,
+    Op::Iny, Op::Cmp, Op::Dex, Op::Nop, Op::Cpy, Op::Cmp, Op::Dec, Op::Dcp,
+    // d
+    Op::Bne, Op::Cmp, Op::Nop, Op::Dcp, Op::Nop, Op::Cmp, Op::Dec, Op::Dcp,
+    Op::Cld, Op::Cmp, Op::Nop, Op::Dcp, Op::Nop, Op::Cmp, Op::Dec, Op::Dcp,
+    // e
+    Op::Cpx, Op::Sbc, Op::Nop, Op::Isb, Op::Cpx, Op::Sbc, Op::Inc, Op::Isb,
+    Op::Inx, Op::Sbc, Op::Nop, Op::Sbc, Op::Cpx, Op::Sbc, Op::Inc, Op::Isb,
+    // f
+    Op::Beq, Op::Sbc, Op::Nop, Op::Isb, Op::Nop, Op::Sbc, Op::Inc, Op::Isb,
+    Op::Sed, Op::Sbc, Op::Nop, Op::Isb, Op::Nop, Op::Sbc, Op::Inc, Op::Isb,
 ]
 
 // The base cycle count of each opcode, before the penalties a page
 // crossing or a taken branch adds.
 const TICKS: u32[256] = [
-  7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-  6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-  6, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 3, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-  6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 5, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-  2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
-  2, 6, 2, 6, 4, 4, 4, 4, 2, 5, 2, 5, 5, 5, 5, 5,
-  2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
-  2, 5, 2, 5, 4, 4, 4, 4, 2, 4, 2, 4, 4, 4, 4, 4,
-  2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
-  2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
-  2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    6, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 3, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 5, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+    2, 6, 2, 6, 4, 4, 4, 4, 2, 5, 2, 5, 5, 5, 5, 5,
+    2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+    2, 5, 2, 5, 4, 4, 4, 4, 2, 4, 2, 4, 4, 4, 4, 4,
+    2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+    2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+    2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
 ]
 
 const NO_TOUCHES: u16[64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 // ---------------------------------------------------------------------------
@@ -304,61 +304,61 @@ const NO_TOUCHES: u16[64] = [
 // ---------------------------------------------------------------------------
 
 export struct Cpu {
-  export pc: u16
-  export sp: u8
-  export a: u8
-  export x: u8
-  export y: u8
-  export status: u8
+    export pc: u16
+    export sp: u8
+    export a: u8
+    export x: u8
+    export y: u8
+    export status: u8
 
-  export clockticks: u32
-  export instructions: u32
+    export clockticks: u32
+    export instructions: u32
 
-  // What the addressing mode worked out, and the scratch the instruction
-  // handlers share: C keeps all four as globals for the same reason.
-  ea: u16
-  reladdr: u16
-  value: u16
-  result: u16
+    // What the addressing mode worked out, and the scratch the instruction
+    // handlers share: C keeps all four as globals for the same reason.
+    ea: u16
+    reladdr: u16
+    value: u16
+    result: u16
 
-  opcode: u8
-  penaltyop: bool
-  penaltyaddr: bool
+    opcode: u8
+    penaltyop: bool
+    penaltyaddr: bool
 
-  ram: Array<u8>
-  touched: u16[64]
-  export ntouched: usize
+    ram: Array<u8>
+    touched: u16[64]
+    export ntouched: usize
 }
 
 export fn Cpu::new(): Cpu {
-  var ram = Array<u8>::with_capacity(heap(), 65536)
-  for i in 0..65536 {
-    ram.push(0)
-  }
-  return Cpu{
-    pc: 0,
-    sp: 0,
-    a: 0,
-    x: 0,
-    y: 0,
-    status: FLAG_CONSTANT,
-    clockticks: 0,
-    instructions: 0,
-    ea: 0,
-    reladdr: 0,
-    value: 0,
-    result: 0,
-    opcode: 0,
-    penaltyop: false,
-    penaltyaddr: false,
-    ram: ram,
-    touched: NO_TOUCHES,
-    ntouched: 0,
-  }
+    var ram = Array<u8>::with_capacity(heap(), 65536)
+    for i in 0..65536 {
+        ram.push(0)
+    }
+    return Cpu{
+        pc: 0,
+        sp: 0,
+        a: 0,
+        x: 0,
+        y: 0,
+        status: FLAG_CONSTANT,
+        clockticks: 0,
+        instructions: 0,
+        ea: 0,
+        reladdr: 0,
+        value: 0,
+        result: 0,
+        opcode: 0,
+        penaltyop: false,
+        penaltyaddr: false,
+        ram: ram,
+        touched: NO_TOUCHES,
+        ntouched: 0,
+    }
 }
 
 export fn Cpu::free(*self) {
-  self.ram.free()
+    self.ram.free()
 }
 
 // ---------------------------------------------------------------------------
@@ -368,43 +368,43 @@ export fn Cpu::free(*self) {
 // ---------------------------------------------------------------------------
 
 export fn Cpu::read(*self, address: u16): u8 {
-  return self.ram[address as usize]
+    return self.ram[address as usize]
 }
 
 export fn Cpu::write(*self, address: u16, value: u8) {
-  self.ram[address as usize] = value
-  self.touch(address)
+    self.ram[address as usize] = value
+    self.touch(address)
 }
 
 // store writes without recording the address: how a host puts bytes in
 // memory before the machine runs, rather than how the machine writes.
 export fn Cpu::store(*self, address: u16, value: u8) {
-  self.ram[address as usize] = value
+    self.ram[address as usize] = value
 }
 
 export fn Cpu::touch(*self, address: u16) {
-  if self.ntouched < TOUCHED_LIMIT {
-    self.touched[self.ntouched] = address
-    self.ntouched += 1
-  }
+    if self.ntouched < TOUCHED_LIMIT {
+        self.touched[self.ntouched] = address
+        self.ntouched += 1
+    }
 }
 
 export fn Cpu::touched_at(*self, index: usize): u16 {
-  return self.touched[index]
+    return self.touched[index]
 }
 
 export fn Cpu::forget_touches(*self) {
-  self.ntouched = 0
+    self.ntouched = 0
 }
 
 fn Cpu::next_byte(*self): u8 {
-  var byte = self.read(self.pc)
-  self.pc = self.pc +% 1
-  return byte
+    var byte = self.read(self.pc)
+    self.pc = self.pc +% 1
+    return byte
 }
 
 fn Cpu::read16(*self, address: u16): u16 {
-  return (self.read(address) as u16) | ((self.read(address +% 1) as u16) << 8)
+    return (self.read(address) as u16) | ((self.read(address +% 1) as u16) << 8)
 }
 
 // ---------------------------------------------------------------------------
@@ -412,26 +412,26 @@ fn Cpu::read16(*self, address: u16): u16 {
 // ---------------------------------------------------------------------------
 
 fn Cpu::push8(*self, value: u8) {
-  self.write(BASE_STACK + (self.sp as u16), value)
-  self.sp = self.sp -% 1
+    self.write(BASE_STACK + (self.sp as u16), value)
+    self.sp = self.sp -% 1
 }
 
 fn Cpu::push16(*self, value: u16) {
-  self.write(BASE_STACK + (self.sp as u16), ((value >> 8) & 0xFF) as u8)
-  self.write(BASE_STACK + ((self.sp -% 1) as u16), (value & 0xFF) as u8)
-  self.sp = self.sp -% 2
+    self.write(BASE_STACK + (self.sp as u16), ((value >> 8) & 0xFF) as u8)
+    self.write(BASE_STACK + ((self.sp -% 1) as u16), (value & 0xFF) as u8)
+    self.sp = self.sp -% 2
 }
 
 fn Cpu::pull8(*self): u8 {
-  self.sp = self.sp +% 1
-  return self.read(BASE_STACK + (self.sp as u16))
+    self.sp = self.sp +% 1
+    return self.read(BASE_STACK + (self.sp as u16))
 }
 
 fn Cpu::pull16(*self): u16 {
-  var low = self.read(BASE_STACK + ((self.sp +% 1) as u16)) as u16
-  var high = self.read(BASE_STACK + ((self.sp +% 2) as u16)) as u16
-  self.sp = self.sp +% 2
-  return low | (high << 8)
+    var low = self.read(BASE_STACK + ((self.sp +% 1) as u16)) as u16
+    var high = self.read(BASE_STACK + ((self.sp +% 2) as u16)) as u16
+    self.sp = self.sp +% 2
+    return low | (high << 8)
 }
 
 // ---------------------------------------------------------------------------
@@ -439,37 +439,37 @@ fn Cpu::pull16(*self): u16 {
 // ---------------------------------------------------------------------------
 
 fn Cpu::set_flag(*self, flag: u8, on: bool) {
-  if on {
-    self.status |= flag
-  } else {
-    self.status &= ~flag
-  }
+    if on {
+        self.status |= flag
+    } else {
+        self.status &= ~flag
+    }
 }
 
 fn Cpu::zerocalc(*self, value: u16) {
-  self.set_flag(FLAG_ZERO, (value & 0x00FF) == 0)
+    self.set_flag(FLAG_ZERO, (value & 0x00FF) == 0)
 }
 
 fn Cpu::signcalc(*self, value: u16) {
-  self.set_flag(FLAG_SIGN, (value & 0x0080) != 0)
+    self.set_flag(FLAG_SIGN, (value & 0x0080) != 0)
 }
 
 fn Cpu::carrycalc(*self, value: u16) {
-  self.set_flag(FLAG_CARRY, (value & 0xFF00) != 0)
+    self.set_flag(FLAG_CARRY, (value & 0xFF00) != 0)
 }
 
 // n is the result, m the accumulator and o the memory operand: the sign
 // of the result differs from both only when the addition overflowed.
 fn Cpu::overflowcalc(*self, n: u16, m: u16, o: u16) {
-  self.set_flag(FLAG_OVERFLOW, ((n ^ m) & (n ^ o) & 0x0080) != 0)
+    self.set_flag(FLAG_OVERFLOW, ((n ^ m) & (n ^ o) & 0x0080) != 0)
 }
 
 fn Cpu::carry(*self): u16 {
-  return (self.status & FLAG_CARRY) as u16
+    return (self.status & FLAG_CARRY) as u16
 }
 
 fn Cpu::saveaccum(*self, value: u16) {
-  self.a = (value & 0x00FF) as u8
+    self.a = (value & 0x00FF) as u8
 }
 
 // ---------------------------------------------------------------------------
@@ -477,79 +477,79 @@ fn Cpu::saveaccum(*self, value: u16) {
 // ---------------------------------------------------------------------------
 
 fn Cpu::address(*self, mode: Mode) {
-  match mode {
-    Mode::Imp: {}
-    Mode::Acc: {}
-    Mode::Imm: {
-      self.ea = self.pc
-      self.pc = self.pc +% 1
+    match mode {
+        Mode::Imp: {}
+        Mode::Acc: {}
+        Mode::Imm: {
+            self.ea = self.pc
+            self.pc = self.pc +% 1
+        }
+        Mode::Zp: { self.ea = self.next_byte() as u16 }
+        Mode::Zpx: { self.ea = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF }
+        Mode::Zpy: { self.ea = ((self.next_byte() as u16) + (self.y as u16)) & 0xFF }
+        Mode::Rel: {
+            self.reladdr = self.next_byte() as u16
+            if (self.reladdr & 0x80) != 0 {
+                self.reladdr |= 0xFF00
+            }
+        }
+        Mode::Abso: {
+            self.ea = self.read16(self.pc)
+            self.pc = self.pc +% 2
+        }
+        Mode::Absx: {
+            self.ea = self.read16(self.pc)
+            var startpage = self.ea & 0xFF00
+            self.ea = self.ea +% (self.x as u16)
+            self.penaltyaddr = startpage != (self.ea & 0xFF00)
+            self.pc = self.pc +% 2
+        }
+        Mode::Absy: {
+            self.ea = self.read16(self.pc)
+            var startpage = self.ea & 0xFF00
+            self.ea = self.ea +% (self.y as u16)
+            self.penaltyaddr = startpage != (self.ea & 0xFF00)
+            self.pc = self.pc +% 2
+        }
+        Mode::Ind: {
+            var pointer = self.read16(self.pc)
+            // The page-boundary wraparound bug: the high byte of the target is
+            // read from the same page as the low one.
+            var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
+            self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
+            self.pc = self.pc +% 2
+        }
+        Mode::Indx: {
+            var pointer = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF
+            self.ea = (self.read(pointer & 0x00FF) as u16)
+                | ((self.read((pointer +% 1) & 0x00FF) as u16) << 8)
+        }
+        Mode::Indy: {
+            var pointer = self.next_byte() as u16
+            var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
+            self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
+            var startpage = self.ea & 0xFF00
+            self.ea = self.ea +% (self.y as u16)
+            self.penaltyaddr = startpage != (self.ea & 0xFF00)
+        }
     }
-    Mode::Zp: { self.ea = self.next_byte() as u16 }
-    Mode::Zpx: { self.ea = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF }
-    Mode::Zpy: { self.ea = ((self.next_byte() as u16) + (self.y as u16)) & 0xFF }
-    Mode::Rel: {
-      self.reladdr = self.next_byte() as u16
-      if (self.reladdr & 0x80) != 0 {
-        self.reladdr |= 0xFF00
-      }
-    }
-    Mode::Abso: {
-      self.ea = self.read16(self.pc)
-      self.pc = self.pc +% 2
-    }
-    Mode::Absx: {
-      self.ea = self.read16(self.pc)
-      var startpage = self.ea & 0xFF00
-      self.ea = self.ea +% (self.x as u16)
-      self.penaltyaddr = startpage != (self.ea & 0xFF00)
-      self.pc = self.pc +% 2
-    }
-    Mode::Absy: {
-      self.ea = self.read16(self.pc)
-      var startpage = self.ea & 0xFF00
-      self.ea = self.ea +% (self.y as u16)
-      self.penaltyaddr = startpage != (self.ea & 0xFF00)
-      self.pc = self.pc +% 2
-    }
-    Mode::Ind: {
-      var pointer = self.read16(self.pc)
-      // The page-boundary wraparound bug: the high byte of the target is
-      // read from the same page as the low one.
-      var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
-      self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
-      self.pc = self.pc +% 2
-    }
-    Mode::Indx: {
-      var pointer = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF
-      self.ea = (self.read(pointer & 0x00FF) as u16)
-              | ((self.read((pointer +% 1) & 0x00FF) as u16) << 8)
-    }
-    Mode::Indy: {
-      var pointer = self.next_byte() as u16
-      var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
-      self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
-      var startpage = self.ea & 0xFF00
-      self.ea = self.ea +% (self.y as u16)
-      self.penaltyaddr = startpage != (self.ea & 0xFF00)
-    }
-  }
 }
 
 // getvalue is where the mode reappears: an accumulator instruction works
 // on the register, everything else on the effective address.
 fn Cpu::getvalue(*self): u16 {
-  if MODES[self.opcode as usize] == Mode::Acc {
-    return self.a as u16
-  }
-  return self.read(self.ea) as u16
+    if MODES[self.opcode as usize] == Mode::Acc {
+        return self.a as u16
+    }
+    return self.read(self.ea) as u16
 }
 
 fn Cpu::putvalue(*self, value: u16) {
-  if MODES[self.opcode as usize] == Mode::Acc {
-    self.a = (value & 0x00FF) as u8
-  } else {
-    self.write(self.ea, (value & 0x00FF) as u8)
-  }
+    if MODES[self.opcode as usize] == Mode::Acc {
+        self.a = (value & 0x00FF) as u8
+    } else {
+        self.write(self.ea, (value & 0x00FF) as u8)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -557,380 +557,380 @@ fn Cpu::putvalue(*self, value: u16) {
 // ---------------------------------------------------------------------------
 
 fn Cpu::adc(*self) {
-  self.penaltyop = true
-  if (self.status & FLAG_DECIMAL) != 0 {
-    var accumulator = self.a as u16
-    self.value = self.getvalue()
-    var binary = accumulator + self.value + self.carry()
+    self.penaltyop = true
+    if (self.status & FLAG_DECIMAL) != 0 {
+        var accumulator = self.a as u16
+        self.value = self.getvalue()
+        var binary = accumulator + self.value + self.carry()
 
-    var low = (accumulator & 0x0F) + (self.value & 0x0F) + self.carry()
-    if low >= 0x0A {
-      low = ((low + 0x06) & 0x0F) + 0x10
+        var low = (accumulator & 0x0F) + (self.value & 0x0F) + self.carry()
+        if low >= 0x0A {
+            low = ((low + 0x06) & 0x0F) + 0x10
+        }
+        var high = (accumulator & 0xF0) + (self.value & 0xF0) + low
+        self.set_flag(FLAG_SIGN, (high & 0x80) != 0)
+        if high >= 0xA0 {
+            high += 0x60
+        }
+        self.result = high
+        // The overflow and zero flags come from the binary sum on an NMOS
+        // 6502, decimal mode or not.
+        self.overflowcalc(binary, accumulator, self.value)
+        self.set_flag(FLAG_CARRY, high >= 0x100)
+        self.zerocalc(binary)
+    } else {
+        self.value = self.getvalue()
+        self.result = (self.a as u16) + self.value + self.carry()
+        self.carrycalc(self.result)
+        self.zerocalc(self.result)
+        self.overflowcalc(self.result, self.a as u16, self.value)
+        self.signcalc(self.result)
     }
-    var high = (accumulator & 0xF0) + (self.value & 0xF0) + low
-    self.set_flag(FLAG_SIGN, (high & 0x80) != 0)
-    if high >= 0xA0 {
-      high += 0x60
-    }
-    self.result = high
-    // The overflow and zero flags come from the binary sum on an NMOS
-    // 6502, decimal mode or not.
-    self.overflowcalc(binary, accumulator, self.value)
-    self.set_flag(FLAG_CARRY, high >= 0x100)
-    self.zerocalc(binary)
-  } else {
-    self.value = self.getvalue()
-    self.result = (self.a as u16) + self.value + self.carry()
-    self.carrycalc(self.result)
-    self.zerocalc(self.result)
-    self.overflowcalc(self.result, self.a as u16, self.value)
-    self.signcalc(self.result)
-  }
-  self.saveaccum(self.result)
+    self.saveaccum(self.result)
 }
 
 fn Cpu::and(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.result = (self.a as u16) & self.value
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.saveaccum(self.result)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.result = (self.a as u16) & self.value
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.saveaccum(self.result)
 }
 
 fn Cpu::asl(*self) {
-  self.value = self.getvalue()
-  self.result = self.value << 1
-  self.carrycalc(self.result)
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = self.value << 1
+    self.carrycalc(self.result)
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 // branch is the tail every conditional branch shares: taking one costs a
 // cycle, and leaving the page costs another.
 fn Cpu::branch(*self, taken: bool) {
-  if !taken {
-    return
-  }
-  var oldpc = self.pc
-  self.pc = self.pc +% self.reladdr
-  if (oldpc & 0xFF00) != (self.pc & 0xFF00) {
-    self.clockticks += 2
-  } else {
-    self.clockticks += 1
-  }
+    if !taken {
+        return
+    }
+    var oldpc = self.pc
+    self.pc = self.pc +% self.reladdr
+    if (oldpc & 0xFF00) != (self.pc & 0xFF00) {
+        self.clockticks += 2
+    } else {
+        self.clockticks += 1
+    }
 }
 
 fn Cpu::bit(*self) {
-  self.value = self.getvalue()
-  self.result = (self.a as u16) & self.value
-  self.zerocalc(self.result)
-  self.status = (self.status & 0x3F) | ((self.value & 0xC0) as u8)
+    self.value = self.getvalue()
+    self.result = (self.a as u16) & self.value
+    self.zerocalc(self.result)
+    self.status = (self.status & 0x3F) | ((self.value & 0xC0) as u8)
 }
 
 fn Cpu::brk(*self) {
-  self.pc = self.pc +% 1
-  self.push16(self.pc)
-  self.push8(self.status | FLAG_BREAK)
-  self.set_flag(FLAG_INTERRUPT, true)
-  self.pc = (self.read(0xFFFE) as u16) | ((self.read(0xFFFF) as u16) << 8)
+    self.pc = self.pc +% 1
+    self.push16(self.pc)
+    self.push8(self.status | FLAG_BREAK)
+    self.set_flag(FLAG_INTERRUPT, true)
+    self.pc = (self.read(0xFFFE) as u16) | ((self.read(0xFFFF) as u16) << 8)
 }
 
 fn Cpu::cmp(*self, register: u8) {
-  self.value = self.getvalue()
-  self.result = (register as u16) -% self.value
-  self.set_flag(FLAG_CARRY, register >= ((self.value & 0x00FF) as u8))
-  self.set_flag(FLAG_ZERO, register == ((self.value & 0x00FF) as u8))
-  self.signcalc(self.result)
+    self.value = self.getvalue()
+    self.result = (register as u16) -% self.value
+    self.set_flag(FLAG_CARRY, register >= ((self.value & 0x00FF) as u8))
+    self.set_flag(FLAG_ZERO, register == ((self.value & 0x00FF) as u8))
+    self.signcalc(self.result)
 }
 
 fn Cpu::dec(*self) {
-  self.value = self.getvalue()
-  self.result = self.value -% 1
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = self.value -% 1
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 fn Cpu::eor(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.result = (self.a as u16) ^ self.value
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.saveaccum(self.result)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.result = (self.a as u16) ^ self.value
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.saveaccum(self.result)
 }
 
 fn Cpu::inc(*self) {
-  self.value = self.getvalue()
-  self.result = self.value +% 1
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = self.value +% 1
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 fn Cpu::lda(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.a = (self.value & 0x00FF) as u8
-  self.zerocalc(self.a as u16)
-  self.signcalc(self.a as u16)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.a = (self.value & 0x00FF) as u8
+    self.zerocalc(self.a as u16)
+    self.signcalc(self.a as u16)
 }
 
 fn Cpu::ldx(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.x = (self.value & 0x00FF) as u8
-  self.zerocalc(self.x as u16)
-  self.signcalc(self.x as u16)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.x = (self.value & 0x00FF) as u8
+    self.zerocalc(self.x as u16)
+    self.signcalc(self.x as u16)
 }
 
 fn Cpu::ldy(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.y = (self.value & 0x00FF) as u8
-  self.zerocalc(self.y as u16)
-  self.signcalc(self.y as u16)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.y = (self.value & 0x00FF) as u8
+    self.zerocalc(self.y as u16)
+    self.signcalc(self.y as u16)
 }
 
 fn Cpu::lsr(*self) {
-  self.value = self.getvalue()
-  self.result = self.value >> 1
-  self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = self.value >> 1
+    self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 // The undocumented NOPs that read an absolute,X operand pay for a page
 // crossing like the documented instructions do.
 fn Cpu::nop(*self) {
-  var opcode = self.opcode
-  if opcode == 0x1C || opcode == 0x3C || opcode == 0x5C || opcode == 0x7C
-    || opcode == 0xDC || opcode == 0xFC {
-    self.penaltyop = true
-  }
+    var opcode = self.opcode
+    if opcode == 0x1C || opcode == 0x3C || opcode == 0x5C || opcode == 0x7C
+        || opcode == 0xDC || opcode == 0xFC {
+        self.penaltyop = true
+    }
 }
 
 fn Cpu::ora(*self) {
-  self.penaltyop = true
-  self.value = self.getvalue()
-  self.result = (self.a as u16) | self.value
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.saveaccum(self.result)
+    self.penaltyop = true
+    self.value = self.getvalue()
+    self.result = (self.a as u16) | self.value
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.saveaccum(self.result)
 }
 
 fn Cpu::pla(*self) {
-  self.a = self.pull8()
-  self.zerocalc(self.a as u16)
-  self.signcalc(self.a as u16)
+    self.a = self.pull8()
+    self.zerocalc(self.a as u16)
+    self.signcalc(self.a as u16)
 }
 
 // Bit 4 is only ever a bit in a pushed byte and bit 5 is always set, so
 // what the register takes from the stack is neither.
 fn Cpu::pull_status(*self) {
-  self.status = (self.pull8() | FLAG_CONSTANT) & ~FLAG_BREAK
+    self.status = (self.pull8() | FLAG_CONSTANT) & ~FLAG_BREAK
 }
 
 fn Cpu::rol(*self) {
-  self.value = self.getvalue()
-  self.result = (self.value << 1) | self.carry()
-  self.carrycalc(self.result)
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = (self.value << 1) | self.carry()
+    self.carrycalc(self.result)
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 fn Cpu::ror(*self) {
-  self.value = self.getvalue()
-  self.result = (self.value >> 1) | (self.carry() << 7)
-  self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
-  self.zerocalc(self.result)
-  self.signcalc(self.result)
-  self.putvalue(self.result)
+    self.value = self.getvalue()
+    self.result = (self.value >> 1) | (self.carry() << 7)
+    self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
+    self.zerocalc(self.result)
+    self.signcalc(self.result)
+    self.putvalue(self.result)
 }
 
 fn Cpu::sbc(*self) {
-  self.penaltyop = true
-  if (self.status & FLAG_DECIMAL) != 0 {
-    var accumulator = self.a as u16
-    var carry = self.carry()
-    var operand = self.getvalue()
-    self.value = operand ^ 0x00FF
-    var binary = accumulator + self.value + carry
+    self.penaltyop = true
+    if (self.status & FLAG_DECIMAL) != 0 {
+        var accumulator = self.a as u16
+        var carry = self.carry()
+        var operand = self.getvalue()
+        self.value = operand ^ 0x00FF
+        var binary = accumulator + self.value + carry
 
-    self.carrycalc(binary)
-    self.overflowcalc(binary, accumulator, self.value)
-    self.signcalc(binary)
-    self.zerocalc(binary)
+        self.carrycalc(binary)
+        self.overflowcalc(binary, accumulator, self.value)
+        self.signcalc(binary)
+        self.zerocalc(binary)
 
-    // The decimal adjustment borrows through zero, which is what the
-    // 0x8000 tests are reading.
-    var low = (accumulator & 0x0F) -% (operand & 0x0F) +% carry -% 1
-    if (low & 0x8000) != 0 {
-      low = ((low -% 0x06) & 0x0F) -% 0x10
+        // The decimal adjustment borrows through zero, which is what the
+        // 0x8000 tests are reading.
+        var low = (accumulator & 0x0F) -% (operand & 0x0F) +% carry -% 1
+        if (low & 0x8000) != 0 {
+            low = ((low -% 0x06) & 0x0F) -% 0x10
+        }
+        var high = (accumulator & 0xF0) -% (operand & 0xF0) +% low
+        if (high & 0x8000) != 0 {
+            high = high -% 0x60
+        }
+        self.result = high
+    } else {
+        self.value = self.getvalue() ^ 0x00FF
+        self.result = (self.a as u16) + self.value + self.carry()
+        self.carrycalc(self.result)
+        self.zerocalc(self.result)
+        self.overflowcalc(self.result, self.a as u16, self.value)
+        self.signcalc(self.result)
     }
-    var high = (accumulator & 0xF0) -% (operand & 0xF0) +% low
-    if (high & 0x8000) != 0 {
-      high = high -% 0x60
-    }
-    self.result = high
-  } else {
-    self.value = self.getvalue() ^ 0x00FF
-    self.result = (self.a as u16) + self.value + self.carry()
-    self.carrycalc(self.result)
-    self.zerocalc(self.result)
-    self.overflowcalc(self.result, self.a as u16, self.value)
-    self.signcalc(self.result)
-  }
-  self.saveaccum(self.result)
+    self.saveaccum(self.result)
 }
 
 fn Cpu::transfer(*self, value: u8): u8 {
-  self.zerocalc(value as u16)
-  self.signcalc(value as u16)
-  return value
+    self.zerocalc(value as u16)
+    self.signcalc(value as u16)
+    return value
 }
 
 // An undocumented opcode is two instructions in one, and the pair pays
 // the page-crossing penalty only once.
 fn Cpu::undocumented_penalty(*self) {
-  if self.penaltyop && self.penaltyaddr {
-    self.clockticks = self.clockticks -% 1
-  }
+    if self.penaltyop && self.penaltyaddr {
+        self.clockticks = self.clockticks -% 1
+    }
 }
 
 fn Cpu::execute(*self, op: Op) {
-  match op {
-    Op::Adc: self.adc()
-    Op::And: self.and()
-    Op::Asl: self.asl()
-    Op::Bcc: self.branch((self.status & FLAG_CARRY) == 0)
-    Op::Bcs: self.branch((self.status & FLAG_CARRY) != 0)
-    Op::Beq: self.branch((self.status & FLAG_ZERO) != 0)
-    Op::Bit: self.bit()
-    Op::Bmi: self.branch((self.status & FLAG_SIGN) != 0)
-    Op::Bne: self.branch((self.status & FLAG_ZERO) == 0)
-    Op::Bpl: self.branch((self.status & FLAG_SIGN) == 0)
-    Op::Brk: self.brk()
-    Op::Bvc: self.branch((self.status & FLAG_OVERFLOW) == 0)
-    Op::Bvs: self.branch((self.status & FLAG_OVERFLOW) != 0)
-    Op::Clc: self.set_flag(FLAG_CARRY, false)
-    Op::Cld: self.set_flag(FLAG_DECIMAL, false)
-    Op::Cli: self.set_flag(FLAG_INTERRUPT, false)
-    Op::Clv: self.set_flag(FLAG_OVERFLOW, false)
-    Op::Cmp: {
-      self.penaltyop = true
-      self.cmp(self.a)
+    match op {
+        Op::Adc: self.adc()
+        Op::And: self.and()
+        Op::Asl: self.asl()
+        Op::Bcc: self.branch((self.status & FLAG_CARRY) == 0)
+        Op::Bcs: self.branch((self.status & FLAG_CARRY) != 0)
+        Op::Beq: self.branch((self.status & FLAG_ZERO) != 0)
+        Op::Bit: self.bit()
+        Op::Bmi: self.branch((self.status & FLAG_SIGN) != 0)
+        Op::Bne: self.branch((self.status & FLAG_ZERO) == 0)
+        Op::Bpl: self.branch((self.status & FLAG_SIGN) == 0)
+        Op::Brk: self.brk()
+        Op::Bvc: self.branch((self.status & FLAG_OVERFLOW) == 0)
+        Op::Bvs: self.branch((self.status & FLAG_OVERFLOW) != 0)
+        Op::Clc: self.set_flag(FLAG_CARRY, false)
+        Op::Cld: self.set_flag(FLAG_DECIMAL, false)
+        Op::Cli: self.set_flag(FLAG_INTERRUPT, false)
+        Op::Clv: self.set_flag(FLAG_OVERFLOW, false)
+        Op::Cmp: {
+            self.penaltyop = true
+            self.cmp(self.a)
+        }
+        Op::Cpx: self.cmp(self.x)
+        Op::Cpy: self.cmp(self.y)
+        Op::Dec: self.dec()
+        Op::Dex: {
+            self.x = self.x -% 1
+            self.zerocalc(self.x as u16)
+            self.signcalc(self.x as u16)
+        }
+        Op::Dey: {
+            self.y = self.y -% 1
+            self.zerocalc(self.y as u16)
+            self.signcalc(self.y as u16)
+        }
+        Op::Eor: self.eor()
+        Op::Inc: self.inc()
+        Op::Inx: {
+            self.x = self.x +% 1
+            self.zerocalc(self.x as u16)
+            self.signcalc(self.x as u16)
+        }
+        Op::Iny: {
+            self.y = self.y +% 1
+            self.zerocalc(self.y as u16)
+            self.signcalc(self.y as u16)
+        }
+        Op::Jmp: { self.pc = self.ea }
+        Op::Jsr: {
+            self.push16(self.pc -% 1)
+            self.pc = self.ea
+        }
+        Op::Lda: self.lda()
+        Op::Ldx: self.ldx()
+        Op::Ldy: self.ldy()
+        Op::Lsr: self.lsr()
+        Op::Nop: self.nop()
+        Op::Ora: self.ora()
+        Op::Pha: self.push8(self.a)
+        Op::Php: self.push8(self.status | FLAG_BREAK)
+        Op::Pla: self.pla()
+        Op::Plp: self.pull_status()
+        Op::Rol: self.rol()
+        Op::Ror: self.ror()
+        Op::Rti: {
+            self.pull_status()
+            self.value = self.pull16()
+            self.pc = self.value
+        }
+        Op::Rts: {
+            self.value = self.pull16()
+            self.pc = self.value +% 1
+        }
+        Op::Sbc: self.sbc()
+        Op::Sec: self.set_flag(FLAG_CARRY, true)
+        Op::Sed: self.set_flag(FLAG_DECIMAL, true)
+        Op::Sei: self.set_flag(FLAG_INTERRUPT, true)
+        Op::Sta: self.putvalue(self.a as u16)
+        Op::Stx: self.putvalue(self.x as u16)
+        Op::Sty: self.putvalue(self.y as u16)
+        Op::Tax: { self.x = self.transfer(self.a) }
+        Op::Tay: { self.y = self.transfer(self.a) }
+        Op::Tsx: { self.x = self.transfer(self.sp) }
+        Op::Txa: { self.a = self.transfer(self.x) }
+        Op::Txs: { self.sp = self.x }
+        Op::Tya: { self.a = self.transfer(self.y) }
+        Op::Dcp: {
+            self.dec()
+            self.penaltyop = true
+            self.cmp(self.a)
+            self.undocumented_penalty()
+        }
+        Op::Isb: {
+            self.inc()
+            self.sbc()
+            self.undocumented_penalty()
+        }
+        Op::Lax: {
+            self.lda()
+            self.ldx()
+        }
+        Op::Rla: {
+            self.rol()
+            self.and()
+            self.undocumented_penalty()
+        }
+        Op::Rra: {
+            self.ror()
+            self.adc()
+            self.undocumented_penalty()
+        }
+        Op::Sax: {
+            self.putvalue(self.a as u16)
+            self.putvalue(self.x as u16)
+            self.putvalue((self.a & self.x) as u16)
+            self.undocumented_penalty()
+        }
+        Op::Slo: {
+            self.asl()
+            self.ora()
+            self.undocumented_penalty()
+        }
+        Op::Sre: {
+            self.lsr()
+            self.eor()
+            self.undocumented_penalty()
+        }
     }
-    Op::Cpx: self.cmp(self.x)
-    Op::Cpy: self.cmp(self.y)
-    Op::Dec: self.dec()
-    Op::Dex: {
-      self.x = self.x -% 1
-      self.zerocalc(self.x as u16)
-      self.signcalc(self.x as u16)
-    }
-    Op::Dey: {
-      self.y = self.y -% 1
-      self.zerocalc(self.y as u16)
-      self.signcalc(self.y as u16)
-    }
-    Op::Eor: self.eor()
-    Op::Inc: self.inc()
-    Op::Inx: {
-      self.x = self.x +% 1
-      self.zerocalc(self.x as u16)
-      self.signcalc(self.x as u16)
-    }
-    Op::Iny: {
-      self.y = self.y +% 1
-      self.zerocalc(self.y as u16)
-      self.signcalc(self.y as u16)
-    }
-    Op::Jmp: { self.pc = self.ea }
-    Op::Jsr: {
-      self.push16(self.pc -% 1)
-      self.pc = self.ea
-    }
-    Op::Lda: self.lda()
-    Op::Ldx: self.ldx()
-    Op::Ldy: self.ldy()
-    Op::Lsr: self.lsr()
-    Op::Nop: self.nop()
-    Op::Ora: self.ora()
-    Op::Pha: self.push8(self.a)
-    Op::Php: self.push8(self.status | FLAG_BREAK)
-    Op::Pla: self.pla()
-    Op::Plp: self.pull_status()
-    Op::Rol: self.rol()
-    Op::Ror: self.ror()
-    Op::Rti: {
-      self.pull_status()
-      self.value = self.pull16()
-      self.pc = self.value
-    }
-    Op::Rts: {
-      self.value = self.pull16()
-      self.pc = self.value +% 1
-    }
-    Op::Sbc: self.sbc()
-    Op::Sec: self.set_flag(FLAG_CARRY, true)
-    Op::Sed: self.set_flag(FLAG_DECIMAL, true)
-    Op::Sei: self.set_flag(FLAG_INTERRUPT, true)
-    Op::Sta: self.putvalue(self.a as u16)
-    Op::Stx: self.putvalue(self.x as u16)
-    Op::Sty: self.putvalue(self.y as u16)
-    Op::Tax: { self.x = self.transfer(self.a) }
-    Op::Tay: { self.y = self.transfer(self.a) }
-    Op::Tsx: { self.x = self.transfer(self.sp) }
-    Op::Txa: { self.a = self.transfer(self.x) }
-    Op::Txs: { self.sp = self.x }
-    Op::Tya: { self.a = self.transfer(self.y) }
-    Op::Dcp: {
-      self.dec()
-      self.penaltyop = true
-      self.cmp(self.a)
-      self.undocumented_penalty()
-    }
-    Op::Isb: {
-      self.inc()
-      self.sbc()
-      self.undocumented_penalty()
-    }
-    Op::Lax: {
-      self.lda()
-      self.ldx()
-    }
-    Op::Rla: {
-      self.rol()
-      self.and()
-      self.undocumented_penalty()
-    }
-    Op::Rra: {
-      self.ror()
-      self.adc()
-      self.undocumented_penalty()
-    }
-    Op::Sax: {
-      self.putvalue(self.a as u16)
-      self.putvalue(self.x as u16)
-      self.putvalue((self.a & self.x) as u16)
-      self.undocumented_penalty()
-    }
-    Op::Slo: {
-      self.asl()
-      self.ora()
-      self.undocumented_penalty()
-    }
-    Op::Sre: {
-      self.lsr()
-      self.eor()
-      self.undocumented_penalty()
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -939,52 +939,52 @@ fn Cpu::execute(*self, op: Op) {
 
 // step executes one instruction and answers with the cycles it took.
 export fn Cpu::step(*self): u32 {
-  self.opcode = self.next_byte()
-  self.status |= FLAG_CONSTANT
+    self.opcode = self.next_byte()
+    self.status |= FLAG_CONSTANT
 
-  self.penaltyop = false
-  self.penaltyaddr = false
-  self.clockticks = 0
+    self.penaltyop = false
+    self.penaltyaddr = false
+    self.clockticks = 0
 
-  self.address(MODES[self.opcode as usize])
-  self.execute(OPS[self.opcode as usize])
+    self.address(MODES[self.opcode as usize])
+    self.execute(OPS[self.opcode as usize])
 
-  self.clockticks = self.clockticks +% TICKS[self.opcode as usize]
-  if self.penaltyop && self.penaltyaddr {
-    self.clockticks += 1
-  }
-  self.instructions += 1
-  return self.clockticks
+    self.clockticks = self.clockticks +% TICKS[self.opcode as usize]
+    if self.penaltyop && self.penaltyaddr {
+        self.clockticks += 1
+    }
+    self.instructions += 1
+    return self.clockticks
 }
 
 // exec runs until at least the given number of cycles have passed.
 export fn Cpu::exec(*self, tickcount: u32): u32 {
-  var total: u32 = 0
-  while total < tickcount {
-    total += self.step()
-  }
-  return total
+    var total: u32 = 0
+    while total < tickcount {
+        total += self.step()
+    }
+    return total
 }
 
 export fn Cpu::reset(*self) {
-  self.pc = self.read16(0xFFFC)
-  self.sp = 0xFD
-  self.status |= FLAG_CONSTANT | FLAG_INTERRUPT
+    self.pc = self.read16(0xFFFC)
+    self.sp = 0xFD
+    self.status |= FLAG_CONSTANT | FLAG_INTERRUPT
 }
 
 export fn Cpu::nmi(*self) {
-  self.push16(self.pc)
-  self.push8(self.status & ~FLAG_BREAK)
-  self.set_flag(FLAG_INTERRUPT, true)
-  self.pc = self.read16(0xFFFA)
+    self.push16(self.pc)
+    self.push8(self.status & ~FLAG_BREAK)
+    self.set_flag(FLAG_INTERRUPT, true)
+    self.pc = self.read16(0xFFFA)
 }
 
 export fn Cpu::irq(*self) {
-  if (self.status & FLAG_INTERRUPT) != 0 {
-    return
-  }
-  self.push16(self.pc)
-  self.push8(self.status & ~FLAG_BREAK)
-  self.set_flag(FLAG_INTERRUPT, true)
-  self.pc = self.read16(0xFFFE)
+    if (self.status & FLAG_INTERRUPT) != 0 {
+        return
+    }
+    self.push16(self.pc)
+    self.push8(self.status & ~FLAG_BREAK)
+    self.set_flag(FLAG_INTERRUPT, true)
+    self.pc = self.read16(0xFFFE)
 }

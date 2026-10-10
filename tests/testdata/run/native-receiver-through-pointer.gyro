@@ -7,33 +7,33 @@ import { println, Array, String } from "stdlib"
 import { heap } from "mem"
 
 fn fill(values: *Array<i32>, upto: i32) {
-  for i in 0..upto {
-    values.push(i)
-  }
+    for i in 0..upto {
+        values.push(i)
+    }
 }
 
 fn total(values: *Array<i32>): i32 {
-  var sum = 0
-  for value in values.slice() {
-    sum += value
-  }
-  return sum
+    var sum = 0
+    for value in values.slice() {
+        sum += value
+    }
+    return sum
 }
 
 fn shout(out: *String, text: string) {
-  out.push(text)
-  out.push_rune('!')
+    out.push(text)
+    out.push_rune('!')
 }
 
 fn main() {
-  var values = Array<i32>::new(heap())
-  defer values.free()
-  fill(&values, 5)
-  println(values.len())
-  println(total(&values))
+    var values = Array<i32>::new(heap())
+    defer values.free()
+    fill(&values, 5)
+    println(values.len())
+    println(total(&values))
 
-  var message = String::new(heap())
-  defer message.free()
-  shout(&message, "hello")
-  println(message.text(heap()))
+    var message = String::new(heap())
+    defer message.free()
+    shout(&message, "hello")
+    println(message.text(heap()))
 }

@@ -27,26 +27,26 @@ import { bytes } from "stdlib"
 const MAX_RAM: usize = 32
 
 const NO_ADDRESSES: u16[32] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 const NO_VALUES: u8[32] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 // One end of a test: the registers, and the memory that goes with them.
 struct State {
-  pc: u16
-  s: u8
-  a: u8
-  x: u8
-  y: u8
-  p: u8
-  n: usize
-  addresses: u16[32]
-  values: u8[32]
+    pc: u16
+    s: u8
+    a: u8
+    x: u8
+    y: u8
+    p: u8
+    n: usize
+    addresses: u16[32]
+    values: u8[32]
 }
 
 // ---------------------------------------------------------------------------
@@ -54,42 +54,42 @@ struct State {
 // ---------------------------------------------------------------------------
 
 fn digit(byte: u8): u32 {
-  if byte <= '9' as u8 {
-    return (byte - ('0' as u8)) as u32
-  }
-  return ((byte - ('a' as u8)) as u32) + 10
+    if byte <= '9' as u8 {
+        return (byte - ('0' as u8)) as u32
+    }
+    return ((byte - ('a' as u8)) as u32) + 10
 }
 
 fn hex(bytes: u8[], at: usize, width: usize): u32 {
-  var value: u32 = 0
-  for i in 0..width {
-    value = value * 16 + digit(bytes[at + i])
-  }
-  return value
+    var value: u32 = 0
+    for i in 0..width {
+        value = value * 16 + digit(bytes[at + i])
+    }
+    return value
 }
 
 // state reads one end of a test and answers with the offset just past it.
 fn state(bytes: u8[], at: usize): (State, usize) {
-  var count = hex(bytes, at + 14, 2) as usize
-  var addresses = NO_ADDRESSES
-  var values = NO_VALUES
-  var cursor = at + 16
-  for i in 0..count {
-    addresses[i] = hex(bytes, cursor, 4) as u16
-    values[i] = hex(bytes, cursor + 4, 2) as u8
-    cursor += 6
-  }
-  return State{
-    pc: hex(bytes, at, 4) as u16,
-    s: hex(bytes, at + 4, 2) as u8,
-    a: hex(bytes, at + 6, 2) as u8,
-    x: hex(bytes, at + 8, 2) as u8,
-    y: hex(bytes, at + 10, 2) as u8,
-    p: hex(bytes, at + 12, 2) as u8,
-    n: count,
-    addresses: addresses,
-    values: values,
-  }, cursor
+    var count = hex(bytes, at + 14, 2) as usize
+    var addresses = NO_ADDRESSES
+    var values = NO_VALUES
+    var cursor = at + 16
+    for i in 0..count {
+        addresses[i] = hex(bytes, cursor, 4) as u16
+        values[i] = hex(bytes, cursor + 4, 2) as u8
+        cursor += 6
+    }
+    return State{
+        pc: hex(bytes, at, 4) as u16,
+        s: hex(bytes, at + 4, 2) as u8,
+        a: hex(bytes, at + 6, 2) as u8,
+        x: hex(bytes, at + 8, 2) as u8,
+        y: hex(bytes, at + 10, 2) as u8,
+        p: hex(bytes, at + 12, 2) as u8,
+        n: count,
+        addresses: addresses,
+        values: values,
+    }, cursor
 }
 
 // ---------------------------------------------------------------------------
@@ -97,15 +97,15 @@ fn state(bytes: u8[], at: usize): (State, usize) {
 // ---------------------------------------------------------------------------
 
 fn report(index: i32, field: string, got: u32, want: u32, width: usize) {
-  if width == 4 {
-    printf("    #%d %-8s got %04x want %04x\n", index, field, got, want)
-  } else {
-    printf("    #%d %-8s got %02x want %02x\n", index, field, got, want)
-  }
+    if width == 4 {
+        printf("    #%d %-8s got %04x want %04x\n", index, field, got, want)
+    } else {
+        printf("    #%d %-8s got %02x want %02x\n", index, field, got, want)
+    }
 }
 
 fn report_ram(index: i32, address: u16, got: u8, want: u8) {
-  printf("    #%d $%04x    got %02x want %02x\n", index, address, got, want)
+    printf("    #%d $%04x    got %02x want %02x\n", index, address, got, want)
 }
 
 // run loads the initial state, executes one instruction, and reports every
@@ -113,104 +113,104 @@ fn report_ram(index: i32, address: u16, got: u8, want: u8) {
 // upstream's bus-cycle list; the emulator counts cycles rather than bus
 // accesses, so only the total is comparable.
 fn run(cpu: *m6502::Cpu, index: i32, before: State, after: State, cycles: u32): bool {
-  var ok = true
+    var ok = true
 
-  cpu.forget_touches()
-  for i in 0..before.n {
-    cpu.store(before.addresses[i], before.values[i])
-    cpu.touch(before.addresses[i])
-  }
-  cpu.pc = before.pc
-  cpu.sp = before.s
-  cpu.a = before.a
-  cpu.x = before.x
-  cpu.y = before.y
-  cpu.status = before.p
-
-  cpu.step()
-
-  if cpu.pc != after.pc {
-    report(index, "pc", cpu.pc as u32, after.pc as u32, 4)
-    ok = false
-  }
-  if cpu.sp != after.s {
-    report(index, "s", cpu.sp as u32, after.s as u32, 2)
-    ok = false
-  }
-  if cpu.a != after.a {
-    report(index, "a", cpu.a as u32, after.a as u32, 2)
-    ok = false
-  }
-  if cpu.x != after.x {
-    report(index, "x", cpu.x as u32, after.x as u32, 2)
-    ok = false
-  }
-  if cpu.y != after.y {
-    report(index, "y", cpu.y as u32, after.y as u32, 2)
-    ok = false
-  }
-  if cpu.status != after.p {
-    report(index, "p", cpu.status as u32, after.p as u32, 2)
-    ok = false
-  }
-  if cpu.clockticks != cycles {
-    report(index, "cycles", cpu.clockticks, cycles, 2)
-    ok = false
-  }
-  for i in 0..after.n {
-    var got = cpu.read(after.addresses[i])
-    if got != after.values[i] {
-      report_ram(index, after.addresses[i], got, after.values[i])
-      ok = false
+    cpu.forget_touches()
+    for i in 0..before.n {
+        cpu.store(before.addresses[i], before.values[i])
+        cpu.touch(before.addresses[i])
     }
-  }
+    cpu.pc = before.pc
+    cpu.sp = before.s
+    cpu.a = before.a
+    cpu.x = before.x
+    cpu.y = before.y
+    cpu.status = before.p
 
-  // Hand the next test a clean machine: every address this one wrote,
-  // and every address either state named.
-  for i in 0..cpu.ntouched {
-    cpu.store(cpu.touched_at(i), 0)
-  }
-  for i in 0..before.n {
-    cpu.store(before.addresses[i], 0)
-  }
-  for i in 0..after.n {
-    cpu.store(after.addresses[i], 0)
-  }
-  return ok
+    cpu.step()
+
+    if cpu.pc != after.pc {
+        report(index, "pc", cpu.pc as u32, after.pc as u32, 4)
+        ok = false
+    }
+    if cpu.sp != after.s {
+        report(index, "s", cpu.sp as u32, after.s as u32, 2)
+        ok = false
+    }
+    if cpu.a != after.a {
+        report(index, "a", cpu.a as u32, after.a as u32, 2)
+        ok = false
+    }
+    if cpu.x != after.x {
+        report(index, "x", cpu.x as u32, after.x as u32, 2)
+        ok = false
+    }
+    if cpu.y != after.y {
+        report(index, "y", cpu.y as u32, after.y as u32, 2)
+        ok = false
+    }
+    if cpu.status != after.p {
+        report(index, "p", cpu.status as u32, after.p as u32, 2)
+        ok = false
+    }
+    if cpu.clockticks != cycles {
+        report(index, "cycles", cpu.clockticks, cycles, 2)
+        ok = false
+    }
+    for i in 0..after.n {
+        var got = cpu.read(after.addresses[i])
+        if got != after.values[i] {
+            report_ram(index, after.addresses[i], got, after.values[i])
+            ok = false
+        }
+    }
+
+    // Hand the next test a clean machine: every address this one wrote,
+    // and every address either state named.
+    for i in 0..cpu.ntouched {
+        cpu.store(cpu.touched_at(i), 0)
+    }
+    for i in 0..before.n {
+        cpu.store(before.addresses[i], 0)
+    }
+    for i in 0..after.n {
+        cpu.store(after.addresses[i], 0)
+    }
+    return ok
 }
 
 fn main() {
-  var cpu = m6502::Cpu::new()
-  defer cpu.free()
+    var cpu = m6502::Cpu::new()
+    defer cpu.free()
 
-  var total = 0
-  var passed = 0
+    var total = 0
+    var passed = 0
 
-  var i: usize = 0
-  while i < 151 {
-    var bytes = tests::CASES[i].bytes(heap())
-    var cursor: usize = 0
-    var count = 0
-    var ok = 0
+    var i: usize = 0
+    while i < 151 {
+        var bytes = tests::CASES[i].bytes(heap())
+        var cursor: usize = 0
+        var count = 0
+        var ok = 0
 
-    while cursor < bytes.len() {
-      var before, at = state(bytes, cursor)
-      var after, next = state(bytes, at)
-      var cycles = hex(bytes, next, 2)
-      cursor = next + 2
-      count += 1
-      if run(&cpu, count, before, after, cycles) {
-        ok += 1
-      }
+        while cursor < bytes.len() {
+            var before, at = state(bytes, cursor)
+            var after, next = state(bytes, at)
+            var cycles = hex(bytes, next, 2)
+            cursor = next + 2
+            count += 1
+            if run(&cpu, count, before, after, cycles) {
+                ok += 1
+            }
+        }
+
+        printf("%02x %s %-4s %2d/%2d\n", tests::OPCODES[i], tests::MNEMONICS[i],
+            tests::MODES[i], ok, count)
+        total += count
+        passed += ok
+        i += 1
     }
 
-    printf("%02x %s %-4s %2d/%2d\n", tests::OPCODES[i], tests::MNEMONICS[i],
-           tests::MODES[i], ok, count)
-    total += count
-    passed += ok
-    i += 1
-  }
-
-  printf("151 opcodes, %d tests, %d passed, %d failed\n", total, passed,
-         total - passed)
+    printf("151 opcodes, %d tests, %d passed, %d failed\n", total, passed,
+        total - passed)
 }

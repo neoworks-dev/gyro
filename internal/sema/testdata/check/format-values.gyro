@@ -7,61 +7,61 @@ import { format, heap, Format } from "mem"
 import { printf } from "fmt"
 
 fn log(message: Format) !{ io } {
-  println(message)
+    println(message)
 }
 
 fn forward(message: Format) !{ io } {
-  log(message)
+    log(message)
 }
 
 fn taken(text: string) {}
 
 // Where a format value may go.
 fn fine(n: i32) !{ io } {
-  println("n is #{n}")
-  log("n is #{n}")
-  var text = format(heap(), "n is #{n}")
-  taken(text)
-  taken(format(heap(), "n is #{n}"))
+    println("n is #{n}")
+    log("n is #{n}")
+    var text = format(heap(), "n is #{n}")
+    taken(text)
+    taken(format(heap(), "n is #{n}"))
 }
 
 // Where it may not.
 fn bound(n: i32) {
-  var kept = "n is #{n}"       //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
-                               //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
-  log(kept)
+    var kept = "n is #{n}" //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
+    //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
+    log(kept)
 }
 
-fn returned(n: i32): Format {  //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
-  return "n is #{n}"           //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
-                               //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
+fn returned(n: i32): Format { //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
+    return "n is #{n}"        //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
+    //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
 }
 
 fn asText(n: i32) {
-  var text: string = "n is #{n}"  //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
-                                  //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
-  taken("n is #{n}")              //~ E0501 cannot use Format as string in argument 1 to taken
-                                  //~^ help: a Format is not text; build the string into an allocator: format(heap(), ...) from mem
+    var text: string = "n is #{n}" //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
+    //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
+    taken("n is #{n}") //~ E0501 cannot use Format as string in argument 1 to taken
+    //~^ help: a Format is not text; build the string into an allocator: format(heap(), ...) from mem
 }
 
 struct Holder {
-  message: Format              //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
+    message: Format //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
 }
 
-fn stored(messages: Format[]) {  //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
+fn stored(messages: Format[]) { //~ E0616 a Format cannot be a field, element or result type, because it cannot outlive the statement it is written in
 }
 
 fn captured(message: Format) !{ io } {
-  var later = fn() {
-    println(message)           //~ E0616 a closure cannot capture a format value, because it cannot outlive the statement it is written in
-  }
+    var later = fn() {
+        println(message) //~ E0616 a closure cannot capture a format value, because it cannot outlive the statement it is written in
+    }
 }
 
 fn nested(message: Format, n: i32) {
-  taken(format(heap(), "again #{message}"))  //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
-                                             //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
+    taken(format(heap(), "again #{message}")) //~ E0616 a format value can only be passed as an argument, because it cannot outlive the statement it is written in
+    //~^ help: to get text, build it into an allocator: format(heap(), ...) from mem
 }
 
 fn wrapped(n: i32) !{ io } {
-  printf("%v", "n is #{n}")    //~ an any cannot hold Format
+    printf("%v", "n is #{n}") //~ an any cannot hold Format
 }

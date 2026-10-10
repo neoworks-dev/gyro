@@ -6,110 +6,110 @@ import { Array, println, Eq, Print } from "stdlib"
 import { heap } from "mem"
 
 trait Element {
-  fn paint(self)
-  fn name(self): string
+    fn paint(self)
+    fn name(self): string
 }
 
 struct Button {
-  label: string
+    label: string
 }
 
 impl Element for Button {
-  fn paint(self) {
-  }
-  fn name(self): string {
-    return "button"
-  }
+    fn paint(self) {
+    }
+    fn name(self): string {
+        return "button"
+    }
 }
 
 struct Plain {
-  n: i32
+    n: i32
 }
 
 fn conversions(b: Button, p: *Button, plain: *Plain) {
-  var ok = p as dyn Element
-  var also = &b as dyn Element
-  var no = plain as dyn Element      //~ E0527 Plain does not implement Element
-  var value = b as dyn Element       //~ E0531 needs a pointer to the value
+    var ok = p as dyn Element
+    var also = &b as dyn Element
+    var no = plain as dyn Element //~ E0527 Plain does not implement Element
+    var value = b as dyn Element  //~ E0531 needs a pointer to the value
 }
 
 fn calls(e: dyn Element, target: *dyn Element) {
-  e.paint()
-  var n: string = e.name()
-  e.nonsense()                       //~ E0405 dyn Element has no method nonsense
-  var field = e.label                //~ E0405 dyn Element has no field or method label
+    e.paint()
+    var n: string = e.name()
+    e.nonsense()        //~ E0405 dyn Element has no method nonsense
+    var field = e.label //~ E0405 dyn Element has no field or method label
 }
 
 fn inArrays() {
-  var items = Array<dyn Element>::new(heap())
-  var b = Button{ label: "ok" }
-  items.push(&b as dyn Element)
+    var items = Array<dyn Element>::new(heap())
+    var b = Button{ label: "ok" }
+    items.push(&b as dyn Element)
 }
 
 // A trait value borrows what it was made from, so returning one says where
 // from, like returning a slice does.
 fn passesThrough(p: *Button): dyn Element !{ &p } {
-  return p as dyn Element
+    return p as dyn Element
 }
 
 fn forgetsTheRow(p: *Button): dyn Element {
-  return p as dyn Element            //~ E0609 returns a view into p, which the row does not name
-                                     //~^ help: say so in the row: !{ &p }
+    return p as dyn Element //~ E0609 returns a view into p, which the row does not name
+    //~^ help: say so in the row: !{ &p }
 }
 
 fn returnsAFrame(): dyn Element {
-  var b = Button{ label: "frame" }
-  return &b as dyn Element           //~ E0610 this returns a view into storage that ends with this function
+    var b = Button{ label: "frame" }
+    return &b as dyn Element //~ E0610 this returns a view into storage that ends with this function
 }
 
 // A trait is a trait value only if every method can be called through the
 // table.
 trait Cloneable {
-  fn copy(self): Self
+    fn copy(self): Self
 }
 
 trait Builder {
-  fn build(): i32                    //~ E0219 a trait's method takes a receiver
+    fn build(): i32 //~ E0219 a trait's method takes a receiver
 }
 
 trait Generic {
-  fn map<T>(self, v: T): T
+    fn map<T>(self, v: T): T
 }
 
 trait Parameterized<T> {
-  fn get(self): T
+    fn get(self): T
 }
 
-fn badValues(a: dyn Cloneable) {     //~ E0530 Cloneable cannot be used as dyn: the method copy mentions Self
+fn badValues(a: dyn Cloneable) { //~ E0530 Cloneable cannot be used as dyn: the method copy mentions Self
 }
 
-fn generic(g: dyn Generic) {         //~ E0530 Generic cannot be used as dyn: the method map is generic
+fn generic(g: dyn Generic) { //~ E0530 Generic cannot be used as dyn: the method map is generic
 }
 
-fn parameterized(g: dyn Parameterized<i32>) {   //~ E0530 Parameterized cannot be used as dyn
+fn parameterized(g: dyn Parameterized<i32>) { //~ E0530 Parameterized cannot be used as dyn
 }
 
-fn capability(e: dyn Eq) {           //~ E0530 Eq cannot be used as dyn
+fn capability(e: dyn Eq) { //~ E0530 Eq cannot be used as dyn
 }
 
 // A value of a trait value type cannot be printed or compared, since the
 // table holds only the trait's methods.
 fn noCapabilities(a: dyn Element, b: dyn Element) {
-  println(a)                         //~ E0527 dyn Element does not implement Print
-  var same = a == b                  //~ E0527 dyn Element does not implement Eq
+    println(a)        //~ E0527 dyn Element does not implement Print
+    var same = a == b //~ E0527 dyn Element does not implement Eq
 }
 
 // A call through a table has no body to read the effects of, so it counts for
 // what the trait's signature says; a signature with no row may do io.
 trait Painter {
-  fn paint(self)
-  fn size(self): i32 !{}
+    fn paint(self)
+    fn size(self): i32 !{}
 }
 
 fn pureCall(p: dyn Painter): i32 !{} {
-  return p.size()
+    return p.size()
 }
 
 fn impureCall(p: dyn Painter) !{} {
-  p.paint()                          //~ E0611 paint is called through a trait value, and its trait states no row
+    p.paint() //~ E0611 paint is called through a trait value, and its trait states no row
 }

@@ -15,20 +15,20 @@ import { cast, offset } from "unsafe"
 // freeing the array ends it. A function that keeps the address past the
 // call keeps a dangling one.
 export fn c_string(a: Allocator, text: string): Array<u8> !{} {
-  var out = Array<u8>::new(a)
-  for byte in text.bytes(a) {
-    out.push(byte)
-  }
-  out.push(0)
-  return out
+    var out = Array<u8>::new(a)
+    for byte in text.bytes(a) {
+        out.push(byte)
+    }
+    out.push(0)
+    return out
 }
 
 // c_data is the address of an array's first byte, as the `char *` C
 // reads it as. It is unsafe because the address is good for as long as
 // the array is, and nothing here says how long that is.
 export unsafe fn c_data(bytes: Array<u8>): *i8 !{} {
-  var view = bytes.slice()
-  return cast<i8>(&view[0] as anyptr)
+    var view = bytes.slice()
+    return cast<i8>(&view[0] as anyptr)
 }
 
 // from_c copies the bytes of a C string, up to its NUL, into a Gyro
@@ -36,21 +36,21 @@ export unsafe fn c_data(bytes: Array<u8>): *i8 !{} {
 // string is never absent. The bytes are the library's and it may reuse
 // them on its next call, which is why this copies.
 export unsafe fn from_c(a: Allocator, text: *i8?): string !{} {
-  if text == null {
-    return ""
-  }
-  var bytes = Array<u8>::new(a)
-  var start = text as anyptr
-  var at: usize = 0
-  while true {
-    var byte = *cast<u8>(offset(start, at))
-    if byte == 0 {
-      break
+    if text == null {
+        return ""
     }
-    bytes.push(byte)
-    at += 1
-  }
-  var out = from_utf8(a, bytes.slice())
-  bytes.free()
-  return out
+    var bytes = Array<u8>::new(a)
+    var start = text as anyptr
+    var at: usize = 0
+    while true {
+        var byte = *cast<u8>(offset(start, at))
+        if byte == 0 {
+            break
+        }
+        bytes.push(byte)
+        at += 1
+    }
+    var out = from_utf8(a, bytes.slice())
+    bytes.free()
+    return out
 }

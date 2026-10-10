@@ -37,49 +37,49 @@ const PROMOTION: string = "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 "
 const PINNED: string = "8/8/1k6/8/2pP4/8/5BK1/8 b - d3 0 1 "
 
 fn divide(name: string, fen: string, depth: i32) {
-  var board = chess::parse_fen(fen)
-  printf("%s depth %d\n", name, depth)
+    var board = chess::parse_fen(fen)
+    printf("%s depth %d\n", name, depth)
 
-  var count = chess::generate_moves(&board, 0)
-  var total: i64 = 0
-  for index in 0..count {
-    var move = chess::move_at(0, index)
-    var saved = board
-    if chess::make_move(&board, move) {
-      var nodes = chess::perft(&board, depth - 1, 1)
-      total += nodes
-      board = saved
-      printf("  %-5s %d\n", move_name(move), nodes)
-    } else {
-      board = saved
+    var count = chess::generate_moves(&board, 0)
+    var total: i64 = 0
+    for index in 0..count {
+        var move = chess::move_at(0, index)
+        var saved = board
+        if chess::make_move(&board, move) {
+            var nodes = chess::perft(&board, depth - 1, 1)
+            total += nodes
+            board = saved
+            printf("  %-5s %d\n", move_name(move), nodes)
+        } else {
+            board = saved
+        }
     }
-  }
-  printf("  total %d\n\n", total)
+    printf("  total %d\n\n", total)
 }
 
 // Long algebraic: source, target, and the promotion piece when there is
 // one.
 fn move_name(move: i32): string {
-  var text = format(heap(), "#{chess::square_name(chess::move_source(move))}#{chess::square_name(chess::move_target(move))}")
-  var promoted = chess::move_promoted(move)
-  if promoted != 0 {
-    return format(heap(), "#{text}#{chess::promoted_letter(promoted)}")
-  }
-  return text
+    var text = format(heap(), "#{chess::square_name(chess::move_source(move))}#{chess::square_name(chess::move_target(move))}")
+    var promoted = chess::move_promoted(move)
+    if promoted != 0 {
+        return format(heap(), "#{text}#{chess::promoted_letter(promoted)}")
+    }
+    return text
 }
 
 fn main() {
-  chess::init_all()
+    chess::init_all()
 
-  divide("start", START, 3)
-  divide("kiwipete", KIWIPETE, 2)
-  divide("position3", POSITION_3, 3)
-  divide("position4", POSITION_4, 2)
-  divide("position5", POSITION_5, 2)
-  divide("position6", POSITION_6, 2)
+    divide("start", START, 3)
+    divide("kiwipete", KIWIPETE, 2)
+    divide("position3", POSITION_3, 3)
+    divide("position4", POSITION_4, 2)
+    divide("position5", POSITION_5, 2)
+    divide("position6", POSITION_6, 2)
 
-  divide("enpassant", EN_PASSANT, 4)
-  divide("castling", CASTLING, 2)
-  divide("promotion", PROMOTION, 2)
-  divide("pinned", PINNED, 3)
+    divide("enpassant", EN_PASSANT, 4)
+    divide("castling", CASTLING, 2)
+    divide("promotion", PROMOTION, 2)
+    divide("pinned", PINNED, 3)
 }

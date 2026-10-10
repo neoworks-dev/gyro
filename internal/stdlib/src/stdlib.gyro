@@ -20,13 +20,13 @@ export fn eprintln<T: Print>(value: T) !{ io }
 
 // Eq is ==. Two values are equal when the method says so.
 export trait Eq {
-  fn eq(self, other: Self): bool
+    fn eq(self, other: Self): bool
 }
 
 // Hash folds a value to a number. Two values that are equal hash alike, so
 // whoever writes an Eq by hand writes a Hash to match.
 export trait Hash {
-  fn hash(self): u64
+    fn hash(self): u64
 }
 
 // Print is how println and interpolation show a value. `to_string` is the
@@ -34,50 +34,50 @@ export trait Hash {
 // parameter, since a number's text is made by the runtime and has nowhere
 // to be allocated from.
 export trait Print {
-  fn to_string(self): string
+    fn to_string(self): string
 }
 
 // Ord is <, <=, > and >=. compare answers a negative number, zero or a
 // positive one, and the operators are that answer against zero.
 export trait Ord: Eq {
-  fn compare(self, other: Self): i32
+    fn compare(self, other: Self): i32
 }
 
 export trait Add {
-  fn add(self, other: Self): Self
+    fn add(self, other: Self): Self
 }
 
 export trait Sub {
-  fn sub(self, other: Self): Self
+    fn sub(self, other: Self): Self
 }
 
 export trait Mul {
-  fn mul(self, other: Self): Self
+    fn mul(self, other: Self): Self
 }
 
 export trait Div {
-  fn div(self, other: Self): Self
+    fn div(self, other: Self): Self
 }
 
 export trait Rem {
-  fn rem(self, other: Self): Self
+    fn rem(self, other: Self): Self
 }
 
 export trait Neg {
-  fn neg(self): Self
+    fn neg(self): Self
 }
 
 // Iterator is what for..in walks: next hands back the following element and
 // whether there was one.
 export trait Iterator<T> {
-  fn next(*self): (T, bool)
+    fn next(*self): (T, bool)
 }
 
 // Index is `value[i]`. at hands back the address of element i, which is
 // what makes the index a place: `value[i] = x` writes through it and
 // `&value[i]` is the address itself, as on an Array.
 export trait Index<T> {
-  fn at(*self, index: usize): *T
+    fn at(*self, index: usize): *T
 }
 
 // A line is written piece by piece, so the output lock is held across
@@ -87,37 +87,37 @@ fn lock_output() !{ io }
 fn unlock_output() !{ io }
 
 fn stream_print(message: Format) !{ io } {
-  lock_output()
-  for i in 0..message.len() {
-    print(message.piece(i))
-  }
-  unlock_output()
+    lock_output()
+    for i in 0..message.len() {
+        print(message.piece(i))
+    }
+    unlock_output()
 }
 
 fn stream_println(message: Format) !{ io } {
-  lock_output()
-  for i in 0..message.len() {
-    print(message.piece(i))
-  }
-  println("")
-  unlock_output()
+    lock_output()
+    for i in 0..message.len() {
+        print(message.piece(i))
+    }
+    println("")
+    unlock_output()
 }
 
 fn stream_eprint(message: Format) !{ io } {
-  lock_output()
-  for i in 0..message.len() {
-    eprint(message.piece(i))
-  }
-  unlock_output()
+    lock_output()
+    for i in 0..message.len() {
+        eprint(message.piece(i))
+    }
+    unlock_output()
 }
 
 fn stream_eprintln(message: Format) !{ io } {
-  lock_output()
-  for i in 0..message.len() {
-    eprint(message.piece(i))
-  }
-  eprintln("")
-  unlock_output()
+    lock_output()
+    for i in 0..message.len() {
+        eprint(message.piece(i))
+    }
+    eprintln("")
+    unlock_output()
 }
 
 // Array<T> owns its elements, in contrast to the borrowed view T[]. It is
@@ -145,7 +145,7 @@ export fn Array<T>::free(*self) !{}
 // The runtime supplies the buffer; anything above it is ordinary Gyro,
 // written once here rather than once per tier.
 export fn Array<T>::is_empty(self): bool !{} {
-  return self.len() == 0
+    return self.len() == 0
 }
 
 // from_utf8 reads a byte slice as text, and `bytes` is the other
@@ -168,76 +168,76 @@ export fn string::runes(self, a: Allocator): rune[] !{ &a }
 // A String records the allocator it was made with, beside the one its
 // bytes record, so appending can copy the text it reads from the same one.
 export struct String {
-  bytes: Array<u8>
-  alloc: Allocator
+    bytes: Array<u8>
+    alloc: Allocator
 }
 
 export fn String::new(a: Allocator): String !{ &a } {
-  return String{ bytes: Array<u8>::new(a), alloc: a }
+    return String{ bytes: Array<u8>::new(a), alloc: a }
 }
 
 export fn String::with_capacity(a: Allocator, capacity: usize): String !{ &a } {
-  return String{ bytes: Array<u8>::with_capacity(a, capacity), alloc: a }
+    return String{ bytes: Array<u8>::with_capacity(a, capacity), alloc: a }
 }
 
 export fn String::of(a: Allocator, text: string): String !{ &a } {
-  var out = String::new(a)
-  out.push(text)
-  return out
+    var out = String::new(a)
+    out.push(text)
+    return out
 }
 
 export fn String::push(*self, text: string) !{} {
-  for byte in text.bytes(self.alloc) {
-    self.bytes.push(byte)
-  }
+    for byte in text.bytes(self.alloc) {
+        self.bytes.push(byte)
+    }
 }
 
 // push_rune encodes one code point as UTF-8. The four cases are the four
 // lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
 // what runes() produces for an invalid sequence.
 export fn String::push_rune(*self, value: rune) !{} {
-  var point = value as u32
-  if point > 1114111 || (point >= 55296 && point <= 57343) {
-    point = 65533
-  }
+    var point = value as u32
+    if point > 1114111 || (point >= 55296 && point <= 57343) {
+        point = 65533
+    }
 
-  if point < 128 {
-    self.bytes.push(point as u8)
-    return
-  }
-  if point < 2048 {
-    self.bytes.push((192 | (point >> 6)) as u8)
-    self.bytes.push((128 | (point & 63)) as u8)
-    return
-  }
-  if point < 65536 {
-    self.bytes.push((224 | (point >> 12)) as u8)
+    if point < 128 {
+        self.bytes.push(point as u8)
+        return
+    }
+    if point < 2048 {
+        self.bytes.push((192 | (point >> 6)) as u8)
+        self.bytes.push((128 | (point & 63)) as u8)
+        return
+    }
+    if point < 65536 {
+        self.bytes.push((224 | (point >> 12)) as u8)
+        self.bytes.push((128 | ((point >> 6) & 63)) as u8)
+        self.bytes.push((128 | (point & 63)) as u8)
+        return
+    }
+    self.bytes.push((240 | (point >> 18)) as u8)
+    self.bytes.push((128 | ((point >> 12) & 63)) as u8)
     self.bytes.push((128 | ((point >> 6) & 63)) as u8)
     self.bytes.push((128 | (point & 63)) as u8)
-    return
-  }
-  self.bytes.push((240 | (point >> 18)) as u8)
-  self.bytes.push((128 | ((point >> 12) & 63)) as u8)
-  self.bytes.push((128 | ((point >> 6) & 63)) as u8)
-  self.bytes.push((128 | (point & 63)) as u8)
 }
 
 export fn String::len(self): usize !{} {
-  return self.bytes.len()
+    return self.bytes.len()
 }
 
 export fn String::text(self, a: Allocator): string !{ &a } {
-  return from_utf8(a, self.bytes.slice())
+    return from_utf8(a, self.bytes.slice())
 }
 
 // to_string is what printing calls on its own behalf, where no allocator
 // was chosen, so the text comes from the process heap.
 export fn String::to_string(self): string !{} {
-  return self.text(heap())
+    return self.text(heap())
 }
 
 export fn String::free(*self) !{} {
-  self.bytes.free()
+    self.bytes.free()
 }
 
 // ---------------------------------------------------------------------------
@@ -251,15 +251,15 @@ export fn String::free(*self) !{} {
 
 // slice_at reports whether needle sits at `at` in haystack.
 fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
-  if at + needle.len() > haystack.len() {
-    return false
-  }
-  for var i: usize = 0; i < needle.len(); i += 1 {
-    if haystack[at + i] != needle[i] {
-      return false
+    if at + needle.len() > haystack.len() {
+        return false
     }
-  }
-  return true
+    for var i: usize = 0; i < needle.len(); i += 1 {
+        if haystack[at + i] != needle[i] {
+            return false
+        }
+    }
+    return true
 }
 
 // view_bytes is a string's bytes as a slice, without the copy `bytes`
@@ -269,122 +269,122 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
 fn view_bytes(text: string): u8[] !{}
 
 export fn string::starts_with(self, prefix: string): bool !{} {
-  return slice_at(view_bytes(self), view_bytes(prefix), 0)
+    return slice_at(view_bytes(self), view_bytes(prefix), 0)
 }
 
 export fn string::ends_with(self, suffix: string): bool !{} {
-  var body = view_bytes(self)
-  var tail = view_bytes(suffix)
-  if tail.len() > body.len() {
-    return false
-  }
-  return slice_at(body, tail, body.len() - tail.len())
+    var body = view_bytes(self)
+    var tail = view_bytes(suffix)
+    if tail.len() > body.len() {
+        return false
+    }
+    return slice_at(body, tail, body.len() - tail.len())
 }
 
 // index_of returns the byte offset of the first match, or null.
 export fn string::index_of(self, needle: string): usize? !{} {
-  var body = view_bytes(self)
-  var want = view_bytes(needle)
-  if want.len() > body.len() {
-    return null
-  }
-  for var at: usize = 0; at + want.len() <= body.len(); at += 1 {
-    if slice_at(body, want, at) {
-      return at
+    var body = view_bytes(self)
+    var want = view_bytes(needle)
+    if want.len() > body.len() {
+        return null
     }
-  }
-  return null
+    for var at: usize = 0; at + want.len() <= body.len(); at += 1 {
+        if slice_at(body, want, at) {
+            return at
+        }
+    }
+    return null
 }
 
 export fn string::contains(self, needle: string): bool !{} {
-  return self.index_of(needle) != null
+    return self.index_of(needle) != null
 }
 
 // substring takes the half-open byte range [from, to). It does not
 // validate that the ends fall on rune boundaries.
 export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{ &a } {
-  var body = self.bytes(a)
-  var out = String::new(a)
-  var stop = to
-  if stop > body.len() {
-    stop = body.len()
-  }
-  for var i = from; i < stop; i += 1 {
-    out.bytes.push(body[i])
-  }
-  var result = out.text(a)
-  out.free()
-  return result
+    var body = self.bytes(a)
+    var out = String::new(a)
+    var stop = to
+    if stop > body.len() {
+        stop = body.len()
+    }
+    for var i = from; i < stop; i += 1 {
+        out.bytes.push(body[i])
+    }
+    var result = out.text(a)
+    out.free()
+    return result
 }
 
 fn is_space(byte: u8): bool {
-  return byte == 32 || byte == 9 || byte == 10 || byte == 13
+    return byte == 32 || byte == 9 || byte == 10 || byte == 13
 }
 
 export fn string::trim(self, a: Allocator): string !{ &a } {
-  var body = self.bytes(a)
-  var start: usize = 0
-  while start < body.len() && is_space(body[start]) {
-    start += 1
-  }
-  var stop = body.len()
-  while stop > start && is_space(body[stop - 1]) {
-    stop -= 1
-  }
-  return self.substring(a, start, stop)
+    var body = self.bytes(a)
+    var start: usize = 0
+    while start < body.len() && is_space(body[start]) {
+        start += 1
+    }
+    var stop = body.len()
+    while stop > start && is_space(body[stop - 1]) {
+        stop -= 1
+    }
+    return self.substring(a, start, stop)
 }
 
 // split cuts on every occurrence of sep. An empty sep would not advance,
 // so it yields the whole text unsplit.
 export fn string::split(self, a: Allocator, sep: string): Array<string> !{ &a } {
-  var parts = Array<string>::new(a)
-  if sep.len() == 0 {
-    parts.push(self.substring(a, 0, self.len()))
-    return parts
-  }
-
-  var body = self.bytes(a)
-  var want = sep.bytes(a)
-  var start: usize = 0
-  var at: usize = 0
-  while at + want.len() <= body.len() {
-    if slice_at(body, want, at) {
-      parts.push(self.substring(a, start, at))
-      at += want.len()
-      start = at
-      continue
+    var parts = Array<string>::new(a)
+    if sep.len() == 0 {
+        parts.push(self.substring(a, 0, self.len()))
+        return parts
     }
-    at += 1
-  }
-  parts.push(self.substring(a, start, body.len()))
-  return parts
+
+    var body = self.bytes(a)
+    var want = sep.bytes(a)
+    var start: usize = 0
+    var at: usize = 0
+    while at + want.len() <= body.len() {
+        if slice_at(body, want, at) {
+            parts.push(self.substring(a, start, at))
+            at += want.len()
+            start = at
+            continue
+        }
+        at += 1
+    }
+    parts.push(self.substring(a, start, body.len()))
+    return parts
 }
 
 // join stays a function: its receiver would be the slice, not a string,
 // and `string[]` is not a type an extension can name.
 export fn join(a: Allocator, parts: string[], sep: string): string !{ &a } {
-  var out = String::new(a)
-  var first = true
-  for part in parts {
-    if !first {
-      out.push(sep)
+    var out = String::new(a)
+    var first = true
+    for part in parts {
+        if !first {
+            out.push(sep)
+        }
+        out.push(part)
+        first = false
     }
-    out.push(part)
-    first = false
-  }
-  var result = out.text(a)
-  out.free()
-  return result
+    var result = out.text(a)
+    out.free()
+    return result
 }
 
 export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
-  var out = String::new(a)
-  for i in 0..times {
-    out.push(self)
-  }
-  var result = out.text(a)
-  out.free()
-  return result
+    var out = String::new(a)
+    for i in 0..times {
+        out.push(self)
+    }
+    var result = out.text(a)
+    out.free()
+    return result
 }
 
 // ---------------------------------------------------------------------------
@@ -405,133 +405,133 @@ export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
 // A Map records the allocator it was made with, as an Array does, and
 // every bucket and every grown table comes from it.
 export struct Map<K: Eq & Hash, V> {
-  buckets: Array<Array<(K, V)>>
-  count: usize
-  alloc: Allocator
+    buckets: Array<Array<(K, V)>>
+    count: usize
+    alloc: Allocator
 }
 
 // bucket_index folds a hash onto a bucket count. The count is never zero:
 // new() starts with eight buckets and grow() only doubles.
 fn bucket_index(hash: u64, buckets: usize): usize {
-  return (hash % (buckets as u64)) as usize
+    return (hash % (buckets as u64)) as usize
 }
 
 fn empty_buckets<K, V>(a: Allocator, count: usize): Array<Array<(K, V)>> {
-  var buckets = Array<Array<(K, V)>>::with_capacity(a, count)
-  for i in 0..count {
-    buckets.push(Array<(K, V)>::new(a))
-  }
-  return buckets
+    var buckets = Array<Array<(K, V)>>::with_capacity(a, count)
+    for i in 0..count {
+        buckets.push(Array<(K, V)>::new(a))
+    }
+    return buckets
 }
 
 export fn Map<K, V>::new(a: Allocator): Map<K, V> !{ &a } {
-  return Map<K, V>{ buckets: empty_buckets<K, V>(a, 8), count: 0, alloc: a }
+    return Map<K, V>{ buckets: empty_buckets<K, V>(a, 8), count: 0, alloc: a }
 }
 
 fn Map<K, V>::bucket_of(self, key: K): Array<(K, V)> {
-  return self.buckets.get(bucket_index(key.hash(), self.buckets.len()))
+    return self.buckets.get(bucket_index(key.hash(), self.buckets.len()))
 }
 
 // grow doubles the bucket count and redistributes every entry. Insertion
 // order within a bucket is not part of the contract; the walk order here
 // is still deterministic, so every tier agrees byte for byte.
 fn Map<K, V>::grow(*self) {
-  var wider = empty_buckets<K, V>(self.alloc, self.buckets.len() * 2)
-  for i in 0..self.buckets.len() {
-    var bucket = self.buckets.get(i)
-    for at in 0..bucket.len() {
-      var entry = bucket.get(at)
-      var home = wider.get(bucket_index(entry.0.hash(), wider.len()))
-      home.push(entry)
+    var wider = empty_buckets<K, V>(self.alloc, self.buckets.len() * 2)
+    for i in 0..self.buckets.len() {
+        var bucket = self.buckets.get(i)
+        for at in 0..bucket.len() {
+            var entry = bucket.get(at)
+            var home = wider.get(bucket_index(entry.0.hash(), wider.len()))
+            home.push(entry)
+        }
+        bucket.free()
     }
-    bucket.free()
-  }
-  self.buckets.free()
-  self.buckets = wider
+    self.buckets.free()
+    self.buckets = wider
 }
 
 // insert adds the pair, replacing the value (and the stored key) when an
 // equal key is already present.
 export fn Map<K, V>::insert(*self, key: K, value: V) !{} {
-  var bucket = self.bucket_of(key)
-  for i in 0..bucket.len() {
-    if bucket.get(i).0 == key {
-      bucket.set(i, (key, value))
-      return
+    var bucket = self.bucket_of(key)
+    for i in 0..bucket.len() {
+        if bucket.get(i).0 == key {
+            bucket.set(i, (key, value))
+            return
+        }
     }
-  }
-  if self.count >= self.buckets.len() * 2 {
-    self.grow()
-    bucket = self.bucket_of(key)
-  }
-  bucket.push((key, value))
-  self.count += 1
+    if self.count >= self.buckets.len() * 2 {
+        self.grow()
+        bucket = self.bucket_of(key)
+    }
+    bucket.push((key, value))
+    self.count += 1
 }
 
 export fn Map<K, V>::get(self, key: K): V? !{} {
-  var bucket = self.bucket_of(key)
-  for i in 0..bucket.len() {
-    var entry = bucket.get(i)
-    if entry.0 == key {
-      return entry.1
+    var bucket = self.bucket_of(key)
+    for i in 0..bucket.len() {
+        var entry = bucket.get(i)
+        if entry.0 == key {
+            return entry.1
+        }
     }
-  }
-  return null
+    return null
 }
 
 export fn Map<K, V>::contains(self, key: K): bool !{} {
-  var bucket = self.bucket_of(key)
-  for i in 0..bucket.len() {
-    if bucket.get(i).0 == key {
-      return true
+    var bucket = self.bucket_of(key)
+    for i in 0..bucket.len() {
+        if bucket.get(i).0 == key {
+            return true
+        }
     }
-  }
-  return false
+    return false
 }
 
 // remove takes the entry out by swapping the last one into its place,
 // and reports whether the key was present.
 export fn Map<K, V>::remove(*self, key: K): bool !{} {
-  var bucket = self.bucket_of(key)
-  for i in 0..bucket.len() {
-    if bucket.get(i).0 == key {
-      bucket.set(i, bucket.get(bucket.len() - 1))
-      var _, _ = bucket.pop()
-      self.count -= 1
-      return true
+    var bucket = self.bucket_of(key)
+    for i in 0..bucket.len() {
+        if bucket.get(i).0 == key {
+            bucket.set(i, bucket.get(bucket.len() - 1))
+            var _, _ = bucket.pop()
+            self.count -= 1
+            return true
+        }
     }
-  }
-  return false
+    return false
 }
 
 export fn Map<K, V>::len(self): usize !{} {
-  return self.count
+    return self.count
 }
 
 export fn Map<K, V>::is_empty(self): bool !{} {
-  return self.count == 0
+    return self.count == 0
 }
 
 // keys snapshots the keys into a fresh array, from the map's allocator,
 // that the caller frees. The order
 // follows the buckets: deterministic, but not insertion order.
 export fn Map<K, V>::keys(self): Array<K> !{} {
-  var out = Array<K>::with_capacity(self.alloc, self.count)
-  for i in 0..self.buckets.len() {
-    var bucket = self.buckets.get(i)
-    for at in 0..bucket.len() {
-      out.push(bucket.get(at).0)
+    var out = Array<K>::with_capacity(self.alloc, self.count)
+    for i in 0..self.buckets.len() {
+        var bucket = self.buckets.get(i)
+        for at in 0..bucket.len() {
+            out.push(bucket.get(at).0)
+        }
     }
-  }
-  return out
+    return out
 }
 
 export fn Map<K, V>::free(*self) !{} {
-  for i in 0..self.buckets.len() {
-    self.buckets.get(i).free()
-  }
-  self.buckets.free()
-  self.count = 0
+    for i in 0..self.buckets.len() {
+        self.buckets.get(i).free()
+    }
+    self.buckets.free()
+    self.count = 0
 }
 
 // Mutex<T> owns the value it guards; lock() returns the guard directly.

@@ -6,43 +6,43 @@ import { println, Array, Ord } from "stdlib"
 import { heap } from "mem"
 
 fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
-  if a.compare(b) > 0 {
-    return a
-  }
-  return b
+    if a.compare(b) > 0 {
+        return a
+    }
+    return b
 }
 
 fn sort(xs: *Array<string>) {
-  for var i: usize = 1; i < xs.len(); i += 1 {
-    var j = i
-    while j > 0 && xs.get(j).compare(xs.get(j - 1)) < 0 {
-      var earlier = xs.get(j - 1)
-      var later = xs.get(j)
-      xs.set(j - 1, later)
-      xs.set(j, earlier)
-      j -= 1
+    for var i: usize = 1; i < xs.len(); i += 1 {
+        var j = i
+        while j > 0 && xs.get(j).compare(xs.get(j - 1)) < 0 {
+            var earlier = xs.get(j - 1)
+            var later = xs.get(j)
+            xs.set(j - 1, later)
+            xs.set(j, earlier)
+            j -= 1
+        }
     }
-  }
 }
 
 fn main() {
-  println("abc".compare("abd"))
-  println("abd".compare("abc"))
-  println("abc".compare("abc"))
-  println("ab".compare("abc"))
-  println("".compare(""))
-  println("é".compare("e"))
+    println("abc".compare("abd"))
+    println("abd".compare("abc"))
+    println("abc".compare("abc"))
+    println("ab".compare("abc"))
+    println("".compare(""))
+    println("é".compare("e"))
 
-  println(max("pear", "apple"))
-  println(max(3, 7))
+    println(max("pear", "apple"))
+    println(max(3, 7))
 
-  var names = Array<string>::new(heap())
-  defer names.free()
-  names.push("pear")
-  names.push("apple")
-  names.push("fig")
-  sort(&names)
-  for name in names.slice() {
-    println(name)
-  }
+    var names = Array<string>::new(heap())
+    defer names.free()
+    names.push("pear")
+    names.push("apple")
+    names.push("fig")
+    sort(&names)
+    for name in names.slice() {
+        println(name)
+    }
 }

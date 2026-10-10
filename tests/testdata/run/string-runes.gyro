@@ -4,9 +4,9 @@ import { println, runes } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-  var text = "héllo"
-  println(text.len())
-  for r in text.runes(heap()) {
-    println(r)
-  }
+    var text = "héllo"
+    println(text.len())
+    for r in text.runes(heap()) {
+        println(r)
+    }
 }

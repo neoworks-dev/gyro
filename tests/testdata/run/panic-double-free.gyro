@@ -4,12 +4,12 @@
 import { alloc, free, heap } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 fn main() {
-  var node = alloc<Node>(heap())
-  node.value = 1
-  free(heap(), node)
-  free(heap(), node)
+    var node = alloc<Node>(heap())
+    node.value = 1
+    free(heap(), node)
+    free(heap(), node)
 }

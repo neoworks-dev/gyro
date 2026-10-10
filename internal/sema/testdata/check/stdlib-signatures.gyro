@@ -4,21 +4,21 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 fn used() {
-  var xs = Array<i32>::new(heap())
-  xs.push(4)
-  var n: usize = xs.len()
-  println(n)
-  xs.free()
+    var xs = Array<i32>::new(heap())
+    xs.push(4)
+    var n: usize = xs.len()
+    println(n)
+    xs.free()
 }
 
 fn misused() {
-  var xs = Array<i32>::new(heap())
-  xs.push("four")                //~ cannot use string as i32
-  xs.free()
+    var xs = Array<i32>::new(heap())
+    xs.push("four") //~ cannot use string as i32
+    xs.free()
 }
 
 // The module is already imported, so the fix for a missing name is one
 // more name in its braces rather than a second import statement.
 fn alreadyImported() {
-  eprintln(1)                    //~ help: add it to the import you already have from "stdlib"
+    eprintln(1) //~ help: add it to the import you already have from "stdlib"
 }

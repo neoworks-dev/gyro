@@ -7,8 +7,8 @@ and no block, which takes the compiler-derived representation:
 
 ```gyro
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Print for Point
@@ -30,9 +30,9 @@ Give the impl a block with `to_string`:
 
 ```gyro
 impl Print for Version {
-  fn to_string(self): string {
-    return format(heap(), "v#{self.major}.#{self.minor}")
-  }
+    fn to_string(self): string {
+        return format(heap(), "v#{self.major}.#{self.minor}")
+    }
 }
 ```
 
@@ -83,7 +83,7 @@ import { println } from "stdlib"
 import { format, heap, Format } from "mem"
 
 fn log(message: Format) !{ io } {
-  println(message)
+    println(message)
 }
 
 log("listening on port #{port}")

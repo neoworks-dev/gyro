@@ -11,59 +11,59 @@
 
 import { println } from "stdlib"
 import {
-  Event, KeyEvent, MouseEvent, Queued, event_kind, queued_at,
+    Event, KeyEvent, MouseEvent, Queued, event_kind, queued_at,
 } from "./event.c"
 
 // A union takes methods like any other imported type. Reading a member is
 // unsafe, since nothing says which one is live; every function below that
 // reads one is a safe fn, the author vouching that the tag is checked first.
 safe fn Event::tag(self): i32 {
-  return self.kind
+    return self.kind
 }
 
 // Through a pointer, which is how a real event loop is handed one.
 safe fn dispatch(e: *Event): i32 {
-  if e.kind == 1 {
-    return e.key.code
-  }
-  if e.kind == 2 {
-    return e.mouse.x + e.mouse.y
-  }
-  return 0
+    if e.kind == 1 {
+        return e.key.code
+    }
+    if e.kind == 2 {
+        return e.mouse.x + e.mouse.y
+    }
+    return 0
 }
 
 // By value: the bytes copy, and which member they mean copies with them.
 safe fn code_of(e: Event): i32 {
-  return e.key.code
+    return e.key.code
 }
 
 safe fn main() {
-  // A literal sets exactly one member, because there is room for one.
-  var e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
-  println(e.key.code)
-  println(e.kind)
-  println(e.tag())
-  println(dispatch(&e))
-  println(code_of(e))
+    // A literal sets exactly one member, because there is room for one.
+    var e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
+    println(e.key.code)
+    println(e.kind)
+    println(e.tag())
+    println(dispatch(&e))
+    println(code_of(e))
 
-  // Writing another member is writing the same storage.
-  e.mouse = MouseEvent{ kind: 2, x: 10, y: 20 }
-  println(e.kind)
-  println(e.mouse.y)
-  println(dispatch(&e))
+    // Writing another member is writing the same storage.
+    e.mouse = MouseEvent{ kind: 2, x: 10, y: 20 }
+    println(e.kind)
+    println(e.mouse.y)
+    println(dispatch(&e))
 
-  // Writing one field of a member leaves the rest of that member alone.
-  e.mouse.x = 5
-  println(dispatch(&e))
+    // Writing one field of a member leaves the rest of that member alone.
+    e.mouse.x = 5
+    println(dispatch(&e))
 
-  // A union inside a struct, and the field beside it untouched.
-  var queued = Queued{ at: 7, event: Event{ key: KeyEvent{ kind: 1, code: 66 } } }
-  println(queued.at)
-  println(queued.event.key.code)
-  println(dispatch(&queued.event))
+    // A union inside a struct, and the field beside it untouched.
+    var queued = Queued{ at: 7, event: Event{ key: KeyEvent{ kind: 1, code: 66 } } }
+    println(queued.at)
+    println(queued.event.key.code)
+    println(dispatch(&queued.event))
 
-  // Printing one prints the word. There is no value here to render:
-  // nothing records which member the storage means, and printing the
-  // first member would be a guess that reads as an answer.
-  println(e)
+    // Printing one prints the word. There is no value here to render:
+    // nothing records which member the storage means, and printing the
+    // first member would be a guess that reads as an answer.
+    println(e)
 }

@@ -13,45 +13,45 @@
 
 import { println } from "stdlib"
 import safe {
-  session_open, session_next, session_total, session_same,
-  session_absent, session_handle_size, session_round_trip,
-  ticket_issue, ticket_matches, session_open_count, session_close,
+    session_open, session_next, session_total, session_same,
+    session_absent, session_handle_size, session_round_trip,
+    ticket_issue, ticket_matches, session_open_count, session_close,
 } from "./session.c"
 
 fn main() {
-  // Not knowing what is at an address does not change what the address
-  // costs.
-  println(session_handle_size())
+    // Not knowing what is at an address does not change what the address
+    // costs.
+    println(session_handle_size())
 
-  // Two sessions, filed under the slots they answer with.
-  println(session_open(10))
-  println(session_open(20))
+    // Two sessions, filed under the slots they answer with.
+    println(session_open(10))
+    println(session_open(20))
 
-  // Reading through a handle: the implementation puts back the type it
-  // took off, and the object it addresses was there the whole time.
-  println(session_next(0))
-  println(session_next(0))
-  println(session_next(1))
-  println(session_total(0))
+    // Reading through a handle: the implementation puts back the type it
+    // took off, and the object it addresses was there the whole time.
+    println(session_next(0))
+    println(session_next(0))
+    println(session_next(1))
+    println(session_total(0))
 
-  // Identity, which is all a program can ask about an address it knows
-  // nothing else about.
-  println(session_same(0, 0))
-  println(session_same(0, 1))
+    // Identity, which is all a program can ask about an address it knows
+    // nothing else about.
+    println(session_same(0, 0))
+    println(session_same(0, 1))
 
-  // A slot nothing was filed under, and one that something was.
-  println(session_absent(3))
-  println(session_absent(1))
+    // A slot nothing was filed under, and one that something was.
+    println(session_absent(3))
+    println(session_absent(1))
 
-  // Out through a `void *` and back: two erasures, no movement.
-  println(session_round_trip(1))
+    // Out through a `void *` and back: two erasures, no movement.
+    println(session_round_trip(1))
 
-  // The same address under the other opaque name, and back again.
-  println(ticket_issue(0))
-  println(ticket_matches(0))
+    // The same address under the other opaque name, and back again.
+    println(ticket_issue(0))
+    println(ticket_matches(0))
 
-  // Walking the array and testing each handle against the absent one.
-  println(session_open_count())
-  session_close(0)
-  println(session_open_count())
+    // Walking the array and testing each handle against the absent one.
+    println(session_open_count())
+    session_close(0)
+    println(session_open_count())
 }

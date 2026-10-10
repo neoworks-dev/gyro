@@ -4,5 +4,5 @@ import { helper } from "./named"
 import { Shape } from "./star"
 
 fn t(s: Shape) {
-  helper()
+    helper()
 }

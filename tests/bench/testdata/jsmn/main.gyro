@@ -29,35 +29,35 @@ const DOCUMENT: string = "{ \"height\":10, \"layers\":[ { \"data\":[6,6], \"heig
 // the checksum names the C numbers explicitly and both sides fold the
 // same ones.
 fn kind_code(kind: jsmn::Kind): u64 {
-  return match kind {
-    jsmn::Kind::Undefined: 0
-    jsmn::Kind::Object: 1
-    jsmn::Kind::Array: 2
-    jsmn::Kind::String: 4
-    jsmn::Kind::Primitive: 8
-  }
+    return match kind {
+        jsmn::Kind::Undefined: 0
+        jsmn::Kind::Object: 1
+        jsmn::Kind::Array: 2
+        jsmn::Kind::String: 4
+        jsmn::Kind::Primitive: 8
+    }
 }
 
 fn main() {
-  var js = DOCUMENT.bytes(heap())
-  var tokens = Array<jsmn::Token>::new(heap())
+    var js = DOCUMENT.bytes(heap())
+    var tokens = Array<jsmn::Token>::new(heap())
 
-  var start = monotonic()
-  var acc: u64 = 0
-  for var round: i64 = 0; round < ROUNDS; round += 1 {
-    var parser = jsmn::init()
-    var result = parser.parse(js, tokens, POOL, false)
-    acc = acc *% 31 +% (result as u64)
-    for var i: i64 = 0; i < result; i += 1 {
-      var token = tokens.get(i as usize)
-      acc = acc *% 31 +% kind_code(token.kind) *% 7
-      acc = acc *% 31 +% (token.start as u64) *% 3 +% (token.end as u64)
-      acc = acc *% 31 +% (token.size as u64)
+    var start = monotonic()
+    var acc: u64 = 0
+    for var round: i64 = 0; round < ROUNDS; round += 1 {
+        var parser = jsmn::init()
+        var result = parser.parse(js, tokens, POOL, false)
+        acc = acc *% 31 +% (result as u64)
+        for var i: i64 = 0; i < result; i += 1 {
+            var token = tokens.get(i as usize)
+            acc = acc *% 31 +% kind_code(token.kind) *% 7
+            acc = acc *% 31 +% (token.start as u64) *% 3 +% (token.end as u64)
+            acc = acc *% 31 +% (token.size as u64)
+        }
     }
-  }
-  var stop = monotonic()
+    var stop = monotonic()
 
-  println(acc)
-  eprintln("gyro:bench #{stop - start}")
-  tokens.free()
+    println(acc)
+    eprintln("gyro:bench #{stop - start}")
+    tokens.free()
 }

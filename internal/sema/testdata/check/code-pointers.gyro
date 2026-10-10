@@ -3,87 +3,87 @@
 // the things a bare address cannot answer.
 
 fn add(a: i32, b: i32): i32 {
-  return a + b
+    return a + b
 }
 
 fn take(f: code(i32, i32): i32): i32 {
-  return f(1, 2)
+    return f(1, 2)
 }
 
 fn pass(): i32 {
-  return take(&add)
+    return take(&add)
 }
 
 // A nullable one needs the parentheses, because a `?` written after the
 // result would bind to the result.
 fn maybe(f: (code(i32, i32): i32)?): i32 {
-  if f == null {
-    return 0
-  }
-  return f(1, 2)
+    if f == null {
+        return 0
+    }
+    return f(1, 2)
 }
 
 // `code` is contextual: only a `(` after it in a type position makes
 // one, so an ordinary name is still an ordinary name.
 fn contextual(): i32 {
-  var code = 5
-  return code
+    var code = 5
+    return code
 }
 
 fn identity(a: code(i32, i32): i32, b: code(i32, i32): i32): bool {
-  return a == b
+    return a == b
 }
 
 fn generic<T>(v: T): T {
-  return v
+    return v
 }
 
 // A generic function and a method are not values on their own, so the
 // address never becomes a question: the operand is what is refused.
 fn noGenericAddress() {
-  var f = &generic                //~ generic is generic; it must be called so its type parameters can be inferred
+    var f = &generic //~ generic is generic; it must be called so its type parameters can be inferred
 }
 
 struct Counter {
-  export n: i32
+    export n: i32
 }
 
 fn Counter::bump(*self) {
-  self.n = self.n + 1
+    self.n = self.n + 1
 }
 
 fn noMethodAddress() {
-  var f = &Counter::bump          //~ bump takes a receiver; call it on a value
+    var f = &Counter::bump //~ bump takes a receiver; call it on a value
 }
 
 async fn later(): i32 {
-  return 1
+    return 1
 }
 
 fn noAsyncAddress() {
-  var f = &later                  //~ later is async, and what runs it is this program's scheduler rather than a caller
+    var f = &later //~ later is async, and what runs it is this program's scheduler rather than a caller
 }
 
 fn many(first: i32, rest: ...i32): i32 {
-  return first
+    return first
 }
 
 fn noVariadicAddress() {
-  var f = &many                   //~ many is variadic, and a code pointer carries no argument pack
+    var f = &many //~ many is variadic, and a code pointer carries no argument pack
 }
 
 // A closure is two words and captures; a code pointer is one word and
 // cannot. Neither becomes the other.
 fn notAClosure() {
-  var closure = fn(a: i32, b: i32): i32 { return a + b }
-  var f: code(i32, i32): i32 = closure   //~ cannot use fn(i32, i32): i32 as code(i32, i32): i32 in the declaration of f
+    var closure = fn(a: i32, b: i32): i32 { return a + b }
+    var f: code(i32, i32): i32 = closure //~ cannot use fn(i32, i32): i32 as code(i32, i32): i32 in the declaration of f
 }
 
 fn notAFn() {
-  var f: fn(i32, i32): i32 = &add  //~ cannot use code(i32, i32): i32 as fn(i32, i32): i32 in the declaration of f
+    var f: fn(i32, i32): i32 = &add //~ cannot use code(i32, i32): i32 as fn(i32, i32): i32 in the declaration of f
 }
 
 // An any promises the concrete type comes back out.
 fn notInAnAny(f: code(i32, i32): i32) {
-  var boxed = f as any            //~ an any cannot hold code(i32, i32): i32
+    var boxed = f as any //~ an any cannot hold code(i32, i32): i32
 }

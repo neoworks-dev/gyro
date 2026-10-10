@@ -5,19 +5,19 @@ import { println } from "stdlib"
 import { alloc, free, heap, keep } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 fn make_release(value: i32): fn() {
-  var node = alloc<Node>(heap())
-  node.value = value
-  return keep(heap(), fn[move node]() {
-    println(node.value)
-    free(heap(), node)
-  })
+    var node = alloc<Node>(heap())
+    node.value = value
+    return keep(heap(), fn[move node]() {
+        println(node.value)
+        free(heap(), node)
+    })
 }
 
 fn main() {
-  var release = make_release(7)
-  release()
+    var release = make_release(7)
+    release()
 }

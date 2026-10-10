@@ -5,117 +5,117 @@
 import { println, Print, Iterator } from "stdlib"
 
 trait Collection {
-  type Item: Print
-  type Iter: Iterator<Self::Item>
+    type Item: Print
+    type Iter: Iterator<Self::Item>
 
-  fn walk(self): Self::Iter
+    fn walk(self): Self::Iter
 }
 
 struct Countdown {
-  from: i32
+    from: i32
 }
 
 impl Iterator<i32> for Countdown {
-  fn next(*self): (i32, bool) {
-    if self.from == 0 {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.from == 0 {
+            return 0, false
+        }
+        var current = self.from
+        self.from -= 1
+        return current, true
     }
-    var current = self.from
-    self.from -= 1
-    return current, true
-  }
 }
 
 struct Numbers {
-  top: i32
+    top: i32
 }
 
 impl Collection for Numbers {
-  type Item = i32
-  type Iter = Countdown
+    type Item = i32
+    type Iter = Countdown
 
-  fn walk(self): Countdown {
-    return Countdown{ from: self.top }
-  }
+    fn walk(self): Countdown {
+        return Countdown{ from: self.top }
+    }
 }
 
 struct Flags {
-  count: i32
+    count: i32
 }
 
 struct Ticks {
-  left: i32
+    left: i32
 }
 
 impl Iterator<bool> for Ticks {
-  fn next(*self): (bool, bool) {
-    if self.left == 0 {
-      return false, false
+    fn next(*self): (bool, bool) {
+        if self.left == 0 {
+            return false, false
+        }
+        self.left -= 1
+        return self.left % 2 == 0, true
     }
-    self.left -= 1
-    return self.left % 2 == 0, true
-  }
 }
 
 impl Collection for Flags {
-  type Item = bool
-  type Iter = Ticks
+    type Item = bool
+    type Iter = Ticks
 
-  fn walk(self): Ticks {
-    return Ticks{ left: self.count }
-  }
+    fn walk(self): Ticks {
+        return Ticks{ left: self.count }
+    }
 }
 
 // Item is Print by the trait's declaration, so the body prints it.
 fn show<C: Collection>(c: C) {
-  for item in c.walk() {
-    println(item)
-  }
+    for item in c.walk() {
+        println(item)
+    }
 }
 
 // Pinned, Item is i32 and can be added.
 fn sum<C: Collection<Item = i32>>(c: C): i32 {
-  var total = 0
-  for item in c.walk() {
-    total += item
-  }
-  return total
+    var total = 0
+    for item in c.walk() {
+        total += item
+    }
+    return total
 }
 
 trait Pair<T> {
-  type Second
+    type Second
 
-  fn left(self): T
-  fn right(self): Self::Second
+    fn left(self): T
+    fn right(self): Self::Second
 }
 
 struct Entry {
-  id: i32
-  live: bool
+    id: i32
+    live: bool
 }
 
 impl Pair<i32> for Entry {
-  type Second = bool
+    type Second = bool
 
-  fn left(self): i32 {
-    return self.id
-  }
-  fn right(self): bool {
-    return self.live
-  }
+    fn left(self): i32 {
+        return self.id
+    }
+    fn right(self): bool {
+        return self.live
+    }
 }
 
 // The pin comes after the positional argument.
 fn both<P: Pair<i32, Second = bool>>(p: P): bool {
-  var live: P::Second = p.right()
-  return live && p.left() > 0
+    var live: P::Second = p.right()
+    return live && p.left() > 0
 }
 
 fn main() {
-  show(Numbers{ top: 3 })
-  show(Flags{ count: 3 })
-  println(sum(Numbers{ top: 4 }))
-  println(both(Entry{ id: 5, live: true }))
-  println(both(Entry{ id: 0, live: true }))
-  println(both(Entry{ id: 5, live: false }))
+    show(Numbers{ top: 3 })
+    show(Flags{ count: 3 })
+    println(sum(Numbers{ top: 4 }))
+    println(both(Entry{ id: 5, live: true }))
+    println(both(Entry{ id: 0, live: true }))
+    println(both(Entry{ id: 5, live: false }))
 }

@@ -4,6 +4,6 @@
 import { println } from "stdlib"
 
 fn main() {
-  println(null)
-  println("nothing: #{null}")
+    println(null)
+    println("nothing: #{null}")
 }

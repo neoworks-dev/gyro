@@ -5,91 +5,91 @@
 import { cast, offset, ptr_from_int, raw_alloc, slice_from_raw } from "unsafe"
 
 struct Cell {
-  value: i32
+    value: i32
 }
 
 // ---------------------------------------------------------------------
 // The three kinds
 
 unsafe fn danger(p: anyptr): i32 {
-  return cast<Cell>(p).value
+    return cast<Cell>(p).value
 }
 
 safe fn vouched(p: anyptr): i32 {
-  return danger(p)
+    return danger(p)
 }
 
 fn plain(p: anyptr): i32 {
-  return danger(p)               //~ E0618 danger is unsafe to call; this function is a plain fn
-                                 //~^ help: mark this function `safe fn` if it upholds what the operation needs, so that callers need not
-                                 //~^^ help: mark it `unsafe fn` to leave that to its callers instead
+    return danger(p) //~ E0618 danger is unsafe to call; this function is a plain fn
+    //~^ help: mark this function `safe fn` if it upholds what the operation needs, so that callers need not
+    //~^^ help: mark it `unsafe fn` to leave that to its callers instead
 }
 
 // An unsafe fn calls another, and a safe fn is callable from anywhere.
 unsafe fn chained(p: anyptr): i32 {
-  return danger(p)
+    return danger(p)
 }
 
 fn callsVouched(p: anyptr): i32 {
-  return vouched(p)
+    return vouched(p)
 }
 
 // Methods are marked the same way.
 unsafe fn Cell::peek(self, p: anyptr): i32 {
-  return danger(p)
+    return danger(p)
 }
 
 safe fn Cell::look(self, p: anyptr): i32 {
-  return danger(p)
+    return danger(p)
 }
 
 fn methods(c: Cell, p: anyptr): i32 {
-  var a = c.look(p)
-  var b = c.peek(p)              //~ E0618 peek is unsafe to call; this function is a plain fn
-  return a + b
+    var a = c.look(p)
+    var b = c.peek(p) //~ E0618 peek is unsafe to call; this function is a plain fn
+    return a + b
 }
 
 // ---------------------------------------------------------------------
 // The unsafe module
 
 fn primitives(p: anyptr, n: usize) {
-  var a = cast<Cell>(p)          //~ E0618 cast is unsafe to call; this function is a plain fn
-  var b = ptr_from_int<Cell>(n)  //~ E0618 ptr_from_int is unsafe to call; this function is a plain fn
-  var c = offset(p, n)           //~ E0618 offset is unsafe to call; this function is a plain fn
-  var d = raw_alloc(8, 8)        //~ E0618 raw_alloc is unsafe to call; this function is a plain fn
-  var e = slice_from_raw<i32>(p, n) //~ E0618 slice_from_raw is unsafe to call; this function is a plain fn
+    var a = cast<Cell>(p)             //~ E0618 cast is unsafe to call; this function is a plain fn
+    var b = ptr_from_int<Cell>(n)     //~ E0618 ptr_from_int is unsafe to call; this function is a plain fn
+    var c = offset(p, n)              //~ E0618 offset is unsafe to call; this function is a plain fn
+    var d = raw_alloc(8, 8)           //~ E0618 raw_alloc is unsafe to call; this function is a plain fn
+    var e = slice_from_raw<i32>(p, n) //~ E0618 slice_from_raw is unsafe to call; this function is a plain fn
 }
 
 safe fn contained(p: anyptr, n: usize): i32 {
-  var a = cast<Cell>(offset(p, n))
-  var b = ptr_from_int<Cell>(n)
-  var s = slice_from_raw<i32>(p, n)
-  return a.value + b.value + s[0]
+    var a = cast<Cell>(offset(p, n))
+    var b = ptr_from_int<Cell>(n)
+    var s = slice_from_raw<i32>(p, n)
+    return a.value + b.value + s[0]
 }
 
 // ---------------------------------------------------------------------
 // Closures are part of the function they are written in.
 
 safe fn closed(p: anyptr): i32 {
-  var read = fn(): i32 { return danger(p) }
-  return read()
+    var read = fn(): i32 { return danger(p) }
+    return read()
 }
 
 fn open(p: anyptr): i32 {
-  var read = fn(): i32 { return danger(p) }  //~ E0618 danger is unsafe to call; this function is a plain fn
-  return read()
+    var read = fn(): i32 { return danger(p) } //~ E0618 danger is unsafe to call; this function is a plain fn
+    return read()
 }
 
 // ---------------------------------------------------------------------
 // A pointer to an unsafe function is a way round the call.
 
 fn pointers() {
-  var a = &danger                //~ E0618 &danger makes a pointer to an unsafe function; this function is a plain fn
-  var b = &vouched
+    var a = &danger //~ E0618 &danger makes a pointer to an unsafe function; this function is a plain fn
+    var b = &vouched
 }
 
 // unsafe and safe are contextual: they are still names.
 fn names(unsafe: i32, safe: i32): i32 {
-  var unsafe_two = unsafe + safe
-  return unsafe_two
+    var unsafe_two = unsafe + safe
+    return unsafe_two
 }

@@ -4,18 +4,18 @@
 import { println } from "stdlib"
 
 fn describe(x: i32?): i32 {
-  if x == null {
-    return -1
-  }
-  return x + 1
+    if x == null {
+        return -1
+    }
+    return x + 1
 }
 
 fn main() {
-  var present: i32? = 41
-  var absent: i32? = null
-  println(describe(present))
-  println(describe(absent))
-  if present != null && present > 40 {
-    println("narrowed in a condition")
-  }
+    var present: i32? = 41
+    var absent: i32? = null
+    println(describe(present))
+    println(describe(absent))
+    if present != null && present > 40 {
+        println("narrowed in a condition")
+    }
 }

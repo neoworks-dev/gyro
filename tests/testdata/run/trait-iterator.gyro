@@ -6,56 +6,56 @@
 import { println, Iterator } from "stdlib"
 
 struct Countdown {
-  from: i32
+    from: i32
 }
 
 impl Iterator<i32> for Countdown {
-  fn next(*self): (i32, bool) {
-    if self.from == 0 {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.from == 0 {
+            return 0, false
+        }
+        var current = self.from
+        self.from -= 1
+        return current, true
     }
-    var current = self.from
-    self.from -= 1
-    return current, true
-  }
 }
 
 struct Walk {
-  items: string[]
-  at: usize
+    items: string[]
+    at: usize
 }
 
 impl Iterator<string> for Walk {
-  fn next(*self): (string, bool) !{ &self } {
-    if self.at >= self.items.len() {
-      return "", false
+    fn next(*self): (string, bool) !{ &self } {
+        if self.at >= self.items.len() {
+            return "", false
+        }
+        var item = self.items[self.at]
+        self.at += 1
+        return item, true
     }
-    var item = self.items[self.at]
-    self.at += 1
-    return item, true
-  }
 }
 
 fn sum<I: Iterator<i32>>(it: I): i32 {
-  var total = 0
-  for value in it {
-    total += value
-  }
-  return total
+    var total = 0
+    for value in it {
+        total += value
+    }
+    return total
 }
 
 fn main() {
-  var down = Countdown{ from: 4 }
-  for n in down {
-    println(n)
-  }
-  println(down.from)
+    var down = Countdown{ from: 4 }
+    for n in down {
+        println(n)
+    }
+    println(down.from)
 
-  println(sum(Countdown{ from: 10 }))
+    println(sum(Countdown{ from: 10 }))
 
-  var words = ["one", "two", "three"]
-  var walk = Walk{ items: words, at: 0 }
-  for word in walk {
-    println(word)
-  }
+    var words = ["one", "two", "three"]
+    var walk = Walk{ items: words, at: 0 }
+    for word in walk {
+        println(word)
+    }
 }

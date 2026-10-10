@@ -6,52 +6,52 @@ import { println } from "stdlib"
 import { format, heap } from "mem"
 
 fn string::shout(self): string {
-  return format(heap(), "#{self}!")
+    return format(heap(), "#{self}!")
 }
 
 fn i32::double(self): i32 {
-  return self * 2
+    return self * 2
 }
 
 fn uses(text: string, n: i32) {
-  println(text.shout())
-  println(n.double())
+    println(text.shout())
+    println(n.double())
 }
 
 // An extension is still a method: it cannot be called without a receiver.
 fn withoutAReceiver(text: string) {
-  println(shout(text))           //~ E0404 shout takes a receiver; call it on a value
+    println(shout(text)) //~ E0404 shout takes a receiver; call it on a value
 }
 
 // The type it names decides what it applies to.
 fn wrongReceiver(n: i32) {
-  println(n.shout())             //~ E0405 i32 has no method shout
+    println(n.shout()) //~ E0405 i32 has no method shout
 }
 
 // The compiler's own surface is part of the type, and an extension of the
 // same name does not displace it.
 fn string::len(self): i32 {
-  return 0
+    return 0
 }
 
 fn builtinWins(text: string): usize {
-  return text.len()
+    return text.len()
 }
 
 // An extension needs a receiver to attach through.
-fn string::loose() {             //~ an extension of string needs a receiver
+fn string::loose() { //~ an extension of string needs a receiver
 }
 
 // Built-ins take no type parameters.
-fn string<T>::generic(self) {    //~ string takes no type parameters
+fn string<T>::generic(self) { //~ string takes no type parameters
 }
 
 // `error` is a contract, not a type to hang methods on.
-fn error::describe(self): string {   //~ E0603 cannot attach a method to error: no such type in this module
-  return "e"
+fn error::describe(self): string { //~ E0603 cannot attach a method to error: no such type in this module
+    return "e"
 }
 
 // An any's behaviour belongs to the type inside it, which a match names.
-fn any::kind(self): string {         //~ E0603 cannot attach a method to any: no such type in this module
-  return "a"
+fn any::kind(self): string { //~ E0603 cannot attach a method to any: no such type in this module
+    return "a"
 }

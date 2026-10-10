@@ -7,176 +7,176 @@
 import { Print } from "stdlib"
 
 trait Container {
-  type Item: Print
+    type Item: Print
 
-  fn first(self): Self::Item
+    fn first(self): Self::Item
 }
 
 trait Labelled {
-  type Item
+    type Item
 
-  fn label(self): Self::Item
+    fn label(self): Self::Item
 }
 
 struct Plain {
-  n: i32
+    n: i32
 }
 
 struct Missing {
-  n: i32
+    n: i32
 }
 
-impl Container for Missing {         //~ E0528 impl Container for Missing is missing the associated type Item
-  fn first(self): i32 {
-    return self.n
-  }
+impl Container for Missing { //~ E0528 impl Container for Missing is missing the associated type Item
+    fn first(self): i32 {
+        return self.n
+    }
 }
 
 struct Extra {
-  n: i32
+    n: i32
 }
 
 impl Container for Extra {
-  type Item = i32
-  type Other = i32                   //~ E0528 Other is not an associated type of Container
+    type Item = i32
+    type Other = i32 //~ E0528 Other is not an associated type of Container
 
-  fn first(self): i32 {
-    return self.n
-  }
+    fn first(self): i32 {
+        return self.n
+    }
 }
 
 struct Twice {
-  n: i32
+    n: i32
 }
 
 impl Container for Twice {
-  type Item = i32
-  type Item = bool                   //~ E0528 the impl already defines the associated type Item
+    type Item = i32
+    type Item = bool //~ E0528 the impl already defines the associated type Item
 
-  fn first(self): i32 {
-    return self.n
-  }
+    fn first(self): i32 {
+        return self.n
+    }
 }
 
 struct Unprintable {
-  n: i32
+    n: i32
 }
 
 impl Container for Unprintable {
-  type Item = Plain                  //~ E0528 the associated type Item of impl Container for Unprintable is Plain, which does not implement Print
+    type Item = Plain //~ E0528 the associated type Item of impl Container for Unprintable is Plain, which does not implement Print
 
-  fn first(self): Plain {
-    return Plain{ n: self.n }
-  }
+    fn first(self): Plain {
+        return Plain{ n: self.n }
+    }
 }
 
 struct Good {
-  n: i32
+    n: i32
 }
 
 impl Container for Good {
-  type Item = i32
+    type Item = i32
 
-  fn first(self): i32 {
-    return self.n
-  }
+    fn first(self): i32 {
+        return self.n
+    }
 }
 
 impl Labelled for Good {
-  type Item = bool
+    type Item = bool
 
-  fn label(self): bool {
-    return true
-  }
+    fn label(self): bool {
+        return true
+    }
 }
 
 trait Repeat {
-  type Item
-  type Item                          //~ E0219 the trait Repeat already declares an associated type Item
+    type Item
+    type Item //~ E0219 the trait Repeat already declares an associated type Item
 }
 
-fn nothing<T>(t: T): T::Item {       //~ E0532 no bound of T declares an associated type Item
-  return t
+fn nothing<T>(t: T): T::Item { //~ E0532 no bound of T declares an associated type Item
+    return t
 }
 
-fn unrelated<T: Print>(t: T): T::Item {   //~ E0532 no bound of T declares an associated type Item
-  return t
+fn unrelated<T: Print>(t: T): T::Item { //~ E0532 no bound of T declares an associated type Item
+    return t
 }
 
-fn either<T: Container & Labelled>(t: T): T::Item {   //~ E0533 T::Item is ambiguous
-  return t.first()
+fn either<T: Container & Labelled>(t: T): T::Item { //~ E0533 T::Item is ambiguous
+    return t.first()
 }
 
 fn pinned<C: Container<Item = i32>>(c: C): i32 {
-  return c.first()
+    return c.first()
 }
 
-fn unknown<C: Container<Name = i32>>(c: C) {   //~ E0534 the trait Container declares no associated type Name to pin
+fn unknown<C: Container<Name = i32>>(c: C) { //~ E0534 the trait Container declares no associated type Name to pin
 }
 
-fn twice<C: Container<Item = i32, Item = i32>>(c: C) {   //~ E0534 the associated type Item is pinned twice
+fn twice<C: Container<Item = i32, Item = i32>>(c: C) { //~ E0534 the associated type Item is pinned twice
 }
 
-fn nested<C: Container>(c: C): C::Item::More {   //~ E0404 C::Item cannot be reached into further
-  return c.first()
+fn nested<C: Container>(c: C): C::Item::More { //~ E0404 C::Item cannot be reached into further
+    return c.first()
 }
 
-impl Labelled<Item = i32> for Plain {   //~ E0534 an impl names its trait without pinning
-  type Item = i32
-  fn label(self): i32 {
-    return 1
-  }
+impl Labelled<Item = i32> for Plain { //~ E0534 an impl names its trait without pinning
+    type Item = i32
+    fn label(self): i32 {
+        return 1
+    }
 }
 
-fn concrete(x: Good::Item) {   //~ E0404 Good::Item cannot be reached into further
+fn concrete(x: Good::Item) { //~ E0404 Good::Item cannot be reached into further
 }
 
 struct Flag {
-  on: bool
+    on: bool
 }
 
 impl Container for Flag {
-  type Item = bool
+    type Item = bool
 
-  fn first(self): bool {
-    return self.on
-  }
+    fn first(self): bool {
+        return self.on
+    }
 }
 
 // The bound a generic owner's parameter needs for the associated type goes
 // on the type, as for every impl.
 struct Loose<T> {
-  v: T
+    v: T
 }
 
 impl Container for Loose<T> {
-  type Item = T                    //~ E0528 the associated type Item of impl Container for Loose is T, which does not implement Print
+    type Item = T //~ E0528 the associated type Item of impl Container for Loose is T, which does not implement Print
 
-  fn first(self): T {
-    return self.v
-  }
+    fn first(self): T {
+        return self.v
+    }
 }
 
 struct Tight<T: Print> {
-  v: T
+    v: T
 }
 
 impl Container for Tight<T> {
-  type Item = T
+    type Item = T
 
-  fn first(self): T {
-    return self.v
-  }
+    fn first(self): T {
+        return self.v
+    }
 }
 
 struct OnlyInts<C: Container<Item = i32>> {
-  inner: C
+    inner: C
 }
 
 fn main() {
-  var ok = OnlyInts<Tight<i32>>{ Tight<i32>{ 1 } }
-  var no = OnlyInts<Tight<bool>>{ Tight<bool>{ true } }   //~ E0535 the associated type Item of Tight<bool> is bool
-  pinned(Good{ n: 1 })
-  pinned(Flag{ on: true })         //~ E0535 the associated type Item of Flag is bool, but Container<Item = i32> needs it to be i32
-  var shown: dyn Container          //~ E0530 Container cannot be used as dyn
+    var ok = OnlyInts<Tight<i32>>{ Tight<i32>{ 1 } }
+    var no = OnlyInts<Tight<bool>>{ Tight<bool>{ true } } //~ E0535 the associated type Item of Tight<bool> is bool
+    pinned(Good{ n: 1 })
+    pinned(Flag{ on: true }) //~ E0535 the associated type Item of Flag is bool, but Container<Item = i32> needs it to be i32
+    var shown: dyn Container //~ E0530 Container cannot be used as dyn
 }

@@ -1066,12 +1066,12 @@ implements it in a Rust-style block:
 
 ```gyro
 trait Element {
-  fn paint(self)
-  fn describe(self): string { ... }
+    fn paint(self)
+    fn describe(self): string { ... }
 }
 
 impl Element for Button {
-  fn paint(self) { ... }
+    fn paint(self) { ... }
 }
 ```
 
@@ -3935,6 +3935,49 @@ completed in rarely parses. METALS files get parse and verifier
 diagnostics. Deferred, not rejected: rename, find-references, signature
 help — they need position spans the AST does not record yet (nodes know
 where they start, not where they end).
+
+### One layout, four spaces, no line width, no options *(new)*
+
+**Status: decided.** `gyro fmt` and the language server's
+`textDocument/formatting` rewrite source into a single layout
+([chapter 16.1](ch16-01-the-gyro-command.md)). Indentation is four spaces,
+which is what Rust and Zig use. The formatter never breaks or joins a line:
+every line break is where the author put it, and it decides indentation,
+spacing within a line, how many blank lines survive (a run becomes one), where
+trailing `//` comments align, and that a list written across several lines
+ends in a comma. It has no options and no configuration file, the way
+`gofmt` has none, so there is nothing for two projects to disagree about.
+
+It is written in Go on the compiler's own lexer and parser. The lexer keeps
+the comments it skips in a side list without changing the token stream, and
+the parser reports which angle brackets delimit type arguments and which
+brackets open a list taking a trailing comma. The formatted text is parsed
+again and must have the same syntax tree and comments as the input, or
+the formatter reports its own bug instead of returning the text. A test runs
+that check, and idempotence, over every `.gyro` file in the repository, and
+another fails when one is not formatted.
+
+**Why the author keeps the line breaks.** Deciding where a long expression
+breaks is the part of a formatter that is hard to get right and easy to
+dislike, and the language already lets the author choose: a statement ends at
+the newline by a fixed rule ([chapter 3.5](ch03-05-lines-and-comments.md)).
+A formatter that moves line breaks would be second-guessing a rule it shares
+with the lexer. It also keeps diffs to what changed.
+
+**Why alignment padding is kept.** Two or more spaces between tokens are
+treated as alignment, because numeric tables and aligned match arms are
+written that way and collapsing them would destroy what the author made on
+purpose. Padding is neither added nor widened.
+
+**Rejected: building on tree-sitter.** The grammars serve editors, and a
+formatter on them would be a second parser that can disagree with the
+compiler about what a program is. The compiler's lexer already decides where
+statements end, which is the one thing a formatter must not get wrong.
+
+**Rejected: a line width limit.** It would need the formatter to break lines,
+which is the decision above. **Rejected: a configuration file in the style of
+`rustfmt.toml`.** Every option is a second layout to test and a reason two
+repositories look different; the layout is the language's, not the project's.
 
 ## Diagnostics
 

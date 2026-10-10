@@ -104,7 +104,7 @@ program, like a `ptr_from_int` result. Once made, the slice is an ordinary
 
 ```gyro
 safe fn pixels(buffer: anyptr, count: usize): u32[] {
-  return slice_from_raw<u32>(buffer, count)
+    return slice_from_raw<u32>(buffer, count)
 }
 ```
 
@@ -129,10 +129,10 @@ import { syscall3 } from "unsafe"
 const SYS_WRITE: usize = 1
 
 safe fn write(fd: i32, bytes: u8[]): isize {
-  if bytes.len() == 0 {
-    return 0
-  }
-  return syscall3(SYS_WRITE, fd, &bytes[0], bytes.len())
+    if bytes.len() == 0 {
+        return 0
+    }
+    return syscall3(SYS_WRITE, fd, &bytes[0], bytes.len())
 }
 ```
 
@@ -166,12 +166,12 @@ import { cast, offset } from "unsafe"
 struct Packet { tag: u8  low: u8  high: u8  last: u8 }
 
 safe fn byte_at(p: *Packet, index: usize): u8 {
-  return *cast<u8>(offset(p as anyptr, index))
+    return *cast<u8>(offset(p as anyptr, index))
 }
 
 fn main() {
-  var p = Packet{ tag: 7, low: 16, high: 32, last: 255 }
-  println(byte_at(&p, 2))        // 32
+    var p = Packet{ tag: 7, low: 16, high: 32, last: 255 }
+    println(byte_at(&p, 2)) // 32
 }
 ```
 
@@ -198,7 +198,7 @@ import binds:
 
 ```gyro
 import safe { parse, free_json } from "./cJSON.c"
-import { parse_unchecked } from "./cJSON.c"     // calls need an unsafe context
+import { parse_unchecked } from "./cJSON.c" // calls need an unsafe context
 ```
 
 The C behind a function can corrupt memory even when its signature is

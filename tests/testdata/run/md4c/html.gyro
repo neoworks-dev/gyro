@@ -22,10 +22,10 @@ const NEED_HTML_ESC: u8 = 1
 const NEED_URL_ESC: u8 = 2
 
 export struct Render {
-  export out: Array<u8>
-  image_nesting_level: i64
-  // Per byte: which of the two escapes it needs, if any.
-  escape_map: Array<u8>
+    export out: Array<u8>
+    image_nesting_level: i64
+    // Per byte: which of the two escapes it needs, if any.
+    escape_map: Array<u8>
 }
 
 var HEX: u8[16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
@@ -33,33 +33,33 @@ var HEX: u8[16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 7
 // The bytes that stay literal in a URL attribute: the alphanumerics plus
 // ~-_.+!*(),%#@?=;:/$
 fn url_safe(byte: u8): bool {
-  if (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) {
-    return true
-  }
-  return byte == 126 || byte == 45 || byte == 95 || byte == 46 || byte == 43
-      || byte == 33 || byte == 42 || byte == 40 || byte == 41 || byte == 44
-      || byte == 37 || byte == 35 || byte == 64 || byte == 63 || byte == 61
-      || byte == 59 || byte == 58 || byte == 47 || byte == 36
+    if (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) {
+        return true
+    }
+    return byte == 126 || byte == 45 || byte == 95 || byte == 46 || byte == 43
+        || byte == 33 || byte == 42 || byte == 40 || byte == 41 || byte == 44
+        || byte == 37 || byte == 35 || byte == 64 || byte == 63 || byte == 61
+        || byte == 59 || byte == 58 || byte == 47 || byte == 36
 }
 
 export fn Render::new(): *Render {
-  var render = alloc<Render>(heap())
-  render.out = Array<u8>::new(heap())
-  render.image_nesting_level = 0
+    var render = alloc<Render>(heap())
+    render.out = Array<u8>::new(heap())
+    render.image_nesting_level = 0
 
-  var map = Array<u8>::new(heap())
-  for var byte: i64 = 0; byte < 256; byte += 1 {
-    var flags: u8 = 0
-    if byte == 34 || byte == 38 || byte == 39 || byte == 60 || byte == 62 {
-      flags = flags | NEED_HTML_ESC
+    var map = Array<u8>::new(heap())
+    for var byte: i64 = 0; byte < 256; byte += 1 {
+        var flags: u8 = 0
+        if byte == 34 || byte == 38 || byte == 39 || byte == 60 || byte == 62 {
+            flags = flags | NEED_HTML_ESC
+        }
+        if !url_safe(byte as u8) {
+            flags = flags | NEED_URL_ESC
+        }
+        map.push(flags)
     }
-    if !url_safe(byte as u8) {
-      flags = flags | NEED_URL_ESC
-    }
-    map.push(flags)
-  }
-  render.escape_map = map
-  return render
+    render.escape_map = map
+    return render
 }
 
 // ---------------------------------------------------------------------------
@@ -67,92 +67,92 @@ export fn Render::new(): *Render {
 // ---------------------------------------------------------------------------
 
 fn Render::verbatim(*self, text: u8[], beg: i64, end: i64) {
-  for var i = beg; i < end; i += 1 {
-    self.out.push(text[i as usize])
-  }
+    for var i = beg; i < end; i += 1 {
+        self.out.push(text[i as usize])
+    }
 }
 
 fn Render::literal(*self, text: string) {
-  for byte in text.bytes(heap()) {
-    self.out.push(byte)
-  }
+    for byte in text.bytes(heap()) {
+        self.out.push(byte)
+    }
 }
 
 fn Render::number(*self, value: i64) {
-  if value == 0 {
-    self.out.push(48)
-    return
-  }
-  var digits = Array<u8>::new(heap())
-  var rest = value
-  while rest > 0 {
-    digits.push((48 + rest % 10) as u8)
-    rest = rest / 10
-  }
-  for var i = digits.len() as i64 - 1; i >= 0; i -= 1 {
-    self.out.push(digits.get(i as usize))
-  }
-  digits.free()
+    if value == 0 {
+        self.out.push(48)
+        return
+    }
+    var digits = Array<u8>::new(heap())
+    var rest = value
+    while rest > 0 {
+        digits.push((48 + rest % 10) as u8)
+        rest = rest / 10
+    }
+    for var i = digits.len() as i64 - 1; i >= 0; i -= 1 {
+        self.out.push(digits.get(i as usize))
+    }
+    digits.free()
 }
 
 fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
-  var run = beg
-  var off = beg
+    var run = beg
+    var off = beg
 
-  while true {
-    while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_HTML_ESC) == 0 {
-      off += 1
-    }
-    if off > run {
-      self.verbatim(data, run, off)
-    }
-    if off >= end {
-      return
-    }
+    while true {
+        while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_HTML_ESC) == 0 {
+            off += 1
+        }
+        if off > run {
+            self.verbatim(data, run, off)
+        }
+        if off >= end {
+            return
+        }
 
-    var byte = data[off as usize]
-    if byte == 34 {
-      self.literal("&quot;")
-    } elif byte == 38 {
-      self.literal("&amp;")
-    } elif byte == 39 {
-      self.literal("&#x27;")
-    } elif byte == 60 {
-      self.literal("&lt;")
-    } elif byte == 62 {
-      self.literal("&gt;")
+        var byte = data[off as usize]
+        if byte == 34 {
+            self.literal("&quot;")
+        } elif byte == 38 {
+            self.literal("&amp;")
+        } elif byte == 39 {
+            self.literal("&#x27;")
+        } elif byte == 60 {
+            self.literal("&lt;")
+        } elif byte == 62 {
+            self.literal("&gt;")
+        }
+        off += 1
+        run = off
     }
-    off += 1
-    run = off
-  }
 }
 
 fn Render::url_escaped(*self, data: u8[], beg: i64, end: i64) {
-  var run = beg
-  var off = beg
+    var run = beg
+    var off = beg
 
-  while true {
-    while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_URL_ESC) == 0 {
-      off += 1
-    }
-    if off > run {
-      self.verbatim(data, run, off)
-    }
-    if off >= end {
-      return
-    }
+    while true {
+        while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_URL_ESC) == 0 {
+            off += 1
+        }
+        if off > run {
+            self.verbatim(data, run, off)
+        }
+        if off >= end {
+            return
+        }
 
-    var byte = data[off as usize]
-    if byte == 38 {
-      self.literal("&amp;")
-    } else {
-      self.out.push(37)                          // '%'
-      self.out.push(HEX[((byte >> 4) & 0xf) as usize])
-      self.out.push(HEX[(byte & 0xf) as usize])
+        var byte = data[off as usize]
+        if byte == 38 {
+            self.literal("&amp;")
+        } else {
+            self.out.push(37) // '%'
+            self.out.push(HEX[((byte >> 4) & 0xf) as usize])
+            self.out.push(HEX[(byte & 0xf) as usize])
+        }
+        off += 1
+        run = off
     }
-    off += 1
-    run = off
-  }
 }
 
 // How an attribute's text is put out: verbatim, HTML-escaped or
@@ -163,121 +163,121 @@ const APPEND_HTML: i64 = 1
 const APPEND_URL: i64 = 2
 
 fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
-  if how == APPEND_HTML {
-    self.html_escaped(data, beg, end)
-  } elif how == APPEND_URL {
-    self.url_escaped(data, beg, end)
-  } else {
-    self.verbatim(data, beg, end)
-  }
+    if how == APPEND_HTML {
+        self.html_escaped(data, beg, end)
+    } elif how == APPEND_URL {
+        self.url_escaped(data, beg, end)
+    } else {
+        self.verbatim(data, beg, end)
+    }
 }
 
 // utf8_codepoint writes one code point, substituting U+FFFD for anything
 // out of range, for a surrogate, and for NUL.
 fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
-  var bytes = Array<u8>::new(heap())
+    var bytes = Array<u8>::new(heap())
 
-  if codepoint <= 0x7f {
-    bytes.push(codepoint as u8)
-  } elif codepoint <= 0x7ff {
-    bytes.push((0xc0 | ((codepoint >> 6) & 0x1f)) as u8)
-    bytes.push((0x80 + (codepoint & 0x3f)) as u8)
-  } elif codepoint <= 0xffff {
-    bytes.push((0xe0 | ((codepoint >> 12) & 0xf)) as u8)
-    bytes.push((0x80 + ((codepoint >> 6) & 0x3f)) as u8)
-    bytes.push((0x80 + (codepoint & 0x3f)) as u8)
-  } else {
-    bytes.push((0xf0 | ((codepoint >> 18) & 0x7)) as u8)
-    bytes.push((0x80 + ((codepoint >> 12) & 0x3f)) as u8)
-    bytes.push((0x80 + ((codepoint >> 6) & 0x3f)) as u8)
-    bytes.push((0x80 + (codepoint & 0x3f)) as u8)
-  }
+    if codepoint <= 0x7f {
+        bytes.push(codepoint as u8)
+    } elif codepoint <= 0x7ff {
+        bytes.push((0xc0 | ((codepoint >> 6) & 0x1f)) as u8)
+        bytes.push((0x80 + (codepoint & 0x3f)) as u8)
+    } elif codepoint <= 0xffff {
+        bytes.push((0xe0 | ((codepoint >> 12) & 0xf)) as u8)
+        bytes.push((0x80 + ((codepoint >> 6) & 0x3f)) as u8)
+        bytes.push((0x80 + (codepoint & 0x3f)) as u8)
+    } else {
+        bytes.push((0xf0 | ((codepoint >> 18) & 0x7)) as u8)
+        bytes.push((0x80 + ((codepoint >> 12) & 0x3f)) as u8)
+        bytes.push((0x80 + ((codepoint >> 6) & 0x3f)) as u8)
+        bytes.push((0x80 + (codepoint & 0x3f)) as u8)
+    }
 
-  if codepoint > 0 && codepoint <= 0x10ffff && (codepoint < 0xd800 || codepoint > 0xdfff) {
-    self.append(how, bytes.slice(), 0, bytes.len() as i64)
-  } else {
-    var replacement = Array<u8>::new(heap())
-    replacement.push(0xef)
-    replacement.push(0xbf)
-    replacement.push(0xbd)
-    self.append(how, replacement.slice(), 0, 3)
-    replacement.free()
-  }
-  bytes.free()
+    if codepoint > 0 && codepoint <= 0x10ffff && (codepoint < 0xd800 || codepoint > 0xdfff) {
+        self.append(how, bytes.slice(), 0, bytes.len() as i64)
+    } else {
+        var replacement = Array<u8>::new(heap())
+        replacement.push(0xef)
+        replacement.push(0xbf)
+        replacement.push(0xbd)
+        self.append(how, replacement.slice(), 0, 3)
+        replacement.free()
+    }
+    bytes.free()
 }
 
 fn hex_value(byte: u8): u32 {
-  if byte >= 48 && byte <= 57 {
-    return (byte - 48) as u32
-  }
-  if byte >= 65 && byte <= 90 {
-    return (byte - 65) as u32 + 10
-  }
-  return (byte - 97) as u32 + 10
+    if byte >= 48 && byte <= 57 {
+        return (byte - 48) as u32
+    }
+    if byte >= 65 && byte <= 90 {
+        return (byte - 65) as u32 + 10
+    }
+    return (byte - 97) as u32 + 10
 }
 
 // entity_text renders "&...;" as the code point it names, or verbatim when
 // md4c's table does not know it.
 fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
-  var size = end - beg
+    var size = end - beg
 
-  if size > 3 && data[(beg + 1) as usize] == 35 {            // '#'
-    var codepoint: u32 = 0
+    if size > 3 && data[(beg + 1) as usize] == 35 { // '#'
+        var codepoint: u32 = 0
 
-    if data[(beg + 2) as usize] == 120 || data[(beg + 2) as usize] == 88 {
-      for var i = beg + 3; i < end - 1; i += 1 {
-        codepoint = 16 *% codepoint +% hex_value(data[i as usize])
-      }
-    } else {
-      for var i = beg + 2; i < end - 1; i += 1 {
-        codepoint = 10 *% codepoint +% (data[i as usize] - 48) as u32
-      }
+        if data[(beg + 2) as usize] == 120 || data[(beg + 2) as usize] == 88 {
+            for var i = beg + 3; i < end - 1; i += 1 {
+                codepoint = 16 *% codepoint +% hex_value(data[i as usize])
+            }
+        } else {
+            for var i = beg + 2; i < end - 1; i += 1 {
+                codepoint = 10 *% codepoint +% (data[i as usize] - 48) as u32
+            }
+        }
+
+        self.utf8_codepoint(codepoint, how)
+        return
     }
 
-    self.utf8_codepoint(codepoint, how)
-    return
-  }
-
-  var name = Array<u8>::new(heap())
-  for var i = beg; i < end; i += 1 {
-    name.push(data[i as usize])
-  }
-  var first, second, known = entity::lookup(from_utf8(heap(), name.slice()))
-  name.free()
-
-  if known {
-    self.utf8_codepoint(first, how)
-    if second != 0 {
-      self.utf8_codepoint(second, how)
+    var name = Array<u8>::new(heap())
+    for var i = beg; i < end; i += 1 {
+        name.push(data[i as usize])
     }
-    return
-  }
+    var first, second, known = entity::lookup(from_utf8(heap(), name.slice()))
+    name.free()
 
-  self.append(how, data, beg, end)
+    if known {
+        self.utf8_codepoint(first, how)
+        if second != 0 {
+            self.utf8_codepoint(second, how)
+        }
+        return
+    }
+
+    self.append(how, data, beg, end)
 }
 
 fn Render::attribute(*self, attr: md::Attribute, how: i64) {
-  if !attr.present() {
-    return
-  }
-  var size = attr.size()
-  var text = attr.text.slice()
-
-  var i: i64 = 0
-  while attr.offsets.get(i as usize) < size {
-    var kind = attr.types.get(i as usize)
-    var beg = attr.offsets.get(i as usize)
-    var end = attr.offsets.get((i + 1) as usize)
-
-    if kind == md::TextKind::NullChar {
-      self.utf8_codepoint(0, APPEND_VERBATIM)
-    } elif kind == md::TextKind::Entity {
-      self.entity_text(text, beg, end, how)
-    } else {
-      self.append(how, text, beg, end)
+    if !attr.present() {
+        return
     }
-    i += 1
-  }
+    var size = attr.size()
+    var text = attr.text.slice()
+
+    var i: i64 = 0
+    while attr.offsets.get(i as usize) < size {
+        var kind = attr.types.get(i as usize)
+        var beg = attr.offsets.get(i as usize)
+        var end = attr.offsets.get((i + 1) as usize)
+
+        if kind == md::TextKind::NullChar {
+            self.utf8_codepoint(0, APPEND_VERBATIM)
+        } elif kind == md::TextKind::Entity {
+            self.entity_text(text, beg, end, how)
+        } else {
+            self.append(how, text, beg, end)
+        }
+        i += 1
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -285,181 +285,181 @@ fn Render::attribute(*self, attr: md::Attribute, how: i64) {
 // ---------------------------------------------------------------------------
 
 fn Render::open_ol(*self, detail: md::Detail) {
-  if detail.start == 1 {
-    self.literal("<ol>\n")
-    return
-  }
-  self.literal("<ol start=\"")
-  self.number(detail.start)
-  self.literal("\">\n")
+    if detail.start == 1 {
+        self.literal("<ol>\n")
+        return
+    }
+    self.literal("<ol start=\"")
+    self.number(detail.start)
+    self.literal("\">\n")
 }
 
 fn Render::open_code(*self, detail: md::Detail) {
-  self.literal("<pre><code")
+    self.literal("<pre><code")
 
-  if detail.lang.present() {
-    self.literal(" class=\"")
-    if !starts_with_language(detail.lang) {
-      self.literal("language-")
+    if detail.lang.present() {
+        self.literal(" class=\"")
+        if !starts_with_language(detail.lang) {
+            self.literal("language-")
+        }
+        self.attribute(detail.lang, APPEND_HTML)
+        self.literal("\"")
     }
-    self.attribute(detail.lang, APPEND_HTML)
-    self.literal("\"")
-  }
 
-  self.literal(">")
+    self.literal(">")
 }
 
 // An info string already spelled "language-..." is not prefixed again.
 fn starts_with_language(lang: md::Attribute): bool {
-  var prefix = "language-"
-  if lang.size() < 9 {
-    return false
-  }
-  var i: i64 = 0
-  for byte in prefix.bytes(heap()) {
-    if lang.text.get(i as usize) != byte {
-      return false
+    var prefix = "language-"
+    if lang.size() < 9 {
+        return false
     }
-    i += 1
-  }
-  return true
+    var i: i64 = 0
+    for byte in prefix.bytes(heap()) {
+        if lang.text.get(i as usize) != byte {
+            return false
+        }
+        i += 1
+    }
+    return true
 }
 
 fn Render::open_a(*self, detail: md::Detail) {
-  self.literal("<a href=\"")
-  self.attribute(detail.href, APPEND_URL)
-  if detail.title.present() {
-    self.literal("\" title=\"")
-    self.attribute(detail.title, APPEND_HTML)
-  }
-  self.literal("\">")
+    self.literal("<a href=\"")
+    self.attribute(detail.href, APPEND_URL)
+    if detail.title.present() {
+        self.literal("\" title=\"")
+        self.attribute(detail.title, APPEND_HTML)
+    }
+    self.literal("\">")
 }
 
 fn Render::open_img(*self, detail: md::Detail) {
-  self.literal("<img src=\"")
-  self.attribute(detail.href, APPEND_URL)
-  self.literal("\" alt=\"")
+    self.literal("<img src=\"")
+    self.attribute(detail.href, APPEND_URL)
+    self.literal("\" alt=\"")
 }
 
 fn Render::close_img(*self, detail: md::Detail) {
-  if detail.title.present() {
-    self.literal("\" title=\"")
-    self.attribute(detail.title, APPEND_HTML)
-  }
-  self.literal("\">")
+    if detail.title.present() {
+        self.literal("\" title=\"")
+        self.attribute(detail.title, APPEND_HTML)
+    }
+    self.literal("\">")
 }
 
 fn Render::enter_block(*self, kind: md::BlockKind, detail: md::Detail) {
-  match kind {
-    md::BlockKind::Doc: {}
-    md::BlockKind::Quote: self.literal("<blockquote>\n")
-    md::BlockKind::Ul: self.literal("<ul>\n")
-    md::BlockKind::Ol: self.open_ol(detail)
-    md::BlockKind::Li: self.literal("<li>")
-    md::BlockKind::Hr: self.literal("<hr>\n")
-    md::BlockKind::H: self.open_heading(detail.level, false)
-    md::BlockKind::Code: self.open_code(detail)
-    md::BlockKind::Html: {}
-    md::BlockKind::P: self.literal("<p>")
-  }
+    match kind {
+        md::BlockKind::Doc: {}
+        md::BlockKind::Quote: self.literal("<blockquote>\n")
+        md::BlockKind::Ul: self.literal("<ul>\n")
+        md::BlockKind::Ol: self.open_ol(detail)
+        md::BlockKind::Li: self.literal("<li>")
+        md::BlockKind::Hr: self.literal("<hr>\n")
+        md::BlockKind::H: self.open_heading(detail.level, false)
+        md::BlockKind::Code: self.open_code(detail)
+        md::BlockKind::Html: {}
+        md::BlockKind::P: self.literal("<p>")
+    }
 }
 
 fn Render::leave_block(*self, kind: md::BlockKind, detail: md::Detail) {
-  match kind {
-    md::BlockKind::Doc: {}
-    md::BlockKind::Quote: self.literal("</blockquote>\n")
-    md::BlockKind::Ul: self.literal("</ul>\n")
-    md::BlockKind::Ol: self.literal("</ol>\n")
-    md::BlockKind::Li: self.literal("</li>\n")
-    md::BlockKind::Hr: {}
-    md::BlockKind::H: self.open_heading(detail.level, true)
-    md::BlockKind::Code: self.literal("</code></pre>\n")
-    md::BlockKind::Html: {}
-    md::BlockKind::P: self.literal("</p>\n")
-  }
+    match kind {
+        md::BlockKind::Doc: {}
+        md::BlockKind::Quote: self.literal("</blockquote>\n")
+        md::BlockKind::Ul: self.literal("</ul>\n")
+        md::BlockKind::Ol: self.literal("</ol>\n")
+        md::BlockKind::Li: self.literal("</li>\n")
+        md::BlockKind::Hr: {}
+        md::BlockKind::H: self.open_heading(detail.level, true)
+        md::BlockKind::Code: self.literal("</code></pre>\n")
+        md::BlockKind::Html: {}
+        md::BlockKind::P: self.literal("</p>\n")
+    }
 }
 
 fn Render::open_heading(*self, level: i64, closing: bool) {
-  if closing {
-    self.literal("</h")
+    if closing {
+        self.literal("</h")
+        self.number(level)
+        self.literal(">\n")
+        return
+    }
+    self.literal("<h")
     self.number(level)
-    self.literal(">\n")
-    return
-  }
-  self.literal("<h")
-  self.number(level)
-  self.literal(">")
+    self.literal(">")
 }
 
 fn Render::enter_span(*self, kind: md::SpanKind, detail: md::Detail) {
-  var inside_image = self.image_nesting_level > 0
+    var inside_image = self.image_nesting_level > 0
 
-  // Inside an image's label the contents become the alt attribute, where
-  // no nested tag may appear, so only the plain text of it is kept. The
-  // CommonMark specification recommends exactly this.
-  if kind == md::SpanKind::Img {
-    self.image_nesting_level += 1
-  }
-  if inside_image {
-    return
-  }
+    // Inside an image's label the contents become the alt attribute, where
+    // no nested tag may appear, so only the plain text of it is kept. The
+    // CommonMark specification recommends exactly this.
+    if kind == md::SpanKind::Img {
+        self.image_nesting_level += 1
+    }
+    if inside_image {
+        return
+    }
 
-  match kind {
-    md::SpanKind::Em: self.literal("<em>")
-    md::SpanKind::Strong: self.literal("<strong>")
-    md::SpanKind::A: self.open_a(detail)
-    md::SpanKind::Img: self.open_img(detail)
-    md::SpanKind::Code: self.literal("<code>")
-  }
+    match kind {
+        md::SpanKind::Em: self.literal("<em>")
+        md::SpanKind::Strong: self.literal("<strong>")
+        md::SpanKind::A: self.open_a(detail)
+        md::SpanKind::Img: self.open_img(detail)
+        md::SpanKind::Code: self.literal("<code>")
+    }
 }
 
 fn Render::leave_span(*self, kind: md::SpanKind, detail: md::Detail) {
-  if kind == md::SpanKind::Img {
-    self.image_nesting_level -= 1
-  }
-  if self.image_nesting_level > 0 {
-    return
-  }
+    if kind == md::SpanKind::Img {
+        self.image_nesting_level -= 1
+    }
+    if self.image_nesting_level > 0 {
+        return
+    }
 
-  match kind {
-    md::SpanKind::Em: self.literal("</em>")
-    md::SpanKind::Strong: self.literal("</strong>")
-    md::SpanKind::A: self.literal("</a>")
-    md::SpanKind::Img: self.close_img(detail)
-    md::SpanKind::Code: self.literal("</code>")
-  }
+    match kind {
+        md::SpanKind::Em: self.literal("</em>")
+        md::SpanKind::Strong: self.literal("</strong>")
+        md::SpanKind::A: self.literal("</a>")
+        md::SpanKind::Img: self.close_img(detail)
+        md::SpanKind::Code: self.literal("</code>")
+    }
 }
 
 fn Render::text(*self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
-  match kind {
-    md::TextKind::NullChar: self.utf8_codepoint(0, APPEND_VERBATIM)
-    md::TextKind::Br: {
-      if self.image_nesting_level == 0 {
-        self.literal("<br>\n")
-      } else {
-        self.literal(" ")
-      }
+    match kind {
+        md::TextKind::NullChar: self.utf8_codepoint(0, APPEND_VERBATIM)
+        md::TextKind::Br: {
+            if self.image_nesting_level == 0 {
+                self.literal("<br>\n")
+            } else {
+                self.literal(" ")
+            }
+        }
+        md::TextKind::SoftBr: {
+            if self.image_nesting_level == 0 {
+                self.literal("\n")
+            } else {
+                self.literal(" ")
+            }
+        }
+        md::TextKind::Html: {
+            // Inside an image label the text lands in alt="...", where raw HTML
+            // has to be escaped like any other text or it breaks out of the
+            // attribute.
+            if self.image_nesting_level == 0 {
+                self.verbatim(source, beg, end)
+            } else {
+                self.html_escaped(source, beg, end)
+            }
+        }
+        md::TextKind::Entity: self.entity_text(source, beg, end, APPEND_HTML)
+        _: self.html_escaped(source, beg, end)
     }
-    md::TextKind::SoftBr: {
-      if self.image_nesting_level == 0 {
-        self.literal("\n")
-      } else {
-        self.literal(" ")
-      }
-    }
-    md::TextKind::Html: {
-      // Inside an image label the text lands in alt="...", where raw HTML
-      // has to be escaped like any other text or it breaks out of the
-      // attribute.
-      if self.image_nesting_level == 0 {
-        self.verbatim(source, beg, end)
-      } else {
-        self.html_escaped(source, beg, end)
-      }
-    }
-    md::TextKind::Entity: self.entity_text(source, beg, end, APPEND_HTML)
-    _: self.html_escaped(source, beg, end)
-  }
 }
 
 // parser_for wires the five callbacks to one renderer. This is the whole
@@ -467,36 +467,36 @@ fn Render::text(*self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
 // reach the same Render. They leave this function inside the struct, so
 // each is kept out of its frame.
 export fn parser_for(render: *Render): md::Parser {
-  return md::Parser{
-    enter_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.enter_block(kind, detail) }),
-    leave_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.leave_block(kind, detail) }),
-    enter_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.enter_span(kind, detail) }),
-    leave_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.leave_span(kind, detail) }),
-    text: keep(heap(), fn(kind: md::TextKind, source: u8[], beg: i64, end: i64) {
-      render.text(kind, source, beg, end)
-    }),
-  }
+    return md::Parser{
+        enter_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.enter_block(kind, detail) }),
+        leave_block: keep(heap(), fn(kind: md::BlockKind, detail: md::Detail) { render.leave_block(kind, detail) }),
+        enter_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.enter_span(kind, detail) }),
+        leave_span: keep(heap(), fn(kind: md::SpanKind, detail: md::Detail) { render.leave_span(kind, detail) }),
+        text: keep(heap(), fn(kind: md::TextKind, source: u8[], beg: i64, end: i64) {
+            render.text(kind, source, beg, end)
+        }),
+    }
 }
 
 // render_html is md_html(): parse the input and hand back the HTML. The
 // UTF-8 byte order mark is skipped, which is what md2html asks for.
 export fn render_html(input: u8[]): Array<u8> {
-  var render = Render::new()
-  var size = input.len() as i64
+    var render = Render::new()
+    var size = input.len() as i64
 
-  // A slice cannot be narrowed here the way md4c just advances its
-  // pointer, so the one input that needs trimming is the one that gets
-  // copied.
-  if size >= 3 && input[0] == 0xef && input[1] == 0xbb && input[2] == 0xbf {
-    var trimmed = Array<u8>::new(heap())
-    for var i: i64 = 3; i < size; i += 1 {
-      trimmed.push(input[i as usize])
+    // A slice cannot be narrowed here the way md4c just advances its
+    // pointer, so the one input that needs trimming is the one that gets
+    // copied.
+    if size >= 3 && input[0] == 0xef && input[1] == 0xbb && input[2] == 0xbf {
+        var trimmed = Array<u8>::new(heap())
+        for var i: i64 = 3; i < size; i += 1 {
+            trimmed.push(input[i as usize])
+        }
+        md::parse(trimmed.slice(), parser_for(render))
+        trimmed.free()
+        return render.out
     }
-    md::parse(trimmed.slice(), parser_for(render))
-    trimmed.free()
-    return render.out
-  }
 
-  md::parse(input, parser_for(render))
-  return render.out
+    md::parse(input, parser_for(render))
+    return render.out
 }

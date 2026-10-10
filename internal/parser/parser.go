@@ -37,6 +37,59 @@ type Parser struct {
 	// exports. It alone may declare a union: a union is a C type, and a
 	// Gyro program only ever receives one through an import.
 	foreign bool
+
+	// angles and lists are what a formatter needs to know about the tokens
+	// and the token stream cannot say. They record offsets as the parse
+	// commits to a reading, and a failed trial forgets what it recorded.
+	angles []int
+	lists  []int
+}
+
+// Layout is what the parser knows about a file's tokens that the tokens
+// themselves do not say. A formatter works on tokens, and `<` is a
+// comparison in one place and a bracket in another; only the parse tells.
+type Layout struct {
+	// Angles holds the offsets of the `<` and `>` tokens that delimit type
+	// arguments or type parameters.
+	Angles map[int]bool
+	// Lists holds the offsets of the `(`, `{` and `[` tokens that open a
+	// comma-separated list taking a trailing comma: call arguments,
+	// parameters, struct literals and array literals.
+	Lists map[int]bool
+}
+
+// ParseLayout is ParseFile that also reports the file's Layout.
+func ParseLayout(file *diag.File, bag *diag.Bag) (*ast.File, Layout) {
+	bag.Track(file)
+	parser := &Parser{
+		file:   file,
+		bag:    bag,
+		tokens: lexer.Tokens(file, bag),
+	}
+	tree := parser.parseFile()
+
+	layout := Layout{Angles: map[int]bool{}, Lists: map[int]bool{}}
+	for _, offset := range parser.angles {
+		layout.Angles[offset] = true
+	}
+	for _, offset := range parser.lists {
+		layout.Lists[offset] = true
+	}
+	return tree, layout
+}
+
+// expectAngle is expect for the `<` and `>` that bracket type arguments.
+func (p *Parser) expectAngle(kind token.Kind) token.Token {
+	if p.kind() == kind {
+		p.angles = append(p.angles, p.offset())
+	}
+	return p.expect(kind)
+}
+
+// noteList records the token at the parser as opening a list that takes a
+// trailing comma.
+func (p *Parser) noteList() {
+	p.lists = append(p.lists, p.offset())
 }
 
 // Parse parses one source file. It returns a file even when errors were
@@ -229,6 +282,7 @@ func (p *Parser) syncStatement() {
 // token position is restored and trial reports false.
 func (p *Parser) trial(fn func()) (ok bool) {
 	saved, savedInTrial := p.index, p.inTrial
+	savedAngles, savedLists := len(p.angles), len(p.lists)
 	p.inTrial = true
 	ok = true
 
@@ -243,6 +297,7 @@ func (p *Parser) trial(fn func()) (ok bool) {
 		}
 		if !ok {
 			p.index = saved
+			p.angles, p.lists = p.angles[:savedAngles], p.lists[:savedLists]
 		}
 	}()
 

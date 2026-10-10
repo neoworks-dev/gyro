@@ -2,149 +2,149 @@
 // has written it.
 
 fn readBeforeAssignment(): i32 {
-  var x: i32
-  return x                       //~ E0522 x is read before it is assigned
+    var x: i32
+    return x //~ E0522 x is read before it is assigned
 }
 
 fn assignedFirst(): i32 {
-  var x: i32
-  x = 1
-  return x
+    var x: i32
+    x = 1
+    return x
 }
 
 // A compound assignment reads its target first.
 fn compoundReads(): i32 {
-  var x: i32
-  x += 1                         //~ E0522 x is read before it is assigned
-  return x
+    var x: i32
+    x += 1 //~ E0522 x is read before it is assigned
+    return x
 }
 
 // A name counts as assigned below a branch only when every path wrote it.
 fn oneBranchWrites(c: bool): i32 {
-  var x: i32
-  if c {
-    x = 1
-  }
-  return x                       //~ E0522 read before it is assigned
+    var x: i32
+    if c {
+        x = 1
+    }
+    return x //~ E0522 read before it is assigned
 }
 
 fn bothBranchesWrite(c: bool): i32 {
-  var x: i32
-  if c {
-    x = 1
-  } else {
-    x = 2
-  }
-  return x
+    var x: i32
+    if c {
+        x = 1
+    } else {
+        x = 2
+    }
+    return x
 }
 
 // A branch that cannot fall through leaves the other one's write standing.
 fn oneBranchExits(c: bool): i32 {
-  var x: i32
-  if c {
-    return 0
-  }
-  x = 5
-  return x
+    var x: i32
+    if c {
+        return 0
+    }
+    x = 5
+    return x
 }
 
 // A loop body may not run, so nothing it writes survives it.
 fn whileAssignsNothing(c: bool): i32 {
-  var x: i32
-  while c {
-    x = 1
-  }
-  return x                       //~ E0522 read before it is assigned
+    var x: i32
+    while c {
+        x = 1
+    }
+    return x //~ E0522 read before it is assigned
 }
 
 fn forAssignsNothing(xs: i32[]): i32 {
-  var x: i32
-  for v in xs {
-    x = v
-  }
-  return x                       //~ E0522 read before it is assigned
+    var x: i32
+    for v in xs {
+        x = v
+    }
+    return x //~ E0522 read before it is assigned
 }
 
 // Unless the loop cannot fall out of its condition, where break is the
 // only exit.
 fn whileTrueAssigns(): i32 {
-  var x: i32
-  while true {
-    x = 1
-    break
-  }
-  return x
+    var x: i32
+    while true {
+        x = 1
+        break
+    }
+    return x
 }
 
 enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-  Point,
+    Circle(f64),
+    Rect(f64, f64),
+    Point,
 }
 
 // One arm runs, so what survives is what all of them wrote.
 fn armsMerge(s: Shape): i32 {
-  var x: i32
-  match s {
-    Shape::Circle(r): { x = 1 }
-    Shape::Rect(w, h): { x = 2 }
-    Shape::Point: { x = 3 }
-  }
-  return x
+    var x: i32
+    match s {
+        Shape::Circle(r): { x = 1 }
+        Shape::Rect(w, h): { x = 2 }
+        Shape::Point: { x = 3 }
+    }
+    return x
 }
 
 fn oneArmIsSilent(s: Shape): i32 {
-  var x: i32
-  match s {
-    Shape::Circle(r): { x = 1 }
-    Shape::Rect(w, h): { x = 2 }
-    Shape::Point: { }
-  }
-  return x                       //~ E0522 read before it is assigned
+    var x: i32
+    match s {
+        Shape::Circle(r): { x = 1 }
+        Shape::Rect(w, h): { x = 2 }
+        Shape::Point: {}
+    }
+    return x //~ E0522 read before it is assigned
 }
 
 // Taking an address is a write: the storage is real and sized, and what
 // happens through the pointer cannot be followed here.
 fn addressOfAssigns(): i32 {
-  var x: i32
-  var p = &x
-  *p = 7
-  return x
+    var x: i32
+    var p = &x
+    *p = 7
+    return x
 }
 
 // A closure runs at an unknown time: it may read only what is already
 // assigned, and what it writes does not count outside.
 fn closureReadsTooEarly() {
-  var x: i32
-  var f = fn(): i32 x            //~ E0522 read before it is assigned
+    var x: i32
+    var f = fn(): i32 x //~ E0522 read before it is assigned
 }
 
 fn closureWriteStaysInside(): i32 {
-  var x: i32
-  var f = fn() {
-    x = 1
-  }
-  return x                       //~ E0522 read before it is assigned
+    var x: i32
+    var f = fn() {
+        x = 1
+    }
+    return x //~ E0522 read before it is assigned
 }
 
 // The value of a two-name receive is only there when the flag is true.
 fn receiveNeedsItsFlag(ch: chan<i32>): i32 {
-  var v, open = <-ch
-  return v                       //~ v holds a value only where open is true
+    var v, open = <-ch
+    return v //~ v holds a value only where open is true
 }
 
 fn receiveChecked(ch: chan<i32>): i32 {
-  var v, open = <-ch
-  if open {
-    return v
-  }
-  return 0
+    var v, open = <-ch
+    if open {
+        return v
+    }
+    return 0
 }
 
 fn receiveCheckedNegated(ch: chan<i32>): i32 {
-  var v, open = <-ch
-  if !open {
-    return 0
-  }
-  return v
+    var v, open = <-ch
+    if !open {
+        return 0
+    }
+    return v
 }

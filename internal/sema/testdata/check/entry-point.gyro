@@ -2,5 +2,5 @@
 // Anything else used to check clean and then read a register nobody had
 // filled, which segfaulted natively.
 
-fn main(count: i32) {            //~ E0523 main takes no parameters, or one string[] of arguments
+fn main(count: i32) { //~ E0523 main takes no parameters, or one string[] of arguments
 }

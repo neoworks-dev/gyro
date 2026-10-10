@@ -6,9 +6,9 @@ expression, a block, or a control-flow statement.
 
 ```gyro
 var name = match n {
-  0: "zero"
-  1: "one"
-  _: "other"
+    0: "zero"
+    1: "one"
+    _: "other"
 }
 ```
 
@@ -25,9 +25,9 @@ type-tests.
 
 ```gyro
 match shape {
-  Shape::Circle(r): 3.14159 * r * r
-  Shape::Rect(w, h): w * h
-  Shape::Point: 0.0
+    Shape::Circle(r): 3.14159 * r * r
+    Shape::Rect(w, h): w * h
+    Shape::Point: 0.0
 }
 ```
 
@@ -37,8 +37,8 @@ and binds the whole value:
 
 ```gyro
 match err {
-  RangeError(e): report(e.value)
-  _: println(err.message())
+    RangeError(e): report(e.value)
+    _: println(err.message())
 }
 ```
 
@@ -48,11 +48,11 @@ written out as itself:
 
 ```gyro
 var text = match v {
-  (i32, string)(pair): format(heap(), "pair #{pair.0}")
-  i32[](xs):           format(heap(), "#{xs.len()} numbers")
-  i32[3](fixed):       "three numbers"
-  *Node(node):         format(heap(), "node #{node.value}")
-  _:                   "something else"
+    (i32, string)(pair): format(heap(), "pair #{pair.0}")
+    i32[](xs):           format(heap(), "#{xs.len()} numbers")
+    i32[3](fixed):       "three numbers"
+    *Node(node):         format(heap(), "node #{node.value}")
+    _:                   "something else"
 }
 ```
 
@@ -69,8 +69,8 @@ patterns bind rather than test**:
 
 ```gyro
 match shape {
-  Shape::Circle(r):   ...   // covers Circle
-  Shape::Circle(0.0): ...   // matches one radius; Circle stays uncovered
+    Shape::Circle(r):   ...   // covers Circle
+    Shape::Circle(0.0): ...   // matches one radius; Circle stays uncovered
 }
 ```
 

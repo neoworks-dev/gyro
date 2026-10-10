@@ -33,54 +33,54 @@ const DOCUMENT: string = "{ \"height\":10, \"layers\":[ { \"data\":[6,6], \"heig
 // unsigned reinterprets C's int as its two's-complement bits, so a
 // negative valueint folds into the checksum the same way on both sides.
 fn unsigned(value: i32): u64 {
-  if value >= 0 {
-    return value as u64
-  }
-  return 4294967295 - ((0 - (value + 1)) as u64)
+    if value >= 0 {
+        return value as u64
+    }
+    return 4294967295 - ((0 - (value + 1)) as u64)
 }
 
 // fold walks the tree the way a consumer would: the kind, what is live for
 // it, and the children in order.
 fn fold(accumulator: u64, item: *cjson::Node?): u64 {
-  if item == null {
-    return accumulator
-  }
+    if item == null {
+        return accumulator
+    }
 
-  var acc = accumulator *% 31 +% (cjson::type_of(item) as u64)
-  var key = item.key
-  if key != null {
-    acc = acc *% 31 +% (key.len() as u64)
-  }
-  if cjson::is_number(item) {
-    acc = acc *% 31 +% unsigned(cjson::int_of(item))
-  }
-  var text = cjson::string_of(item)
-  if text != null {
-    acc = acc *% 31 +% (text.len() as u64)
-  }
+    var acc = accumulator *% 31 +% (cjson::type_of(item) as u64)
+    var key = item.key
+    if key != null {
+        acc = acc *% 31 +% (key.len() as u64)
+    }
+    if cjson::is_number(item) {
+        acc = acc *% 31 +% unsigned(cjson::int_of(item))
+    }
+    var text = cjson::string_of(item)
+    if text != null {
+        acc = acc *% 31 +% (text.len() as u64)
+    }
 
-  var child = item.child
-  while child != null {
-    acc = fold(acc, child)
-    child = child.next
-  }
-  return acc
+    var child = item.child
+    while child != null {
+        acc = fold(acc, child)
+        child = child.next
+    }
+    return acc
 }
 
 fn main() {
-  var start = monotonic()
-  var acc: u64 = 0
-  for var round: i64 = 0; round < ROUNDS; round += 1 {
-    var root = cjson::parse(DOCUMENT)
-    var printed = cjson::print_unformatted(root)
-    if printed != null {
-      acc = acc *% 31 +% (printed.len() as u64)
+    var start = monotonic()
+    var acc: u64 = 0
+    for var round: i64 = 0; round < ROUNDS; round += 1 {
+        var root = cjson::parse(DOCUMENT)
+        var printed = cjson::print_unformatted(root)
+        if printed != null {
+            acc = acc *% 31 +% (printed.len() as u64)
+        }
+        acc = fold(acc, root)
+        cjson::delete(root)
     }
-    acc = fold(acc, root)
-    cjson::delete(root)
-  }
-  var stop = monotonic()
+    var stop = monotonic()
 
-  println(acc)
-  eprintln("gyro:bench #{stop - start}")
+    println(acc)
+    eprintln("gyro:bench #{stop - start}")
 }

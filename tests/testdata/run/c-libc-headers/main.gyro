@@ -10,15 +10,15 @@ import { checksum } from "./lib.c"
 
 // The sum of the upper-cased bytes: "abc" is 65 + 66 + 67.
 safe fn sum_of(text: string): i64 {
-  var bytes = c_string(heap(), text)
-  defer bytes.free()
-  return checksum(c_data(bytes))
+    var bytes = c_string(heap(), text)
+    defer bytes.free()
+    return checksum(c_data(bytes))
 }
 
 fn main() {
-  println(sum_of("abc"))
-  println(is_square(49))
-  println(is_square(50))
-  var a = make(4)
-  release(a)
+    println(sum_of("abc"))
+    println(is_square(49))
+    println(is_square(50))
+    var a = make(4)
+    release(a)
 }

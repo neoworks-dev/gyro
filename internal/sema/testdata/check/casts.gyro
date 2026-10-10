@@ -1,16 +1,16 @@
 fn widening(x: i32): i64 {
-  return x as i64
+    return x as i64
 }
 
 fn masked(b: u8): u32 {
-  return (b & 0xff) as u32
+    return (b & 0xff) as u32
 }
 
 fn runeToInteger(r: rune): u32 {
-  return r as u32
+    return r as u32
 }
 
 fn nonNumeric(s: string, b: bool) {
-  var x = s as i32               //~ as converts between numeric types and rune
-  var y = b as i32               //~ as converts between numeric types and rune
+    var x = s as i32 //~ as converts between numeric types and rune
+    var y = b as i32 //~ as converts between numeric types and rune
 }

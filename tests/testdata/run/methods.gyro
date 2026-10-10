@@ -4,33 +4,33 @@
 import { println } from "stdlib"
 
 struct Counter {
-  n: i32
+    n: i32
 }
 
 fn Counter::bump(*self) {
-  self.n += 1
+    self.n += 1
 }
 
 fn Counter::peek(self): i32 {
-  return self.n
+    return self.n
 }
 
 fn Counter::broken_bump(self) {
-  self.n += 1
+    self.n += 1
 }
 
 fn Counter::at(n: i32): Counter {
-  return Counter{ n: n }
+    return Counter{ n: n }
 }
 
 fn main() {
-  var c = Counter{ n: 0 }
-  c.bump()
-  c.bump()
-  println(c.peek())
+    var c = Counter{ n: 0 }
+    c.bump()
+    c.bump()
+    println(c.peek())
 
-  c.broken_bump()
-  println(c.peek())
+    c.broken_bump()
+    println(c.peek())
 
-  println(Counter::at(5).peek())
+    println(Counter::at(5).peek())
 }

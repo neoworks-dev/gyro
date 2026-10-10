@@ -7,16 +7,16 @@ closure.
 
 ```gyro
 export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-  var bodies = Array<string>::new(heap())
+    var bodies = Array<string>::new(heap())
 
-  for url in urls {
-    var body, err = await get(url)
-    if err != null {
-      return bodies, err
+    for url in urls {
+        var body, err = await get(url)
+        if err != null {
+            return bodies, err
+        }
+        bodies.push(body)
     }
-    bodies.push(body)
-  }
-  return bodies, null
+    return bodies, null
 }
 ```
 
@@ -24,9 +24,9 @@ export async fn fetch_all(urls: string[]): (Array<string>, error?) {
 
 ```gyro
 async fn main() {
-  var bodies, err = await fetch_all(["https://example.com"])
-  defer bodies.free()
-  ...
+    var bodies, err = await fetch_all(["https://example.com"])
+    defer bodies.free()
+    ...
 }
 ```
 

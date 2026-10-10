@@ -1,14 +1,14 @@
 const MAX: i32 = 100
-const BAD: i32 = "lots"          //~ cannot use string as i32
+const BAD: i32 = "lots" //~ cannot use string as i32
 
 var counter = 0
 
 fn fib(n: i32): i32 {
-  return n
+    return n
 }
 
 @comptime const F: i32 = fib(10)
 
 fn readsThem(): i32 {
-  return MAX / 2 + counter
+    return MAX / 2 + counter
 }

@@ -11,35 +11,35 @@ import safe { sqrt } from "<math.h>"
 import { strlen } from "<string.h>"
 
 struct Packet {
-  tag: u8
-  low: u8
-  high: u8
-  last: u8
+    tag: u8
+    low: u8
+    high: u8
+    last: u8
 }
 
 // byte_at reads the byte `index` bytes into the packet: the packet's
 // address forgets its type, moves, and gets a byte's type back.
 safe fn byte_at(p: *Packet, index: usize): u8 {
-  return *cast<u8>(offset(p as anyptr, index))
+    return *cast<u8>(offset(p as anyptr, index))
 }
 
 safe fn set_byte(p: *Packet, index: usize, value: u8) {
-  *cast<u8>(offset(p as anyptr, index)) = value
+    *cast<u8>(offset(p as anyptr, index)) = value
 }
 
 // address_of is the packet's address as an integer, and through_integer
 // makes a pointer of it again: the pointer a kernel makes from a number it
 // was told.
 safe fn address_of(p: *Packet): usize {
-  return ptr_to_int(p as anyptr)
+    return ptr_to_int(p as anyptr)
 }
 
 safe fn through_integer(p: *Packet): *Packet {
-  return ptr_from_int<Packet>(address_of(p))
+    return ptr_from_int<Packet>(address_of(p))
 }
 
 safe fn byte_at_address(address: usize): u8 {
-  return *ptr_from_int<u8>(address)
+    return *ptr_from_int<u8>(address)
 }
 
 // A header's function is unsafe to call unless the import vouches for it:
@@ -47,35 +47,35 @@ safe fn byte_at_address(address: usize): u8 {
 // through an address it is trusted to be handed, so its import does not
 // and the call needs a safe fn around it.
 safe fn length_of(text: string): usize {
-  var bytes = c_string(heap(), text)
-  defer bytes.free()
-  return strlen(c_data(bytes))
+    var bytes = c_string(heap(), text)
+    defer bytes.free()
+    return strlen(c_data(bytes))
 }
 
 fn main() {
-  var p = alloc<Packet>(heap())
-  defer free(heap(), p)
-  p.tag = 7
-  p.low = 16
-  p.high = 32
-  p.last = 255
+    var p = alloc<Packet>(heap())
+    defer free(heap(), p)
+    p.tag = 7
+    p.low = 16
+    p.high = 32
+    p.last = 255
 
-  println(byte_at(p, 0))
-  println(byte_at(p, 1))
-  println(byte_at(p, 2))
-  println(byte_at(p, 3))
+    println(byte_at(p, 0))
+    println(byte_at(p, 1))
+    println(byte_at(p, 2))
+    println(byte_at(p, 3))
 
-  set_byte(p, 2, 99)
-  println(p.high)
+    set_byte(p, 2, 99)
+    println(p.high)
 
-  var again = through_integer(p)
-  println(again.tag)
-  println(address_of(again) == address_of(p))
-  again.low = 17
-  println(p.low)
+    var again = through_integer(p)
+    println(again.tag)
+    println(address_of(again) == address_of(p))
+    again.low = 17
+    println(p.low)
 
-  println(byte_at_address(address_of(p) + 3))
+    println(byte_at_address(address_of(p) + 3))
 
-  println(sqrt(2.25))
-  println(length_of("unsafe"))
+    println(sqrt(2.25))
+    println(length_of("unsafe"))
 }

@@ -6,26 +6,26 @@ implements it in an `impl` block, and a generic bounds its parameters by it
 
 ```gyro
 trait Shape {
-  fn area(self): i32
-  fn name(self): string
+    fn area(self): i32
+    fn name(self): string
 
-  // A default body is shared by every type that does not write its own.
-  fn describe(self): string {
-    return format(heap(), "#{self.name()} of area #{self.area()}")
-  }
+    // A default body is shared by every type that does not write its own.
+    fn describe(self): string {
+        return format(heap(), "#{self.name()} of area #{self.area()}")
+    }
 }
 
 struct Square {
-  side: i32
+    side: i32
 }
 
 impl Shape for Square {
-  fn area(self): i32 {
-    return self.side * self.side
-  }
-  fn name(self): string {
-    return "square"
-  }
+    fn area(self): i32 {
+        return self.side * self.side
+    }
+    fn name(self): string {
+        return "square"
+    }
 }
 ```
 
@@ -69,7 +69,7 @@ bounds are the ones the type declared.
 
 ```gyro
 trait Widget: Element {
-  fn click(*self)
+    fn click(*self)
 }
 ```
 
@@ -91,25 +91,25 @@ A trait can leave a type for each impl to fill in. It declares the type with
 
 ```gyro
 trait Container {
-  type Item
+    type Item
 
-  fn first(self): Self::Item
-  fn count(self): usize
+    fn first(self): Self::Item
+    fn count(self): usize
 }
 
 struct Box<T> {
-  value: T
+    value: T
 }
 
 impl Container for Box<T> {
-  type Item = T
+    type Item = T
 
-  fn first(self): T {
-    return self.value
-  }
-  fn count(self): usize {
-    return 1
-  }
+    fn first(self): T {
+        return self.value
+    }
+    fn count(self): usize {
+        return 1
+    }
 }
 ```
 
@@ -119,7 +119,7 @@ whatever the argument's impl gave:
 
 ```gyro
 fn head<C: Container>(c: C): C::Item {
-  return c.first()
+    return c.first()
 }
 
 head(Box<i32>{ value: 7 })    // an i32
@@ -141,7 +141,7 @@ any positional arguments:
 
 ```gyro
 fn total<C: Container<Item = i32>>(c: C): i32 {
-  return c.first()          // C::Item is i32 here
+    return c.first() // C::Item is i32 here
 }
 
 fn tag<P: Pair<i32, Item = string>>(p: P): string
@@ -198,8 +198,8 @@ and only where every field has the capability itself:
 
 ```gyro
 struct Line {
-  item: string
-  price: Price
+    item: string
+    price: Price
 }
 
 impl Eq for Line
@@ -220,21 +220,21 @@ A type that holds a union, a pointer it should hash, or a field with no
 
 ```gyro
 impl Ord for Version {
-  fn compare(self, other: Self): i32 {
-    if self.major != other.major {
-      if self.major < other.major {
-        return -1
-      }
-      return 1
+    fn compare(self, other: Self): i32 {
+        if self.major != other.major {
+            if self.major < other.major {
+                return -1
+            }
+            return 1
+        }
+        return 0
     }
-    return 0
-  }
 }
 
 impl Print for Version {
-  fn to_string(self): string {
-    return format(heap(), "v#{self.major}.#{self.minor}")
-  }
+    fn to_string(self): string {
+        return format(heap(), "v#{self.major}.#{self.minor}")
+    }
 }
 ```
 
@@ -251,9 +251,9 @@ On a type the program declares, an operator is the method of a trait:
 
 ```gyro
 impl Add for Vector2 {
-  fn add(self, other: Self): Self {
-    return Vector2{ x: self.x + other.x, y: self.y + other.y }
-  }
+    fn add(self, other: Self): Self {
+        return Vector2{ x: self.x + other.x, y: self.y + other.y }
+    }
 }
 ```
 
@@ -271,19 +271,19 @@ generic body that calls `a.add(b)` instead of `a + b` works for both.
 
 ```gyro
 impl Iterator<i32> for Countdown {
-  fn next(*self): (i32, bool) {
-    if self.from == 0 {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.from == 0 {
+            return 0, false
+        }
+        var current = self.from
+        self.from -= 1
+        return current, true
     }
-    var current = self.from
-    self.from -= 1
-    return current, true
-  }
 }
 
 var ticks = Countdown{ from: 3 }
 for tick in ticks {
-  println(tick)
+    println(tick)
 }
 ```
 

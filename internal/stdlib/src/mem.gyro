@@ -14,15 +14,15 @@ import { cast, copy_bytes, env_of, offset, raw_alloc, raw_free, raw_resize, with
 // Mode is what an allocator is asked for. The procedure takes
 // (data, mode, size, align, old, old_size) and answers a block or null.
 export enum Mode {
-  Alloc,
-  Free,
-  FreeAll,
-  Resize,
+    Alloc,
+    Free,
+    FreeAll,
+    Resize,
 }
 
 export struct Allocator {
-  export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-  export data: anyptr?
+    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    export data: anyptr?
 }
 
 // size and align answer what C's sizeof and _Alignof would for T.
@@ -36,11 +36,11 @@ export fn panic(message: string) !{}
 // alloc answers one zero-filled T from a, and panics with the size when a
 // cannot supply it.
 export safe fn alloc<T>(a: Allocator): *T !{ &a } {
-  var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
-  if block == null {
-    panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
-  }
-  return cast<T>(block)
+    var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
+    }
+    return cast<T>(block)
 }
 
 // A call to panic ends the block for the checker, so `if p == null {
@@ -48,7 +48,7 @@ export safe fn alloc<T>(a: Allocator): *T !{ &a } {
 
 // free returns a block to the allocator that gave it out.
 export fn free<T>(a: Allocator, pointer: *T) !{} {
-  a.proc(a.data, Mode::Free, 0, 0, pointer as anyptr, size<T>())
+    a.proc(a.data, Mode::Free, 0, 0, pointer as anyptr, size<T>())
 }
 
 // ---------------------------------------------------------------------------
@@ -56,30 +56,30 @@ export fn free<T>(a: Allocator, pointer: *T) !{} {
 // ---------------------------------------------------------------------------
 
 safe fn heap_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
-  match mode {
-    Mode::Alloc: {
-      return raw_alloc(size, align)
+    match mode {
+        Mode::Alloc: {
+            return raw_alloc(size, align)
+        }
+        Mode::Free: {
+            if old != null {
+                raw_free(old)
+            }
+            return null
+        }
+        Mode::FreeAll: {
+            return null
+        }
+        Mode::Resize: {
+            if old == null {
+                return raw_alloc(size, align)
+            }
+            return raw_resize(old, old_size, size, align)
+        }
     }
-    Mode::Free: {
-      if old != null {
-        raw_free(old)
-      }
-      return null
-    }
-    Mode::FreeAll: {
-      return null
-    }
-    Mode::Resize: {
-      if old == null {
-        return raw_alloc(size, align)
-      }
-      return raw_resize(old, old_size, size, align)
-    }
-  }
 }
 
 export fn heap(): Allocator !{} {
-  return Allocator{ proc: &heap_proc, data: null }
+    return Allocator{ proc: &heap_proc, data: null }
 }
 
 // ---------------------------------------------------------------------------
@@ -87,10 +87,10 @@ export fn heap(): Allocator !{} {
 // ---------------------------------------------------------------------------
 
 export struct Arena {
-  parent: Allocator
-  base: anyptr
-  capacity: usize
-  used: usize
+    parent: Allocator
+    base: anyptr
+    capacity: usize
+    used: usize
 }
 
 // new takes the buffer from a, and remembers a so that free can give it
@@ -98,85 +98,85 @@ export struct Arena {
 // thing to build. Sixteen is the largest alignment a block of any type
 // needs, so every block carved out of the buffer can be aligned within it.
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{ &a } {
-  var block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
-  if block == null {
-    panic(format(heap(), "allocation of #{capacity} bytes failed"))
-  }
-  return Arena{ parent: a, base: block, capacity: capacity, used: 0 }
+    var block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{capacity} bytes failed"))
+    }
+    return Arena{ parent: a, base: block, capacity: capacity, used: 0 }
 }
 
 // take carves the next block out of the buffer, aligned, zeroed, or
 // answers null when the arena is full. It does not grow.
 safe fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
-  var start = self.used
-  if align > 1 {
-    var over = start % align
-    if over != 0 {
-      start += align - over
+    var start = self.used
+    if align > 1 {
+        var over = start % align
+        if over != 0 {
+            start += align - over
+        }
     }
-  }
-  var width = size
-  if width == 0 {
-    width = 1
-  }
-  if start + width > self.capacity {
-    return null
-  }
-  var block = offset(self.base, start)
-  for i in 0..width {
-    var byte = cast<u8>(offset(block, i))
-    *byte = 0
-  }
-  self.used = start + width
-  return block
+    var width = size
+    if width == 0 {
+        width = 1
+    }
+    if start + width > self.capacity {
+        return null
+    }
+    var block = offset(self.base, start)
+    for i in 0..width {
+        var byte = cast<u8>(offset(block, i))
+        *byte = 0
+    }
+    self.used = start + width
+    return block
 }
 
 safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: anyptr?, old_size: usize): anyptr? !{} {
-  if data == null {
-    return null
-  }
-  var arena = cast<Arena>(data)
-  match mode {
-    Mode::Alloc: {
-      return arena.take(size, align)
+    if data == null {
+        return null
     }
-    Mode::Free: {
-      return null
+    var arena = cast<Arena>(data)
+    match mode {
+        Mode::Alloc: {
+            return arena.take(size, align)
+        }
+        Mode::Free: {
+            return null
+        }
+        Mode::FreeAll: {
+            arena.used = 0
+            return null
+        }
+        Mode::Resize: {
+            var block = arena.take(size, align)
+            if block == null || old == null {
+                return block
+            }
+            var keep = old_size
+            if size < keep {
+                keep = size
+            }
+            copy_bytes(block, old, keep)
+            return block
+        }
     }
-    Mode::FreeAll: {
-      arena.used = 0
-      return null
-    }
-    Mode::Resize: {
-      var block = arena.take(size, align)
-      if block == null || old == null {
-        return block
-      }
-      var keep = old_size
-      if size < keep {
-        keep = size
-      }
-      copy_bytes(block, old, keep)
-      return block
-    }
-  }
 }
 
 // allocator is the value to hand to whatever should allocate from the
 // arena. It points at the arena, so
 // the arena has to stay where it is while the value is in use.
 export fn Arena::allocator(*self): Allocator !{ &self } {
-  return Allocator{ proc: &arena_proc, data: &self as anyptr }
+    return Allocator{ proc: &arena_proc, data: &self as anyptr }
 }
 
 // free_all resets the arena: every block it handed out is gone at once.
 export fn Arena::free_all(*self) !{} {
-  self.used = 0
+    self.used = 0
 }
 
 // free returns the buffer to the allocator new took it from.
 export fn Arena::free(*self) !{} {
-  self.parent.proc(self.parent.data, Mode::Free, 0, 0, self.base, self.capacity)
+    self.parent.proc(self.parent.data, Mode::Free, 0, 0, self.base, self.capacity)
 }
 
 // Format is what a string literal containing #{} is: its pieces, the
@@ -189,21 +189,21 @@ export fn Arena::free(*self) !{} {
 // It lives here rather than in stdlib because stdlib imports Allocator from
 // mem, and format needs both.
 export struct Format {
-  pieces: any[]
+    pieces: any[]
 }
 
 export fn Format::len(self): usize !{} {
-  return self.pieces.len()
+    return self.pieces.len()
 }
 
 // piece is the value a hole held, or a literal segment as a string.
 export fn Format::piece(self, index: usize): any !{ &self } {
-  return self.pieces[index]
+    return self.pieces[index]
 }
 
 // text shows a piece the way println would.
 export fn Format::text(self, index: usize): string !{} {
-  return show(self.pieces[index])
+    return show(self.pieces[index])
 }
 
 // show renders an any the way println shows it. The compiler supplies it,
@@ -225,42 +225,42 @@ fn text_seal(block: anyptr, len: usize): string !{}
 // block_for answers a block holding a string of `to` bytes, grown from one
 // of `from` bytes when there is one.
 fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
-  if old == null {
-    var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
-    if fresh == null {
-      panic("format: the allocator is out of memory")
+    if old == null {
+        var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
+        if fresh == null {
+            panic("format: the allocator is out of memory")
+        }
+        return fresh
     }
-    return fresh
-  }
-  var grown = a.proc(a.data, Mode::Resize, text_size(to), 8, old, text_size(from))
-  if grown == null {
-    panic("format: the allocator is out of memory")
-  }
-  return grown
+    var grown = a.proc(a.data, Mode::Resize, text_size(to), 8, old, text_size(from))
+    if grown == null {
+        panic("format: the allocator is out of memory")
+    }
+    return grown
 }
 
 // format shows each piece of a Format the way println would and joins them
 // into a string whose bytes come from `a`. The block doubles as the text
 // grows, since the length is not known until the last piece is shown.
 export fn format(a: Allocator, value: Format): string !{ &a } {
-  var capacity: usize = 64
-  var block = block_for(a, null, 0, capacity)
-  var used: usize = 0
-  for i in 0..value.len() {
-    var text = value.text(i)
-    var needed = used + text.len()
-    if needed > capacity {
-      var wider = capacity * 2
-      while wider < needed {
-        wider *= 2
-      }
-      block = block_for(a, block, capacity, wider)
-      capacity = wider
+    var capacity: usize = 64
+    var block = block_for(a, null, 0, capacity)
+    var used: usize = 0
+    for i in 0..value.len() {
+        var text = value.text(i)
+        var needed = used + text.len()
+        if needed > capacity {
+            var wider = capacity * 2
+            while wider < needed {
+                wider *= 2
+            }
+            block = block_for(a, block, capacity, wider)
+            capacity = wider
+        }
+        text_write(block, used, text)
+        used = needed
     }
-    text_write(block, used, text)
-    used = needed
-  }
-  return text_seal(block, used)
+    return text_seal(block, used)
 }
 
 // ---------------------------------------------------------------------------
@@ -275,29 +275,29 @@ export fn format(a: Allocator, value: Format): string !{ &a } {
 // closure that has to live longer than the function that wrote it. A closure
 // with no environment is returned as it is, and nothing is allocated.
 export safe fn keep<F>(a: Allocator, f: F): F !{ &a } {
-  var env = env_of(f)
-  if env == null {
-    // Rebuilt rather than returned as it is: returning the parameter
-    // would read, to the borrow analysis, as a view of it.
-    return with_env(f, null)
-  }
-  var size = *cast<usize>(env)
-  var block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
-  if block == null {
-    panic(format(heap(), "allocation of #{size} bytes failed"))
-  }
-  copy_bytes(block, env, size)
-  return with_env(f, block)
+    var env = env_of(f)
+    if env == null {
+        // Rebuilt rather than returned as it is: returning the parameter
+        // would read, to the borrow analysis, as a view of it.
+        return with_env(f, null)
+    }
+    var size = *cast<usize>(env)
+    var block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
+    if block == null {
+        panic(format(heap(), "allocation of #{size} bytes failed"))
+    }
+    copy_bytes(block, env, size)
+    return with_env(f, block)
 }
 
 // release gives back the environment keep copied into a. It takes only a
 // closure keep returned, and the allocator it was kept in.
 export safe fn release<F>(a: Allocator, f: F) !{} {
-  var env = env_of(f)
-  if env == null {
-    return
-  }
-  a.proc(a.data, Mode::Free, 0, 0, env, *cast<usize>(env))
+    var env = env_of(f)
+    if env == null {
+        return
+    }
+    a.proc(a.data, Mode::Free, 0, 0, env, *cast<usize>(env))
 }
 
 // ---------------------------------------------------------------------------
@@ -309,19 +309,19 @@ export safe fn release<F>(a: Allocator, f: F) !{} {
 fn start_thread(entry: code(anyptr?), data: anyptr?) !{ io }
 
 struct Job {
-  a: Allocator
-  body: fn()
+    a: Allocator
+    body: fn()
 }
 
 safe fn run(data: anyptr?) !{ io } {
-  if data == null {
-    return
-  }
-  var job = cast<Job>(data)
-  var body = job.body
-  body()
-  release(job.a, body)
-  free(job.a, job)
+    if data == null {
+        return
+    }
+    var job = cast<Job>(data)
+    var body = job.body
+    body()
+    release(job.a, body)
+    free(job.a, job)
 }
 
 // spawn starts a thread. The closure carries the arguments across; join by
@@ -331,8 +331,8 @@ safe fn run(data: anyptr?) !{ io } {
 // in for the task's own effects, which no row can carry until effect
 // polymorphism reaches function values.
 export fn spawn(a: Allocator, body: fn()) !{ io } {
-  var job = alloc<Job>(a)
-  job.a = a
-  job.body = keep(a, body)
-  start_thread(&run, job as anyptr)
+    var job = alloc<Job>(a)
+    job.a = a
+    job.body = keep(a, body)
+    start_thread(&run, job as anyptr)
 }

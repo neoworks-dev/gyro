@@ -1,10 +1,10 @@
 import { println } from "stdlib"
 
 fn main() {
-  var h: u32 = 4294967295
-  println(h +% 1)
-  var b: u8 = 200
-  println(b *% 2)
-  var s: i8 = -128
-  println(s -% 1)
+    var h: u32 = 4294967295
+    println(h +% 1)
+    var b: u8 = 200
+    println(b *% 2)
+    var s: i8 = -128
+    println(s -% 1)
 }

@@ -1,21 +1,21 @@
 import { println } from "stdlib"
 
 enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-  Point,
+    Circle(f64),
+    Rect(f64, f64),
+    Point,
 }
 
 fn area(s: Shape): f64 {
-  return match s {
-    Shape::Circle(r): 3.0 * r * r
-    Shape::Rect(w, h): w * h
-    Shape::Point: 0.0
-  }
+    return match s {
+        Shape::Circle(r): 3.0 * r * r
+        Shape::Rect(w, h): w * h
+        Shape::Point: 0.0
+    }
 }
 
 fn main() {
-  println(area(Shape::Circle(2.0)))
-  println(area(Shape::Rect(3.0, 4.0)))
-  println(area(Shape::Point))
+    println(area(Shape::Circle(2.0)))
+    println(area(Shape::Rect(3.0, 4.0)))
+    println(area(Shape::Point))
 }

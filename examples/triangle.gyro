@@ -29,12 +29,12 @@ import { heap } from "mem"
 import { c_string, c_data, from_c } from "cstring"
 import safe { sin, cos } from "<math.h>"
 import safe {
-  SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
-  SDL_CreateRenderer, SDL_DestroyRenderer, SDL_CreateTexture, SDL_DestroyTexture,
-  SDL_UpdateTexture, SDL_RenderClear, SDL_RenderTexture, SDL_RenderPresent,
-  SDL_PollEvent, SDL_Delay, SDL_GetTicks, SDL_Event, SDL_Window, SDL_Renderer,
-  SDL_Texture, SDL_INIT_VIDEO, SDL_EVENT_QUIT, SDL_PIXELFORMAT_ARGB8888,
-  SDL_TEXTUREACCESS_STREAMING,
+    SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
+    SDL_CreateRenderer, SDL_DestroyRenderer, SDL_CreateTexture, SDL_DestroyTexture,
+    SDL_UpdateTexture, SDL_RenderClear, SDL_RenderTexture, SDL_RenderPresent,
+    SDL_PollEvent, SDL_Delay, SDL_GetTicks, SDL_Event, SDL_Window, SDL_Renderer,
+    SDL_Texture, SDL_INIT_VIDEO, SDL_EVENT_QUIT, SDL_PIXELFORMAT_ARGB8888,
+    SDL_TEXTUREACCESS_STREAMING,
 } from "pkg:sdl3/SDL3/SDL.h"
 
 // ---------------------------------------------------------------------
@@ -43,24 +43,24 @@ import safe {
 // SDL reports what went wrong as a C string it owns, and the next call
 // may overwrite it, so this copies it out.
 safe fn failure(): string {
-  return from_c(heap(), SDL_GetError())
+    return from_c(heap(), SDL_GetError())
 }
 
 // SDL takes a window title as a C string, which a Gyro string is not:
 // the bytes are copied with the NUL C wants after them, for as long as
 // the call needs them.
 safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
-  var bytes = c_string(heap(), title)
-  defer bytes.free()
-  return SDL_CreateWindow(c_data(bytes), width, height, 0)
+    var bytes = c_string(heap(), title)
+    defer bytes.free()
+    return SDL_CreateWindow(c_data(bytes), width, height, 0)
 }
 
 // A frame goes into the texture from the array's own storage: an Array<u32>
 // holds four bytes an element, which is the stride the texture's format
 // reads.
 safe fn upload(texture: *SDL_Texture, pixels: *Array<u32>, pitch: i32): bool {
-  var view = pixels.slice()
-  return SDL_UpdateTexture(texture, null, &view[0] as anyptr, pitch)
+    var view = pixels.slice()
+    return SDL_UpdateTexture(texture, null, &view[0] as anyptr, pitch)
 }
 
 // ---------------------------------------------------------------------
@@ -71,11 +71,11 @@ const HEIGHT: i32 = 600
 const DURATION: u64 = 6000
 
 struct Vertex {
-  x: f64
-  y: f64
-  r: f64
-  g: f64
-  b: f64
+    x: f64
+    y: f64
+    r: f64
+    g: f64
+    b: f64
 }
 
 // Twice the signed area of abp: positive when p is left of a->b, negative
@@ -83,60 +83,60 @@ struct Vertex {
 // the three of them are the barycentric weights, which is what carries
 // the vertex colours across the face.
 fn edge(ax: f64, ay: f64, bx: f64, by: f64, px: f64, py: f64): f64 {
-  return (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+    return (px - ax) * (by - ay) - (py - ay) * (bx - ax)
 }
 
 // A narrowing `as` panics on a value that does not fit, so the clamp is
 // load-bearing rather than defensive.
 fn channel(value: f64): u32 {
-  if value <= 0.0 {
-    return 0
-  }
-  if value >= 1.0 {
-    return 255
-  }
-  return (value * 255.0) as u32
+    if value <= 0.0 {
+        return 0
+    }
+    if value >= 1.0 {
+        return 255
+    }
+    return (value * 255.0) as u32
 }
 
 fn pack(r: f64, g: f64, b: f64): u32 {
-  return 0xff000000 | (channel(r) << 16) | (channel(g) << 8) | channel(b)
+    return 0xff000000 | (channel(r) << 16) | (channel(g) << 8) | channel(b)
 }
 
 fn rotate(around_x: f64, around_y: f64, radius: f64, angle: f64, r: f64, g: f64, b: f64): Vertex {
-  return Vertex{
-    x: around_x + radius * cos(angle),
-    y: around_y + radius * sin(angle),
-    r: r,
-    g: g,
-    b: b,
-  }
+    return Vertex{
+        x: around_x + radius * cos(angle),
+        y: around_y + radius * sin(angle),
+        r: r,
+        g: g,
+        b: b,
+    }
 }
 
 fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
-  var area = edge(a.x, a.y, b.x, b.y, c.x, c.y)
-  var background = pack(0.05, 0.05, 0.09)
+    var area = edge(a.x, a.y, b.x, b.y, c.x, c.y)
+    var background = pack(0.05, 0.05, 0.09)
 
-  for var y = 0; y < HEIGHT; y += 1 {
-    var py = y as f64 + 0.5
-    for var x = 0; x < WIDTH; x += 1 {
-      var px = x as f64 + 0.5
-      var index = (y * WIDTH + x) as usize
+    for var y = 0; y < HEIGHT; y += 1 {
+        var py = y as f64 + 0.5
+        for var x = 0; x < WIDTH; x += 1 {
+            var px = x as f64 + 0.5
+            var index = (y * WIDTH + x) as usize
 
-      var w0 = edge(b.x, b.y, c.x, c.y, px, py) / area
-      var w1 = edge(c.x, c.y, a.x, a.y, px, py) / area
-      var w2 = edge(a.x, a.y, b.x, b.y, px, py) / area
+            var w0 = edge(b.x, b.y, c.x, c.y, px, py) / area
+            var w1 = edge(c.x, c.y, a.x, a.y, px, py) / area
+            var w2 = edge(a.x, a.y, b.x, b.y, px, py) / area
 
-      if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
-        pixels.set(index, background)
-        continue
-      }
-      pixels.set(index, pack(
-        w0 * a.r + w1 * b.r + w2 * c.r,
-        w0 * a.g + w1 * b.g + w2 * c.g,
-        w0 * a.b + w1 * b.b + w2 * c.b,
-      ))
+            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                pixels.set(index, background)
+                continue
+            }
+            pixels.set(index, pack(
+                w0 * a.r + w1 * b.r + w2 * c.r,
+                w0 * a.g + w1 * b.g + w2 * c.g,
+                w0 * a.b + w1 * b.b + w2 * c.b,
+            ))
+        }
     }
-  }
 }
 
 // ---------------------------------------------------------------------
@@ -149,82 +149,82 @@ fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
 // begins with that same u32. Nothing records which member of the union is
 // live, so reading one is unsafe and this function vouches for it.
 safe fn quit_requested(event: *SDL_Event): bool {
-  var quit = false
-  while SDL_PollEvent(event) {
-    if event.type == SDL_EVENT_QUIT as u32 {
-      quit = true
+    var quit = false
+    while SDL_PollEvent(event) {
+        if event.type == SDL_EVENT_QUIT as u32 {
+            quit = true
+        }
     }
-  }
-  return quit
+    return quit
 }
 
 fn main() {
-  if !SDL_Init(SDL_INIT_VIDEO) {
-    eprintln("SDL_Init: #{failure()}")
-    return
-  }
-  defer SDL_Quit()
-
-  var window = open_window("gyro — a triangle", WIDTH, HEIGHT)
-  if window == null {
-    eprintln("SDL_CreateWindow: #{failure()}")
-    return
-  }
-  defer SDL_DestroyWindow(window)
-
-  // No driver name: SDL picks the best one it has.
-  var renderer = SDL_CreateRenderer(window, null)
-  if renderer == null {
-    eprintln("SDL_CreateRenderer: #{failure()}")
-    return
-  }
-  defer SDL_DestroyRenderer(renderer)
-
-  var texture = SDL_CreateTexture(
-    renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
-  )
-  if texture == null {
-    eprintln("SDL_CreateTexture: #{failure()}")
-    return
-  }
-  defer SDL_DestroyTexture(texture)
-
-  // One frame's worth of storage, reused every frame.
-  var pixels = Array<u32>::with_capacity(heap(), (WIDTH * HEIGHT) as usize)
-  defer pixels.free()
-  for i in 0..(WIDTH * HEIGHT) {
-    pixels.push(0)
-  }
-
-  var centre_x = WIDTH as f64 / 2.0
-  var centre_y = HEIGHT as f64 / 2.0
-  var radius = 240.0
-  var third = 2.0943951023931953
-  var frames = 0
-
-  var started = SDL_GetTicks()
-  var event = SDL_Event{ type: 0 }
-
-  while SDL_GetTicks() - started < DURATION {
-    var angle = (SDL_GetTicks() - started) as f64 / 900.0
-
-    draw(&pixels,
-      rotate(centre_x, centre_y, radius, angle, 0.95, 0.25, 0.30),
-      rotate(centre_x, centre_y, radius, angle + third, 0.25, 0.85, 0.40),
-      rotate(centre_x, centre_y, radius, angle + third + third, 0.30, 0.45, 0.95),
-    )
-
-    var _ = upload(texture, &pixels, WIDTH * 4)
-    var _ = SDL_RenderClear(renderer)
-    var _ = SDL_RenderTexture(renderer, texture, null, null)
-    var _ = SDL_RenderPresent(renderer)
-
-    if quit_requested(&event) {
-      break
+    if !SDL_Init(SDL_INIT_VIDEO) {
+        eprintln("SDL_Init: #{failure()}")
+        return
     }
-    SDL_Delay(1)
-    frames += 1
-  }
+    defer SDL_Quit()
 
-  println("#{frames} frames in #{DURATION} ms")
+    var window = open_window("gyro — a triangle", WIDTH, HEIGHT)
+    if window == null {
+        eprintln("SDL_CreateWindow: #{failure()}")
+        return
+    }
+    defer SDL_DestroyWindow(window)
+
+    // No driver name: SDL picks the best one it has.
+    var renderer = SDL_CreateRenderer(window, null)
+    if renderer == null {
+        eprintln("SDL_CreateRenderer: #{failure()}")
+        return
+    }
+    defer SDL_DestroyRenderer(renderer)
+
+    var texture = SDL_CreateTexture(
+        renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
+    )
+    if texture == null {
+        eprintln("SDL_CreateTexture: #{failure()}")
+        return
+    }
+    defer SDL_DestroyTexture(texture)
+
+    // One frame's worth of storage, reused every frame.
+    var pixels = Array<u32>::with_capacity(heap(), (WIDTH * HEIGHT) as usize)
+    defer pixels.free()
+    for i in 0..(WIDTH * HEIGHT) {
+        pixels.push(0)
+    }
+
+    var centre_x = WIDTH as f64 / 2.0
+    var centre_y = HEIGHT as f64 / 2.0
+    var radius = 240.0
+    var third = 2.0943951023931953
+    var frames = 0
+
+    var started = SDL_GetTicks()
+    var event = SDL_Event{ type: 0 }
+
+    while SDL_GetTicks() - started < DURATION {
+        var angle = (SDL_GetTicks() - started) as f64 / 900.0
+
+        draw(&pixels,
+            rotate(centre_x, centre_y, radius, angle, 0.95, 0.25, 0.30),
+            rotate(centre_x, centre_y, radius, angle + third, 0.25, 0.85, 0.40),
+            rotate(centre_x, centre_y, radius, angle + third + third, 0.30, 0.45, 0.95),
+        )
+
+        var _ = upload(texture, &pixels, WIDTH * 4)
+        var _ = SDL_RenderClear(renderer)
+        var _ = SDL_RenderTexture(renderer, texture, null, null)
+        var _ = SDL_RenderPresent(renderer)
+
+        if quit_requested(&event) {
+            break
+        }
+        SDL_Delay(1)
+        frames += 1
+    }
+
+    println("#{frames} frames in #{DURATION} ms")
 }

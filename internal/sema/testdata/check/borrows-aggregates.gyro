@@ -6,138 +6,138 @@ import { Array } from "stdlib"
 import { Allocator, heap, keep } from "mem"
 
 struct Span {
-  text: string
-  start: usize
+    text: string
+    start: usize
 }
 
 struct Handlers {
-  on_open: fn(): i32
-  on_close: fn(): i32
+    on_open: fn(): i32
+    on_close: fn(): i32
 }
 
 fn spanNamed(s: string): Span !{ &s } {
-  return Span{ text: s, start: 0 }
+    return Span{ text: s, start: 0 }
 }
 
 fn spanUnnamed(s: string): Span {
-  return Span{ text: s, start: 0 }   //~ E0609 this returns a view into s, which the row does not name
-                                     //~^ help: say so in the row: !{ &s }
+    return Span{ text: s, start: 0 } //~ E0609 this returns a view into s, which the row does not name
+    //~^ help: say so in the row: !{ &s }
 }
 
 // A struct handed in holds views of its own, and handing it back is a view
 // of it.
 fn spanPassedOn(span: Span): Span {
-  return span                        //~ E0609 this returns a view into span, which the row does not name
+    return span //~ E0609 this returns a view into span, which the row does not name
 }
 
 // A number read out of a struct carries nothing, and a literal is static.
 fn spanFromNumber(span: Span): Span {
-  return Span{ text: "static", start: span.start }
+    return Span{ text: "static", start: span.start }
 }
 
 fn spanLocal(): Span {
-  var words = [1, 2, 3]
-  return Span{ text: "x", start: words.len() }
+    var words = [1, 2, 3]
+    return Span{ text: "x", start: words.len() }
 }
 
 // The same holds for a tuple.
 fn pairNamed(xs: i32[], n: i32): (i32[], i32) !{ &xs } {
-  return xs, n
+    return xs, n
 }
 
 fn pairUnnamed(xs: i32[], n: i32): (i32[], i32) {
-  return xs, n                       //~ E0609 this returns a view into xs, which the row does not name
+    return xs, n //~ E0609 this returns a view into xs, which the row does not name
 }
 
 fn pairLiteral(xs: i32[]): (i32[], i32) {
-  return (xs, 1)                     //~ E0609 this returns a view into xs, which the row does not name
+    return (xs, 1) //~ E0609 this returns a view into xs, which the row does not name
 }
 
 fn pairOwned(xs: i32[]): (usize, i32) {
-  return xs.len(), 1
+    return xs.len(), 1
 }
 
 fn pairFrame(): (i32[], i32) {
-  var local = [1, 2, 3]
-  return local, 1                    //~ E0610 this returns a view into storage that ends with this function
+    var local = [1, 2, 3]
+    return local, 1 //~ E0610 this returns a view into storage that ends with this function
 }
 
 // An any holds whatever it wrapped, a view included.
 fn wrapNamed(xs: i32[]): any !{ &xs } {
-  return xs as any
+    return xs as any
 }
 
 fn wrapUnnamed(xs: i32[]): any {
-  return xs as any                   //~ E0609 this returns a view into xs, which the row does not name
+    return xs as any //~ E0609 this returns a view into xs, which the row does not name
 }
 
 fn wrapNumber(n: i32): any {
-  return n as any
+    return n as any
 }
 
 fn wrapFrame(): any {
-  var local = [1, 2, 3]
-  return local as any                //~ E0610 this returns a view into storage that ends with this function
+    var local = [1, 2, 3]
+    return local as any //~ E0610 this returns a view into storage that ends with this function
 }
 
 // A struct of closures is a struct of views of the frame.
 fn handlersFrame(n: i32): Handlers {
-  return Handlers{                   //~ E0610 this returns a closure that borrows this frame
-    on_open: fn(): i32 { return n },
-    on_close: fn(): i32 { return n + 1 },
-  }
+    return Handlers{ //~ E0610 this returns a closure that borrows this frame
+        on_open: fn(): i32 { return n },
+        on_close: fn(): i32 { return n + 1 },
+    }
 }
 
 fn handlersKept(a: Allocator, n: i32): Handlers {
-  return Handlers{
-    on_open: keep(a, fn(): i32 { return n }),
-    on_close: keep(a, fn(): i32 { return n + 1 }),
-  }
+    return Handlers{
+        on_open: keep(a, fn(): i32 { return n }),
+        on_close: keep(a, fn(): i32 { return n + 1 }),
+    }
 }
 
 fn handlersPlain(): Handlers {
-  return Handlers{
-    on_open: fn(): i32 { return 1 },
-    on_close: fn(): i32 { return 2 },
-  }
+    return Handlers{
+        on_open: fn(): i32 { return 1 },
+        on_close: fn(): i32 { return 2 },
+    }
 }
 
 // Through a local, as through a call.
 fn handlersViaLocal(n: i32): Handlers {
-  var open = fn(): i32 { return n }
-  var all = Handlers{ on_open: open, on_close: open }
-  return all                         //~ E0610 this returns a closure that borrows this frame
+    var open = fn(): i32 { return n }
+    var all = Handlers{ on_open: open, on_close: open }
+    return all //~ E0610 this returns a closure that borrows this frame
 }
 
 fn spanFromCall(s: string): Span !{ &s } {
-  return spanNamed(s)
+    return spanNamed(s)
 }
 
 fn spanFromCallUnnamed(s: string): Span {
-  return spanNamed(s)                //~ E0609 this returns a view into s, which the row does not name
+    return spanNamed(s) //~ E0609 this returns a view into s, which the row does not name
 }
 
 // A container of views is a view of what they view.
 fn splitUnnamed(s: string): Array<string> {
-  var parts = Array<string>::new(heap())
-  parts.push(s)
-  return parts                       //~ E0609 this returns a view into s, which the row does not name
+    var parts = Array<string>::new(heap())
+    parts.push(s)
+    return parts //~ E0609 this returns a view into s, which the row does not name
 }
 
 fn splitNamed(s: string): Array<string> !{ &s } {
-  var parts = Array<string>::new(heap())
-  parts.push(s)
-  return parts
+    var parts = Array<string>::new(heap())
+    parts.push(s)
+    return parts
 }
 
 // A container of numbers holds no view.
 fn lengths(s: string): Array<usize> {
-  var out = Array<usize>::new(heap())
-  out.push(s.len())
-  return out
+    var out = Array<usize>::new(heap())
+    out.push(s.len())
+    return out
 }
 
 // An optional of an aggregate is still one.
 fn maybeSpan(s: string): Span? {
-  return Span{ text: s, start: 0 }   //~ E0609 this returns a view into s, which the row does not name
+    return Span{ text: s, start: 0 } //~ E0609 this returns a view into s, which the row does not name
 }

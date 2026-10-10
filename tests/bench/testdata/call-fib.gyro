@@ -5,17 +5,17 @@ import { println, eprintln } from "stdlib"
 import { monotonic } from "time"
 
 fn fib(n: i32): i32 {
-  if n <= 1 {
-    return n
-  }
-  return fib(n - 1) + fib(n - 2)
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
 }
 
 fn main() {
-  var start = monotonic()
-  var result = fib(34)
-  var stop = monotonic()
+    var start = monotonic()
+    var result = fib(34)
+    var stop = monotonic()
 
-  println(result)
-  eprintln("gyro:bench #{stop - start}")
+    println(result)
+    eprintln("gyro:bench #{stop - start}")
 }

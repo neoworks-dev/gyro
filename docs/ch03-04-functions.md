@@ -2,7 +2,7 @@
 
 ```gyro
 fn add(a: i32, b: i32): i32 {
-  return a + b
+    return a + b
 }
 
 fn nothing() {}                      // no annotation means no result
@@ -30,7 +30,7 @@ standard library's own surface is written that way.
 
 ```gyro
 fn divmod(a: i32, b: i32): (i32, i32) {
-  return a / b, a % b
+    return a / b, a % b
 }
 
 var q, r = divmod(17, 5)
@@ -48,11 +48,11 @@ outlive the call.
 
 ```gyro
 fn sum(xs: ...i32): i32 {
-  var total = 0
-  for x in xs {
-    total += x
-  }
-  return total
+    var total = 0
+    for x in xs {
+        total += x
+    }
+    return total
 }
 
 sum()           // 0
@@ -67,8 +67,8 @@ to pass one as the whole pack:
 
 ```gyro
 fn log_all(rest: ...i32) {
-  sum(rest...)    // forwards the pack
-  sum(rest)       // error: i32[] is not an i32
+    sum(rest...) // forwards the pack
+    sum(rest)    // error: i32[] is not an i32
 }
 ```
 
@@ -85,11 +85,11 @@ does not.
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new(heap())
-  for value in values {
-    out.push(f(value))
-  }
-  return out
+    var out = Array<i32>::new(heap())
+    for value in values {
+        out.push(f(value))
+    }
+    return out
 }
 
 var doubled = apply([1, 2, 3], fn(x) x * 2)

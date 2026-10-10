@@ -13,65 +13,65 @@ import { open, read_all } from "fs"
 import { heap, format } from "mem"
 
 export struct RangeError {
-  export value: i32
-  export low: i32
-  export high: i32
+    export value: i32
+    export low: i32
+    export high: i32
 }
 
 // This method is what makes RangeError usable as an error. It is small, so
 // it travels inside the error value's inline storage and costs no
 // allocation on the error path.
 fn RangeError::message(self): string {
-  return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+    return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
 }
 
 export fn parse_port(text: string): (i32, error?) {
-  var value, err = to_i32(text)
-  if err != null {
-    return 0, err
-  }
+    var value, err = to_i32(text)
+    if err != null {
+        return 0, err
+    }
 
-  if value < 1 || value > 65535 {
-    return 0, RangeError{ value: value, low: 1, high: 65535 }
-  }
-  return value, null
+    if value < 1 || value > 65535 {
+        return 0, RangeError{ value: value, low: 1, high: 65535 }
+    }
+    return value, null
 }
 
 fn load_config(path: string): (string, error?) {
-  var handle, err = open(path)
-  if err != null {
-    return "", err
-  }
-  defer handle.close()
+    var handle, err = open(path)
+    if err != null {
+        return "", err
+    }
+    defer handle.close()
 
-  var contents, read_err = read_all(heap(), handle)
-  if read_err != null {
-    return "", read_err
-  }
-  return contents, null
+    var contents, read_err = read_all(heap(), handle)
+    if read_err != null {
+        return "", read_err
+    }
+    return contents, null
 }
 
 fn main() {
-  var port, err = parse_port("8080")
-  if err != null {
-    // `RangeError(e)` is a type test: it matches when the error's concrete
-    // type is RangeError and binds the whole struct, payload included.
-    match err {
-      RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
-      _: eprintln("bad port: #{err.message()}")
+    var port, err = parse_port("8080")
+    if err != null {
+        // `RangeError(e)` is a type test: it matches when the error's concrete
+        // type is RangeError and binds the whole struct, payload included.
+        match err {
+            RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
+            _: eprintln("bad port: #{err.message()}")
+        }
+        return
     }
-    return
-  }
-  println("listening on #{port}")
+    println("listening on #{port}")
 
-  // `_` explicitly discards a value. Dropping an error without it is a
-  // compile error, so ignoring one is always visible in the source.
-  var _, _ = parse_port("not a number")
+    // `_` explicitly discards a value. Dropping an error without it is a
+    // compile error, so ignoring one is always visible in the source.
+    var _, _ = parse_port("not a number")
 
-  var config, config_err = load_config("gyro.toml")
-  if config_err != null {
-    eprintln("could not read config: #{config_err.message()}")
-    return
-  }
-  println(config)
+    var config, config_err = load_config("gyro.toml")
+    if config_err != null {
+        eprintln("could not read config: #{config_err.message()}")
+        return
+    }
+    println(config)
 }

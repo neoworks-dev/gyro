@@ -1,11 +1,11 @@
 # 13.2. Channels and `select`
 
 ```gyro
-var ch = chan<i32>(64)   // buffered; chan<i32>() is unbuffered
-ch <- value              // send, always a statement
-var v = <-ch             // receive
-var v, open = <-ch       // receive, reporting whether the channel is open
-for v in ch {}           // drain until closed
+var ch = chan<i32>(64) // buffered; chan<i32>() is unbuffered
+ch <- value            // send, always a statement
+var v = <-ch           // receive
+var v, open = <-ch     // receive, reporting whether the channel is open
+for v in ch {}         // drain until closed
 ch.close()
 ```
 
@@ -14,8 +14,8 @@ how a worker reports a fallible result without a wrapper struct:
 
 ```gyro
 fn fetch_into(url: string, results: chan<(string, error?)>) {
-  results <- (format(heap(), "stub body for #{url}"), null)
-  results.close()
+    results <- (format(heap(), "stub body for #{url}"), null)
+    results.close()
 }
 ```
 
@@ -43,14 +43,14 @@ check follows `!` and `&&` the same way null narrowing does:
 ```gyro
 var v, open = <-ch
 if open {
-  println(v)      // fine
+    println(v) // fine
 }
 
 var w, more = <-ch
 if !more {
-  return
+    return
 }
-println(w)        // fine: the branch that would contradict it returned
+println(w) // fine: the branch that would contradict it returned
 ```
 
 This is the same mechanism as [definite
@@ -61,7 +61,7 @@ onto channels.
 
 ```gyro
 for value in values {
-  total += value
+    total += value
 }
 ```
 
@@ -77,9 +77,9 @@ ordinary `var` declarations — there is no `:=`.
 
 ```gyro
 select {
-  var value = <-values: use(value)
-  quit <- true: return
-  else: idle()            // makes the select non-blocking
+    var value = <-values: use(value)
+    quit <- true: return
+    else: idle() // makes the select non-blocking
 }
 ```
 

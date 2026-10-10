@@ -6,19 +6,19 @@ import { println } from "stdlib"
 // bodies that body calls, in whatever module they live. A row is how a
 // function states an interface, not how the compiler finds out.
 fn greet(name: string) {
-  println("Hello, #{name}!")
+    println("Hello, #{name}!")
 }
 
 fn main() {
-  greet("World")
-  println("Gyro compiler is alive.")
+    greet("World")
+    println("Gyro compiler is alive.")
 
-  var x: i32 = 6 * 7
-  println(x)              // 42
+    var x: i32 = 6 * 7
+    println(x) // 42
 
-  var flag = x > 40       // inferred bool
-  println(flag)           // true
+    var flag = x > 40 // inferred bool
+    println(flag)     // true
 
-  const MAX: i32 = 100
-  println("max is #{MAX}, half of that is #{MAX / 2}")
+    const MAX: i32 = 100
+    println("max is #{MAX}, half of that is #{MAX / 2}")
 }

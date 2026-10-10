@@ -5,96 +5,96 @@
 import { alloc, free, heap } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 struct Holder {
-  node: *Node
+    node: *Node
 }
 
 fn unfreed() {
-  var node = alloc<Node>(heap())       //~ W0701 the allocation in node reaches the end of its block unfreed
+    var node = alloc<Node>(heap()) //~ W0701 the allocation in node reaches the end of its block unfreed
 }
 
 // free settles it, and so does every way of handing it on.
 fn deferred() {
-  var node = alloc<Node>(heap())
-  defer free(heap(), node)
+    var node = alloc<Node>(heap())
+    defer free(heap(), node)
 }
 
 fn freedDirectly() {
-  var node = alloc<Node>(heap())
-  free(heap(), node)
+    var node = alloc<Node>(heap())
+    free(heap(), node)
 }
 
 fn returned(): *Node {
-  var node = alloc<Node>(heap())
-  return node
+    var node = alloc<Node>(heap())
+    return node
 }
 
 fn storedInALiteral(): Holder {
-  var node = alloc<Node>(heap())
-  return Holder{ node: node }
+    var node = alloc<Node>(heap())
+    return Holder{ node: node }
 }
 
 fn sent(ch: chan<*Node>) {
-  var node = alloc<Node>(heap())
-  ch <- node
+    var node = alloc<Node>(heap())
+    ch <- node
 }
 
 fn passedOn(sink: fn(*Node)) {
-  var node = alloc<Node>(heap())
-  sink(node)
+    var node = alloc<Node>(heap())
+    sink(node)
 }
 
 // A move capture is the case the analysis cannot see any other way: the
 // closure takes the binding with it.
 fn movedIntoAClosure() {
-  var node = alloc<Node>(heap())
-  var release = fn[move node]() {
-    free(heap(), node)
-  }
+    var node = alloc<Node>(heap())
+    var release = fn[move node]() {
+        free(heap(), node)
+    }
 }
 
 // Falling out of the bottom is not the only way to reach a block's end. A
 // return that does not carry the allocation loses it, and the warning
 // lands on the allocation rather than the exit that lost it.
 fn returnLosesIt(): i32 {
-  var node = alloc<Node>(heap())       //~ W0701 reaches the end of its block unfreed
-  return 0
+    var node = alloc<Node>(heap()) //~ W0701 reaches the end of its block unfreed
+    return 0
 }
 
 fn oneReturnLosesIt(c: bool) {
-  var node = alloc<Node>(heap())       //~ W0701 reaches the end of its block unfreed
-  if c {
-    return
-  }
-  free(heap(), node)
+    var node = alloc<Node>(heap()) //~ W0701 reaches the end of its block unfreed
+    if c {
+        return
+    }
+    free(heap(), node)
 }
 
 // A return inside a closure leaves the closure, so it says nothing about
 // the allocations of the function the closure was written in.
 fn closureReturnIsNotThisFrame() {
-  var node = alloc<Node>(heap())
-  defer free(heap(), node)
-  var f = fn(): i32 {
-    return 1
-  }
+    var node = alloc<Node>(heap())
+    defer free(heap(), node)
+    var f = fn(): i32 {
+        return 1
+    }
 }
 
 // Freeing on one path is not freeing.
 fn freedOnOnePath(c: bool) {
-  var node = alloc<Node>(heap())       //~ W0701 reaches the end of its block unfreed
-  if c {
-    free(heap(), node)
-  }
+    var node = alloc<Node>(heap()) //~ W0701 reaches the end of its block unfreed
+    if c {
+        free(heap(), node)
+    }
 }
 
 fn freedOnEveryPath(c: bool) {
-  var node = alloc<Node>(heap())
-  if c {
-    free(heap(), node)
-  } else {
-    free(heap(), node)
-  }
+    var node = alloc<Node>(heap())
+    if c {
+        free(heap(), node)
+    } else {
+        free(heap(), node)
+    }
 }

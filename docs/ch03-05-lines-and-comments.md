@@ -33,11 +33,11 @@ Both continuation styles therefore work:
 
 ```gyro
 var total = values
-  .filter(is_even)
-  .sum()
+    .filter(is_even)
+    .sum()
 
 var ok = user.is_active
-  && user.age >= 18
+    && user.age >= 18
 ```
 
 `-`, `*`, `&` and `<-` are **not** continuation tokens, because a statement
@@ -47,11 +47,11 @@ line they belong to:
 
 ```gyro
 var total = a +
-  b -            // fine: the operators trail
-  c
+    b - // fine: the operators trail
+    c
 
 var wrong = a
-  - b            // two statements: `a`, then `-b`
+-b // two statements: `a`, then `-b`
 ```
 
 A literal `;` is still accepted, which is what makes the C-style `for`
@@ -78,7 +78,7 @@ at the top level of a condition — `if Point { }` reads `Point` as a value
 and `{` as the body. Parenthesize to disambiguate:
 
 ```gyro
-if (Point{ x: 1 }).x > 0 { }
+if (Point{ x: 1 }).x > 0 {}
 ```
 
 The same rule applies to the head of a `for ... in` loop.

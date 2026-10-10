@@ -6,36 +6,36 @@ import { println } from "stdlib"
 import { Allocator, heap, keep, release } from "mem"
 
 fn adder(n: i32): fn(i32): i32 {
-  return fn(x: i32): i32 { return x + n }   //~ E0610 this returns a closure that borrows this frame
-                                            //~^ help: the closure's environment is this frame's, and the caller outlives it
-                                            //~^^ help: copy it out with keep(allocator, f) from mem, or write a closure that captures nothing
+    return fn(x: i32): i32 { return x + n } //~ E0610 this returns a closure that borrows this frame
+    //~^ help: the closure's environment is this frame's, and the caller outlives it
+    //~^^ help: copy it out with keep(allocator, f) from mem, or write a closure that captures nothing
 }
 
 fn named(n: i32): fn(i32): i32 {
-  var add = fn(x: i32): i32 { return x + n }
-  return add                                //~ E0610 this returns a closure that borrows this frame
-                                            //~^ help: the closure's environment is this frame's, and the caller outlives it
-                                            //~^^ help: copy it out with keep(allocator, f) from mem, or write a closure that captures nothing
+    var add = fn(x: i32): i32 { return x + n }
+    return add //~ E0610 this returns a closure that borrows this frame
+    //~^ help: the closure's environment is this frame's, and the caller outlives it
+    //~^^ help: copy it out with keep(allocator, f) from mem, or write a closure that captures nothing
 }
 
 // Kept, it is the allocator's.
 fn kept(a: Allocator, n: i32): fn(i32): i32 {
-  return keep(a, fn(x: i32): i32 { return x + n })
+    return keep(a, fn(x: i32): i32 { return x + n })
 }
 
 // Nothing captured, nothing borrowed.
 fn plain(): fn(i32): i32 {
-  return fn(x: i32): i32 { return x * 2 }
+    return fn(x: i32): i32 { return x * 2 }
 }
 
 // A closure the caller passed in is the caller's.
 fn passed(f: fn(i32): i32): (fn(i32): i32) !{ &f } {
-  return f
+    return f
 }
 
 fn notFunctions(a: Allocator) {
-  keep(a, 42)                               //~ E0617 keep takes a function value; i32 is not one
-                                            //~^ help: keep copies a closure's environment; a code pointer, struct or number has none
-  release(a, "text")                        //~ E0617 release takes a function value; string is not one
-                                            //~^ help: keep copies a closure's environment; a code pointer, struct or number has none
+    keep(a, 42) //~ E0617 keep takes a function value; i32 is not one
+    //~^ help: keep copies a closure's environment; a code pointer, struct or number has none
+    release(a, "text") //~ E0617 release takes a function value; string is not one
+    //~^ help: keep copies a closure's environment; a code pointer, struct or number has none
 }

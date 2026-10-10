@@ -10,26 +10,26 @@
 
 import { println } from "stdlib"
 import safe {
-  pointer_size, char_pointer_size, pair_size, node_size, node_stride,
-  table_is_clear, fill_table, table_entry, tag_walk, data_offsets,
+    pointer_size, char_pointer_size, pair_size, node_size, node_stride,
+    table_is_clear, fill_table, table_entry, tag_walk, data_offsets,
 } from "./layout.c"
 
 fn main() {
-  println(pointer_size())
-  println(char_pointer_size())
-  println(pair_size())
-  println(node_size())
-  println(node_stride())
+    println(pointer_size())
+    println(char_pointer_size())
+    println(pair_size())
+    println(node_size())
+    println(node_stride())
 
-  // Before anything has been written to it.
-  println(table_is_clear())
-  println(fill_table())
-  var i = 0
-  while i < 4 {
-    println(table_entry(i))
-    i = i + 1
-  }
+    // Before anything has been written to it.
+    println(table_is_clear())
+    println(fill_table())
+    var i = 0
+    while i < 4 {
+        println(table_entry(i))
+        i = i + 1
+    }
 
-  println(tag_walk())
-  println(data_offsets())
+    println(tag_walk())
+    println(data_offsets())
 }

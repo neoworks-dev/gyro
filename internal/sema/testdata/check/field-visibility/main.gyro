@@ -5,13 +5,13 @@ import { Config } from "./lib"
 
 // `string` is a view, so handing a field back borrows the struct.
 fn host(c: Config): string !{ &c } {
-  return c.host
+    return c.host
 }
 
 fn secret(c: Config): i32 {
-  return c.secret                //~ private to its module
+    return c.secret //~ private to its module
 }
 
 fn literal(): Config {
-  return Config{ host: "h", secret: 1 }   //~ construct it with an associated function
+    return Config{ host: "h", secret: 1 } //~ construct it with an associated function
 }

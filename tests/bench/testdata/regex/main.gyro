@@ -23,35 +23,35 @@ import { heap } from "mem"
 const ROUNDS: i64 = 5000
 
 fn texts(): Array<u8[]> {
-  var table = Array<u8[]>::new(heap())
-  table.push("%JxLLcVx8wxrjsj".bytes(heap()))
-  table.push("=KbvUQjsj".bytes(heap()))
-  table.push("^uDnoZjsj".bytes(heap()))
-  table.push("UzZbjsj".bytes(heap()))
-  table.push("zLa_FTEjsj".bytes(heap()))
-  table.push("\"mw3p8_Ojsj".bytes(heap()))
-  table.push("abcdefghijklmnopqrstuvwxyz0123456789".bytes(heap()))
-  table.push("the quick brown fox jumps over the lazy dog".bytes(heap()))
-  return table
+    var table = Array<u8[]>::new(heap())
+    table.push("%JxLLcVx8wxrjsj".bytes(heap()))
+    table.push("=KbvUQjsj".bytes(heap()))
+    table.push("^uDnoZjsj".bytes(heap()))
+    table.push("UzZbjsj".bytes(heap()))
+    table.push("zLa_FTEjsj".bytes(heap()))
+    table.push("\"mw3p8_Ojsj".bytes(heap()))
+    table.push("abcdefghijklmnopqrstuvwxyz0123456789".bytes(heap()))
+    table.push("the quick brown fox jumps over the lazy dog".bytes(heap()))
+    return table
 }
 
 fn main() {
-  var pattern = regex::compile(".?\\w+jsj$".bytes(heap()))
-  var table = texts()
+    var pattern = regex::compile(".?\\w+jsj$".bytes(heap()))
+    var table = texts()
 
-  var start = monotonic()
-  var acc: u64 = 0
-  for var round: i64 = 0; round < ROUNDS; round += 1 {
-    for text in table.slice() {
-      var offset, length = regex::matchp(pattern, text)
-      acc = acc *% 31 +% ((offset + 1) as u64) *% 7 +% (length as u64)
+    var start = monotonic()
+    var acc: u64 = 0
+    for var round: i64 = 0; round < ROUNDS; round += 1 {
+        for text in table.slice() {
+            var offset, length = regex::matchp(pattern, text)
+            acc = acc *% 31 +% ((offset + 1) as u64) *% 7 +% (length as u64)
+        }
     }
-  }
-  var stop = monotonic()
+    var stop = monotonic()
 
-  println(acc)
-  eprintln("gyro:bench #{stop - start}")
+    println(acc)
+    eprintln("gyro:bench #{stop - start}")
 
-  table.free()
-  pattern.free()
+    table.free()
+    pattern.free()
 }

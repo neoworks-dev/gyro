@@ -6,24 +6,24 @@ import { write_file, remove, read_dir } from "fs"
 import { heap } from "mem"
 
 fn main() {
-  var third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
-  var first = write_file("/tmp/gyro-fs-listing-a.txt", "a")
-  var second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
-  println(first == null && second == null && third == null)
+    var third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
+    var first = write_file("/tmp/gyro-fs-listing-a.txt", "a")
+    var second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
+    println(first == null && second == null && third == null)
 
-  var names, err = read_dir(heap(), "/tmp")
-  if err != null {
-    return
-  }
-  for name in names.slice() {
-    if name.starts_with("gyro-fs-listing-") {
-      println(name)
+    var names, err = read_dir(heap(), "/tmp")
+    if err != null {
+        return
     }
-  }
-  names.free()
+    for name in names.slice() {
+        if name.starts_with("gyro-fs-listing-") {
+            println(name)
+        }
+    }
+    names.free()
 
-  var one = remove("/tmp/gyro-fs-listing-a.txt")
-  var two = remove("/tmp/gyro-fs-listing-b.txt")
-  var three = remove("/tmp/gyro-fs-listing-c.txt")
-  println(one == null && two == null && three == null)
+    var one = remove("/tmp/gyro-fs-listing-a.txt")
+    var two = remove("/tmp/gyro-fs-listing-b.txt")
+    var three = remove("/tmp/gyro-fs-listing-c.txt")
+    println(one == null && two == null && three == null)
 }

@@ -6,41 +6,41 @@ import { println, Index, Array } from "stdlib"
 import { heap } from "mem"
 
 struct Grid {
-  cells: i32[6]
-  width: usize
+    cells: i32[6]
+    width: usize
 }
 
 impl Index<i32> for Grid {
-  fn at(*self, index: usize): *i32 {
-    return &self.cells[index]
-  }
+    fn at(*self, index: usize): *i32 {
+        return &self.cells[index]
+    }
 }
 
 struct Bag<T> {
-  items: Array<T>
+    items: Array<T>
 }
 
 impl Index<T> for Bag<T> {
-  fn at(*self, index: usize): *T {
-    return self.items.at(index)
-  }
+    fn at(*self, index: usize): *T {
+        return self.items.at(index)
+    }
 }
 
 fn main() {
-  var g = Grid{ cells: [0, 0, 0, 0, 0, 0], width: 3 }
-  g[4] = 9
-  g[1] += 2
-  println(g[4])
-  println(g[1])
-  var p = &g[4]
-  *p = 11
-  println(g[4])
+    var g = Grid{ cells: [0, 0, 0, 0, 0, 0], width: 3 }
+    g[4] = 9
+    g[1] += 2
+    println(g[4])
+    println(g[1])
+    var p = &g[4]
+    *p = 11
+    println(g[4])
 
-  var b = Bag<string>{ items: Array<string>::new(heap()) }
-  defer b.items.free()
-  b.items.push("a")
-  b.items.push("b")
-  b[1] = "z"
-  println(b[1])
-  println(b[0])
+    var b = Bag<string>{ items: Array<string>::new(heap()) }
+    defer b.items.free()
+    b.items.push("a")
+    b.items.push("b")
+    b[1] = "z"
+    println(b[1])
+    println(b[0])
 }

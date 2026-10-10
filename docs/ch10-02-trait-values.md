@@ -15,7 +15,7 @@ elements.push(&button as dyn Element)
 elements.push(&label as dyn Element)
 
 for i in 0..elements.len() {
-  elements.get(i).paint()
+    elements.get(i).paint()
 }
 ```
 
@@ -42,12 +42,12 @@ frame's storage cannot be returned.
 
 ```gyro
 fn pass(p: *Button): dyn Element !{ &p } {
-  return p as dyn Element
+    return p as dyn Element
 }
 
 fn frame(): dyn Element {
-  var b = Button{ label: "frame" }
-  return &b as dyn Element     // error: a view into storage that ends with this function
+    var b = Button{ label: "frame" }
+    return &b as dyn Element // error: a view into storage that ends with this function
 }
 ```
 
@@ -72,7 +72,7 @@ generic function:
 
 ```gyro
 fn announce<T: Element>(item: T) {
-  println(item.name())
+    println(item.name())
 }
 
 announce(elements.get(0))

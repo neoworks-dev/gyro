@@ -2,33 +2,33 @@ import { println } from "stdlib"
 import { alloc, free, heap } from "mem"
 
 struct Node {
-  value: i32
-  next: *Node?
+    value: i32
+    next: *Node?
 }
 
 fn main() {
-  var head = alloc<Node>(heap())
-  head.value = 1
-  head.next = null
+    var head = alloc<Node>(heap())
+    head.value = 1
+    head.next = null
 
-  var second = alloc<Node>(heap())
-  second.value = 2
-  second.next = null
-  head.next = second
+    var second = alloc<Node>(heap())
+    second.value = 2
+    second.next = null
+    head.next = second
 
-  var current: *Node? = head
-  var total: i32 = 0
-  while current != null {
-    total += current.value
-    var next = current.next
-    free(heap(), current)
-    current = next
-  }
-  println(total)
+    var current: *Node? = head
+    var total: i32 = 0
+    while current != null {
+        total += current.value
+        var next = current.next
+        free(heap(), current)
+        current = next
+    }
+    println(total)
 
-  var local: i32 = 5
-  var address = &local
-  println(*address)
-  *address = 7
-  println(local)
+    var local: i32 = 5
+    var address = &local
+    println(*address)
+    *address = 7
+    println(local)
 }

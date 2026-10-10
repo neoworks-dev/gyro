@@ -58,7 +58,7 @@ through a window is writing to the storage:
 ```gyro
 var window = xs[1..4]
 window[0] = 7
-println(xs[1])      // 7
+println(xs[1]) // 7
 ```
 
 A fixed-size array narrows too, and the result is a `T[]`: the length stops
@@ -125,12 +125,12 @@ and says nothing about lifetime beyond the call.
 
 ```gyro
 fn first(xs: i32[]): i32[] !{ &xs } {
-  return xs        // fine: the row says the result views xs
+    return xs // fine: the row says the result views xs
 }
 
 fn worse(): i32[] {
-  var xs = [1, 2, 3]
-  return xs        // error: that storage ends with this function
+    var xs = [1, 2, 3]
+    return xs // error: that storage ends with this function
 }
 ```
 
@@ -148,12 +148,12 @@ in ([chapter 12](ch12-00-effect-rows.md)):
 struct Window { data: i32[] }
 
 fn window(xs: i32[]): Window !{ &xs } {
-  return Window{ data: xs }
+    return Window{ data: xs }
 }
 
 fn remember(out: Array<i32[]>) {
-  var buf = [1, 2, 3]
-  out.push(buf)      // error: buf ends with this function, out does not
+    var buf = [1, 2, 3]
+    out.push(buf) // error: buf ends with this function, out does not
 }
 ```
 

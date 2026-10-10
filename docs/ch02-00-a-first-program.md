@@ -16,8 +16,8 @@ import { read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin(heap())
-  println("read #{text.len()} bytes")
+    var text = read_stdin(heap())
+    println("read #{text.len()} bytes")
 }
 ```
 
@@ -39,22 +39,22 @@ import { read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin(heap())
+    var text = read_stdin(heap())
 
-  var words = 0
-  var lines = text.split(heap(), "\n")
-  defer lines.free()
+    var words = 0
+    var lines = text.split(heap(), "\n")
+    defer lines.free()
 
-  for line in lines.slice() {
-    var parts = line.trim(heap()).split(heap(), " ")
-    defer parts.free()
-    for word in parts.slice() {
-      if word.len() > 0 {
-        words += 1
-      }
+    for line in lines.slice() {
+        var parts = line.trim(heap()).split(heap(), " ")
+        defer parts.free()
+        for word in parts.slice() {
+            if word.len() > 0 {
+                words += 1
+            }
+        }
     }
-  }
-  println("#{words} words")
+    println("#{words} words")
 }
 ```
 
@@ -90,40 +90,40 @@ import { printf } from "fmt"
 import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin(heap())
+    var text = read_stdin(heap())
 
-  var counts = Map<string, i32>::new(heap())
-  defer counts.free()
+    var counts = Map<string, i32>::new(heap())
+    defer counts.free()
 
-  var lines = text.split(heap(), "\n")
-  defer lines.free()
+    var lines = text.split(heap(), "\n")
+    defer lines.free()
 
-  for line in lines.slice() {
-    var words = line.trim(heap()).split(heap(), " ")
-    defer words.free()
+    for line in lines.slice() {
+        var words = line.trim(heap()).split(heap(), " ")
+        defer words.free()
 
-    for word in words.slice() {
-      if word.len() == 0 {
-        continue
-      }
-      var seen = counts.get(word)
-      if seen == null {
-        counts.insert(word, 1)
-      } else {
-        counts.insert(word, seen + 1)
-      }
+        for word in words.slice() {
+            if word.len() == 0 {
+                continue
+            }
+            var seen = counts.get(word)
+            if seen == null {
+                counts.insert(word, 1)
+            } else {
+                counts.insert(word, seen + 1)
+            }
+        }
     }
-  }
 
-  var keys = counts.keys()
-  defer keys.free()
+    var keys = counts.keys()
+    defer keys.free()
 
-  for key in keys.slice() {
-    var count = counts.get(key)
-    if count != null {
-      printf("%-12s %d\n", key, count)
+    for key in keys.slice() {
+        var count = counts.get(key)
+        if count != null {
+            printf("%-12s %d\n", key, count)
+        }
     }
-  }
 }
 ```
 
@@ -144,7 +144,7 @@ checked:
 
 ```gyro
 var seen = counts.get(word)
-counts.insert(word, seen + 1)     // error: seen may be null
+counts.insert(word, seen + 1) // error: seen may be null
 ```
 
 The check is what narrows it. Inside `else`, `seen` is an `i32` and the

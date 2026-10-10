@@ -16,8 +16,8 @@ same rule narrowing conversions follow
 
 ```gyro
 var v: any = 42 as any
-var n = v as i32         // 42
-var s = v as string      // panics: any holds i32, not string
+var n = v as i32    // 42
+var s = v as string // panics: any holds i32, not string
 ```
 
 The only implicit conversion in the language is **packing**: an argument to
@@ -32,9 +32,9 @@ on an `error`:
 
 ```gyro
 var text = match v {
-  i32(n):    format(heap(), "int #{n}")
-  string(s): format(heap(), "text #{s}")
-  _:         "something else"
+    i32(n):    format(heap(), "int #{n}")
+    string(s): format(heap(), "text #{s}")
+    _:         "something else"
 }
 ```
 
@@ -45,11 +45,11 @@ A type an ordinary path cannot spell is written out in the arm:
 
 ```gyro
 var text = match v {
-  (i32, string)(pair): format(heap(), "pair #{pair.0}")
-  i32[](xs):           format(heap(), "#{xs.len()} numbers")
-  i32[3](fixed):       "three numbers"
-  *Node(node):         format(heap(), "node #{node.value}")
-  _:                   "something else"
+    (i32, string)(pair): format(heap(), "pair #{pair.0}")
+    i32[](xs):           format(heap(), "#{xs.len()} numbers")
+    i32[3](fixed):       "three numbers"
+    *Node(node):         format(heap(), "node #{node.value}")
+    _:                   "something else"
 }
 ```
 

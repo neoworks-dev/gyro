@@ -4,9 +4,9 @@ An enum is a closed set of variants, each of which may carry a payload.
 
 ```gyro
 export enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-  Point,
+    Circle(f64),
+    Rect(f64, f64),
+    Point,
 }
 ```
 
@@ -31,11 +31,11 @@ This is the point of having them:
 
 ```gyro
 fn area(shape: Shape): f64 {
-  return match shape {
-    Shape::Circle(r): 3.14159 * r * r
-    Shape::Rect(w, h): w * h
-    Shape::Point: 0.0
-  }
+    return match shape {
+        Shape::Circle(r): 3.14159 * r * r
+        Shape::Rect(w, h): w * h
+        Shape::Point: 0.0
+    }
 }
 ```
 

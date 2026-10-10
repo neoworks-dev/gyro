@@ -1,20 +1,20 @@
 fn builtinsNeedNoImport(a: i32, b: usize, c: rune, d: error?): bool {
-  return true
+    return true
 }
 
-fn builtinsTakeNoTypeArguments(a: i32<i8>) {   //~ takes no type arguments
+fn builtinsTakeNoTypeArguments(a: i32<i8>) { //~ takes no type arguments
 }
 
 // Type parameters resolve inside the signature they are declared on.
 fn generic<T>(a: T, b: T): T !{ &a } {
-  return a
+    return a
 }
 
 struct Pair<T> {
-  first: T
-  second: T
+    first: T
+    second: T
 }
 
 fn Pair<T>::firstOf(self): T !{ &self } {
-  return self.first
+    return self.first
 }

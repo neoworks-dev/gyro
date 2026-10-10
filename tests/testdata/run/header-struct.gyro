@@ -16,22 +16,22 @@ import { in_addr } from "<netinet/in.h>"
 import safe { ldiv, ldiv_t } from "<stdlib.h>"
 
 safe fn dotted(addr: in_addr): string {
-  return from_c(heap(), inet_ntoa(addr))
+    return from_c(heap(), inet_ntoa(addr))
 }
 
 fn main() {
-  var d = div(17, 5)
-  println(d.quot)
-  println(d.rem)
+    var d = div(17, 5)
+    println(d.quot)
+    println(d.rem)
 
-  var negative = div(0 - 17, 5)
-  println(negative.quot)
-  println(negative.rem)
+    var negative = div(0 - 17, 5)
+    println(negative.quot)
+    println(negative.rem)
 
-  // The literal is 127.0.0.1 as a little-endian machine holds it.
-  var local = in_addr{ s_addr: 0x0100007F }
-  println(dotted(local))
+    // The literal is 127.0.0.1 as a little-endian machine holds it.
+    var local = in_addr{ s_addr: 0x0100007F }
+    println(dotted(local))
 
-  var wide = ldiv(7, 2)
-  println(wide.quot + wide.rem)
+    var wide = ldiv(7, 2)
+    println(wide.quot + wide.rem)
 }

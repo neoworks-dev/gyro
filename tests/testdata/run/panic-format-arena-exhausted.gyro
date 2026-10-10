@@ -6,8 +6,8 @@ import { println } from "stdlib"
 import { format, heap, Arena } from "mem"
 
 fn main() {
-  var arena = Arena::new(heap(), 16)
-  defer arena.free()
-  var text = format(arena.allocator(), "no room for #{16}")
-  println(text)
+    var arena = Arena::new(heap(), 16)
+    defer arena.free()
+    var text = format(arena.allocator(), "no room for #{16}")
+    println(text)
 }

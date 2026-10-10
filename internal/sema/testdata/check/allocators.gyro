@@ -8,49 +8,49 @@
 import { alloc, free, heap, panic, Allocator, Arena } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 fn noAllocator() {
-  var node = alloc<Node>()    //~ E0504 alloc takes 1 argument(s), got 0
+    var node = alloc<Node>() //~ E0504 alloc takes 1 argument(s), got 0
 }
 
 fn notAnAllocator() {
-  var node = alloc<Node>(5)   //~ E0501 cannot use an integer literal as Allocator in argument 1 to alloc
+    var node = alloc<Node>(5) //~ E0501 cannot use an integer literal as Allocator in argument 1 to alloc
 }
 
 fn freeNeedsOne(node: *Node) {
-  free<Node>(node)            //~ E0504 free takes 2 argument(s), got 1
-                              //~^ E0501 cannot use *Node as Allocator in argument 1 to free
+    free<Node>(node) //~ E0504 free takes 2 argument(s), got 1
+    //~^ E0501 cannot use *Node as Allocator in argument 1 to free
 }
 
 // Allocating is not an effect: a !{} function that is handed an allocator
 // allocates and frees without naming anything.
 fn handed(a: Allocator) !{} {
-  var node = alloc<Node>(a)
-  free(a, node)
+    var node = alloc<Node>(a)
+    free(a, node)
 }
 
 // A block from the heap is this block's to free, and warns when it is not.
 fn heapOwned() {
-  var node = alloc<Node>(heap())  //~ W0701 the allocation in node reaches the end of its block unfreed
+    var node = alloc<Node>(heap()) //~ W0701 the allocation in node reaches the end of its block unfreed
 }
 
 // A block from any other allocator is that allocator's to reclaim.
 fn arenaOwned() {
-  var arena = Arena::new(heap(), 64)
-  defer arena.free()
-  var node = alloc<Node>(arena.allocator())
+    var arena = Arena::new(heap(), 64)
+    defer arena.free()
+    var node = alloc<Node>(arena.allocator())
 }
 
 fn handedOwned(a: Allocator) {
-  var node = alloc<Node>(a)
+    var node = alloc<Node>(a)
 }
 
 // panic does not return, so the check narrows p like a return would.
 fn narrowed(p: *Node?): i32 {
-  if p == null {
-    panic("no node")
-  }
-  return p.value
+    if p == null {
+        panic("no node")
+    }
+    return p.value
 }

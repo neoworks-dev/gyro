@@ -6,33 +6,33 @@ import { println } from "stdlib"
 import { format, heap } from "mem"
 
 async fn work(n: i32): i32 {
-  return n * 2
+    return n * 2
 }
 
 async fn scale(factor: f64, n: i32): f64 {
-  return factor * (n as f64)
+    return factor * (n as f64)
 }
 
 async fn describe(n: i32): (string, error?) {
-  return format(heap(), "n=#{n}"), null
+    return format(heap(), "n=#{n}"), null
 }
 
 async fn main() {
-  var f = work
-  println(await f(21))
+    var f = work
+    println(await f(21))
 
-  // A closure carries an environment; a bare function reference does not,
-  // and the thunk has to serve both.
-  var offset: i32 = 100
-  var shifted = async fn(n: i32): i32 { return n + offset }
-  println(await shifted(5))
+    // A closure carries an environment; a bare function reference does not,
+    // and the thunk has to serve both.
+    var offset: i32 = 100
+    var shifted = async fn(n: i32): i32 { return n + offset }
+    println(await shifted(5))
 
-  var scaled = scale
-  println(await scaled(1.5, 4))
+    var scaled = scale
+    println(await scaled(1.5, 4))
 
-  // An aggregate result travels through the hidden sret pointer.
-  var described = describe
-  var text, err = await described(7)
-  println(text)
-  println(err == null)
+    // An aggregate result travels through the hidden sret pointer.
+    var described = describe
+    var text, err = await described(7)
+    println(text)
+    println(err == null)
 }

@@ -171,8 +171,8 @@ and a closure's environment, belongs to the `unsafe` module below, which
 export enum Mode { Alloc, Free, FreeAll, Resize }
 
 export struct Allocator {
-  export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-  export data: anyptr?
+    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    export data: anyptr?
 }
 
 export fn heap(): Allocator !{}
@@ -291,8 +291,8 @@ and then drain what is left.
 ### `time`
 
 ```gyro
-export fn now(): i64 !{ io }         // wall clock, ms since the Unix epoch
-export fn monotonic(): i64 !{ io }   // measuring clock, ns, never steps back
+export fn now(): i64 !{ io }       // wall clock, ms since the Unix epoch
+export fn monotonic(): i64 !{ io } // measuring clock, ns, never steps back
 export fn sleep(millis: i64) !{ io }
 ```
 

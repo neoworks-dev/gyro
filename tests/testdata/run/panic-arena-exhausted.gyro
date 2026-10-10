@@ -7,19 +7,19 @@ import { println } from "stdlib"
 import { alloc, heap, Arena } from "mem"
 
 struct Node {
-  value: i32
-  next: *Node?
+    value: i32
+    next: *Node?
 }
 
 fn main() {
-  var arena = Arena::new(heap(), 40)
-  defer arena.free()
+    var arena = Arena::new(heap(), 40)
+    defer arena.free()
 
-  var a = alloc<Node>(arena.allocator())
-  var b = alloc<Node>(arena.allocator())
-  a.value = 1
-  b.value = 2
-  println(a.value + b.value)
-  var c = alloc<Node>(arena.allocator())
-  println(c.value)
+    var a = alloc<Node>(arena.allocator())
+    var b = alloc<Node>(arena.allocator())
+    a.value = 1
+    b.value = 2
+    println(a.value + b.value)
+    var c = alloc<Node>(arena.allocator())
+    println(c.value)
 }

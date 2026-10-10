@@ -1,25 +1,25 @@
 struct Node {
-  value: i32
-  next: *Node?
+    value: i32
+    next: *Node?
 }
 
 fn assignments() {
-  var x = 1
-  x = 2
-  x += 3
+    var x = 1
+    x = 2
+    x += 3
 }
 
 fn badAssignments(s: string) {
-  var x = 1
-  x = "two"                      //~ cannot use string as i32 in assignment
-  x += "two"                     //~ matching numeric operands
-  s += s                         //~ matching numeric operands
-  1 = 2                          //~ cannot assign to this expression
+    var x = 1
+    x = "two"  //~ cannot use string as i32 in assignment
+    x += "two" //~ matching numeric operands
+    s += s     //~ matching numeric operands
+    1 = 2      //~ cannot assign to this expression
 }
 
 fn throughPointers(n: *Node) {
-  n.value = 3
-  (*n).value = 4
+    n.value = 3
+    (*n).value = 4
 }
 
 fn f() {
@@ -30,13 +30,13 @@ fn takesInt(v: i32) {
 
 // The parser rejects a non-call defer; sema types the call normally.
 fn defers() {
-  defer f()
+    defer f()
 }
 
 fn badDefer() {
-  defer takesInt("x")            //~ cannot use string as i32
+    defer takesInt("x") //~ cannot use string as i32
 }
 
 fn declarationForms() {
-  var x: i32
+    var x: i32
 }

@@ -6,7 +6,7 @@ Put this in `hello.gyro`:
 import { println } from "stdlib"
 
 fn main() {
-  println("Hello, world!")
+    println("Hello, world!")
 }
 ```
 
@@ -40,9 +40,9 @@ line:
 
 ```gyro
 fn main(args: string[]) {
-  for arg in args {
-    println(arg)
-  }
+    for arg in args {
+        println(arg)
+    }
 }
 ```
 
@@ -83,21 +83,21 @@ import { println } from "stdlib"
 // The row is a complete statement of what greet does: println is io, and
 // the interpolated text allocates nothing.
 fn greet(name: string) !{ io } {
-  println("Hello, #{name}!")
+    println("Hello, #{name}!")
 }
 
 fn main() {
-  greet("World")
-  println("Gyro compiler is alive.")
+    greet("World")
+    println("Gyro compiler is alive.")
 
-  var x: i32 = 6 * 7
-  println(x)              // 42
+    var x: i32 = 6 * 7
+    println(x) // 42
 
-  var flag = x > 40       // inferred bool
-  println(flag)           // true
+    var flag = x > 40 // inferred bool
+    println(flag)     // true
 
-  const MAX: i32 = 100
-  println("max is #{MAX}, half of that is #{MAX / 2}")
+    const MAX: i32 = 100
+    println("max is #{MAX}, half of that is #{MAX / 2}")
 }
 ```
 

@@ -14,6 +14,9 @@ gyro cc <file.c>          compile a C file and print the METALS it becomes
 gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
 gyro build <file.gyro> [-o out]
                           compile a program to a native executable
+gyro fmt [--check] <path>...
+                          format .gyro files in place; a directory means every
+                          .gyro file under it
 gyro lsp                  run the language server over stdio
 gyro explain [CODE]       explain a diagnostic code, or list them all
 gyro version              print the compiler version
@@ -41,6 +44,41 @@ against the C runtime with a C compiler
 ([appendix E](appendix-e-native-backend.md)). The binary carries line
 information, so `gdb` shows the Gyro file and line of each frame; variables
 are not described yet.
+
+## Formatting
+
+```sh
+gyro fmt app.gyro            # rewrite the file in place
+gyro fmt src/ examples/      # every .gyro file under each directory
+gyro fmt --check src/        # change nothing; list what would change
+```
+
+There is one layout and no options, as with `gofmt`. Indentation is four
+spaces. The formatter never breaks or joins a line: every line break stays
+where you put it, and it fixes the indentation and the spacing within the
+line. One space goes around binary operators and `=` and after `,` and `:`;
+none goes inside `()` and `[]`; a struct literal or a block written on one
+line has a space inside its braces, as in `Point{ x: 1 }`. Runs of two or
+more spaces between tokens are kept, since they are how a table of numbers or
+a column of match arms is aligned.
+
+An argument list, parameter list, struct literal or array literal written
+across several lines keeps its elements on their own lines and gains a
+trailing comma after the last one. One written on one line stays on one line.
+
+Comments stay where they are. An own-line comment is indented with the code
+after it, and `//` comments after code on consecutive lines are aligned into
+one column. A run of blank lines becomes one blank line; a single blank line
+is never removed.
+
+A file that does not parse is refused with its diagnostics and left
+untouched. Formatting only changes layout: the syntax tree after formatting is
+the one before, which the formatter checks before it writes anything. With
+`--check` the exit status is 1 when any file would change, so it can gate a
+build the way `gofmt -l` does. METALS files are not formatted.
+
+The language server offers the same layout to editors
+([chapter 16.2](ch16-02-editors.md)).
 
 ## Diagnostics
 

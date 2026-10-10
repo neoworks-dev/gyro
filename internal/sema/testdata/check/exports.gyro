@@ -1,1 +1,1 @@
-export { ghost }                 //~ cannot export ghost
+export { ghost } //~ cannot export ghost

@@ -1,23 +1,23 @@
 import { println } from "stdlib"
 
 fn main() {
-  var bytes: u8[] = [104, 105]
-  var hash: u32 = 2166136261
-  for byte in bytes {
-    hash = hash *% 16777619 +% (byte as u32)
-  }
-  println(hash)
+    var bytes: u8[] = [104, 105]
+    var hash: u32 = 2166136261
+    for byte in bytes {
+        hash = hash *% 16777619 +% (byte as u32)
+    }
+    println(hash)
 
-  var shifted: i32 = 1 << 10
-  println(shifted)
-  var mask: u32 = 96
-  println(mask >> 5)
-  println(mask & 32)
-  println(mask | 1)
-  println(mask ^ 2)
+    var shifted: i32 = 1 << 10
+    println(shifted)
+    var mask: u32 = 96
+    println(mask >> 5)
+    println(mask & 32)
+    println(mask | 1)
+    println(mask ^ 2)
 
-  println(300 as u16)
-  println(65535 as u16)
-  println(3.9 as i32)
-  println(-3.9 as i32)
+    println(300 as u16)
+    println(65535 as u16)
+    println(3.9 as i32)
+    println(-3.9 as i32)
 }

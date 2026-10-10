@@ -1,5 +1,5 @@
 fn apply(v: i32, f: fn(i32): i32): i32 {
-  return f(v)
+    return f(v)
 }
 
 fn run(f: fn()) {
@@ -9,51 +9,51 @@ fn produce(n: i32) {
 }
 
 fn types() {
-  var double = fn(a: i32): i32 { return a * 2 }
-  var x: i32 = double(21)
+    var double = fn(a: i32): i32 { return a * 2 }
+    var x: i32 = double(21)
 }
 
 fn badTypes() {
-  var double = fn(a: i32): i32 { return a * 2 }
-  double("x")                    //~ cannot use string as i32
-  var f = fn(a: i32): i32 { return "no" }   //~ cannot use string as i32 in return
+    var double = fn(a: i32): i32 { return a * 2 }
+    double("x")                             //~ cannot use string as i32
+    var f = fn(a: i32): i32 { return "no" } //~ cannot use string as i32 in return
 }
 
 // A closure's parameter types come from the expected type at the call.
 fn inferredFromContext(): i32 {
-  return apply(3, fn(x) x * 2)
+    return apply(3, fn(x) x * 2)
 }
 
 fn inferredBodyIsChecked(): i32 {
-  return apply(3, fn(x) x && true)   //~ E0514 a condition is a bool, not i32
-                                     //~^ E0501 cannot use bool as i32 in the closure body
+    return apply(3, fn(x) x && true) //~ E0514 a condition is a bool, not i32
+    //~^ E0501 cannot use bool as i32 in the closure body
 }
 
 fn nothingToInferFrom() {
-  var f = fn(x) x                //~ needs a type
+    var f = fn(x) x //~ needs a type
 }
 
 // A closure with the wrong arity has no expected type for its extra
 // parameter, so the mismatch is reported twice: once for the parameter
 // that nothing describes, once for the argument as a whole.
 fn arityMustMatch() {
-  apply(3, fn(a, b) a)           //~ E0518 the parameter b needs a type
-                                 //~^ E0518 this closure takes 2 parameter(s), the context wants fn(i32): i32
-                                 //~^^ E0501 cannot use fn(i32, <unknown>): i32 as fn(i32): i32
+    apply(3, fn(a, b) a) //~ E0518 the parameter b needs a type
+    //~^ E0518 this closure takes 2 parameter(s), the context wants fn(i32): i32
+    //~^^ E0501 cannot use fn(i32, <unknown>): i32 as fn(i32): i32
 }
 
 fn expressionBody() {
-  run(fn() produce(10))
+    run(fn() produce(10))
 }
 
 fn moveNeedsTheName() {
-  var node = 1
-  var f = fn[move node]() {
-    var x = node
-  }
-  f()
+    var node = 1
+    var f = fn[move node]() {
+        var x = node
+    }
+    f()
 }
 
 fn moveOfAGhost() {
-  var f = fn[move ghost]() {}    //~ cannot move ghost
+    var f = fn[move ghost]() {} //~ cannot move ghost
 }

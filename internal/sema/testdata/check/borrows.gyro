@@ -2,56 +2,56 @@
 // came from. What is tracked is provenance, not lifetime.
 
 fn named(xs: i32[]): i32[] !{ &xs } {
-  return xs
+    return xs
 }
 
 fn unnamed(xs: i32[]): i32[] {
-  return xs                      //~ E0609 this returns a view into xs, which the row does not name
-                                 //~^ help: say so in the row: !{ &xs }
+    return xs //~ E0609 this returns a view into xs, which the row does not name
+    //~^ help: say so in the row: !{ &xs }
 }
 
 fn wrongSourceNamed(a: i32[], b: i32[]): i32[] !{ &a } {
-  return b                       //~ E0609 this returns a view into b, which the row does not name
+    return b //~ E0609 this returns a view into b, which the row does not name
 }
 
 fn severalSources(a: i32[], b: i32[], f: bool): i32[] !{ &a, &b } {
-  if f {
-    return a
-  }
-  return b
+    if f {
+        return a
+    }
+    return b
 }
 
 // An array literal is storage in the enclosing frame, and the caller
 // outlives the frame.
 fn escapingLocal(): i32[] {
-  var xs = [1, 2, 3]
-  return xs                      //~ E0610 view into storage that ends with this function
+    var xs = [1, 2, 3]
+    return xs //~ E0610 view into storage that ends with this function
 }
 
 fn escapingLiteral(): i32[] {
-  return [1, 2, 3]               //~ E0610 view into storage that ends with this function
+    return [1, 2, 3] //~ E0610 view into storage that ends with this function
 }
 
 // The row's own entries are checked. A rejected entry leaves the row
 // empty, so the return is unaccounted for too.
-fn unknownSource(xs: i32[]): i32[] !{ &nope } {   //~ E0608 &nope names no parameter of this function
-  return xs                      //~ E0609 this returns a view into xs, which the row does not name
+fn unknownSource(xs: i32[]): i32[] !{ &nope } { //~ E0608 &nope names no parameter of this function
+    return xs                                   //~ E0609 this returns a view into xs, which the row does not name
 }
 
-fn scalarSource(n: i32, xs: i32[]): i32[] !{ &n } {  //~ E0608 &n borrows from i32, which is not a view
-  return xs                      //~ E0609 this returns a view into xs, which the row does not name
+fn scalarSource(n: i32, xs: i32[]): i32[] !{ &n } { //~ E0608 &n borrows from i32, which is not a view
+    return xs                                       //~ E0609 this returns a view into xs, which the row does not name
 }
 
-fn ownedResult(xs: i32[]): usize !{ &xs } {   //~ this row borrows, but the result is not a view
-  return xs.len()
+fn ownedResult(xs: i32[]): usize !{ &xs } { //~ this row borrows, but the result is not a view
+    return xs.len()
 }
 
 // A result that is not a view needs no row, and a string literal is not
 // frame storage.
 fn ownedNeedsNoRow(xs: i32[]): usize {
-  return xs.len()
+    return xs.len()
 }
 
 fn literalIsStatic(): string {
-  return "a literal is static"
+    return "a literal is static"
 }

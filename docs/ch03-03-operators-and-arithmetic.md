@@ -31,7 +31,7 @@ Wrapping is available where it is actually wanted, and is spelled out:
 ```gyro
 var hash: u32 = 2166136261
 for byte in bytes {
-  hash = hash *% 16777619 +% (byte as u32)
+    hash = hash *% 16777619 +% (byte as u32)
 }
 ```
 
@@ -59,9 +59,9 @@ every number and equal to another NaN, and `0.0` and `-0.0` compare equal.
 
 ```gyro
 var nan = 0.0 / 0.0
-nan <= 1.0            // false — unordered
-nan.compare(1.0)      // 1     — total order, NaN is above
-nan.compare(nan)      // 0
+nan <= 1.0       // false — unordered
+nan.compare(1.0) // 1     — total order, NaN is above
+nan.compare(nan) // 0
 ```
 
 ## Shifts never panic
@@ -76,7 +76,7 @@ That is what makes a rotate ordinary Gyro:
 
 ```gyro
 fn rotl(a: u32, b: u32): u32 {
-  return (a << b) | (a >> (32 - b))
+    return (a << b) | (a >> (32 - b))
 }
 ```
 

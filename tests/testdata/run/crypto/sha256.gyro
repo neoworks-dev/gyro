@@ -16,10 +16,10 @@
 export const BLOCK_SIZE: usize = 32
 
 export struct Ctx {
-  export data: u8[64]
-  export datalen: usize
-  export bitlen: u64
-  export state: u32[8]
+    export data: u8[64]
+    export datalen: usize
+    export bitlen: u64
+    export state: u32[8]
 }
 
 // ---------------------------------------------------------------------------
@@ -27,31 +27,31 @@ export struct Ctx {
 // ---------------------------------------------------------------------------
 
 fn rotr(a: u32, b: u32): u32 {
-  return (a >> b) | (a << (32 - b))
+    return (a >> b) | (a << (32 - b))
 }
 
 fn ch(x: u32, y: u32, z: u32): u32 {
-  return (x & y) ^ (~x & z)
+    return (x & y) ^ (~x & z)
 }
 
 fn maj(x: u32, y: u32, z: u32): u32 {
-  return (x & y) ^ (x & z) ^ (y & z)
+    return (x & y) ^ (x & z) ^ (y & z)
 }
 
 fn ep0(x: u32): u32 {
-  return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)
+    return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)
 }
 
 fn ep1(x: u32): u32 {
-  return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)
+    return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)
 }
 
 fn sig0(x: u32): u32 {
-  return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3)
+    return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3)
 }
 
 fn sig1(x: u32): u32 {
-  return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10)
+    return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10)
 }
 
 // ---------------------------------------------------------------------------
@@ -60,14 +60,14 @@ fn sig1(x: u32): u32 {
 // ---------------------------------------------------------------------------
 
 const K: u32[64] = [
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]
 
 // C leaves `WORD m[64]` uninitialized and writes every element before
@@ -75,22 +75,22 @@ const K: u32[64] = [
 // statement and cannot see that through two loops, so the schedule
 // starts zeroed. The zeroing is dead work, not part of the algorithm.
 const ZERO_SCHEDULE: u32[64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 const ZERO_BLOCK: u8[64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 const ZERO_DIGEST: u8[32] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 // ---------------------------------------------------------------------------
@@ -98,53 +98,53 @@ const ZERO_DIGEST: u8[32] = [
 // ---------------------------------------------------------------------------
 
 fn Ctx::transform(*self) {
-  var m: u32[64] = ZERO_SCHEDULE
+    var m: u32[64] = ZERO_SCHEDULE
 
-  var i: usize = 0
-  var j: usize = 0
-  while i < 16 {
-    m[i] = ((self.data[j] as u32) << 24) | ((self.data[j + 1] as u32) << 16)
-         | ((self.data[j + 2] as u32) << 8) | (self.data[j + 3] as u32)
-    i += 1
-    j += 4
-  }
-  while i < 64 {
-    m[i] = sig1(m[i - 2]) +% m[i - 7] +% sig0(m[i - 15]) +% m[i - 16]
-    i += 1
-  }
+    var i: usize = 0
+    var j: usize = 0
+    while i < 16 {
+        m[i] = ((self.data[j] as u32) << 24) | ((self.data[j + 1] as u32) << 16)
+            | ((self.data[j + 2] as u32) << 8) | (self.data[j + 3] as u32)
+        i += 1
+        j += 4
+    }
+    while i < 64 {
+        m[i] = sig1(m[i - 2]) +% m[i - 7] +% sig0(m[i - 15]) +% m[i - 16]
+        i += 1
+    }
 
-  var a = self.state[0]
-  var b = self.state[1]
-  var c = self.state[2]
-  var d = self.state[3]
-  var e = self.state[4]
-  var f = self.state[5]
-  var g = self.state[6]
-  var h = self.state[7]
+    var a = self.state[0]
+    var b = self.state[1]
+    var c = self.state[2]
+    var d = self.state[3]
+    var e = self.state[4]
+    var f = self.state[5]
+    var g = self.state[6]
+    var h = self.state[7]
 
-  i = 0
-  while i < 64 {
-    var t1 = h +% ep1(e) +% ch(e, f, g) +% K[i] +% m[i]
-    var t2 = ep0(a) +% maj(a, b, c)
-    h = g
-    g = f
-    f = e
-    e = d +% t1
-    d = c
-    c = b
-    b = a
-    a = t1 +% t2
-    i += 1
-  }
+    i = 0
+    while i < 64 {
+        var t1 = h +% ep1(e) +% ch(e, f, g) +% K[i] +% m[i]
+        var t2 = ep0(a) +% maj(a, b, c)
+        h = g
+        g = f
+        f = e
+        e = d +% t1
+        d = c
+        c = b
+        b = a
+        a = t1 +% t2
+        i += 1
+    }
 
-  self.state[0] = self.state[0] +% a
-  self.state[1] = self.state[1] +% b
-  self.state[2] = self.state[2] +% c
-  self.state[3] = self.state[3] +% d
-  self.state[4] = self.state[4] +% e
-  self.state[5] = self.state[5] +% f
-  self.state[6] = self.state[6] +% g
-  self.state[7] = self.state[7] +% h
+    self.state[0] = self.state[0] +% a
+    self.state[1] = self.state[1] +% b
+    self.state[2] = self.state[2] +% c
+    self.state[3] = self.state[3] +% d
+    self.state[4] = self.state[4] +% e
+    self.state[5] = self.state[5] +% f
+    self.state[6] = self.state[6] +% g
+    self.state[7] = self.state[7] +% h
 }
 
 // ---------------------------------------------------------------------------
@@ -152,93 +152,93 @@ fn Ctx::transform(*self) {
 // ---------------------------------------------------------------------------
 
 export fn init(): Ctx {
-  return Ctx{
-    data: ZERO_BLOCK,
-    datalen: 0,
-    bitlen: 0,
-    state: [
-      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-    ],
-  }
+    return Ctx{
+        data: ZERO_BLOCK,
+        datalen: 0,
+        bitlen: 0,
+        state: [
+            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        ],
+    }
 }
 
 export fn Ctx::update(*self, data: u8[]) {
-  for byte in data {
-    self.data[self.datalen] = byte
-    self.datalen += 1
-    if self.datalen == 64 {
-      self.transform()
-      self.bitlen += 512
-      self.datalen = 0
+    for byte in data {
+        self.data[self.datalen] = byte
+        self.datalen += 1
+        if self.datalen == 64 {
+            self.transform()
+            self.bitlen += 512
+            self.datalen = 0
+        }
     }
-  }
 }
 
 export fn Ctx::final(*self): u8[32] {
-  var i = self.datalen
+    var i = self.datalen
 
-  // Pad whatever data is left in the buffer.
-  if self.datalen < 56 {
-    self.data[i] = 0x80
-    i += 1
-    while i < 56 {
-      self.data[i] = 0
-      i += 1
+    // Pad whatever data is left in the buffer.
+    if self.datalen < 56 {
+        self.data[i] = 0x80
+        i += 1
+        while i < 56 {
+            self.data[i] = 0
+            i += 1
+        }
+    } else {
+        self.data[i] = 0x80
+        i += 1
+        while i < 64 {
+            self.data[i] = 0
+            i += 1
+        }
+        self.transform()
+        var z: usize = 0
+        while z < 56 {
+            self.data[z] = 0
+            z += 1
+        }
     }
-  } else {
-    self.data[i] = 0x80
-    i += 1
-    while i < 64 {
-      self.data[i] = 0
-      i += 1
+
+    // Append the message length in bits and transform a last time.
+    self.bitlen += (self.datalen as u64) * 8
+    var n: usize = 0
+    while n < 8 {
+        self.data[63 - n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
+        n += 1
     }
     self.transform()
-    var z: usize = 0
-    while z < 56 {
-      self.data[z] = 0
-      z += 1
-    }
-  }
 
-  // Append the message length in bits and transform a last time.
-  self.bitlen += (self.datalen as u64) * 8
-  var n: usize = 0
-  while n < 8 {
-    self.data[63 - n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
-    n += 1
-  }
-  self.transform()
-
-  // SHA-256 is big-endian; the state words are not, so the bytes come
-  // out most significant first.
-  var hash: u8[32] = ZERO_DIGEST
-  var w: usize = 0
-  while w < 8 {
-    var word = self.state[w]
-    var k: usize = 0
-    while k < 4 {
-      hash[w * 4 + k] = ((word >> ((24 - k * 8) as u32)) & 0xff) as u8
-      k += 1
+    // SHA-256 is big-endian; the state words are not, so the bytes come
+    // out most significant first.
+    var hash: u8[32] = ZERO_DIGEST
+    var w: usize = 0
+    while w < 8 {
+        var word = self.state[w]
+        var k: usize = 0
+        while k < 4 {
+            hash[w * 4 + k] = ((word >> ((24 - k * 8) as u32)) & 0xff) as u8
+            k += 1
+        }
+        w += 1
     }
-    w += 1
-  }
-  return hash
+    return hash
 }
 
 // sum is the one-shot form.
 export fn sum(data: u8[]): u8[32] {
-  var ctx = init()
-  ctx.update(data)
-  return ctx.final()
+    var ctx = init()
+    ctx.update(data)
+    return ctx.final()
 }
 
 // sum_repeated hashes `data` repeated `count` times without building the
 // repetition, which is how the C test drives its million-byte vector.
 export fn sum_repeated(data: u8[], count: i64): u8[32] {
-  var ctx = init()
-  for i in 0..count {
-    ctx.update(data)
-  }
-  return ctx.final()
+    var ctx = init()
+    for i in 0..count {
+        ctx.update(data)
+    }
+    return ctx.final()
 }

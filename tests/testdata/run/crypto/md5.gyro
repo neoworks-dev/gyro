@@ -12,10 +12,10 @@
 export const BLOCK_SIZE: usize = 16
 
 export struct Ctx {
-  export data: u8[64]
-  export datalen: usize
-  export bitlen: u64
-  export state: u32[4]
+    export data: u8[64]
+    export datalen: usize
+    export bitlen: u64
+    export state: u32[4]
 }
 
 // ---------------------------------------------------------------------------
@@ -23,54 +23,54 @@ export struct Ctx {
 // ---------------------------------------------------------------------------
 
 fn rotl(a: u32, b: u32): u32 {
-  return (a << b) | (a >> (32 - b))
+    return (a << b) | (a >> (32 - b))
 }
 
 fn f(x: u32, y: u32, z: u32): u32 {
-  return (x & y) | (~x & z)
+    return (x & y) | (~x & z)
 }
 
 fn g(x: u32, y: u32, z: u32): u32 {
-  return (x & z) | (y & ~z)
+    return (x & z) | (y & ~z)
 }
 
 fn h(x: u32, y: u32, z: u32): u32 {
-  return x ^ y ^ z
+    return x ^ y ^ z
 }
 
 fn i_(x: u32, y: u32, z: u32): u32 {
-  return y ^ (x | ~z)
+    return y ^ (x | ~z)
 }
 
 fn ff(a: u32, b: u32, c: u32, d: u32, m: u32, s: u32, t: u32): u32 {
-  return b +% rotl(a +% f(b, c, d) +% m +% t, s)
+    return b +% rotl(a +% f(b, c, d) +% m +% t, s)
 }
 
 fn gg(a: u32, b: u32, c: u32, d: u32, m: u32, s: u32, t: u32): u32 {
-  return b +% rotl(a +% g(b, c, d) +% m +% t, s)
+    return b +% rotl(a +% g(b, c, d) +% m +% t, s)
 }
 
 fn hh(a: u32, b: u32, c: u32, d: u32, m: u32, s: u32, t: u32): u32 {
-  return b +% rotl(a +% h(b, c, d) +% m +% t, s)
+    return b +% rotl(a +% h(b, c, d) +% m +% t, s)
 }
 
 fn ii(a: u32, b: u32, c: u32, d: u32, m: u32, s: u32, t: u32): u32 {
-  return b +% rotl(a +% i_(b, c, d) +% m +% t, s)
+    return b +% rotl(a +% i_(b, c, d) +% m +% t, s)
 }
 
 const ZERO_SCHEDULE: u32[16] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 const ZERO_BLOCK: u8[64] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 const ZERO_DIGEST: u8[16] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 // ---------------------------------------------------------------------------
@@ -78,95 +78,95 @@ const ZERO_DIGEST: u8[16] = [
 // ---------------------------------------------------------------------------
 
 fn Ctx::transform(*self) {
-  // MD5 reads its message words little-endian, which is the reverse of
-  // SHA-256.
-  var m: u32[16] = ZERO_SCHEDULE
-  var i: usize = 0
-  var j: usize = 0
-  while i < 16 {
-    m[i] = (self.data[j] as u32) | ((self.data[j + 1] as u32) << 8)
-         | ((self.data[j + 2] as u32) << 16) | ((self.data[j + 3] as u32) << 24)
-    i += 1
-    j += 4
-  }
+    // MD5 reads its message words little-endian, which is the reverse of
+    // SHA-256.
+    var m: u32[16] = ZERO_SCHEDULE
+    var i: usize = 0
+    var j: usize = 0
+    while i < 16 {
+        m[i] = (self.data[j] as u32) | ((self.data[j + 1] as u32) << 8)
+            | ((self.data[j + 2] as u32) << 16) | ((self.data[j + 3] as u32) << 24)
+        i += 1
+        j += 4
+    }
 
-  var a = self.state[0]
-  var b = self.state[1]
-  var c = self.state[2]
-  var d = self.state[3]
+    var a = self.state[0]
+    var b = self.state[1]
+    var c = self.state[2]
+    var d = self.state[3]
 
-  a = ff(a, b, c, d, m[0],   7, 0xd76aa478)
-  d = ff(d, a, b, c, m[1],  12, 0xe8c7b756)
-  c = ff(c, d, a, b, m[2],  17, 0x242070db)
-  b = ff(b, c, d, a, m[3],  22, 0xc1bdceee)
-  a = ff(a, b, c, d, m[4],   7, 0xf57c0faf)
-  d = ff(d, a, b, c, m[5],  12, 0x4787c62a)
-  c = ff(c, d, a, b, m[6],  17, 0xa8304613)
-  b = ff(b, c, d, a, m[7],  22, 0xfd469501)
-  a = ff(a, b, c, d, m[8],   7, 0x698098d8)
-  d = ff(d, a, b, c, m[9],  12, 0x8b44f7af)
-  c = ff(c, d, a, b, m[10], 17, 0xffff5bb1)
-  b = ff(b, c, d, a, m[11], 22, 0x895cd7be)
-  a = ff(a, b, c, d, m[12],  7, 0x6b901122)
-  d = ff(d, a, b, c, m[13], 12, 0xfd987193)
-  c = ff(c, d, a, b, m[14], 17, 0xa679438e)
-  b = ff(b, c, d, a, m[15], 22, 0x49b40821)
+    a = ff(a, b, c, d, m[0],   7, 0xd76aa478)
+    d = ff(d, a, b, c, m[1],  12, 0xe8c7b756)
+    c = ff(c, d, a, b, m[2],  17, 0x242070db)
+    b = ff(b, c, d, a, m[3],  22, 0xc1bdceee)
+    a = ff(a, b, c, d, m[4],   7, 0xf57c0faf)
+    d = ff(d, a, b, c, m[5],  12, 0x4787c62a)
+    c = ff(c, d, a, b, m[6],  17, 0xa8304613)
+    b = ff(b, c, d, a, m[7],  22, 0xfd469501)
+    a = ff(a, b, c, d, m[8],   7, 0x698098d8)
+    d = ff(d, a, b, c, m[9],  12, 0x8b44f7af)
+    c = ff(c, d, a, b, m[10], 17, 0xffff5bb1)
+    b = ff(b, c, d, a, m[11], 22, 0x895cd7be)
+    a = ff(a, b, c, d, m[12],  7, 0x6b901122)
+    d = ff(d, a, b, c, m[13], 12, 0xfd987193)
+    c = ff(c, d, a, b, m[14], 17, 0xa679438e)
+    b = ff(b, c, d, a, m[15], 22, 0x49b40821)
 
-  a = gg(a, b, c, d, m[1],   5, 0xf61e2562)
-  d = gg(d, a, b, c, m[6],   9, 0xc040b340)
-  c = gg(c, d, a, b, m[11], 14, 0x265e5a51)
-  b = gg(b, c, d, a, m[0],  20, 0xe9b6c7aa)
-  a = gg(a, b, c, d, m[5],   5, 0xd62f105d)
-  d = gg(d, a, b, c, m[10],  9, 0x02441453)
-  c = gg(c, d, a, b, m[15], 14, 0xd8a1e681)
-  b = gg(b, c, d, a, m[4],  20, 0xe7d3fbc8)
-  a = gg(a, b, c, d, m[9],   5, 0x21e1cde6)
-  d = gg(d, a, b, c, m[14],  9, 0xc33707d6)
-  c = gg(c, d, a, b, m[3],  14, 0xf4d50d87)
-  b = gg(b, c, d, a, m[8],  20, 0x455a14ed)
-  a = gg(a, b, c, d, m[13],  5, 0xa9e3e905)
-  d = gg(d, a, b, c, m[2],   9, 0xfcefa3f8)
-  c = gg(c, d, a, b, m[7],  14, 0x676f02d9)
-  b = gg(b, c, d, a, m[12], 20, 0x8d2a4c8a)
+    a = gg(a, b, c, d, m[1],   5, 0xf61e2562)
+    d = gg(d, a, b, c, m[6],   9, 0xc040b340)
+    c = gg(c, d, a, b, m[11], 14, 0x265e5a51)
+    b = gg(b, c, d, a, m[0],  20, 0xe9b6c7aa)
+    a = gg(a, b, c, d, m[5],   5, 0xd62f105d)
+    d = gg(d, a, b, c, m[10],  9, 0x02441453)
+    c = gg(c, d, a, b, m[15], 14, 0xd8a1e681)
+    b = gg(b, c, d, a, m[4],  20, 0xe7d3fbc8)
+    a = gg(a, b, c, d, m[9],   5, 0x21e1cde6)
+    d = gg(d, a, b, c, m[14],  9, 0xc33707d6)
+    c = gg(c, d, a, b, m[3],  14, 0xf4d50d87)
+    b = gg(b, c, d, a, m[8],  20, 0x455a14ed)
+    a = gg(a, b, c, d, m[13],  5, 0xa9e3e905)
+    d = gg(d, a, b, c, m[2],   9, 0xfcefa3f8)
+    c = gg(c, d, a, b, m[7],  14, 0x676f02d9)
+    b = gg(b, c, d, a, m[12], 20, 0x8d2a4c8a)
 
-  a = hh(a, b, c, d, m[5],   4, 0xfffa3942)
-  d = hh(d, a, b, c, m[8],  11, 0x8771f681)
-  c = hh(c, d, a, b, m[11], 16, 0x6d9d6122)
-  b = hh(b, c, d, a, m[14], 23, 0xfde5380c)
-  a = hh(a, b, c, d, m[1],   4, 0xa4beea44)
-  d = hh(d, a, b, c, m[4],  11, 0x4bdecfa9)
-  c = hh(c, d, a, b, m[7],  16, 0xf6bb4b60)
-  b = hh(b, c, d, a, m[10], 23, 0xbebfbc70)
-  a = hh(a, b, c, d, m[13],  4, 0x289b7ec6)
-  d = hh(d, a, b, c, m[0],  11, 0xeaa127fa)
-  c = hh(c, d, a, b, m[3],  16, 0xd4ef3085)
-  b = hh(b, c, d, a, m[6],  23, 0x04881d05)
-  a = hh(a, b, c, d, m[9],   4, 0xd9d4d039)
-  d = hh(d, a, b, c, m[12], 11, 0xe6db99e5)
-  c = hh(c, d, a, b, m[15], 16, 0x1fa27cf8)
-  b = hh(b, c, d, a, m[2],  23, 0xc4ac5665)
+    a = hh(a, b, c, d, m[5],   4, 0xfffa3942)
+    d = hh(d, a, b, c, m[8],  11, 0x8771f681)
+    c = hh(c, d, a, b, m[11], 16, 0x6d9d6122)
+    b = hh(b, c, d, a, m[14], 23, 0xfde5380c)
+    a = hh(a, b, c, d, m[1],   4, 0xa4beea44)
+    d = hh(d, a, b, c, m[4],  11, 0x4bdecfa9)
+    c = hh(c, d, a, b, m[7],  16, 0xf6bb4b60)
+    b = hh(b, c, d, a, m[10], 23, 0xbebfbc70)
+    a = hh(a, b, c, d, m[13],  4, 0x289b7ec6)
+    d = hh(d, a, b, c, m[0],  11, 0xeaa127fa)
+    c = hh(c, d, a, b, m[3],  16, 0xd4ef3085)
+    b = hh(b, c, d, a, m[6],  23, 0x04881d05)
+    a = hh(a, b, c, d, m[9],   4, 0xd9d4d039)
+    d = hh(d, a, b, c, m[12], 11, 0xe6db99e5)
+    c = hh(c, d, a, b, m[15], 16, 0x1fa27cf8)
+    b = hh(b, c, d, a, m[2],  23, 0xc4ac5665)
 
-  a = ii(a, b, c, d, m[0],   6, 0xf4292244)
-  d = ii(d, a, b, c, m[7],  10, 0x432aff97)
-  c = ii(c, d, a, b, m[14], 15, 0xab9423a7)
-  b = ii(b, c, d, a, m[5],  21, 0xfc93a039)
-  a = ii(a, b, c, d, m[12],  6, 0x655b59c3)
-  d = ii(d, a, b, c, m[3],  10, 0x8f0ccc92)
-  c = ii(c, d, a, b, m[10], 15, 0xffeff47d)
-  b = ii(b, c, d, a, m[1],  21, 0x85845dd1)
-  a = ii(a, b, c, d, m[8],   6, 0x6fa87e4f)
-  d = ii(d, a, b, c, m[15], 10, 0xfe2ce6e0)
-  c = ii(c, d, a, b, m[6],  15, 0xa3014314)
-  b = ii(b, c, d, a, m[13], 21, 0x4e0811a1)
-  a = ii(a, b, c, d, m[4],   6, 0xf7537e82)
-  d = ii(d, a, b, c, m[11], 10, 0xbd3af235)
-  c = ii(c, d, a, b, m[2],  15, 0x2ad7d2bb)
-  b = ii(b, c, d, a, m[9],  21, 0xeb86d391)
+    a = ii(a, b, c, d, m[0],   6, 0xf4292244)
+    d = ii(d, a, b, c, m[7],  10, 0x432aff97)
+    c = ii(c, d, a, b, m[14], 15, 0xab9423a7)
+    b = ii(b, c, d, a, m[5],  21, 0xfc93a039)
+    a = ii(a, b, c, d, m[12],  6, 0x655b59c3)
+    d = ii(d, a, b, c, m[3],  10, 0x8f0ccc92)
+    c = ii(c, d, a, b, m[10], 15, 0xffeff47d)
+    b = ii(b, c, d, a, m[1],  21, 0x85845dd1)
+    a = ii(a, b, c, d, m[8],   6, 0x6fa87e4f)
+    d = ii(d, a, b, c, m[15], 10, 0xfe2ce6e0)
+    c = ii(c, d, a, b, m[6],  15, 0xa3014314)
+    b = ii(b, c, d, a, m[13], 21, 0x4e0811a1)
+    a = ii(a, b, c, d, m[4],   6, 0xf7537e82)
+    d = ii(d, a, b, c, m[11], 10, 0xbd3af235)
+    c = ii(c, d, a, b, m[2],  15, 0x2ad7d2bb)
+    b = ii(b, c, d, a, m[9],  21, 0xeb86d391)
 
-  self.state[0] = self.state[0] +% a
-  self.state[1] = self.state[1] +% b
-  self.state[2] = self.state[2] +% c
-  self.state[3] = self.state[3] +% d
+    self.state[0] = self.state[0] +% a
+    self.state[1] = self.state[1] +% b
+    self.state[2] = self.state[2] +% c
+    self.state[3] = self.state[3] +% d
 }
 
 // ---------------------------------------------------------------------------
@@ -174,76 +174,76 @@ fn Ctx::transform(*self) {
 // ---------------------------------------------------------------------------
 
 export fn init(): Ctx {
-  return Ctx{
-    data: ZERO_BLOCK,
-    datalen: 0,
-    bitlen: 0,
-    state: [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476],
-  }
+    return Ctx{
+        data: ZERO_BLOCK,
+        datalen: 0,
+        bitlen: 0,
+        state: [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476],
+    }
 }
 
 export fn Ctx::update(*self, data: u8[]) {
-  for byte in data {
-    self.data[self.datalen] = byte
-    self.datalen += 1
-    if self.datalen == 64 {
-      self.transform()
-      self.bitlen += 512
-      self.datalen = 0
+    for byte in data {
+        self.data[self.datalen] = byte
+        self.datalen += 1
+        if self.datalen == 64 {
+            self.transform()
+            self.bitlen += 512
+            self.datalen = 0
+        }
     }
-  }
 }
 
 export fn Ctx::final(*self): u8[16] {
-  var i = self.datalen
+    var i = self.datalen
 
-  if self.datalen < 56 {
-    self.data[i] = 0x80
-    i += 1
-    while i < 56 {
-      self.data[i] = 0
-      i += 1
+    if self.datalen < 56 {
+        self.data[i] = 0x80
+        i += 1
+        while i < 56 {
+            self.data[i] = 0
+            i += 1
+        }
+    } else {
+        self.data[i] = 0x80
+        i += 1
+        while i < 64 {
+            self.data[i] = 0
+            i += 1
+        }
+        self.transform()
+        var z: usize = 0
+        while z < 56 {
+            self.data[z] = 0
+            z += 1
+        }
     }
-  } else {
-    self.data[i] = 0x80
-    i += 1
-    while i < 64 {
-      self.data[i] = 0
-      i += 1
+
+    self.bitlen += (self.datalen as u64) * 8
+    var n: usize = 0
+    while n < 8 {
+        self.data[56 + n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
+        n += 1
     }
     self.transform()
-    var z: usize = 0
-    while z < 56 {
-      self.data[z] = 0
-      z += 1
-    }
-  }
 
-  self.bitlen += (self.datalen as u64) * 8
-  var n: usize = 0
-  while n < 8 {
-    self.data[56 + n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
-    n += 1
-  }
-  self.transform()
-
-  // MD5's digest is little-endian.
-  var hash: u8[16] = ZERO_DIGEST
-  var w: usize = 0
-  while w < 4 {
-    var word = self.state[w]
-    var k: usize = 0
-    while k < 4 {
-      hash[w * 4 + k] = ((word >> ((k * 8) as u32)) & 0xff) as u8
-      k += 1
+    // MD5's digest is little-endian.
+    var hash: u8[16] = ZERO_DIGEST
+    var w: usize = 0
+    while w < 4 {
+        var word = self.state[w]
+        var k: usize = 0
+        while k < 4 {
+            hash[w * 4 + k] = ((word >> ((k * 8) as u32)) & 0xff) as u8
+            k += 1
+        }
+        w += 1
     }
-    w += 1
-  }
-  return hash
+    return hash
 }
 
 export fn sum(data: u8[]): u8[16] {
-  var ctx = init()
-  ctx.update(data)
-  return ctx.final()
+    var ctx = init()
+    ctx.update(data)
+    return ctx.final()
 }

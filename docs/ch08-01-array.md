@@ -53,10 +53,10 @@ var xs = Array<Point>::new(heap())
 defer xs.free()
 xs.push(Point{ x: 1, y: 2 })
 
-println(xs[0].x)     // 1
-xs[0].x = 9          // writes the array
+println(xs[0].x) // 1
+xs[0].x = 9      // writes the array
 xs[1] = Point{ x: 3, y: 4 }
-bump(&xs[0].x)       // a pointer into the buffer
+bump(&xs[0].x) // a pointer into the buffer
 ```
 
 It lowers through `at`, so an index reaches the element where it lies.
@@ -85,7 +85,7 @@ where it came from:
 
 ```gyro
 export fn Stack::view(self): i32[] !{ &self } {
-  return self.items.slice()
+    return self.items.slice()
 }
 ```
 
@@ -97,7 +97,7 @@ Iterating is the same view:
 
 ```gyro
 for value in buf.slice() {
-  println(value)
+    println(value)
 }
 ```
 
@@ -118,11 +118,11 @@ An `Array<T>` returned from a function is the caller's to free:
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new(heap())
-  for value in values {
-    out.push(f(value))
-  }
-  return out
+    var out = Array<i32>::new(heap())
+    for value in values {
+        out.push(f(value))
+    }
+    return out
 }
 
 var doubled = apply([1, 2, 3], fn(x) x * 2)

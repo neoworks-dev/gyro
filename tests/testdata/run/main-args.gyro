@@ -6,17 +6,17 @@ import { println, join, starts_with } from "stdlib"
 import { heap } from "mem"
 
 fn main(args: string[]) {
-  println(args.len())
-  for arg in args {
-    println(arg)
-  }
-  println(join(heap(), args, " "))
-
-  var flags = 0
-  for arg in args {
-    if arg.starts_with("--") {
-      flags += 1
+    println(args.len())
+    for arg in args {
+        println(arg)
     }
-  }
-  println(flags)
+    println(join(heap(), args, " "))
+
+    var flags = 0
+    for arg in args {
+        if arg.starts_with("--") {
+            flags += 1
+        }
+    }
+    println(flags)
 }

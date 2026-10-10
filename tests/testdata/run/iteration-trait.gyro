@@ -4,27 +4,27 @@
 import { println, Iterator } from "stdlib"
 
 struct Counter {
-  n: i32
-  limit: i32
+    n: i32
+    limit: i32
 }
 
 impl Iterator<i32> for Counter {
-  fn next(*self): (i32, bool) {
-    if self.n >= self.limit {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.n >= self.limit {
+            return 0, false
+        }
+        self.n += 1
+        return self.n, true
     }
-    self.n += 1
-    return self.n, true
-  }
 }
 
 fn main() {
-  for x in (Counter{ n: 0, limit: 3 }) {
-    println(x)
-  }
-  var total: i32 = 0
-  for x in (Counter{ n: 0, limit: 4 }) {
-    total += x
-  }
-  println(total)
+    for x in (Counter{ n: 0, limit: 3 }) {
+        println(x)
+    }
+    var total: i32 = 0
+    for x in (Counter{ n: 0, limit: 4 }) {
+        total += x
+    }
+    println(total)
 }

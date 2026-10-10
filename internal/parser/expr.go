@@ -301,14 +301,14 @@ func (p *Parser) tryGenericCall(fun ast.Expr) (*ast.CallExpr, bool) {
 	var typeArgs []ast.TypeArg
 
 	ok := p.trial(func() {
-		p.expect(token.Lt)
+		p.expectAngle(token.Lt)
 		for !p.at(token.Gt) && !p.atEOF() {
 			typeArgs = append(typeArgs, p.parseTypeArg())
 			if !p.accept(token.Comma) {
 				break
 			}
 		}
-		p.expect(token.Gt)
+		p.expectAngle(token.Gt)
 
 		// Without a call the angle brackets were comparisons after all.
 		if !p.at(token.LParen) {
@@ -350,6 +350,7 @@ func (p *Parser) parseTypeArg() ast.TypeArg {
 // parseArgs parses a parenthesized argument list, allowing the named form
 // `@concurrent(threads = 8)`.
 func (p *Parser) parseArgs() []ast.Arg {
+	p.noteList()
 	p.expect(token.LParen)
 
 	var args []ast.Arg
@@ -536,6 +537,7 @@ func (p *Parser) parseTypePath() *ast.Path {
 
 func (p *Parser) parseStructLitBody(typ ast.Type) ast.Expr {
 	lit := &ast.StructLit{Offset: typ.Pos(), Type: typ}
+	p.noteList()
 	p.expect(token.LBrace)
 
 	// `Point{ x: 1 }` names its fields; `Mutex{ 0 }` fills them in
@@ -567,6 +569,7 @@ func (p *Parser) parseStructLitBody(typ ast.Type) ast.Expr {
 
 func (p *Parser) parseArrayLit() ast.Expr {
 	lit := &ast.ArrayLit{Offset: p.offset()}
+	p.noteList()
 	p.expect(token.LBracket)
 
 	p.withStructLits(true, func() {
@@ -650,6 +653,7 @@ func (p *Parser) parseCaptureList() []ast.Capture {
 // parseClosureParams parses a closure's parameter list, where the type
 // annotation is optional because it can come from the expected type.
 func (p *Parser) parseClosureParams() []ast.Param {
+	p.noteList()
 	p.expect(token.LParen)
 
 	var params []ast.Param
@@ -683,9 +687,9 @@ func (p *Parser) parseClosureParams() []ast.Param {
 func (p *Parser) parseChanLit() ast.Expr {
 	lit := &ast.ChanLit{Offset: p.offset()}
 	p.expect(token.Chan)
-	p.expect(token.Lt)
+	p.expectAngle(token.Lt)
 	lit.Elem = p.parseType()
-	p.expect(token.Gt)
+	p.expectAngle(token.Gt)
 
 	p.expect(token.LParen)
 	p.withStructLits(true, func() {

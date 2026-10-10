@@ -8,9 +8,9 @@
 import { println } from "stdlib"
 
 fn main() {
-  var xs = [10, 20, 30, 40, 50]
-  println("before")
-  var at: usize = 9
-  var window = xs[2..at]
-  println(window.len())
+    var xs = [10, 20, 30, 40, 50]
+    println("before")
+    var at: usize = 9
+    var window = xs[2..at]
+    println(window.len())
 }

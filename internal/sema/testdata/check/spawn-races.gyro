@@ -4,73 +4,73 @@ import { println } from "stdlib"
 import { alloc, free, heap, spawn } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 fn sharedPointer(node: *Node) {
-  spawn(heap(), fn() {                   //~ W0801 captures node, so both threads reach the same memory
-    node.value = 1
-  })
+    spawn(heap(), fn() { //~ W0801 captures node, so both threads reach the same memory
+        node.value = 1
+    })
 }
 
 fn sharedSlice(xs: i32[]) {
-  spawn(heap(), fn() {                   //~ W0801 captures xs, so both threads reach the same elements
-    println(xs.len())
-  })
+    spawn(heap(), fn() { //~ W0801 captures xs, so both threads reach the same elements
+        println(xs.len())
+    })
 }
 
 // A nullable pointer is still a pointer.
 fn sharedNullablePointer(node: *Node?) {
-  spawn(heap(), fn() {                   //~ W0801 captures node, so both threads reach the same memory
-    if node != null {
-      println(node.value)
-    }
-  })
+    spawn(heap(), fn() { //~ W0801 captures node, so both threads reach the same memory
+        if node != null {
+            println(node.value)
+        }
+    })
 }
 
 // The pointer reaches the spawned closure through an intermediate one, so
 // both of them capture it.
 fn sharedThroughNesting(node: *Node) {
-  var outer = fn() {
-    spawn(heap(), fn() {                 //~ W0801 captures node
-      node.value = 1
-    })
-  }
-  outer()
+    var outer = fn() {
+        spawn(heap(), fn() { //~ W0801 captures node
+            node.value = 1
+        })
+    }
+    outer()
 }
 
 // Copying a value shares nothing.
 fn copiedValue(n: i32) {
-  spawn(heap(), fn() {
-    println(n)
-  })
+    spawn(heap(), fn() {
+        println(n)
+    })
 }
 
 // A channel is the sanctioned way across.
 fn overAChannel(ch: chan<i32>) {
-  spawn(heap(), fn() {
-    ch <- 1
-  })
+    spawn(heap(), fn() {
+        ch <- 1
+    })
 }
 
 // A move hands the binding over rather than sharing it.
 fn moved() {
-  var node = alloc<Node>(heap())
-  spawn(heap(), fn[move node]() {
-    free(heap(), node)
-  })
+    var node = alloc<Node>(heap())
+    spawn(heap(), fn[move node]() {
+        free(heap(), node)
+    })
 }
 
 fn capturesNothing() {
-  spawn(heap(), fn() {
-    println("hi")
-  })
+    spawn(heap(), fn() {
+        println("hi")
+    })
 }
 
 // Only a spawned closure is reported: an ordinary one runs on this thread.
 fn unspawned(xs: i32[]) {
-  var later = fn() {
-    println(xs.len())
-  }
-  later()
+    var later = fn() {
+        println(xs.len())
+    }
+    later()
 }

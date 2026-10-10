@@ -3,20 +3,20 @@ import { printf, sprintf, eprintf } from "fmt"
 import { heap } from "mem"
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 fn main() {
-  printf("hello %s, you are %d\n", "world", 42)
-  printf("hex %x %X %02x\n", 255, 255, 10)
-  printf("pad |%5d|%-5d|%05d|%8s|\n", 42, 42, 42, "right")
-  printf("char %c%c%c\n", 71, 121, 114)
-  printf("100%% done\n")
-  printf("values %v %v %v\n", true, 3.5, Point{ x: 1, y: 2 })
-  printf("missing %s %s\n", "one")
-  printf("no arguments at all\n")
-  println(sprintf(heap(), "negatives %d %x", -7, -1))
-  println(sprintf(heap(), "widths %x %x", 255 as u8, 65535 as u16))
-  eprintf("to stderr: %d", 1)
+    printf("hello %s, you are %d\n", "world", 42)
+    printf("hex %x %X %02x\n", 255, 255, 10)
+    printf("pad |%5d|%-5d|%05d|%8s|\n", 42, 42, 42, "right")
+    printf("char %c%c%c\n", 71, 121, 114)
+    printf("100%% done\n")
+    printf("values %v %v %v\n", true, 3.5, Point{ x: 1, y: 2 })
+    printf("missing %s %s\n", "one")
+    printf("no arguments at all\n")
+    println(sprintf(heap(), "negatives %d %x", -7, -1))
+    println(sprintf(heap(), "widths %x %x", 255 as u8, 65535 as u16))
+    eprintf("to stderr: %d", 1)
 }

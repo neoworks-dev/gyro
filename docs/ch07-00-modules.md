@@ -10,11 +10,11 @@ marked `export`. Nothing about a name's spelling changes that — there is no
 capitalization rule.
 
 ```gyro
-fn helper() {}            // module-private
-export fn run() {}        // visible to importers
+fn helper() {}     // module-private
+export fn run() {} // visible to importers
 
-export { a, b as c }      // standalone export list
-export { a } from "./m"   // re-export
+export { a, b as c }    // standalone export list
+export { a } from "./m" // re-export
 export * from "./m"
 ```
 

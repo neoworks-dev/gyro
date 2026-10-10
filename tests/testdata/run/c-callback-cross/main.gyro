@@ -13,63 +13,63 @@
 
 import { println } from "stdlib"
 import safe {
-  Rule, count_kept, fold, fold_or, rule_size, apply_rule, adder,
-  round_trip,
+    Rule, count_kept, fold, fold_or, rule_size, apply_rule, adder,
+    round_trip,
 } from "./filter.c"
 
 fn big(v: i32): i32 {
-  if v > 5 { return 1 }
-  return 0
+    if v > 5 { return 1 }
+    return 0
 }
 
 fn small(v: i32): i32 {
-  return 1 - big(v)
+    return 1 - big(v)
 }
 
 fn sum(acc: i32, v: i32): i32 {
-  return acc + v
+    return acc + v
 }
 
 fn largest(acc: i32, v: i32): i32 {
-  if v > acc { return v }
-  return acc
+    if v > acc { return v }
+    return acc
 }
 
 fn main() {
-  // The library's loop, this program's decision.
-  println(count_kept(&big))
-  println(count_kept(&small))
+    // The library's loop, this program's decision.
+    println(count_kept(&big))
+    println(count_kept(&small))
 
-  println(fold(&sum, 0))
-  println(fold(&largest, 0))
+    println(fold(&sum, 0))
+    println(fold(&largest, 0))
 
-  // A callback that is absent, which is a check and not a jump to
-  // address zero.
-  println(fold_or(&sum, 100, -1))
-  println(fold_or(null, 100, -1))
+    // A callback that is absent, which is a check and not a jump to
+    // address zero.
+    println(fold_or(&sum, 100, -1))
+    println(fold_or(null, 100, -1))
 
-  // A struct holding one is the struct C lays out: a padded int beside
-  // a single word.
-  println(rule_size())
-  println(apply_rule(Rule{ code: 7, keep: &big }, 9))
-  println(apply_rule(Rule{ code: 7, keep: &big }, 2))
+    // A struct holding one is the struct C lays out: a padded int beside
+    // a single word.
+    println(rule_size())
+    println(apply_rule(Rule{ code: 7, keep: &big }, 9))
+    println(apply_rule(Rule{ code: 7, keep: &big }, 2))
 
-  // One of the library's own, called from here.
-  var add = adder()
-  if add == null {
-    println("no adder")
-    return
-  }
-  println(add(20, 22))
+    // One of the library's own, called from here.
+    var add = adder()
+    if add == null {
+        println("no adder")
+        return
+    }
+    println(add(20, 22))
 
-  // And handed straight back, which is the same address a third time.
-  println(round_trip(add))
+    // And handed straight back, which is the same address a third time.
+    println(round_trip(add))
 
-  // Two names for one function are one address; two functions are two.
-  println(&sum == &sum)
-  println(&sum == &largest)
+    // Two names for one function are one address; two functions are two.
+    println(&sum == &sum)
+    println(&sum == &largest)
 
-  // What is at the far end is instructions, so what it prints is the
-  // word.
-  println(&sum)
+    // What is at the far end is instructions, so what it prints is the
+    // word.
+    println(&sum)
 }

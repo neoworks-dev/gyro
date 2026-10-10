@@ -9,10 +9,10 @@ with a type that does not provide it is an error at the call.
 import { Ord } from "stdlib"
 
 fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
-  if a > b {
-    return a
-  }
-  return b
+    if a > b {
+        return a
+    }
+    return b
 }
 
 max(3, 7)        // ok: the numbers are Ord
@@ -30,12 +30,12 @@ Several bounds on one parameter are joined with `&`:
 
 ```gyro
 fn count_distinct<K: Eq & Hash>(keys: K[]): usize {
-  var seen = Map<K, bool>::new(heap())
-  defer seen.free()
-  for key in keys {
-    seen.insert(key, true)
-  }
-  return seen.len()
+    var seen = Map<K, bool>::new(heap())
+    defer seen.free()
+    for key in keys {
+        seen.insert(key, true)
+    }
+    return seen.len()
 }
 ```
 
@@ -49,7 +49,7 @@ in a container, and nothing else:
 
 ```gyro
 fn describe<T>(item: T): string {
-  return item.name()      // error: T has no method name
+    return item.name() // error: T has no method name
 }
 ```
 
@@ -85,12 +85,12 @@ the parameter is introduced:
 
 ```gyro
 struct Map<K: Eq & Hash, V> {
-  buckets: Array<Array<(K, V)>>
-  count: usize
+    buckets: Array<Array<(K, V)>>
+    count: usize
 }
 
 fn Map<K, V>::insert(*self, key: K, value: V) {
-  // K is Eq and Hash here, because the type says so
+    // K is Eq and Hash here, because the type says so
 }
 ```
 
@@ -104,14 +104,14 @@ A type whose parameters are only stored needs no bounds:
 
 ```gyro
 struct Pair<T> {
-  first: T
-  second: T
+    first: T
+    second: T
 }
 
 fn Pair<T>::swap(*self) {
-  var tmp = self.first
-  self.first = self.second
-  self.second = tmp
+    var tmp = self.first
+    self.first = self.second
+    self.second = tmp
 }
 
 var p = Pair<i32>{ 1, 2 }
@@ -160,10 +160,10 @@ out to be a view, vacuous where it does not:
 
 ```gyro
 fn pick<T>(a: T, b: T, f: bool): T !{ &a, &b } {
-  if f {
-    return a
-  }
-  return b
+    if f {
+        return a
+    }
+    return b
 }
 
 pick(1, 2, true)        // vacuous: i32 is not a view

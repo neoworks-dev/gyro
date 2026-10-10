@@ -4,14 +4,14 @@
 import { println } from "stdlib"
 
 fn main() {
-  var ch = chan<i32>(1)
-  ch <- 5
-  ch.close()
-  var v, open = <-ch
-  if open {
-    println(v)
-  }
-  println(open)
-  var _, still = <-ch
-  println(still)
+    var ch = chan<i32>(1)
+    ch <- 5
+    ch.close()
+    var v, open = <-ch
+    if open {
+        println(v)
+    }
+    println(open)
+    var _, still = <-ch
+    println(still)
 }

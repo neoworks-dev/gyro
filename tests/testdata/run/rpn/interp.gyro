@@ -12,8 +12,8 @@ import { CalcError } from "./error"
 import { is_number, words_of } from "./text"
 import { Calc } from "./machine"
 import {
-  is_binary, is_compare, is_unary, is_stack_word, is_constant,
-  binary, compare, unary, stack_word, constant,
+    is_binary, is_compare, is_unary, is_stack_word, is_constant,
+    binary, compare, unary, stack_word, constant,
 } from "./builtins"
 import { save, read_source } from "./persist"
 import { heap, format } from "mem"
@@ -24,55 +24,55 @@ import { heap, format } from "mem"
 export const MAX_DEPTH: i32 = 64
 
 export fn run(calc: *Calc, words: string[], depth: i32): error? {
-  var i: usize = 0
-  while i < words.len() {
-    var word = words[i]
-    i += 1
+    var i: usize = 0
+    while i < words.len() {
+        var word = words[i]
+        i += 1
 
-    if word == ":" {
-      var after, err = define_from(calc, words, i)
-      if err != null {
-        return err
-      }
-      i = after
-      continue
-    }
-    if word == "if" {
-      var after, err = branch(calc, words, i, depth)
-      if err != null {
-        return err
-      }
-      i = after
-      continue
-    }
-    if word == "else" || word == "then" {
-      return CalcError{ text: format(heap(), "#{word} without a matching if") }
-    }
-    if word == ";" {
-      return CalcError{ text: "; without a definition to end" }
-    }
-    if word == "save" || word == "load" || word == "forget" {
-      if i >= words.len() {
-        return CalcError{ text: format(heap(), "#{word} wants a name") }
-      }
-      var argument = words[i]
-      i += 1
-      var err = named(calc, word, argument, depth)
-      if err != null {
-        return err
-      }
-      continue
-    }
+        if word == ":" {
+            var after, err = define_from(calc, words, i)
+            if err != null {
+                return err
+            }
+            i = after
+            continue
+        }
+        if word == "if" {
+            var after, err = branch(calc, words, i, depth)
+            if err != null {
+                return err
+            }
+            i = after
+            continue
+        }
+        if word == "else" || word == "then" {
+            return CalcError{ text: format(heap(), "#{word} without a matching if") }
+        }
+        if word == ";" {
+            return CalcError{ text: "; without a definition to end" }
+        }
+        if word == "save" || word == "load" || word == "forget" {
+            if i >= words.len() {
+                return CalcError{ text: format(heap(), "#{word} wants a name") }
+            }
+            var argument = words[i]
+            i += 1
+            var err = named(calc, word, argument, depth)
+            if err != null {
+                return err
+            }
+            continue
+        }
 
-    var err = execute(calc, word, depth)
-    if err != null {
-      return err
+        var err = execute(calc, word, depth)
+        if err != null {
+            return err
+        }
+        if calc.done {
+            return null
+        }
     }
-    if calc.done {
-      return null
-    }
-  }
-  return null
+    return null
 }
 
 // ---------------------------------------------------------------------------
@@ -84,32 +84,32 @@ export fn run(calc: *Calc, words: string[], depth: i32): error? {
 // started on, which is what keeps a line the unit that either happened or
 // did not.
 fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
-  if at >= words.len() {
-    return at, CalcError{ text: ": wants a name" }
-  }
-  var name = words[at]
-  var i = at + 1
-  if is_number(name) {
-    return i, CalcError{ text: format(heap(), "#{name} is a number and cannot be a word") }
-  }
-
-  var body = Array<string>::new(heap())
-  var closed = false
-  while i < words.len() {
-    var part = words[i]
-    i += 1
-    if part == ";" {
-      closed = true
-      break
+    if at >= words.len() {
+        return at, CalcError{ text: ": wants a name" }
     }
-    body.push(part)
-  }
-  if !closed {
-    body.free()
-    return i, CalcError{ text: format(heap(), "the definition of #{name} has no ;") }
-  }
-  calc.define(name, body)
-  return i, null
+    var name = words[at]
+    var i = at + 1
+    if is_number(name) {
+        return i, CalcError{ text: format(heap(), "#{name} is a number and cannot be a word") }
+    }
+
+    var body = Array<string>::new(heap())
+    var closed = false
+    while i < words.len() {
+        var part = words[i]
+        i += 1
+        if part == ";" {
+            closed = true
+            break
+        }
+        body.push(part)
+    }
+    if !closed {
+        body.free()
+        return i, CalcError{ text: format(heap(), "the definition of #{name} has no ;") }
+    }
+    calc.define(name, body)
+    return i, null
 }
 
 // ---------------------------------------------------------------------------
@@ -120,58 +120,58 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
 // past the `then`. The condition is already on the stack — `if` pops it —
 // so `3 4 < if ... then` reads the way it is spoken.
 fn branch(calc: *Calc, words: string[], at: usize, depth: i32): (usize, error?) {
-  var condition, err = calc.pop("if")
-  if err != null {
-    return at, err
-  }
-
-  var otherwise, end, missing = find_branch(words, at)
-  if missing != null {
-    return at, missing
-  }
-
-  if condition != 0.0 {
-    var taken = run(calc, words[at..otherwise], depth)
-    if taken != null {
-      return end + 1, taken
+    var condition, err = calc.pop("if")
+    if err != null {
+        return at, err
     }
-  } elif otherwise != end {
-    var taken = run(calc, words[otherwise + 1..end], depth)
-    if taken != null {
-      return end + 1, taken
+
+    var otherwise, end, missing = find_branch(words, at)
+    if missing != null {
+        return at, missing
     }
-  }
-  return end + 1, null
+
+    if condition != 0.0 {
+        var taken = run(calc, words[at..otherwise], depth)
+        if taken != null {
+            return end + 1, taken
+        }
+    } elif otherwise != end {
+        var taken = run(calc, words[otherwise + 1..end], depth)
+        if taken != null {
+            return end + 1, taken
+        }
+    }
+    return end + 1, null
 }
 
 // find_branch answers where the arms of an `if` end: the `else` and the
 // `then`, or the `then` twice when there is no else. An `if` inside an arm
 // is skipped rather than matched.
 fn find_branch(words: string[], at: usize): (usize, usize, error?) {
-  var nesting = 0
-  var otherwise = at
-  var seen = false
-  var i = at
+    var nesting = 0
+    var otherwise = at
+    var seen = false
+    var i = at
 
-  while i < words.len() {
-    var word = words[i]
-    if word == "if" {
-      nesting += 1
-    } elif word == "then" {
-      if nesting == 0 {
-        if !seen {
-          otherwise = i
+    while i < words.len() {
+        var word = words[i]
+        if word == "if" {
+            nesting += 1
+        } elif word == "then" {
+            if nesting == 0 {
+                if !seen {
+                    otherwise = i
+                }
+                return otherwise, i, null
+            }
+            nesting -= 1
+        } elif word == "else" && nesting == 0 && !seen {
+            otherwise = i
+            seen = true
         }
-        return otherwise, i, null
-      }
-      nesting -= 1
-    } elif word == "else" && nesting == 0 && !seen {
-      otherwise = i
-      seen = true
+        i += 1
     }
-    i += 1
-  }
-  return at, at, CalcError{ text: "if without a then" }
+    return at, at, CalcError{ text: "if without a then" }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,39 +179,39 @@ fn find_branch(words: string[], at: usize): (usize, usize, error?) {
 // ---------------------------------------------------------------------------
 
 fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
-  if word == "forget" {
-    if !calc.forget(argument) {
-      return CalcError{ text: format(heap(), "there is no word \"#{argument}\" to forget") }
+    if word == "forget" {
+        if !calc.forget(argument) {
+            return CalcError{ text: format(heap(), "there is no word \"#{argument}\" to forget") }
+        }
+        return null
     }
-    return null
-  }
-  if word == "save" {
-    var err = save(calc, argument)
+    if word == "save" {
+        var err = save(calc, argument)
+        if err != null {
+            return err
+        }
+        println("saved to #{argument}")
+        return null
+    }
+
+    // Loading is running: what save wrote is a program in this language.
+    var source, err = read_source(argument)
     if err != null {
-      return err
+        return err
     }
-    println("saved to #{argument}")
+    var lines = source.split(heap(), "\n")
+    defer lines.free()
+
+    for line in lines.slice() {
+        var words = words_of(line)
+        var failed = run(calc, words.slice(), depth + 1)
+        words.free()
+        if failed != null {
+            return failed
+        }
+    }
+    println("loaded #{argument}")
     return null
-  }
-
-  // Loading is running: what save wrote is a program in this language.
-  var source, err = read_source(argument)
-  if err != null {
-    return err
-  }
-  var lines = source.split(heap(), "\n")
-  defer lines.free()
-
-  for line in lines.slice() {
-    var words = words_of(line)
-    var failed = run(calc, words.slice(), depth + 1)
-    words.free()
-    if failed != null {
-      return failed
-    }
-  }
-  println("loaded #{argument}")
-  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -219,85 +219,85 @@ fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
 // ---------------------------------------------------------------------------
 
 export fn execute(calc: *Calc, word: string, depth: i32): error? {
-  if is_number(word) {
-    var value, err = to_f64(word)
-    if err != null {
-      return err
+    if is_number(word) {
+        var value, err = to_f64(word)
+        if err != null {
+            return err
+        }
+        calc.push(value)
+        return null
     }
-    calc.push(value)
-    return null
-  }
 
-  // The comparisons come before the store, so `>` and `>=` stay operators
-  // and only a longer word beginning with `>` is a name.
-  if is_compare(word) {
-    return compare(calc, word)
-  }
-  if word.starts_with(">") && word.len() > 1 {
-    var value, err = calc.pop(word)
-    if err != null {
-      return err
+    // The comparisons come before the store, so `>` and `>=` stay operators
+    // and only a longer word beginning with `>` is a name.
+    if is_compare(word) {
+        return compare(calc, word)
     }
-    calc.store(word.substring(heap(), 1, word.len()), value)
-    return null
-  }
-
-  if is_binary(word) {
-    return binary(calc, word)
-  }
-  if is_unary(word) {
-    return unary(calc, word)
-  }
-  if is_stack_word(word) {
-    return stack_word(calc, word)
-  }
-  if is_constant(word) {
-    constant(calc, word)
-    return null
-  }
-
-  if word == "words" {
-    calc.list_words()
-    return null
-  }
-  if word == "vars" {
-    calc.list_vars()
-    return null
-  }
-  if word == "help" {
-    print_help()
-    return null
-  }
-  if word == "quit" {
-    calc.done = true
-    return null
-  }
-
-  var body = calc.body_of(word)
-  if body != null {
-    if depth >= MAX_DEPTH {
-      return CalcError{ text: format(heap(), "#{word} calls too deep (#{MAX_DEPTH} words)") }
+    if word.starts_with(">") && word.len() > 1 {
+        var value, err = calc.pop(word)
+        if err != null {
+            return err
+        }
+        calc.store(word.substring(heap(), 1, word.len()), value)
+        return null
     }
-    return run(calc, body.slice(), depth + 1)
-  }
 
-  var value = calc.recall(word)
-  if value != null {
-    calc.push(value)
-    return null
-  }
+    if is_binary(word) {
+        return binary(calc, word)
+    }
+    if is_unary(word) {
+        return unary(calc, word)
+    }
+    if is_stack_word(word) {
+        return stack_word(calc, word)
+    }
+    if is_constant(word) {
+        constant(calc, word)
+        return null
+    }
 
-  return CalcError{ text: format(heap(), "unknown word \"#{word}\"") }
+    if word == "words" {
+        calc.list_words()
+        return null
+    }
+    if word == "vars" {
+        calc.list_vars()
+        return null
+    }
+    if word == "help" {
+        print_help()
+        return null
+    }
+    if word == "quit" {
+        calc.done = true
+        return null
+    }
+
+    var body = calc.body_of(word)
+    if body != null {
+        if depth >= MAX_DEPTH {
+            return CalcError{ text: format(heap(), "#{word} calls too deep (#{MAX_DEPTH} words)") }
+        }
+        return run(calc, body.slice(), depth + 1)
+    }
+
+    var value = calc.recall(word)
+    if value != null {
+        calc.push(value)
+        return null
+    }
+
+    return CalcError{ text: format(heap(), "unknown word \"#{word}\"") }
 }
 
 export fn print_help() {
-  println("values    3  -2  1.5   push themselves, and # comments a line")
-  println("math      + - * / % ^   min max   pi e")
-  println("          neg abs sqrt floor ceil round trunc")
-  println("compare   = <> < <= > >=   and or not, answering 1 or 0")
-  println("stack     dup drop swap over rot clear depth")
-  println("names     >x stores the top in x, x pushes it back")
-  println("words     : name body ;   words lists, forget name drops one")
-  println("choose    cond if ... else ... then")
-  println("session   save path, load path, quit")
+    println("values    3  -2  1.5   push themselves, and # comments a line")
+    println("math      + - * / % ^   min max   pi e")
+    println("          neg abs sqrt floor ceil round trunc")
+    println("compare   = <> < <= > >=   and or not, answering 1 or 0")
+    println("stack     dup drop swap over rot clear depth")
+    println("names     >x stores the top in x, x pushes it back")
+    println("words     : name body ;   words lists, forget name drops one")
+    println("choose    cond if ... else ... then")
+    println("session   save path, load path, quit")
 }
