@@ -610,3 +610,145 @@ func TestMetalsDiagnostics(t *testing.T) {
 		t.Fatal("the verifier should reject the unassigned registers")
 	}
 }
+
+const referencesSource = `import { println } from "stdlib"
+
+struct Counter {
+  count: i32
+}
+
+fn Counter::bump(*self, by: i32) {
+  self.count += by
+}
+
+trait Shape {
+  fn area(self): i32
+}
+
+struct Square {
+  side: i32
+}
+
+impl Shape for Square {
+  fn area(self): i32 {
+    var length = self.side
+    return length * length
+  }
+}
+
+fn main() {
+  var counter = Counter{ count: 0 }
+  counter.bump(1)
+  counter.bump(2)
+  var square = Square{ side: 3 }
+  println(square.area())
+}
+`
+
+// references asks for the references at needle and returns where they
+// start, as byte offsets into text.
+func (c *client) references(uri, text, needle string, includeDeclaration bool) map[string][]int {
+	c.t.Helper()
+	result := c.call("textDocument/references", fmt.Sprintf(
+		`{"textDocument":{"uri":%q},"position":%s,"context":{"includeDeclaration":%t}}`,
+		uri, position(c.t, text, needle), includeDeclaration))
+	var locations []Location
+	if err := json.Unmarshal(result, &locations); err != nil {
+		c.t.Fatalf("bad references %s: %v", result, err)
+	}
+	found := map[string][]int{}
+	for _, location := range locations {
+		found[location.URI] = append(found[location.URI], offsetFor(text, location.Range.Start))
+	}
+	return found
+}
+
+// offsetsOf is where each needle starts in text.
+func offsetsOf(t *testing.T, text string, needles ...string) []int {
+	t.Helper()
+	var offsets []int
+	for _, needle := range needles {
+		at := strings.Index(text, needle)
+		if at < 0 {
+			t.Fatalf("needle %q not found", needle)
+		}
+		offsets = append(offsets, at)
+	}
+	return offsets
+}
+
+func TestReferences(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", referencesSource)
+	c.open(uri, referencesSource)
+	c.waitDiagnostics(uri)
+
+	cases := []struct {
+		name, needle       string
+		includeDeclaration bool
+		want               []string
+	}{
+		{"a method from its declaration", "bump(*self", true,
+			[]string{"bump(*self", "bump(1)", "bump(2)"}},
+		{"a method from a call", "bump(2)", false,
+			[]string{"bump(1)", "bump(2)"}},
+		{"a parameter", "by: i32", true,
+			[]string{"by: i32", "by\n"}},
+		{"a local in an impl body", "length * length", true,
+			[]string{"length = self", "length * length", "length\n  }"}},
+		{"a trait method called on its implementer", "area())", true,
+			[]string{"area(self): i32 {", "area())"}},
+		{"a struct, not its fields", "Square{", true,
+			[]string{"Square {\n  side", "Square {\n  fn", "Square{"}},
+		{"a trait", "Shape for", true,
+			[]string{"Shape {", "Shape for"}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got := c.references(uri, referencesSource, test.needle, test.includeDeclaration)
+			want := offsetsOf(t, referencesSource, test.want...)
+			if fmt.Sprint(got[uri]) != fmt.Sprint(want) || len(got) != 1 {
+				t.Fatalf("references at %q: got %v, want %v", test.needle, got, want)
+			}
+		})
+	}
+}
+
+func TestReferencesAcrossOpenFiles(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+
+	directory := t.TempDir()
+	library := "export fn helper(): i32 {\n  return 4\n}\n"
+	libraryPath := filepath.Join(directory, "lib.gyro")
+	source := "import { helper } from \"./lib\"\n\nfn main() {\n  var x = helper()\n  var y = helper()\n}\n"
+	mainPath := filepath.Join(directory, "main.gyro")
+	for path, text := range map[string]string{libraryPath: library, mainPath: source} {
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	libraryURI, mainURI := uriFromPath(libraryPath), uriFromPath(mainPath)
+	c.open(libraryURI, library)
+	c.waitDiagnostics(libraryURI)
+	c.open(mainURI, source)
+	c.waitDiagnostics(mainURI)
+
+	result := c.call("textDocument/references", fmt.Sprintf(
+		`{"textDocument":{"uri":%q},"position":%s,"context":{"includeDeclaration":true}}`,
+		libraryURI, position(t, library, "helper")))
+	var locations []Location
+	if err := json.Unmarshal(result, &locations); err != nil {
+		t.Fatalf("bad references %s: %v", result, err)
+	}
+	var got []string
+	for _, location := range locations {
+		got = append(got, fmt.Sprintf("%s:%d:%d", filepath.Base(pathFromURI(location.URI)),
+			location.Range.Start.Line, location.Range.Start.Character))
+	}
+	want := []string{"lib.gyro:0:10", "main.gyro:3:10", "main.gyro:4:10"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

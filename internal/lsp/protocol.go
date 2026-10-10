@@ -50,6 +50,7 @@ type serverCapabilities struct {
 	TextDocumentSync       textDocumentSyncOptions `json:"textDocumentSync"`
 	HoverProvider          bool                    `json:"hoverProvider"`
 	DefinitionProvider     bool                    `json:"definitionProvider"`
+	ReferencesProvider     bool                    `json:"referencesProvider"`
 	DocumentSymbolProvider bool                    `json:"documentSymbolProvider"`
 	InlayHintProvider      bool                    `json:"inlayHintProvider"`
 	CompletionProvider     *completionOptions      `json:"completionProvider,omitempty"`
@@ -112,6 +113,14 @@ type textDocumentPositionParams struct {
 	Position     Position               `json:"position"`
 }
 
+type referenceParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	Context      struct {
+		IncludeDeclaration bool `json:"includeDeclaration"`
+	} `json:"context"`
+}
+
 type markupContent struct {
 	Kind  string `json:"kind"`
 	Value string `json:"value"`
@@ -151,16 +160,17 @@ type documentSymbol struct {
 // --- completion ----------------------------------------------------------------
 
 const (
-	completionKindMethod   = 2
-	completionKindFunction = 3
-	completionKindField    = 5
-	completionKindVariable = 6
-	completionKindStruct   = 7
-	completionKindModule   = 9
-	completionKindEnum     = 13
-	completionKindKeyword  = 14
-	completionKindConstant = 21
-	completionKindEnumCase = 20
+	completionKindMethod    = 2
+	completionKindFunction  = 3
+	completionKindField     = 5
+	completionKindVariable  = 6
+	completionKindStruct    = 7
+	completionKindInterface = 8
+	completionKindModule    = 9
+	completionKindEnum      = 13
+	completionKindKeyword   = 14
+	completionKindConstant  = 21
+	completionKindEnumCase  = 20
 )
 
 type completionParams struct {

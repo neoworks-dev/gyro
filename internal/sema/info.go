@@ -18,8 +18,8 @@ type Info struct {
 	// them; the reader applies types.Default. Expressions inside a
 	// generic body are recorded per instantiation in Instances.
 	Types map[ast.Expr]types.Type
-	// Refs maps an identifier or path in value position to the
-	// declaration it resolved to.
+	// Refs maps an identifier or path in value position, and the path
+	// naming a type or a trait, to the declaration it resolved to.
 	Refs map[ast.Expr]ast.Node
 	// Calls maps each call expression to what it invokes.
 	Calls map[*ast.CallExpr]*CallInfo

@@ -60,13 +60,17 @@ type index struct {
 	declSites map[ast.Node]site
 	bindings  []binding
 	topLevel  []topDecl
+	// methodCalls maps the selector of `value.method(...)` to its call,
+	// which is where sema records the method the call resolved to.
+	methodCalls map[*ast.SelectorExpr]*ast.CallExpr
 }
 
 func buildIndex(program *loader.Program) *index {
 	idx := &index{
-		program:   program,
-		src:       program.Root.File.Src,
-		declSites: map[ast.Node]site{},
+		program:     program,
+		src:         program.Root.File.Src,
+		declSites:   map[ast.Node]site{},
+		methodCalls: map[*ast.SelectorExpr]*ast.CallExpr{},
 	}
 
 	for _, module := range program.Modules {
@@ -117,6 +121,7 @@ func (idx *index) indexDeclSites(module *loader.Module) {
 		case *ast.TraitDecl:
 			start, end := findName(src, d.Offset, d.Name)
 			idx.declSites[d] = site{module, start, end}
+			idx.indexMethodSites(module, d.Methods)
 		case *ast.VarDecl:
 			if len(d.Names) > 0 {
 				name := d.Names[0]
@@ -126,6 +131,15 @@ func (idx *index) indexDeclSites(module *loader.Module) {
 	}
 	for _, imp := range module.Tree.Imports {
 		idx.declSites[imp] = site{module, imp.Offset, imp.Offset + len("import")}
+	}
+}
+
+// indexMethodSites records the methods declared inside a trait or an impl
+// block, which are not top-level declarations of their own.
+func (idx *index) indexMethodSites(module *loader.Module, methods []*ast.FuncDecl) {
+	for _, method := range methods {
+		start, end := findName(module.File.Src, method.Offset, method.Name)
+		idx.declSites[method] = site{module, start, end}
 	}
 }
 
@@ -212,27 +226,25 @@ func (idx *index) addModuleBinding(name string, kind int, owner ast.Node) {
 func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 	switch d := decl.(type) {
 	case *ast.FuncDecl:
+		idx.addModuleBinding(d.Name, completionKindFunction, d)
+		idx.indexFunc(d, regionStart, regionEnd)
+
+	case *ast.TraitDecl:
 		start, end := findName(idx.src, d.Offset, d.Name)
 		idx.anchors = append(idx.anchors, anchor{start: start, end: end, name: d.Name, decl: d})
-		idx.addModuleBinding(d.Name, completionKindFunction, d)
-		for _, param := range d.Params {
-			idx.anchors = append(idx.anchors, anchor{
-				start: param.Offset, end: param.Offset + len(param.Name),
-				name: param.Name, decl: d, localOwner: d,
-			})
-			idx.bindings = append(idx.bindings, binding{
-				name: param.Name, kind: completionKindVariable, owner: d,
-				visibleFrom: param.Offset, regionStart: regionStart, regionEnd: regionEnd,
-			})
-			idx.indexType(param.Type)
-			idx.indexExpr(param.Default, d, regionStart, regionEnd)
+		idx.addModuleBinding(d.Name, completionKindInterface, d)
+		for _, super := range d.Supers {
+			idx.indexType(super)
 		}
-		for _, result := range d.Results {
-			idx.indexType(result)
+		for _, method := range d.Methods {
+			idx.indexFunc(method, regionStart, regionEnd)
 		}
-		if d.Body != nil {
-			idx.indexBlock(d.Body, d, regionStart, regionEnd)
-		}
+
+	case *ast.ImplDecl:
+		// The parser lists an impl's methods as declarations of their own,
+		// so only the impl's header is left to anchor here.
+		idx.indexType(d.Trait)
+		idx.indexType(d.For)
 
 	case *ast.StructDecl:
 		start, end := findName(idx.src, d.Offset, d.Name)
@@ -267,6 +279,30 @@ func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 	case *ast.ExportDecl:
 		// Export lists name module-level declarations that are anchored at
 		// their definitions.
+	}
+}
+
+// indexFunc anchors a function's name, its parameters and its body.
+func (idx *index) indexFunc(d *ast.FuncDecl, regionStart, regionEnd int) {
+	start, end := findName(idx.src, d.Offset, d.Name)
+	idx.anchors = append(idx.anchors, anchor{start: start, end: end, name: d.Name, decl: d})
+	for _, param := range d.Params {
+		idx.anchors = append(idx.anchors, anchor{
+			start: param.Offset, end: param.Offset + len(param.Name),
+			name: param.Name, decl: d, localOwner: d,
+		})
+		idx.bindings = append(idx.bindings, binding{
+			name: param.Name, kind: completionKindVariable, owner: d,
+			visibleFrom: param.Offset, regionStart: regionStart, regionEnd: regionEnd,
+		})
+		idx.indexType(param.Type)
+		idx.indexExpr(param.Default, d, regionStart, regionEnd)
+	}
+	for _, result := range d.Results {
+		idx.indexType(result)
+	}
+	if d.Body != nil {
+		idx.indexBlock(d.Body, d, regionStart, regionEnd)
 	}
 }
 
@@ -448,6 +484,9 @@ func (idx *index) indexExpr(expr ast.Expr, enclosing ast.Node, regionStart, regi
 		idx.indexExpr(e.X, enclosing, regionStart, regionEnd)
 		idx.indexExpr(e.Y, enclosing, regionStart, regionEnd)
 	case *ast.CallExpr:
+		if selector, ok := e.Fun.(*ast.SelectorExpr); ok {
+			idx.methodCalls[selector] = e
+		}
 		idx.indexExpr(e.Fun, enclosing, regionStart, regionEnd)
 		for _, arg := range e.TypeArgs {
 			idx.indexType(arg.Type)

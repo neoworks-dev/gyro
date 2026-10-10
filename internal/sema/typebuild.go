@@ -412,6 +412,7 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 		return types.Unknown
 	}
 
+	c.recordRef(t.Path, sym.decl)
 	return c.applyTypeArgs(sym.typ, head.Offset, c.resolveTypeArgs(head.Args))
 }
 
