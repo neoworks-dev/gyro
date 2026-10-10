@@ -335,6 +335,15 @@ func (p *parser) topLevel(out *unit) {
 // `typedef struct { ... } Point;` idiom produce a `%Point` record and
 // not an anonymous one.
 func (p *parser) defineTypedef(name string, typ *ctype, pos position) {
+	// In a header, the types C uses for sizes and addresses are the
+	// pointer-sized integer METALS has a name for, so a prototype that
+	// says size_t is a signature that says usize. Everything else about
+	// the type is unsigned long's.
+	if p.tolerant && (name == "size_t" || name == "uintptr_t") && typ.kind == kULong && !typ.usize {
+		clone := *typ
+		clone.usize = true
+		typ = &clone
+	}
 	if typ.isMembered() && strings.HasPrefix(typ.tag, p.stem+"$anon") {
 		delete(p.structs, typ.tag)
 		typ.tag = name

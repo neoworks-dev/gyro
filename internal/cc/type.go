@@ -45,6 +45,9 @@ const (
 
 type ctype struct {
 	kind typeKind
+	// usize marks an unsigned long that a header called size_t, which
+	// METALS spells with its own pointer-sized type.
+	usize bool
 	// elem is a pointer's target or an array's element type.
 	elem *ctype
 	// length is an array's element count, or -1 for the unspecified
@@ -381,6 +384,9 @@ func (t *ctype) metalsType() metals.Type {
 	case kLong:
 		return metals.TInt64
 	case kULong:
+		if t.usize {
+			return metals.TUsize
+		}
 		return metals.TUint64
 	case kFloat:
 		return metals.TF32

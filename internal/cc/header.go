@@ -28,9 +28,9 @@ import (
 type HeaderRequest struct {
 	// Module is the METALS name the header's types are declared under.
 	Module string
-	// Include is the text of the `#include` that reads it, brackets or
-	// quotes included: `<SDL3/SDL.h>`.
-	Include string
+	// Source is the translation unit that reads the headers: a line of
+	// `#include` for each.
+	Source string
 	// Names are the identifiers the import lists.
 	Names []string
 	// Options carry the include path, the definitions and the library.
@@ -79,7 +79,7 @@ func ReadHeader(req HeaderRequest) (*Header, error) {
 	opt.Declarations = true
 
 	file := "<" + req.Module + ">"
-	toks, pp, err := preprocessKeeping(file, "#include "+req.Include+"\n", opt)
+	toks, pp, err := preprocessKeeping(file, req.Source, opt)
 	if err != nil {
 		return nil, err
 	}

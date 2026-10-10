@@ -26,6 +26,14 @@ import (
 // in the one place it uses it. `<path>` is a header on the system's
 // include path, which is the C library's and the compiler's.
 //
+// All the headers of one library are one translation unit, as they are to
+// a C compiler: `<stdlib.h>` and `<arpa/inet.h>` are read together, so a
+// struct they both mention is one struct, and so are the headers of one
+// package. That is why the module an import gets is keyed by the library
+// and not by the specifier — two specifiers of one library are two doors
+// into one module. The cost is that a name is found if any header of the
+// library declares it, whichever one the import said.
+//
 // What crosses is what the import names. A header like <SDL3/SDL.h>
 // declares two thousand things, and a program that imports three of them
 // gets those three and whatever their signatures mention, not a Gyro copy
@@ -45,8 +53,11 @@ func isHeaderSpecifier(spec string) bool {
 // out of it is the union of what every importer names.
 type headerImport struct {
 	module *Module
-	spec   string
-	names  []string
+	// library is the pkg-config package, or "c" for the system's headers.
+	library string
+	// includes are the headers imported, in the order they were first named.
+	includes []string
+	names    []string
 	sites  map[string][]site
 	// wildcard is where an import took the whole header, which no import
 	// of one may.
@@ -70,14 +81,31 @@ func (h *headerImport) add(name string, at site) {
 // first time any module names it.
 func (s *loadState) headerDependency(from *Module, spec string, offset int, names []ast.ImportName, wildcard bool) {
 	here := site{from: from, offset: offset}
-	imp := s.headers[spec]
+	library, include, err := splitHeader(spec)
+	if err != nil {
+		s.bag.Add(diag.Diagnostic{
+			Severity: diag.SeverityError,
+			Code:     diag.EModuleUnreadable,
+			Pos:      from.File.Position(offset),
+			Message:  err.Error(),
+		})
+		return
+	}
+	imp := s.headers[library]
 	if imp == nil {
-		module := &Module{Path: spec, Deps: map[string]*Module{}}
-		imp = &headerImport{module: module, spec: spec, sites: map[string][]site{}, first: here}
-		s.headers[spec] = imp
-		s.modules[spec] = module
+		module := &Module{Path: library, Deps: map[string]*Module{}}
+		imp = &headerImport{module: module, library: library, sites: map[string][]site{}, first: here}
+		s.headers[library] = imp
+		s.modules[library] = module
 		s.order = append(s.order, module)
 		s.pending = append(s.pending, imp)
+	}
+	known := false
+	for _, have := range imp.includes {
+		known = known || have == include
+	}
+	if !known {
+		imp.includes = append(imp.includes, include)
 	}
 	if wildcard && imp.wildcard == nil {
 		imp.wildcard = &here
@@ -97,8 +125,8 @@ func (s *loadState) finishHeaders() {
 }
 
 func (s *loadState) readHeader(imp *headerImport) {
-	imp.module.File = diag.NewFile(imp.spec, "")
-	imp.module.Tree = &ast.File{Name: imp.spec}
+	imp.module.File = diag.NewFile(imp.library, "")
+	imp.module.Tree = &ast.File{Name: imp.library}
 	s.bag.Track(imp.module.File)
 
 	report := func(at site, code diag.Code, format string, args ...any) {
@@ -112,11 +140,11 @@ func (s *loadState) readHeader(imp *headerImport) {
 
 	if imp.wildcard != nil {
 		report(*imp.wildcard, diag.EHeaderName,
-			"%s declares more than a program wants; name what is imported from a header: import { name } from %q", imp.spec, imp.spec)
+			"a header declares more than a program wants; name what is imported from it: import { name } from \"<header>\"")
 		return
 	}
 
-	request, err := headerRequest(imp.spec, imp.names)
+	request, err := headerRequest(imp.library, imp.includes, imp.names)
 	if err != nil {
 		report(imp.first, diag.EModuleUnreadable, "%v", err)
 		return
@@ -127,7 +155,7 @@ func (s *loadState) readHeader(imp *headerImport) {
 		return
 	}
 	if err := metals.Verify(header.Module); err != nil {
-		report(imp.first, diag.EModuleUnreadable, "%s does not verify: %v", imp.spec, err)
+		report(imp.first, diag.EModuleUnreadable, "%s does not verify: %v", imp.library, err)
 		return
 	}
 
@@ -150,27 +178,37 @@ func (s *loadState) readHeader(imp *headerImport) {
 	}
 
 	module := imp.module
-	module.File = diag.NewFile(displayPath(imp.spec), text)
+	module.File = diag.NewFile(imp.library, text)
 	s.bag.Track(module.File)
 	module.Foreign = header.Module
 	module.Tree = parser.ParseForeign(module.File, s.bag)
 }
 
-// headerRequest turns a specifier into the include text, the directories
-// to search and the library its functions are linked from.
-func headerRequest(spec string, names []string) (cc.HeaderRequest, error) {
+// splitHeader says which library a specifier belongs to and what to
+// `#include` to read it. The library of a package is the module the
+// package's functions are linked from, and "c" is the system's.
+func splitHeader(spec string) (library, include string, err error) {
+	if !strings.HasPrefix(spec, headerPrefix) {
+		return "c", spec, nil
+	}
+	pkg, path, ok := strings.Cut(strings.TrimPrefix(spec, headerPrefix), "/")
+	if !ok || pkg == "" || path == "" {
+		return "", "", fmt.Errorf("%q does not name a header inside a package: write pkg:<package>/<path>", spec)
+	}
+	return headerPrefix + pkg, "<" + path + ">", nil
+}
+
+// headerRequest builds the read of one library's headers: the include
+// directories and definitions its package asks for, ahead of the
+// system's, and the library its functions are linked from.
+func headerRequest(library string, includes, names []string) (cc.HeaderRequest, error) {
 	system, err := cc.SystemInclude()
 	if err != nil {
 		return cc.HeaderRequest{}, err
 	}
 	opt := &cc.Options{}
 
-	var include string
-	if strings.HasPrefix(spec, headerPrefix) {
-		pkg, path, ok := strings.Cut(strings.TrimPrefix(spec, headerPrefix), "/")
-		if !ok || pkg == "" || path == "" {
-			return cc.HeaderRequest{}, fmt.Errorf("%q does not name a header inside a package: write pkg:<package>/<path>", spec)
-		}
+	if pkg, isPackage := strings.CutPrefix(library, headerPrefix); isPackage {
 		dirs, defines, err := pkgConfigFlags(pkg)
 		if err != nil {
 			return cc.HeaderRequest{}, err
@@ -178,15 +216,16 @@ func headerRequest(spec string, names []string) (cc.HeaderRequest, error) {
 		opt.Include = append(opt.Include, dirs...)
 		opt.Define = append(opt.Define, defines...)
 		opt.Package = pkg
-		include = "<" + path + ">"
-	} else {
-		include = spec
 	}
 	opt.Include = append(opt.Include, system...)
 
+	var source strings.Builder
+	for _, include := range includes {
+		fmt.Fprintf(&source, "#include %s\n", include)
+	}
 	return cc.HeaderRequest{
-		Module:  "cc:" + spec,
-		Include: include,
+		Module:  "cc:" + library,
+		Source:  source.String(),
 		Names:   names,
 		Options: opt,
 	}, nil

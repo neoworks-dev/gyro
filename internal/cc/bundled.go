@@ -31,6 +31,18 @@ var bundled = map[string]string{
 	"float.h":   floatH,
 }
 
+func init() {
+	// The vector intrinsics are the compiler's, and a header that includes
+	// them wants the functions for the inline code it ships. That code is
+	// not compiled here, so an include that finds nothing is all it needs.
+	for _, name := range []string{
+		"immintrin.h", "x86intrin.h", "mmintrin.h", "xmmintrin.h", "emmintrin.h",
+		"pmmintrin.h", "tmmintrin.h", "smmintrin.h", "nmmintrin.h", "wmmintrin.h",
+	} {
+		bundled[name] = "/* the compiler's vector intrinsics: none are compiled here */\n"
+	}
+}
+
 // stdarg.h. `va_list` is an array of one struct for the reason glibc's
 // is: naming one decays to a pointer, so `vprintf(fmt, ap)` advances the
 // cursor the caller declared rather than a copy of it, and `va_copy` has
