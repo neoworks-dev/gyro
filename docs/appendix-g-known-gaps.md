@@ -221,6 +221,20 @@ Open questions in the format itself ([appendix D](appendix-d-metals.md)):
   leaves the choice among ready arms unspecified
   ([chapter 13.2](ch13-02-channels.md)).
 - No green threads: `spawn` and `async` are OS threads.
+- `thread.start` is libc's `pthread_create`, because a thread started with a
+  bare `clone` has none of glibc's per-thread state and would crash on its
+  first `malloc`. The `clone` path, and with it a program that links no C
+  library, waits for Gyro's own allocator (#139). The stack operand is
+  ignored until then.
+- The output lock is still a recursive `pthread` mutex in `rt.c`, because
+  the printing half of `gyro:rt` that a producer which is not Gyro reaches is
+  C and takes the same lock.
+- Channels and locks written in Gyro cost what the backend's code costs: an
+  uncontended send and receive is about twice the C they replaced, and a
+  channel five threads fight over is several times slower (`make bench`:
+  `chan-buffered`), which the mutex-and-condvar C hid by being faster per
+  operation. A `select` still polls where it could sleep on the channels'
+  words.
 - Register allocation exists but leaves work on the table; `make bench` is
   what measures it, against the C each case was ported from
   ([chapter 17.3](ch17-03-testing.md)).
