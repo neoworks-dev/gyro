@@ -1,14 +1,46 @@
-// time — declarations only; the runtime supplies the bodies.
+// time — the clocks and sleeping, written in Gyro over the system calls of
+// sys.
+
+import { EINTR, SYS_CLOCK_GETTIME, SYS_NANOSLEEP } from "sys"
+import { syscall2 } from "unsafe"
+
+// The clocks clock_gettime knows.
+const REALTIME: usize = 0
+const MONOTONIC: usize = 1
+
+// seconds and nanoseconds of a clock, as the pair the kernel writes.
+safe fn read_clock(clock: usize): (i64, i64) !{ io } {
+    var reading: i64[2] = [0, 0]
+    var _ = syscall2(SYS_CLOCK_GETTIME, clock, &reading[0])
+    return (reading[0], reading[1])
+}
 
 // now is the wall clock: milliseconds since the Unix epoch. It can jump
 // when the system clock is adjusted, so it dates events; it does not
 // measure them.
-export fn now(): i64 !{ io }
+export fn now(): i64 !{ io } {
+    var seconds, nanos = read_clock(REALTIME)
+    return seconds * 1000 + nanos / 1000000
+}
 
 // monotonic is the measuring clock: nanoseconds since an arbitrary
 // epoch, never stepping backwards. Only differences mean anything.
-export fn monotonic(): i64 !{ io }
+export fn monotonic(): i64 !{ io } {
+    var seconds, nanos = read_clock(MONOTONIC)
+    return seconds * 1000000000 + nanos
+}
 
 // sleep blocks the calling thread for at least millis milliseconds.
-// Other threads keep running; a value below one returns at once.
-export fn sleep(millis: i64) !{ io }
+// Other threads keep running; a value below one returns at once. A sleep
+// a signal interrupts goes on for the time it had left.
+export safe fn sleep(millis: i64) !{ io } {
+    if millis <= 0 {
+        return
+    }
+    var left: i64[2] = [millis / 1000, (millis % 1000) * 1000000]
+    var rest: i64[2] = [0, 0]
+    while syscall2(SYS_NANOSLEEP, &left[0], &rest[0]) == -EINTR {
+        left[0] = rest[0]
+        left[1] = rest[1]
+    }
+}

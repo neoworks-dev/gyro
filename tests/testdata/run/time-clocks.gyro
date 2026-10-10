@@ -1,0 +1,27 @@
+// The clocks read the kernel's. now counts milliseconds since the Unix
+// epoch, monotonic counts nanoseconds that never go back, and sleep waits
+// at least as long as it was asked to. Only facts that hold on any machine
+// are printed.
+
+import { println } from "stdlib"
+import { now, monotonic, sleep } from "time"
+
+fn main() {
+    // 2026-01-01 is 1767225600000 milliseconds after the epoch.
+    println(now() > 1767225600000)
+
+    var before = monotonic()
+    var again = monotonic()
+    println(again >= before)
+
+    sleep(30)
+    var after = monotonic()
+    var slept = (after - again) / 1000000
+    println(slept >= 30)
+    println(slept < 2000)
+
+    // Nothing to wait for.
+    sleep(0)
+    sleep(0 - 5)
+    println(monotonic() >= after)
+}

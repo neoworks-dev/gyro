@@ -1,0 +1,23 @@
+// Standard output is buffered, and all of it arrives: more lines than the
+// buffer holds, one line longer than the buffer, and a last print with no
+// newline after it when main returns.
+
+import { println, print, String } from "stdlib"
+import { heap } from "mem"
+
+fn main() {
+    for var i = 0; i < 5000; i += 1 {
+        println("line #{i}")
+    }
+
+    var wide = String::new(heap())
+    for var i = 0; i < 10000; i += 1 {
+        wide.push("0123456789")
+    }
+    println(wide.text(heap()))
+    wide.free()
+
+    println("between")
+    print("no newline")
+    print(" at the end")
+}

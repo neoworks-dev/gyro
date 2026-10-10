@@ -10,6 +10,13 @@ attached — a skip is a program that will fail the day the gap closes
 
 ## Blocking real applications
 
+- **Small standard-library functions are calls.** The backend has no
+  inliner, and `Array<T>`'s accessors are Gyro now, so an element read costs
+  a call and a by-value copy of the handle where it used to cost a call to
+  C. On the array-heavy cases of the benchmark suite that is 1.3 to 2 times
+  the time it was. The runtime is Gyro; making it as fast as the C it
+  replaced is an inliner's work.
+
 - **Memory reclamation.** The allocator model
   ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
   `alloc<T>(a)`, `free(a, p)`, `format(a, ...)` and the containers and text
@@ -21,9 +28,9 @@ attached — a skip is a program that will fail the day the gap closes
 - **Formatting into an allocator is only half routed.** `format(a, ...)`
   puts the result in `a`, but the text of a piece that is not a string — an
   integer's digits, a `to_string` result, a derived representation — is made
-  by the runtime on the process heap first, and nothing frees it. Streaming
-  has the same cost for those pieces except the primitives, which the
-  runtime writes directly.
+  by `mem` on the process heap first, and nothing frees it. Streaming
+  has the same cost for those pieces except the primitives, which are
+  written straight into the output buffer.
 - **A view stored by a callee is not followed.** The borrow analysis
   follows a view into a struct, a tuple, an `any`, a field and a container
   the function writes itself, but not into one it hands to another function:

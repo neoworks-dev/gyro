@@ -1,0 +1,15 @@
+// A panic writes out what was printed before it, a line that was never
+// ended included, and the message goes to standard error after it.
+
+//gyro:panic index 9 out of range for length 3
+
+import { println, print } from "stdlib"
+
+fn main() {
+    var values = [1, 2, 3]
+    var at: usize = 9
+    println("start")
+    print("partial")
+    println(values[at])
+    println("unreachable")
+}

@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -23,6 +24,12 @@ type leaf struct {
 	callee  string
 	widen   metals.Type
 	bitcast bool
+
+	// A printing leaf is also told which stream it writes to and whether
+	// a newline follows, as two constants after the value.
+	stream  bool
+	fd      string
+	newline bool
 }
 
 // ensureLeaf defines the function a leaf call site names and reports
@@ -37,7 +44,7 @@ func (l *lowerer) ensureLeaf(name string, sig *metals.FnType) bool {
 	}
 	l.lowered[name] = true
 
-	callee := l.ensureFunc(l.memDecl(plan.callee), nil)
+	callee := l.ensureFunc(l.leafDecl(plan.callee), nil)
 	fn := &metals.Func{Name: name, Result: sig.Result}
 	for index, param := range sig.Params {
 		fn.Params = append(fn.Params, metals.Param{Name: argName(index), Type: param})
@@ -55,6 +62,14 @@ func (l *lowerer) ensureLeaf(name string, sig *metals.FnType) bool {
 		fn.Body = append(fn.Body, &metals.Bitcast{Dst: "bits", X: args[0], To: metals.TUint64})
 		args[0] = "bits"
 	}
+	if plan.stream {
+		fd, newline := "fd", "newline"
+		fn.Body = append(fn.Body,
+			&metals.Const{Dst: fd, Type: metals.TInt32, Value: plan.fd},
+			&metals.Const{Dst: newline, Type: metals.TBool, Value: fmt.Sprint(plan.newline)},
+		)
+		args = append(args, fd, newline)
+	}
 	call := &metals.Call{Callee: callee, Args: args}
 	if sig.Result != nil {
 		call.Dst = "r"
@@ -69,6 +84,19 @@ func (l *lowerer) ensureLeaf(name string, sig *metals.FnType) bool {
 
 func argName(index int) string { return "a" + string(rune('0'+index)) }
 
+// printers are the four ways to write a leaf: to which descriptor, and
+// whether a newline follows.
+var printers = []struct {
+	name    string
+	fd      string
+	newline bool
+}{
+	{"print", "1", false},
+	{"println", "1", true},
+	{"eprint", "2", false},
+	{"eprintln", "2", true},
+}
+
 // leafPlan maps a call site's name and signature onto its stdlib function.
 func (l *lowerer) leafPlan(name string, sig *metals.FnType) (leaf, bool) {
 	switch {
@@ -78,6 +106,17 @@ func (l *lowerer) leafPlan(name string, sig *metals.FnType) (leaf, bool) {
 		return scalarLeaf("str_", sig, false)
 	case strings.HasPrefix(name, "hash<"):
 		return scalarLeaf("hash_", sig, true)
+	}
+	for _, printer := range printers {
+		if !strings.HasPrefix(name, printer.name+"<") {
+			continue
+		}
+		plan, ok := scalarLeaf("put_", sig, false)
+		if !ok || plan.callee == "put_str" {
+			plan.callee = "put_text"
+		}
+		plan.stream, plan.fd, plan.newline = true, printer.fd, printer.newline
+		return plan, ok
 	}
 	return leaf{}, false
 }
@@ -137,19 +176,23 @@ func (l *lowerer) warmLeaf(t types.Type) {
 	l.ensureImport("str<"+t.String()+">", &metals.FnType{Params: []metals.Type{prim}, Result: metals.TStr})
 }
 
-// memDecl finds a function mem declares, by name: the leaves live there
-// because mem is loaded whenever anything is shown.
-func (l *lowerer) memDecl(name string) *ast.FuncDecl {
-	for _, module := range l.prog.Modules {
-		if module.Path != stdlib.Path("mem") {
-			continue
-		}
-		for _, decl := range module.Tree.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Owner == "" && fn.Name == name {
-				return fn
+// leafDecl finds a function that mem or stdlib declares, by name. The
+// leaves for showing and comparing live in mem, which is loaded whenever
+// anything is shown; the printing ones live in stdlib, which anything that
+// prints has imported.
+func (l *lowerer) leafDecl(name string) *ast.FuncDecl {
+	for _, home := range []string{"mem", "stdlib"} {
+		for _, module := range l.prog.Modules {
+			if module.Path != stdlib.Path(home) {
+				continue
+			}
+			for _, decl := range module.Tree.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Owner == "" && fn.Name == name {
+					return fn
+				}
 			}
 		}
 	}
-	l.fail("mem declares no %s", name)
+	l.fail("no leaf function %s", name)
 	return nil
 }

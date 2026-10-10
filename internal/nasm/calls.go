@@ -486,8 +486,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_raw_resize", args: values(0, 1, 2, 3)}
 	case "copy_bytes":
 		return nativePlan{symbol: "gy_copy_bytes", args: values(0, 1, 2)}
-	case "offset":
-		return nativePlan{symbol: "gy_offset", args: values(0, 1)}
 	case "address_to_pointer":
 		return nativePlan{symbol: "gy_ptr_from_int", args: values(0)}
 	case "ptr_to_int":
@@ -496,27 +494,13 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_panic", args: values(0)}
 	case "text_seal":
 		return nativePlan{symbol: "gy_text_seal", args: values(0, 1)}
+	case "set_flush_hook":
+		return nativePlan{symbol: "gy_set_flush_hook", args: values(0)}
 	case "lock_output":
 		return nativePlan{symbol: "gy_lock_output"}
 	case "unlock_output":
 		return nativePlan{symbol: "gy_unlock_output"}
 
-	case "get":
-		return nativePlan{symbol: "gy_get", sret: true, args: values(0)}
-	case "now":
-		return nativePlan{symbol: "gy_now"}
-	case "monotonic":
-		return nativePlan{symbol: "gy_monotonic"}
-	case "sleep":
-		return nativePlan{symbol: "gy_sleep", args: values(0)}
-	case "env":
-		return nativePlan{symbol: "gy_env", sret: true, args: []planArg{pointerTo(0), {index: 1}}}
-	case "read_stdin":
-		return nativePlan{symbol: "gy_read_stdin", args: []planArg{pointerTo(0)}}
-	case "readline":
-		return nativePlan{symbol: "gy_readline", sret: true, args: []planArg{pointerTo(0)}}
-	case "exit":
-		return nativePlan{symbol: "gy_exit", args: values(0)}
 	case "write_byte":
 		return nativePlan{symbol: "gy_write_byte", args: values(0, 1)}
 	case "read_byte":

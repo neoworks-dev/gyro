@@ -1,3 +1,7 @@
-// net — declarations only; the runtime supplies the bodies.
+// net — there is no network yet: get always fails.
 
-export async fn get(url: string): (string, error?) !{ io }
+import { SysError } from "sys"
+
+export async fn get(url: string): (string, error?) !{ io } {
+    return "", SysError{ text: "this runtime has no network" }
+}

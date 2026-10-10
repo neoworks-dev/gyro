@@ -429,8 +429,8 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 }
 
 // prepareUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
-// itself: putting a type back on an address, a closure's environment, and
-// a system call.
+// itself: putting a type back on an address, moving one along, a closure's
+// environment, and a system call.
 // The rest of the module lowers as ordinary natives.
 func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
@@ -462,6 +462,20 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 			f.emit(&metals.PtrCast{Dst: first, X: address, To: target})
 			out := f.newReg("raw")
 			f.emit(&metals.SliceFrom{Dst: out, Ptr: first, Len: length})
+			return out
+		}
+	case "offset":
+		// The address `bytes` past base is a pointer to bytes moved along by
+		// that many elements, and then forgotten again.
+		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
+		bytes := f.lowerExpr(call.Args[1].Value, types.USize)
+		return func() string {
+			typed := f.newReg("raw")
+			f.emit(&metals.PtrCast{Dst: typed, X: address, To: &metals.Ptr{Elem: metals.TUint8}})
+			moved := f.newReg("moved")
+			f.emit(&metals.PtrOffset{Dst: moved, Ptr: typed, N: bytes})
+			out := f.newReg("shifted")
+			f.emit(&metals.PtrErase{Dst: out, X: moved})
 			return out
 		}
 	case "cast":

@@ -1,0 +1,16 @@
+// Output: one println of an integer per line. Every call is a write to a
+// pipe unless the runtime buffers, so this is the cost of the print path
+// itself, number formatting included.
+
+import { println, eprintln } from "stdlib"
+import { monotonic } from "time"
+
+fn main() {
+  var start = monotonic()
+  for var i = 0; i < 300000; i += 1 {
+    println(i)
+  }
+  var stop = monotonic()
+
+  eprintln("gyro:bench #{stop - start}")
+}

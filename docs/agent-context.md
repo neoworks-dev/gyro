@@ -81,7 +81,7 @@ Counted without `_test.go`:
 | `lsp`    | 2.5k  | language server, hand-rolled, zero dependencies               |
 | `parser` | 2.3k  |                                                               |
 | `ast`    | 1.7k  | tree + dumper                                                 |
-| `crt`    | 1.6k  | `src/rt.c`, the runtime the backend links                     |
+| `crt`    | 1.3k  | `src/rt.c`, the C the backend still links, and the FFI shim   |
 
 Also: `tree-sitter-gyro/` and `tree-sitter-metals/` (grammars, external
 scanner, queries, corpus), `internal/stdlib/` (bundled `.gyro` sources
@@ -604,12 +604,18 @@ and before an import list. sema checks it in `internal/sema/unsafe.go`
 header are unsafe unless imported with `import safe`.
 `mem` imports `unsafe`, never the other way round.
 
-Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
-`Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `size`/
-`align`/`panic` and `unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`,
-`open`/`read_all`/`File::close`, `to_i32`/`to_f64`, `net::get`.
+Runtime-backed (C in `rt.c`): `spawn`, `Mutex<T>`/`MutexGuard<T>`, the
+channel and future operations, `mem`'s `size`/`align`/`panic`, and
+`unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`, `copy_bytes`, `ptr_to_int`,
+`text_seal`, `text_bytes`, with the output lock and the hook that writes
+standard output out when the program ends. Everything else the standard
+library declares is Gyro: see "What is runtime-backed and what is Gyro" in
+`appendix-c-stdlib.md`.
 
-Written in Gyro: `String` (on `Array<u8>`), its UTF-8 encoder, and the
+Written in Gyro: `Array<T>` (a header and a buffer over `unsafe`), `String`
+(on `Array<u8>`), its UTF-8 encoder, `from_utf8`/`bytes`/`runes`, the
+integer and float readers of `convert`, the float writer, printing with
+its buffer, `fs`, `os`, `time` and `sys`, and the
 text methods — `split`, `trim`, `contains`, `starts_with`, `ends_with`,
 `index_of`, `substring`, `repeat`; `mem`'s `alloc`, `free`, `heap` and
 `Arena` over the allocator procedure (chapter 4.5 — an allocator is an

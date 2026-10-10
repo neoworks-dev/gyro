@@ -1,12 +1,10 @@
-/* gyro:rt — the native runtime behind the gy_* imports the code
- * generator emits. Compiled and linked by `gyro build`; the contract
- * (layouts, message texts, formatting rules) is docs/native.md. The
- * formatting must match Go's strconv byte for byte, because the METALS
- * evaluator prints through it and every tier must agree. */
+/* gyro:rt — what the generated code still asks the C runtime for. Compiled
+ * and linked by `gyro build`. The standard library is Gyro now: this is the
+ * floor under it that no METALS instruction reaches, and the threads,
+ * channels and mutexes that wait on libc's pthreads. */
 
 #define _GNU_SOURCE
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -15,7 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -54,10 +51,18 @@ static void gy_future_fulfill(gy_future *fut);
 static __thread int gy_on_worker_thread = 0;
 static __thread gy_future *gy_current_future = NULL;
 
+/* The Gyro output layer buffers standard output and registers what writes
+ * it out here, the first time it prints. The program ending, a panic, and
+ * a call into a C library are the points where the C runtime asks for it. */
+void (*gy_flush_hook)(void) = NULL;
+
+void gy_set_flush_hook(void (*hook)(void)) { gy_flush_hook = hook; }
+
 _Noreturn void gy_abort(const gy_str *message) {
-    fflush(stdout);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     fprintf(stderr, "panic: %.*s\n", (int)message->len, message->bytes);
-    fflush(stderr);
     if (!gy_on_worker_thread) {
         exit(1);
     }
@@ -68,56 +73,6 @@ _Noreturn void gy_abort(const gy_str *message) {
 }
 
 _Noreturn static void gy_abort_c(const char *message) { gy_abort(gy_str_c(message)); }
-
-/* ------------------------------------------------------------------ */
-/* Allocators. mem's Allocator is a procedure and a data pointer; a   */
-/* container records the one it was made with and goes through it for */
-/* every block it owns. Mode is a Gyro enum, a one-word tag that      */
-/* crosses a call by address like any aggregate, so the procedure     */
-/* takes a pointer to the tag: Alloc, Free, FreeAll, Resize in that   */
-/* order. A block from Alloc or Resize is zero-filled.                 */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    void *(*proc)(void *data, const int64_t *mode, uint64_t size, uint64_t align, void *old,
-                  uint64_t old_size);
-    void *data;
-} gy_allocator;
-
-enum { GY_MODE_ALLOC = 0, GY_MODE_FREE = 1, GY_MODE_FREE_ALL = 2, GY_MODE_RESIZE = 3 };
-
-/* 16 is the largest alignment a Gyro type asks for, and the runtime does
- * not know the element's, so every block asks for it. */
-#define GY_ALLOC_ALIGN 16
-
-/* Out of memory panics with the size, the way alloc<T>() does. */
-static void *gy_allocator_get(const gy_allocator *a, int64_t mode, size_t size, void *old,
-                              size_t old_size) {
-    void *block = a->proc(a->data, &mode, size, GY_ALLOC_ALIGN, old, old_size);
-    if (block == NULL) {
-        char buf[96];
-        snprintf(buf, sizeof buf, "allocation of %zu bytes failed", size);
-        gy_abort_c(buf);
-    }
-    return block;
-}
-
-static void gy_allocator_put(const gy_allocator *a, void *old, size_t old_size) {
-    int64_t mode = GY_MODE_FREE;
-    a->proc(a->data, &mode, 0, 0, old, old_size);
-}
-
-static gy_str *gy_str_alloc_in(const gy_allocator *a, int64_t len) {
-    gy_str *s = gy_allocator_get(a, GY_MODE_ALLOC, sizeof(gy_str) + (size_t)len + 1, NULL, 0);
-    s->len = len;
-    return s;
-}
-
-static gy_str *gy_str_from_in(const gy_allocator *a, const char *text, size_t len) {
-    gy_str *s = gy_str_alloc_in(a, (int64_t)len);
-    memcpy(s->bytes, text, len);
-    return s;
-}
 
 _Noreturn void gy_abort_bounds(int64_t index, int64_t length) {
     char buf[96];
@@ -280,10 +235,6 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
     memmove(to, from, (size_t)bytes);
 }
 
-/* The address `bytes` past base: how an allocator that carves one block
- * into many names where each one starts. */
-void *gy_offset(void *base, int64_t bytes) { return (char *)base + bytes; }
-
 /* An integer as an address and back, which no METALS instruction does. */
 void *gy_ptr_from_int(int64_t address) { return (void *)(uintptr_t)address; }
 int64_t gy_ptr_to_int(const void *p) { return (int64_t)(uintptr_t)p; }
@@ -421,11 +372,14 @@ static int gy_encode_rune(int64_t r, char *out) {
 }
 
 /* ------------------------------------------------------------------ */
-/* The print family and str<T>.                                       */
+/* The printing half of gyro:rt, for METALS that is not Gyro: a producer */
+/* that cannot link Gyro's own stdlib prints through these. A Gyro      */
+/* program never reaches them; it prints through stdlib's buffered      */
+/* leaves, and these write what that buffer holds out first.            */
 /* ------------------------------------------------------------------ */
 
 /* Recursive, because a format value holds it across all its pieces and a
-   piece's to_string may print. */
+   piece's to_string may print. The Gyro output layer takes the same lock. */
 static pthread_mutex_t gy_print_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 
 void gy_lock_output(void) { pthread_mutex_lock(&gy_print_mutex); }
@@ -433,6 +387,9 @@ void gy_unlock_output(void) { pthread_mutex_unlock(&gy_print_mutex); }
 
 static void gy_write(FILE *stream, const char *bytes, size_t len, int newline) {
     pthread_mutex_lock(&gy_print_mutex);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     fwrite(bytes, 1, len, stream);
     if (newline) {
         fputc('\n', stream);
@@ -503,10 +460,6 @@ void gy_str_view(void **out, const gy_str *s) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Conversions the code generator delegates.                          */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* The byte floor a compiled-in language reaches i/o through. One byte */
 /* at a time, because a linear address is a u32 and not a pointer:     */
 /* handing the runtime one and telling it to read the bytes behind it  */
@@ -523,136 +476,6 @@ void gy_write_byte(int64_t fd, int64_t byte) {
 int64_t gy_read_byte(void) {
     int c = fgetc(stdin);
     return c == EOF ? -1 : (int64_t)c;
-}
-
-/* ------------------------------------------------------------------ */
-/* convert, fs, net. Result tuples are written into the caller's      */
-/* cell: the error member is { flag, tag, payload... }                */
-/* with tag 0, the closed error sum's Native(str) variant.            */
-/* ------------------------------------------------------------------ */
-
-static void gy_write_error(int64_t *err, gy_str *message) {
-    err[0] = 1; /* opt flag: an error is present */
-    err[1] = 0; /* variant 0: Native(str) */
-    err[2] = (int64_t)message;
-}
-
-static gy_str *gy_trim_space(const gy_str *s) {
-    int64_t from = 0;
-    int64_t to = s->len;
-    while (from < to && isspace((unsigned char)s->bytes[from])) from++;
-    while (to > from && isspace((unsigned char)s->bytes[to - 1])) to--;
-    return gy_str_from(s->bytes + from, (size_t)(to - from));
-}
-
-static gy_str *gy_concat3(const char *before, const gy_str *middle, const char *after) {
-    gy_str *quoted = (gy_str *)middle;
-    size_t beforeLen = strlen(before), afterLen = strlen(after);
-    gy_str *out = gy_str_alloc((int64_t)(beforeLen + (size_t)quoted->len + afterLen));
-    memcpy(out->bytes, before, beforeLen);
-    memcpy(out->bytes + beforeLen, quoted->bytes, (size_t)quoted->len);
-    memcpy(out->bytes + beforeLen + quoted->len, after, afterLen);
-    return out;
-}
-
-/* ------------------------------------------------------------------ */
-/* os: the environment, stdin, and the exit code.                     */
-/* ------------------------------------------------------------------ */
-
-/* out: opt<str> = { flag, value } — flag 0 when the variable is unset. */
-void gy_env(int64_t *out, const gy_allocator *a, const gy_str *name) {
-    char *cname = malloc((size_t)name->len + 1);
-    memcpy(cname, name->bytes, (size_t)name->len);
-    cname[name->len] = 0;
-    const char *value = getenv(cname);
-    free(cname);
-    if (value == NULL) {
-        out[0] = 0;
-        out[1] = 0;
-        return;
-    }
-    out[0] = 1;
-    out[1] = (int64_t)gy_str_from_in(a, value, strlen(value));
-}
-
-/* Reads stdin to end of file. One shot: a second call finds the stream
- * drained and returns "". */
-gy_str *gy_read_stdin(const gy_allocator *a) {
-    size_t cap = 4096;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    size_t got;
-    while ((got = fread(buf + len, 1, cap - len, stdin)) > 0) {
-        len += got;
-        if (len == cap) {
-            cap *= 2;
-            buf = realloc(buf, cap);
-        }
-    }
-    gy_str *out = gy_str_from_in(a, buf, len);
-    free(buf);
-    return out;
-}
-
-/* out: opt<str> = { flag, value } — flag 0 at end of file. The line comes
- * back without its terminator, and a last line with no newline still
- * comes back. */
-void gy_readline(int64_t *out, const gy_allocator *a) {
-    char *line = NULL;
-    size_t cap = 0;
-    ssize_t got = getline(&line, &cap, stdin);
-    if (got < 0) {
-        free(line);
-        out[0] = 0;
-        out[1] = 0;
-        return;
-    }
-    while (got > 0 && (line[got - 1] == '\n' || line[got - 1] == '\r')) {
-        got--;
-    }
-    out[0] = 1;
-    out[1] = (int64_t)gy_str_from_in(a, line, (size_t)got);
-    free(line);
-}
-
-_Noreturn void gy_exit(int64_t code) {
-    fflush(stdout);
-    fflush(stderr);
-    exit((int)code);
-}
-
-/* out: tuple<str, opt<error>> */
-void gy_get(int64_t *out, const gy_str *url) {
-    (void)url;
-    out[0] = (int64_t)gy_str_c("");
-    gy_write_error(out + 1, gy_str_c("this runtime has no network"));
-}
-
-/* ------------------------------------------------------------------ */
-/* Clocks. now() dates events on the wall clock; monotonic() measures */
-/* them; sleep blocks only the calling thread — spawn runs pthreads,  */
-/* so the rest of the program keeps going.                            */
-/* ------------------------------------------------------------------ */
-
-int64_t gy_now(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-int64_t gy_monotonic(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
-}
-
-void gy_sleep(int64_t millis) {
-    if (millis <= 0) {
-        return;
-    }
-    struct timespec left = {millis / 1000, (millis % 1000) * 1000000};
-    while (nanosleep(&left, &left) != 0 && errno == EINTR) {
-    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1128,6 +951,9 @@ _Noreturn void gy_any_arity(const gy_type *type, int64_t got) {
 extern void gy_user_main(void *args);
 
 int main(int argc, char **argv) {
+    /* What a C library prints goes out as it is printed, so that it falls
+     * between what Gyro prints in the order the program ran them. */
+    setvbuf(stdout, NULL, _IONBF, 0);
     void **elems = malloc((size_t)argc * 8 + 8);
     for (int i = 0; i < argc; i++) {
         elems[i] = (void *)gy_str_c(argv[i]);
@@ -1135,7 +961,8 @@ int main(int argc, char **argv) {
     void *slice[2] = {elems, (void *)(int64_t)argc};
 
     gy_user_main(slice);
-    fflush(stdout);
-    fflush(stderr);
+    if (gy_flush_hook != NULL) {
+        gy_flush_hook();
+    }
     return 0;
 }

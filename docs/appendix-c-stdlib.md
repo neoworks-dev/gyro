@@ -271,22 +271,26 @@ sorted, without `.` and `..`.
 ### `os`
 
 ```gyro
-export fn env(a: Allocator, name: string): string? !{ io }
-export fn read_stdin(a: Allocator): string !{ io }
-export fn readline(a: Allocator): string? !{ io }
+export fn env(a: Allocator, name: string): string? !{ io, &a }
+export fn read_stdin(a: Allocator): string !{ io, &a }
+export fn readline(a: Allocator): string? !{ io, &a }
 export fn exit(code: i32) !{ io }
 ```
 
-`env` answers null when the variable is unset. `read_stdin` reads to end of
-file in one shot: a second call finds the stream drained and returns `""`.
-`exit` ends the process after flushing stdout and stderr — **deferred calls
-do not run**; exit is immediate, like a panic.
+`env` answers null when the variable is unset. It reads the environment the
+kernel handed the process, from `/proc/self/environ`, so a variable a C
+library sets afterwards is not in it. `read_stdin` reads to end of file in
+one shot: a second call finds the stream drained and returns `""`. `exit`
+writes out what standard output holds and ends the process with
+`exit_group`; **deferred calls do not run**, and neither do a C library's
+exit handlers. Exit is immediate, like a panic.
 
 `readline` takes the next line, without its terminator, and answers null at
 end of file — an empty line is `""`, the way an empty environment variable
 is, so absence is the null and nothing else. A final line with no newline
 still comes back. Both readers share the stream: a program may take a line
-and then drain what is left.
+and then drain what is left. Standard output is written out before either
+one waits, so a prompt shows before it is answered.
 
 ### `time`
 
@@ -295,6 +299,9 @@ export fn now(): i64 !{ io }         // wall clock, ms since the Unix epoch
 export fn monotonic(): i64 !{ io }   // measuring clock, ns, never steps back
 export fn sleep(millis: i64) !{ io }
 ```
+
+Each is `clock_gettime` or `nanosleep` asked of the kernel; `sleep` goes on
+for the time it had left after a signal interrupts it.
 
 `now` can jump when the system clock is adjusted, so it dates events; it
 does not measure them. Only differences of `monotonic` mean anything.

@@ -16,7 +16,7 @@
 // on it: mem is loaded whenever a number is shown.
 
 import { ceil } from "math"
-import { cast, copy_bytes, offset, raw_alloc, raw_free, text_bytes, text_seal, text_size } from "unsafe"
+import { cast, offset, raw_alloc, raw_free, text_bytes, text_seal, text_size } from "unsafe"
 
 fn panic(message: string) !{}
 
@@ -286,15 +286,21 @@ struct Digits {
     digit: u8[24]
 }
 
-// Text is the line being written, a byte at a time.
-struct Text {
+// Cursor is where the next byte of a number being written goes.
+struct Cursor {
+    at: anyptr
     len: usize
-    byte: u8[48]
 }
 
-fn put(t: *Text, byte: u8) !{} {
-    t.byte[t.len] = byte
-    t.len += 1
+safe fn put(c: *Cursor, byte: u8) !{} {
+    *cast<u8>(offset(c.at, c.len)) = byte
+    c.len += 1
+}
+
+safe fn put_word(c: *Cursor, word: string) !{} {
+    for byte in text_bytes(word) {
+        put(c, byte)
+    }
 }
 
 // digits_of finds the shortest digits that identify v, which is finite and
@@ -432,29 +438,33 @@ safe fn digits_of(v: f64): *Digits !{} {
     return out
 }
 
-// shortest is the text that reads back as v: digits, then a decimal
-// point or an exponent. The exponent form is used from 1e6 up and from
+// write puts the shortest text that reads back as v at `to`, which has
+// room for forty bytes, and answers how long it is. Digits, then a decimal
+// point or an exponent: the exponent form is used from 1e6 up and from
 // 1e-5 down, with at least two digits after the sign, and the plain form
 // otherwise, which is Go's %v for a float.
-export safe fn shortest(v: f64): string !{} {
+export safe fn write(v: f64, to: anyptr): usize !{} {
+    var out = Cursor{ at: to, len: 0 }
     var bits = bits_of(v)
     var negative = (bits >> 63) == 1
     var expbits = (bits >> 52) & 2047
     var frac = bits & MANTISSA_MASK
     if expbits == 2047 {
         if frac != 0 {
-            return "NaN"
+            put_word(&out, "NaN")
+        } elif negative {
+            put_word(&out, "-Inf")
+        } else {
+            put_word(&out, "+Inf")
         }
-        if negative {
-            return "-Inf"
-        }
-        return "+Inf"
+        return out.len
     }
     if expbits == 0 && frac == 0 {
         if negative {
-            return "-0"
+            put(&out, 45)
         }
-        return "0"
+        put(&out, 48)
+        return out.len
     }
 
     var magnitude = v
@@ -468,73 +478,72 @@ export safe fn shortest(v: f64): string !{} {
     }
     var exponent = found.point - 1
 
-    var text = cast<Text>(grab(56))
-    text.len = 0
     if negative {
-        put(text, 45)
+        put(&out, 45)
     }
     if exponent < -4 || exponent >= 6 {
-        put(text, 48 + found.digit[0])
+        put(&out, 48 + found.digit[0])
         if count > 1 {
-            put(text, 46)
+            put(&out, 46)
             for var i: usize = 1; i < count; i += 1 {
-                put(text, 48 + found.digit[i])
+                put(&out, 48 + found.digit[i])
             }
         }
-        put(text, 101)
+        put(&out, 101)
         var magnitude_of = exponent
         if exponent < 0 {
-            put(text, 45)
+            put(&out, 45)
             magnitude_of = 0 - exponent
         } else {
-            put(text, 43)
+            put(&out, 43)
         }
         if magnitude_of < 10 {
-            put(text, 48)
+            put(&out, 48)
         }
         var tens: i64 = 1
         while magnitude_of / tens >= 10 {
             tens *= 10
         }
         while tens > 0 {
-            put(text, 48 + ((magnitude_of / tens) % 10) as u8)
+            put(&out, 48 + ((magnitude_of / tens) % 10) as u8)
             tens /= 10
         }
     } else {
         var point = found.point
         if point <= 0 {
-            put(text, 48)
-            put(text, 46)
+            put(&out, 48)
+            put(&out, 46)
             for var i: i64 = 0; i < 0 - point; i += 1 {
-                put(text, 48)
+                put(&out, 48)
             }
             for var i: usize = 0; i < count; i += 1 {
-                put(text, 48 + found.digit[i])
+                put(&out, 48 + found.digit[i])
             }
         } elif point >= (count as i64) {
             for var i: usize = 0; i < count; i += 1 {
-                put(text, 48 + found.digit[i])
+                put(&out, 48 + found.digit[i])
             }
             for var i = count as i64; i < point; i += 1 {
-                put(text, 48)
+                put(&out, 48)
             }
         } else {
             for var i: usize = 0; i < count; i += 1 {
                 if (i as i64) == point {
-                    put(text, 46)
+                    put(&out, 46)
                 }
-                put(text, 48 + found.digit[i])
+                put(&out, 48 + found.digit[i])
             }
         }
     }
-
-    var length = text.len
-    var block = grab(text_size(length + 1))
-    var made = text_seal(block, length)
-    copy_bytes(offset(block, text_size(0)), &text.byte[0] as anyptr, length)
-    raw_free(text as anyptr)
     raw_free(found as anyptr)
-    return made
+    return out.len
+}
+
+// shortest is write, as a string from the process heap.
+export safe fn shortest(v: f64): string !{} {
+    var block = grab(text_size(48))
+    var length = write(v, offset(block, text_size(0)))
+    return text_seal(block, length)
 }
 
 // ---------------------------------------------------------------------------
