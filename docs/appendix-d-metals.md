@@ -514,6 +514,7 @@ field.set %r, 0, %v               ; mutates the register's value in place
 %a = array<i32>(%x, %y, %z)
 %s = slice.of %a                  ; borrow, shares storage
 %s = slice.of %p                  ; ...or the storage a ptr<array<T, N>> names
+%f = slice.from %p, %n            ; ptr<T> and a usize length -> slice<T>
 %w = slice.sub %s, %lo, %hi       ; half-open window, lo <= hi <= len
 %v = index.get %s, %i             ; bounds-checked, aborts out of range
 index.set %s, %i, %v
@@ -527,6 +528,14 @@ is not a convenience: the value form would have to load the array first,
 so a slice of an array a pointer reaches would view a copy nothing else
 can see. It is the same argument `index.ptr` makes, and the extent is
 static either way.
+
+`slice.from` makes a slice of `n` elements starting where a `ptr<T>`
+points. It is the one way to view memory that no array or slice names, such
+as a buffer a C library hands out, and the one place a slice's extent is
+taken on trust: nothing can check that `n` elements live there. The operand
+is a pointer to an *element*; a pointer to an array is `slice.of`'s, whose
+extent is in the type, and the verifier refuses it here rather than let one
+instruction have two meanings.
 
 `slice.sub` narrows a slice onto storage it already views — the pointer
 moves forward and the length shortens, and nothing is copied. It is an

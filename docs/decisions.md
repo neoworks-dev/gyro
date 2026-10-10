@@ -760,9 +760,10 @@ type and become extensions of `string` in `stdlib`, imported like `trim`,
 because the compiler's own surface has no way to name `Allocator` and an
 ordinary declaration does.
 
-**`Array<T>` stays in the runtime.** It could be Gyro, but a slice
-cannot be built from a pointer and a length, so `slice()` and indexing
-need the runtime's handle. What moves is the memory: `rt.c` calls the
+**`Array<T>` stays in the runtime.** It could be Gyro, but when this was
+decided a slice could not be built from a pointer and a length, so `slice()`
+and indexing needed the runtime's handle. `slice_from_raw` (#110) removes
+that obstacle; the array has not moved yet. What moves is the memory: `rt.c` calls the
 recorded procedure where it used to call `malloc`, `realloc` and `free`.
 The procedure takes its mode by address, because a Gyro enum crosses a
 call like an aggregate.
@@ -787,7 +788,7 @@ long-lived containers.
 
 **Rejected: an allocator argument on `push` and `free`** (Zig's managed
 containers, unmanaged). It is what #91 removed. **Rejected: moving
-`Array<T>` into Gyro** for now, for the slice reason above.
+`Array<T>` into Gyro** for now; the slice reason no longer holds.
 **Rejected: allocating the header from the process heap** so that `free`
 could release it, since the container would then use two allocators.
 
@@ -900,6 +901,16 @@ access (#99) and raw system calls (#103) add primitives to the module.
 other way to get an address to give `ptr_from_int`, and a test of the second
 needs the first. METALS has no instruction between an integer and a pointer,
 so both are runtime functions.
+
+**`slice_from_raw` (#110)** makes a `T[]` from an address and a length, for
+memory that comes from outside a Gyro value: a mapped buffer, an SDL surface.
+Lowering answers it with a new METALS instruction, `slice.from`, over a
+`ptr<T>` and a `usize`; it is not a runtime function, since a slice is a
+pointer and a length and nothing needs the runtime to say so. Its result has
+no origin, like `ptr_from_int`'s. **Rejected: widening `slice.of` to take a
+length**, because its array operand carries a static extent and one
+instruction would then have two meanings for the second word. **Rejected: a
+checked form**, since nothing about a raw address says how much lives there.
 
 ### Storage is C's layout, and there is only one *(new)*
 
