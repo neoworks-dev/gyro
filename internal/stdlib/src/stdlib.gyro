@@ -1189,13 +1189,22 @@ export safe fn fence() !{} {
 // The lock is a futex word and the two conditions are counters threads
 // sleep on: a thread that must wait for the other side reads the counter
 // under the lock, lets go of the lock and sleeps until the counter has moved
-// from what it read, so a wake-up between the two is not lost.
+// from what it read, so a wake-up between the two is not lost. A condition
+// also counts the threads asleep on it, so that signalling one nobody waits
+// on costs no system call.
+struct Cond {
+    // seq moves each time the condition is signalled; a sleeper sleeps while
+    // it is what it read.
+    seq: u32
+    waiters: u32
+}
+
 struct Chan {
     lock: u32
     // senders and receivers are the conditions: signalled when room is made
     // and when an element arrives.
-    senders: u32
-    receivers: u32
+    senders: Cond
+    receivers: Cond
     buffer: anyptr
     elem: usize
     capacity: usize
@@ -1211,22 +1220,39 @@ struct Chan {
     taken: i64
 }
 
-safe fn cond_wait(condition: *u32, lock: *u32) !{} {
-    var seen = atomic_load(condition)
+// cond_wait and cond_notify are called with the channel's lock held, which
+// is what makes the plain reads and writes of `waiters` safe; only the
+// sequence word is shared with the sleepers.
+safe fn cond_wait(condition: *Cond, lock: *u32) !{} {
+    condition.waiters += 1
+    var seen = atomic_load(&condition.seq)
     unlock_word(lock)
-    futex_wait(condition, seen)
+    futex_wait(&condition.seq, seen)
     lock_word(lock)
+    condition.waiters -= 1
 }
 
-safe fn cond_signal(condition: *u32) !{} {
-    var _ = atomic_add(condition, 1)
-    futex_wake(condition, 1)
+// cond_notify moves the sequence word if anyone is asleep on the condition
+// and answers how many to wake, 0 if nobody. The wake-up itself is the
+// caller's, once it has let go of the lock, through cond_wake: a thread woken
+// while the lock is still held only goes back to sleep on it.
+safe fn cond_notify(condition: *Cond, count: u32): u32 !{} {
+    if condition.waiters == 0 {
+        return 0
+    }
+    var _ = atomic_add(&condition.seq, 1)
+    return count
 }
 
-safe fn cond_broadcast(condition: *u32) !{} {
-    var _ = atomic_add(condition, 1)
-    futex_wake(condition, 2147483647)
+safe fn cond_wake(condition: *Cond, count: u32) !{} {
+    if count > 0 {
+        futex_wake(&condition.seq, count)
+    }
 }
+
+// One and every are how many threads a notification wakes.
+const ONE: u32 = 1
+const EVERY: u32 = 2147483647
 
 // chan_new makes a channel of `capacity` elements of `elem` bytes each.
 safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
@@ -1252,14 +1278,23 @@ safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
 // chan_put and chan_take move an element between the caller's cell and the
 // ring, with the lock held.
 safe fn chan_put(ch: *Chan, value: anyptr) !{} {
-    var at = (ch.head + ch.count) % ch.capacity
-    copy_bytes(offset(ch.buffer, at * ch.elem), value, ch.elem)
+    // head and count are each below the capacity, so one subtraction wraps.
+    var at = ch.head +% ch.count
+    if at >= ch.capacity {
+        at -= ch.capacity
+    }
+    copy_bytes(offset(ch.buffer, at *% ch.elem), value, ch.elem)
     ch.count += 1
 }
 
 safe fn chan_take(ch: *Chan, out: anyptr) !{} {
-    copy_bytes(out, offset(ch.buffer, ch.head * ch.elem), ch.elem)
-    ch.head = (ch.head + 1) % ch.capacity
+    var at = ch.head
+    copy_bytes(out, offset(ch.buffer, at *% ch.elem), ch.elem)
+    at += 1
+    if at == ch.capacity {
+        at = 0
+    }
+    ch.head = at
     ch.count -= 1
 }
 
@@ -1275,8 +1310,9 @@ safe fn chan_send(raw: anyptr, value: anyptr) !{} {
             panic("send on a closed channel")
         }
         chan_put(ch, value)
-        cond_signal(&ch.receivers)
+        var wake = cond_notify(&ch.receivers, ONE)
         unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
         return
     }
 
@@ -1291,7 +1327,13 @@ safe fn chan_send(raw: anyptr, value: anyptr) !{} {
     ch.full = true
     ch.placed += 1
     var ticket = ch.placed
-    cond_broadcast(&ch.receivers)
+    var wake = cond_notify(&ch.receivers, EVERY)
+    if wake > 0 {
+        // The receivers have to be able to take the lock to answer.
+        unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
+        lock_word(&ch.lock)
+    }
     while ch.taken < ticket && !ch.closed {
         cond_wait(&ch.senders, &ch.lock)
     }
@@ -1317,8 +1359,9 @@ safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
             return false
         }
         chan_take(ch, out)
-        cond_signal(&ch.senders)
+        var wake = cond_notify(&ch.senders, ONE)
         unlock_word(&ch.lock)
+        cond_wake(&ch.senders, wake)
         return true
     }
 
@@ -1334,8 +1377,9 @@ safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
     copy_bytes(out, ch.buffer, ch.elem)
     ch.full = false
     ch.taken += 1
-    cond_broadcast(&ch.senders)
+    var wake = cond_notify(&ch.senders, EVERY)
     unlock_word(&ch.lock)
+    cond_wake(&ch.senders, wake)
     return true
 }
 
@@ -1347,9 +1391,11 @@ safe fn chan_close(raw: anyptr) !{} {
         panic("close of a closed channel")
     }
     ch.closed = true
-    cond_broadcast(&ch.senders)
-    cond_broadcast(&ch.receivers)
+    var wakeSenders = cond_notify(&ch.senders, EVERY)
+    var wakeReceivers = cond_notify(&ch.receivers, EVERY)
     unlock_word(&ch.lock)
+    cond_wake(&ch.senders, wakeSenders)
+    cond_wake(&ch.receivers, wakeReceivers)
 }
 
 // chan_try_send sends if it can without waiting, and answers whether it
@@ -1368,8 +1414,9 @@ safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
             return false
         }
         chan_put(ch, value)
-        cond_signal(&ch.receivers)
+        var wake = cond_notify(&ch.receivers, ONE)
         unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
         return true
     }
     if ch.waiting == 0 || ch.full {
@@ -1379,8 +1426,9 @@ safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
     copy_bytes(ch.buffer, value, ch.elem)
     ch.full = true
     ch.placed += 1
-    cond_broadcast(&ch.receivers)
+    var wake = cond_notify(&ch.receivers, EVERY)
     unlock_word(&ch.lock)
+    cond_wake(&ch.receivers, wake)
     return true
 }
 
@@ -1394,8 +1442,9 @@ safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
     if ch.capacity > 0 {
         if ch.count > 0 {
             chan_take(ch, out)
-            cond_signal(&ch.senders)
+            var wake = cond_notify(&ch.senders, ONE)
             unlock_word(&ch.lock)
+            cond_wake(&ch.senders, wake)
             return true
         }
         var fired = ch.closed
@@ -1406,8 +1455,9 @@ safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
         copy_bytes(out, ch.buffer, ch.elem)
         ch.full = false
         ch.taken += 1
-        cond_broadcast(&ch.senders)
+        var wake = cond_notify(&ch.senders, EVERY)
         unlock_word(&ch.lock)
+        cond_wake(&ch.senders, wake)
         return true
     }
     var fired = ch.closed

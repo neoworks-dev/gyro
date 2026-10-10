@@ -1,0 +1,31 @@
+// Channel handoff: two threads pass a counter back and forth over two
+// unbuffered channels, so every round trip is two rendezvous and two
+// wake-ups. It measures what a blocked thread costs to wake, which is the
+// part of a channel that is not the copy.
+
+import { println, eprintln } from "stdlib"
+import { heap, spawn } from "mem"
+import { monotonic } from "time"
+
+fn main() {
+    var ping = chan<i64>()
+    var pong = chan<i64>()
+    spawn(heap(), fn() {
+        for v in ping {
+            pong <- v + 1
+        }
+        pong.close()
+    })
+
+    var start = monotonic()
+    var v: i64 = 0
+    for i in 0..100000 {
+        ping <- v
+        v = <-pong
+    }
+    var stop = monotonic()
+    ping.close()
+
+    println(v)
+    eprintln("gyro:bench #{stop - start}")
+}

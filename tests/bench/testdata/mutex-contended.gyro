@@ -1,0 +1,32 @@
+// Lock contention: four threads take one mutex a hundred thousand times
+// each to add one to the value it guards. Most acquisitions find it held,
+// so this is the slow path of a lock: the wait and the wake.
+
+import { println, eprintln, Mutex } from "stdlib"
+import { heap, spawn } from "mem"
+import { monotonic } from "time"
+
+fn main() {
+    var total = Mutex::new(0)
+    var done = chan<bool>(4)
+    var start = monotonic()
+    for w in 0..4 {
+        spawn(heap(), fn() {
+            for i in 0..100000 {
+                var guard = total.lock()
+                guard.set(guard.get() + 1)
+                guard.unlock()
+            }
+            done <- true
+        })
+    }
+    for w in 0..4 {
+        var _ = <-done
+    }
+    var stop = monotonic()
+
+    var guard = total.lock()
+    println(guard.get())
+    guard.unlock()
+    eprintln("gyro:bench #{stop - start}")
+}
