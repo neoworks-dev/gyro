@@ -92,10 +92,10 @@ export fn String::free(*self) !{}
 Extension methods on `string`, which have to be imported to be callable:
 
 ```gyro
-export fn string::starts_with(self, a: Allocator, prefix: string): bool !{}
-export fn string::ends_with(self, a: Allocator, suffix: string): bool !{}
-export fn string::index_of(self, a: Allocator, needle: string): usize? !{}
-export fn string::contains(self, a: Allocator, needle: string): bool !{}
+export fn string::starts_with(self, prefix: string): bool !{}
+export fn string::ends_with(self, suffix: string): bool !{}
+export fn string::index_of(self, needle: string): usize? !{}
+export fn string::contains(self, needle: string): bool !{}
 export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{}
 export fn string::trim(self, a: Allocator): string !{}
 export fn string::split(self, a: Allocator, sep: string): Array<string> !{}

@@ -779,7 +779,7 @@ fn main(args: string[]) {
   defer lines.free()
   for line in lines.slice() {
     var clean = line.trim(heap())
-    if clean.len() == 0 || clean.starts_with(heap(), "#") { continue }
+    if clean.len() == 0 || clean.starts_with("#") { continue }
     println(clean.split(heap(), " ").get(0))
   }
 }

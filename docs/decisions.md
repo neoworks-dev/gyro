@@ -752,10 +752,14 @@ reader can see and makes the mismatch unwritable.
 `String::text`, `split`, `substring`, `trim`, `repeat`, `join`, `sprintf`
 and the readers `env`, `read_stdin`, `readline`, `read_all` and `read_dir`
 allocate a result the caller owns and has no container to record it in, so
-the allocator is an argument, first after the receiver. The predicates that
-copy a string to compare it (`starts_with`, `ends_with`, `index_of`,
-`contains`) take one for the same reason, since a function allocates
-exactly when it is handed one. `bytes` and `runes` stop being part of the
+the allocator is an argument, first after the receiver. The predicates
+(`starts_with`, `ends_with`, `index_of`, `contains`) take none: they
+compare the bytes in place through a private, non-copying `u8[]` view of
+each string, `view_bytes` in `stdlib` (#109). A function allocates exactly
+when it is handed an allocator, and a question about two strings has
+nothing to build. The view is a private runtime intrinsic rather than an
+exported function: it hands out a writable-typed slice over an immutable
+string, which only a reader that never writes may hold. `bytes` and `runes` stop being part of the
 type and become extensions of `string` in `stdlib`, imported like `trim`,
 because the compiler's own surface has no way to name `Allocator` and an
 ordinary declaration does.
