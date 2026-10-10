@@ -541,8 +541,8 @@ Modules: `stdlib`, `mem`, `unsafe`, `fs`, `net`, `convert`, `time`, `os`, `fmt`,
 call, `safe fn` may use unchecked things and vouches for callers, a plain
 `fn` may do neither; `unsafe` and `safe` are contextual words before `fn`
 and before an import list. sema checks it in `internal/sema/unsafe.go`
-(calls, union reads, `&f`); `@extern` declarations and functions of a `.c`
-import are unsafe unless written `safe` or imported with `import safe`.
+(calls, union reads, `&f`); functions imported from a `.c` file or a C
+header are unsafe unless imported with `import safe`.
 `mem` imports `unsafe`, never the other way round.
 
 Runtime-backed: `print`/`println`/`eprintln`, `spawn`, `Array<T>`,
@@ -595,12 +595,15 @@ heap — linking gives each its own.
   storage (futures, channels, runtime error messages, and the text of
   a non-string piece a `Format` renders) still comes from the process heap.
 - no sorting
-- **FFI has two gaps left** — `@extern` carries primitives, `string`,
-  slices, structs by value and opaque handles. No callback and no
-  out-parameter, so a C API built on either (`qsort`, `SDL_PollEvent`)
-  is still out of reach *through `@extern`*. Importing the `.c` instead
-  routes through `internal/cc` and has no marshalling to have a gap in:
-  the out-parameter case works today (`tests/testdata/run/c-import/`).
+- **C is reached by importing its headers**: `import safe { f } from
+  "<math.h>"` or `"pkg:sdl3/SDL3/SDL.h"`. The loader (`internal/loader/
+  headers.go`) groups the specifiers by library, one translation unit
+  each, and `cc.ReadHeader` (`internal/cc/header.go`) preprocesses it with
+  the system compiler's include path and the package's pkg-config flags,
+  parses every declaration tolerantly, and keeps the names the imports
+  asked for. A function becomes an import from the `c:` native library
+  that `internal/crt`'s shim calls in C's ABI; `nasm.Build` asks
+  pkg-config for the package's `--libs`.
 
 **Open in the C front end** (`internal/cc`, see
 [appendix D](appendix-d-metals.md), "The C front end"):
@@ -748,9 +751,9 @@ with diagnostics, hover, definition, symbols, completion, inlay hints.
 Gyro is usable for **CLI tools today**. It is not usable for anything
 long-running, because nothing reclaims memory.
 
-It also reaches C. `@extern("SDL2")` on a bodyless declaration links a
-symbol, and `examples/triangle.gyro` rasterizes a Gouraud-shaded triangle
-in pure Gyro and puts it in an SDL window.
+It also reaches C. `import safe { SDL_Init } from "pkg:sdl3/SDL3/SDL.h"`
+reads SDL3's header, and `examples/triangle.gyro` rasterizes a
+Gouraud-shaded triangle in pure Gyro and puts it in an SDL window.
 
 A real program that works end to end:
 

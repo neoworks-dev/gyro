@@ -77,6 +77,7 @@ A sample, so the ranges have a shape:
 | E0218 | a function marked both `unsafe` and `safe` |
 | E0303 | circular import |
 | E0305 | not exported by that module |
+| E0307 | a name that cannot be imported from a C header, with the reason |
 | E0401 | undeclared name |
 | E0501 | mismatched types |
 | E0502 | literal out of range for its type |
@@ -89,7 +90,6 @@ A sample, so the ranges have a shape:
 | E0609 | a returned view whose source the row does not name |
 | E0610 | a returned view of this frame's storage |
 | E0612 | an unknown entry in an effect row |
-| E0614 | an `@extern` signature carrying something that cannot cross |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
 | W0701 | a possible leak |

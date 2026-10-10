@@ -74,7 +74,6 @@ unknown decorator name is a compile error.
 
 | decorator | state |
 | --- | --- |
-| `@extern("lib")`, `@extern("lib", symbol = "name")` | implemented ([chapter 15](ch15-00-c-interop.md)) |
 | `@comptime` | typed, not evaluated |
 | `@gpu` | parsed and typed |
 | `@concurrent(threads = N)` | parsed and typed |
@@ -84,5 +83,4 @@ unknown decorator name is a compile error.
 @comptime const FIB_10: i32 = fib(10)
 @gpu fn kernel(a: *f32) {}
 @concurrent(threads = 8) fn work() {}
-@extern("m") safe fn sqrt(x: f64): f64 !{}
 ```

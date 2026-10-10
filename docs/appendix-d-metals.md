@@ -1096,11 +1096,10 @@ and not look inside.
   and what they may hold is the runtime's business rather than the
   format's. `opt<bool>` and a payload-free enum have obvious spare
   patterns and no one has needed them.
-- How several C translation units become one program. `internal/cc`
-  compiles one file and refuses a call to a function it cannot see. The
-  preprocessor closed half of it — a header shared between files is a
-  header now — and what is left is linkage: an `extern` declaration
-  resolved against another `cc:` module rather than refused.
+- A C function resolved against another module. A function a translation
+  unit declares and nothing defines is an import from the native library
+  (`c:c` or `c:<package>`) and is resolved when the program is linked; one
+  a different `cc:` module defines is still not found that way.
 - A memory declared by one module and imported by another, which is how
   wasm spells the above and how a future sandboxed producer would want
   it.

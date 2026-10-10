@@ -334,6 +334,23 @@ Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
 runtime functions: METALS has no instruction that makes a pointer of an
 integer.
 
+### `cstring`
+
+C's text is a pointer to bytes that end at a NUL; Gyro's is a length and its
+bytes. Written in Gyro over `unsafe`, and the whole crossing
+([chapter 15](ch15-00-c-interop.md)):
+
+```gyro
+export fn c_string(a: Allocator, text: string): Array<u8> !{}
+export unsafe fn c_data(bytes: Array<u8>): *i8 !{}
+export unsafe fn from_c(a: Allocator, text: *i8?): string !{}
+```
+
+`c_string` copies the text and a NUL into an array that owns them, `c_data`
+is the address of its first byte as the `char *` a C header spells `*i8?`,
+and `from_c` copies a `char *` up to its NUL into a string made from `a`; a
+null pointer is the empty string.
+
 ### `net`
 
 ```gyro

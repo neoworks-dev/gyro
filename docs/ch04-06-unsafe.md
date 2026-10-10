@@ -90,7 +90,7 @@ forgetting a type with `p as anyptr` cannot be wrong and stays an ordinary
 `ptr_from_int` is for an address the program did not get from an
 allocation: a device register, a page table. The borrow analysis cannot see
 where such a pointer points, so it treats the result as coming from outside
-the program, the way it treats an `@extern` result: a function whose row
+the program, the way it treats the result of a C function: a function whose row
 names no borrow gives the caller's analysis nothing to follow.
 
 `offset` and the raw heap functions are what `mem` is written over
@@ -140,17 +140,9 @@ starts are `safe fn`s over the `unsafe` module; `free`, `format` and
 A function C provides is unsafe to call unless someone says otherwise,
 because the compiler can check its signature and nothing about what it does.
 
-**`@extern` declarations are `unsafe fn` by default.** Writing `safe` on the
-declaration vouches for it, which is the author saying that no call can
-misuse the function:
-
-```gyro
-@extern("m") safe fn sqrt(x: f64): f64 !{}      // any f64 is fine
-@extern("c") fn strlen(text: string): usize !{} // unsafe to call
-```
-
-**A function imported from a `.c` file is unsafe to call unless the import
-vouches for it.** One line says it for every name the import binds:
+**A function imported from a `.c` file or from a C header is unsafe to call
+unless the import vouches for it.** One line says it for every name the
+import binds:
 
 ```gyro
 import safe { parse, free_json } from "./cJSON.c"

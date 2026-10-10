@@ -625,7 +625,7 @@ shortcuts and one routing choice, and closing them is the roadmap:
    the way it knows `.lisp` — started, and running: `internal/cc` reads
    C, `import { add } from "./lib.c"` works on all three tiers, and a C
    function writes an out-parameter through a pointer Gyro allocated,
-   which is the one thing `@extern` could not do at all. The
+   which is the one thing a linked library could not do at all. The
    preprocessor, `typedef`, `enum`, `sizeof` and arrays with pointer
    arithmetic are in, so a C library with its own header, a quicksort
    over `int *` and a fixed table in module storage compiles and runs on
@@ -854,9 +854,8 @@ functions that use them are `safe fn`s, which keeps the import graph acyclic:
 `unsafe` imports nothing.
 
 `p as *T` on an `anyptr` is removed and `cast<T>(p)` replaces it. An
-`@extern` declaration is `unsafe fn` unless written `safe` (Rust 2024's rule
-for extern blocks), and a function imported from a `.c` file is unsafe to call
-unless the import is written `import safe { ... }`. Vouching is for C, so
+function imported from C, from a `.c` file or from a header, is unsafe to
+call unless the import is written `import safe { ... }`. Vouching is for C, so
 `import safe` of a Gyro module is an error. The vouch is a property of the
 symbol, so a name re-exported from a vouching import stays vouched.
 Types a C file declares need no vouching.
@@ -870,7 +869,7 @@ a way round the call.
 
 **Borrow provenance.** `ptr_from_int`'s result has no origin the analysis can
 see, which is how a call with no borrow in its row already reads, the same as
-an `@extern` result.
+the result of a C function.
 
 **Rejected: Rust-style `unsafe { }` blocks.** A keyword-scoped second dialect
 inside a function, where a reader has to track which statements are inside.
@@ -893,7 +892,7 @@ start.
 
 **Not here.** Pointer arithmetic on a `*T` (#68) is open and would live in
 `unsafe`. Removing `union` declarations from Gyro is #107, and header imports
-replacing `@extern` are #108. Privileged instructions (#97), volatile
+replacing the old `@extern` are #108. Privileged instructions (#97), volatile
 access (#99) and raw system calls (#103) add primitives to the module.
 
 **Added beyond the first list:** `ptr_to_int`, because a program has no
@@ -914,7 +913,7 @@ between the two representations widens on a load and narrows on a store.
 This replaces v1's "every scalar occupies one qword, nothing is packed",
 which was a shortcut, and it is what makes the commitment above real: a
 Gyro struct and a C struct of the same fields are now the same bytes, so
-a struct crosses `@extern` by value with nothing converted, and a `u32[]`
+a struct crosses to C by value with nothing converted, and a `u32[]`
 *is* a `const uint32_t *` — the repacking copy `ffi.pack` used to make is
 gone, and so is `ffi.pack`.
 
@@ -2200,70 +2199,116 @@ saying what produced a module. Rejected **dropping `ptr` from the
 forbidden list** outright, which fixes C by removing the protection in
 the JS and Python case where it is the whole point.
 
-### C is reached through `@extern`, not a new declaration form *(new)*
+### C is reached by importing its headers *(new)*
 
-**Status: decided (v1).** A foreign function is a declaration with no body
-carrying `@extern("SDL2")`. The library is the argument, the symbol is the
-declaration's name unless `symbol =` overrides it, and the row is
-mandatory.
+**Status: decided.** A C library is imported from the header that declares
+it, and the header is the only description of the library there is:
 
-Every piece of this already existed. Sema has treated a bodyless
-declaration as a foreign function since effect rows landed — that is what
-"a rowless intrinsic contributes every effect" is about — so the checker
-needed no new concept. `lower.ensureForeignImport` already routes an import
-to a named module of any scheme, which is how a Lisp module's exports are
-called; a C library is one more scheme, `c:SDL2`. The verifier already
-treats an import out of another runtime as boundary-crossing and enforces
-the copy rule on it, so the ban on `ptr`, `chan` and `future` in an FFI
-signature falls out of a rule written for a different reason. And a fieldless struct
-is already lowered to `handle`, the METALS type whose whole job is an
-opaque foreign reference.
+```gyro
+import safe { SDL_Init, SDL_CreateWindow, SDL_Event } from "pkg:sdl3/SDL3/SDL.h"
+import safe { sqrt } from "<math.h>"
+```
 
-Rejected an `extern "SDL2" { ... }` block, which reads better and groups
-the library name once, because it buys a keyword, a declaration form, an
-AST node and two tree-sitter grammars' worth of change to say what an
-existing decorator says — and the language's own rule is to prefer a
-mechanism it already has. Rejected `import { SDL_Init } from "c:SDL2"` with
-a sidecar binding file: C has no signatures to read, so the sidecar is
-Gyro declarations under another extension, which is a new file kind and a
-new resolution rule for no gain over writing them in Gyro directly.
+`pkg:<package>/<path>` names a pkg-config package and a header inside one
+of its include directories: `pkg-config --cflags <package>` gives the
+directories and definitions the header is read with, and `pkg-config --libs
+<package>` gives what the program is linked against. `<path>` is a header on
+the system compiler's include path — the C library's and the math
+library's, which are always linked. This replaces `@extern`, the decorator
+and the fieldless `@extern struct`, which are deleted.
 
-Rejected also the obvious first thought, an `sdl` module in the standard
-library with runtime-supplied bodies. It would have been faster to the same
-demo and wrong afterwards: every function costs an entry in `rt.c`, two
-backend plan tables and two Go tiers, and none of it generalizes to the
-next library. `@extern` is the same work done once.
+**Why the header and not a declaration.** `@extern` made the author write
+the signature of every function in Gyro, from memory or from the manual, and
+nothing checked it: a symbol name is all a linker compares, so a declaration
+that disagreed with the library about a width, a struct or a pointer linked
+and misbehaved. A header is what the library's authors wrote, and the C
+front end reads it exactly as it reads a `.c` file, so the types are the
+real ones. `SDL_Event` is the union SDL3 declares, 128 bytes at its
+alignment, and a program that wrote its own would be wrong by exactly the
+amount the declaration drifted.
 
-**What crosses.** Primitives by value; `string` as a NUL-terminated copy;
-`T[]` as a pointer to its own elements; a struct whose fields all cross,
-by value; a fieldless `@extern` struct as `void *`; and — see "A native
-boundary is representation, not memory" below — `*T`, `anyptr` and
-`code(...)`, which is what makes out-parameters and callbacks work. `any`
-is still out.
+**What an import brings in.** Only what it names, and whatever those names'
+signatures mention. A header like `<SDL3/SDL.h>` declares two thousand
+things; the front end reads all of them, so a name means what the header
+says it means, and keeps the ones that were asked for. Four kinds of name
+cross.
 
-v1 also repacked `T[]` and refused structs by value, both because the
-layout rule then gave every scalar its own qword. Storage is C's now (see
-"Storage is C's layout, and there is only one"), so neither restriction
-survives: a `u32[]` and a `const uint32_t *` are the same bytes, and so
-are a Gyro struct and a C struct. The one copy left is `string`, and that
-one is forced by the representation rather than by the layout — C wants a
-NUL where Gyro has a length.
+- A function becomes an import from the native library, called in C's ABI
+  through the shim the backend already generated for `@extern`. It is
+  `unsafe` to call unless the import says `import safe`, which is the rule
+  for a `.c` import and is stated once ([chapter 4.6](ch04-06-unsafe.md)).
+- A struct or union, under its tag, or under the typedef name when the
+  typedef names a struct (`typedef struct { ... } div_t`). A tag the header
+  leaves incomplete is a fieldless struct, which is Gyro's spelling for a
+  handle. A typedef of anything else has no Gyro name, because Gyro has no
+  alias, and the message says to write the underlying type.
+- An enumerator is a constant of type `i32`, which is the type C gives it.
+- A macro is a constant when it is an object-like macro whose expansion is
+  an integer constant expression, with the type C's arithmetic gives the
+  expression: `0x20u` is `u32`, `1ULL << 40` is `u64`, an unsuffixed
+  literal that fits an `int` is `i32`. A header is nearly useless without
+  them, since flags are macros. A macro that is a string, a float, a call or
+  a statement is not importable, and the message says which.
 
-**The cost, stated plainly.** A program that calls a foreign function runs
-on the two native tiers only. The evaluator is Go with zero dependencies
-and no cgo, so it cannot make the call and refuses rather than answering.
-This does not fix the tier problem that an `sdl`
-intrinsic module would have had — it relocates it and makes it general. The
-precedent is one tier away already: a Gyro program importing a Lisp module
-skips `interp`, because the tree-walker has no syntax to walk. Rejected a
-headless fallback where the Go tiers emulate the library, which keeps all
-four tiers running while making them do different things, which is the one
-thing the four-tier oracle exists to prevent.
+Everything else a name can be — a variable, a variadic function, a function
+taking a `va_list` or a `long double`, a function with an assembler label, a
+function whose body the header carries as an inline — is refused at the name
+that asked for it, with the reason, and costs nothing for the names that did
+not ask. `import * as` of a header is refused: it would be asking for the
+two thousand.
+
+**One module per library, not per header.** `<stdlib.h>` and
+`<arpa/inet.h>` are read together, and so are two headers of one package,
+because a C program's headers are one translation unit and a struct two of
+them mention is one struct. Keyed by header, `inet_ntoa` from one and
+`in_addr` from the other were two unrelated types, which is not what C says
+and not what any program wants. The cost is that a name is found if any
+header of the library declares it, whichever one the import said.
+
+**Which compiler the headers are written for.** The front end predefines a
+GCC x86-64 target and *does not* define `__GNUC__`. Defining it would make
+glibc and SDL reach for `__attribute__`, `__builtin_*`, `typeof` and
+statement expressions, which are exactly the extensions this front end does
+not have; leaving it out sends them down the portable paths they keep for
+other compilers. The extensions that remain are read and set aside:
+`__attribute__((...))`, `__asm__` labels, `restrict`, `inline`,
+`__extension__`, `_Static_assert` and `long double` as a type that cannot be
+lowered. The attributes that change the layout of what they decorate
+(`packed`, `aligned`, `vector_size`, `mode`) are refused by name, so the
+declaration is dropped rather than laid out wrongly. The compiler's own
+header directory is not searched; `<stddef.h>`, `<stdbool.h>`, `<stdarg.h>`,
+`<limits.h>`, `<float.h>` and the vector intrinsics' headers are bundled,
+because the compiler's are written over macros only that compiler defines.
+
+**A header's bodies are not compiled.** An inline function in a header is
+there for a C compiler to inline, and a library's authors wrote it for
+theirs. The front end skips its body and says so if the function is named.
+The same tolerance applies to a declaration it cannot read at all: it is
+dropped, the tags it was defining are remembered so nothing mentions them
+as an incomplete type, and the rest of the header is kept.
+
+**`size_t` is `usize` in a header.** The two are the same width, and a
+`strlen` that returned `u64` would make every length in a program a
+conversion. The rest of unsigned long is `u64`.
+
+**Rejected: hand-written declarations checked by nothing**, which is
+`@extern`, for the reason above. **A build-file list of libraries**, the
+shape every C project ends up with: the dependency is then stated away from
+the import that needs it, and a program can name a function and not the
+library that has it. The user chose pkg-config in the path, which keeps the
+two in one line. **Bindgen-style generated Gyro files**: a second copy of
+the header that drifts from it, in a file somebody has to regenerate and
+check in, with the same trust problem one step removed.
+
+**What it costs.** A program that imports a header reads it at compile time,
+which for SDL3 is about a second and a half, and needs the system's C
+compiler to say where its headers are and pkg-config for a package. Nothing checks what the library does with an address, which is C's own
+arrangement; the checked route is a `.c` file the front end compiles.
 
 ### A native boundary is representation, not memory *(new)*
 
-**Status: decided.** `*T`, `anyptr` and `code(...)` cross `@extern`. So
-does a `union`. `chan`, `future`, `fn` and `any` still do not, at any
+**Status: decided.** `*T`, `anyptr` and `code(...)` cross a native import.
+So does a `union`. `chan`, `future`, `fn` and `any` still do not, at any
 depth. Out-parameters and callbacks work, which puts `qsort`,
 `SDL_PollEvent` and every C API built on either within reach of a linked
 `.so`.
@@ -2275,7 +2320,7 @@ moves things — so an address means nothing there. That is true of a `js:`
 or `py:` runtime embedded in the process. It is not true of a linked C
 library, which runs on this thread, in this address space, over the same
 libc allocator `gy_alloc` already wraps. There is no second heap to copy
-into, and `@extern` never copied one: what the generated shim does is
+into, and a native call never copied one: what the generated shim does is
 convert *widths*, C's real ones against a qword register. So a native
 boundary is a boundary of representation, and an address is the one thing
 representation has nothing to say about.
@@ -2302,7 +2347,7 @@ own bookkeeping.
 
 **Rejected: keeping the ban and telling people to import the `.c`.** It
 is the honest answer when you have the source and no answer at all when
-you do not, which is the case `@extern` exists for — SDL2 is a `.so`.
+you do not, which is the case a header import exists for — SDL3 is a `.so`.
 Rejected **a decorator opting one declaration into unchecked pointers**,
 which prices the general rule as an exception and leaves two spellings
 for one boundary. Rejected **marshalling a `*T` into a copy C writes back
@@ -2385,7 +2430,11 @@ verifier+golden-text only, for exactly that reason.
 
 ### C gets a libc, bundled, over a three-import floor *(new)*
 
-**Status: reversed — see "One tier, one backend, two producers".**
+**Status: reversed — see "One tier, one backend, two producers".** A C
+file now calls the system's own libc: a function it declares and nothing
+defines is an import from the native library, resolved when the program is
+linked, and its headers are the system's ("C is reached by importing its
+headers").
 `internal/clibc` is deleted with the bridge it was built for. The
 three-import floor — `write_byte`, `read_byte`, `exit` and nothing else —
 is the part worth keeping in mind: it is what stopped a linear address
@@ -2520,7 +2569,7 @@ models coexist and no instruction accepts both.
 unsafe language compiled *into* METALS cannot reach storage outside the
 region it declared; the same language linked as a native library can
 reach anything. That difference is the argument for a C front end over
-`@extern`, and it would be lost by any design that made a linear address
+a native library, and it would be lost by any design that made a linear address
 a real pointer.
 
 Rejected **`ptr<T>` with arithmetic**, which is the obvious smaller
@@ -2668,6 +2717,15 @@ and having exactly one route that does is worth more than the code saved.
 came out of, rather than running it through a nested pass. That is what
 makes a `#if` in the includer govern what is inside the header, and a
 `#define` in the header visible to the next one.
+
+**Since then it reads the system's headers.** The input is a queue with a
+front to push onto, because copying the rest of the stream on every
+expansion is quadratic and a libc is a hundred thousand tokens. Keywords
+are identifiers until expansion is done, since a macro's parameter may be
+spelled `signed`. A run like `32.h` is one preprocessing number that fails
+only where something reads it as a number, so a branch that is not taken
+costs nothing. `#include_next` finds the header a bundled one shadows. See
+"C is reached by importing its headers".
 
 ### Pointer arithmetic is three instructions, and unchecked *(new)*
 
@@ -3296,9 +3354,9 @@ holds what the caller gave it — every registry, callback table and
 generic container in C — is written over one. METALS has had `anyptr`
 since the C front end needed it; this is only the surface.
 
-**Rejected: a fieldless `@extern` struct.** Gyro already has one of those
-and it already means "an opaque address from a library". It is the wrong
-shape here for two reasons: it is *nominal*, so a `void *` from one
+**Rejected: a handle struct for `void *`.** Gyro had a fieldless struct that
+meant "an opaque address from a library". It is the wrong shape here for two
+reasons: it is *nominal*, so a `void *` from one
 library and a `void *` from another would be different types when C says
 they are the same one; and it carries a library name, which an address
 handed between two of this program's own functions does not have.

@@ -37,7 +37,14 @@ func compileForeign(path, source string) (*metals.Module, error) {
 	if foreignProducer(path) != "cc" {
 		return nil, fmt.Errorf("%s: no compiler for this kind of module", path)
 	}
-	module, err := cc.Compile(path, source, nil)
+	// A C file includes the system's headers like any other, so the
+	// compiler is asked where they are. A machine without one compiles
+	// the files that include nothing.
+	opt := &cc.Options{}
+	if dirs, err := cc.SystemInclude(); err == nil {
+		opt.Include = dirs
+	}
+	module, err := cc.Compile(path, source, opt)
 	if err != nil {
 		return nil, err
 	}

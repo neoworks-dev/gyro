@@ -1,105 +1,159 @@
 # 15. C interoperability
 
-There are two ways to reach C, and they are not variations on one theme.
+There are two ways to reach C, and one front end behind both: Gyro reads C
+itself, with its own preprocessor and parser, and what it reads becomes the
+same METALS everything else becomes.
 
 | route | what it is | when |
 | --- | --- | --- |
-| `@extern` | link a symbol from a native library | the source is not yours: `libm`, SDL2 |
+| `import { f } from "pkg:sdl3/SDL3/SDL.h"` | read a library's header and call the library it declares | the source is not yours: `libc`, `libm`, SDL3 |
 | `import "./file.c"` | compile the C **into your program** | the source is yours, or vendored |
 
-The first marshals values across a boundary. The second has no boundary to
-cross: the C is read by Gyro's own C front end, becomes METALS, and is
-linked into the same module as your Gyro code — so a call is an ordinary
-call and a pointer is an ordinary pointer.
+The first calls across a boundary of *representation*: the library is a
+shared object, its functions are called in C's ABI, and its types are the
+ones its header declares. The second has no boundary to cross: the C is
+compiled and linked into the same module as your Gyro code, so a call is an
+ordinary call.
 
-## Foreign functions with `@extern`
-
-A declaration with no body is a foreign function — that is already how the
-standard library's intrinsics are written. `@extern` says which foreign
-world one belongs to, and the library it is linked from:
+## Importing a header
 
 ```gyro
-@extern("m")
-export safe fn sqrt(x: f64): f64 !{}
-
-@extern("SDL2")
-export safe fn SDL_Init(flags: u32): i32 !{ io }
-
-@extern("SDL2", symbol = "SDL_Delay")
-export safe fn delay(millis: u32) !{ io }
+import safe { SDL_Init, SDL_Quit, SDL_INIT_VIDEO } from "pkg:sdl3/SDL3/SDL.h"
+import safe { sqrt, ldexp } from "<math.h>"
+import { strlen } from "<string.h>"
 ```
 
-An `@extern` function is **unsafe to call** unless the declaration says
-otherwise: the compiler can check the signature and nothing about what the
-C does. Writing `safe` before `fn` vouches for it, and then any function
-may call it ([chapter 4.6](ch04-06-unsafe.md)):
+The specifier is the header. `pkg:<package>/<path>` names a
+[pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/) package
+and a header inside one of its include directories. The directories and
+definitions the header is read with come from `pkg-config --cflags
+<package>`, and the library the program is linked against comes from
+`pkg-config --libs <package>`, so the program states what it depends on in
+the line that uses it. `<path>` is a header on the system compiler's
+include path, which is where the C library's headers are; libc and libm are
+always linked, so it needs no package.
+
+There is nothing to declare. The header is the declaration: the front end
+reads it as it would a `.c` file, and the import receives the signatures
+and types the header says. A program that calls `SDL_CreateWindow` with the
+wrong number of arguments is told what SDL3's header says it takes.
+
+### What an import brings in
+
+An import names what it uses, and gets those names and whatever their
+signatures mention. A header like `<SDL3/SDL.h>` declares two thousand
+things; the rest are read and dropped. Four kinds of name cross.
+
+| the header declares | the import receives |
+| --- | --- |
+| a function | an `unsafe fn` with the header's signature, called in C's ABI |
+| a struct or a union, by tag or by the typedef that names it | that type, with the header's members in the header's layout |
+| a struct tag the header never completes | a fieldless struct: a handle you may hold and pass back, and not look inside |
+| an enumerator | a constant of type `i32`, which is the type C gives it |
+| an object-like macro that is an integer constant expression | a constant of the type C's arithmetic gives the expression |
+
+`SDL_INIT_VIDEO` is a macro, `0x00000020u`, and arrives as a `u32` equal to
+32. `SDL_EVENT_QUIT` is an enumerator and arrives as an `i32` equal to 256,
+so comparing it with the `u32` tag of an `SDL_Event` takes an `as`. C's
+`size_t` and `uintptr_t` are spelled `usize`, which is the same width.
+
+What does not cross is refused at the name that asked for it, with the
+reason: a variable, a variadic function, a function taking a `va_list` or a
+`long double`, a function whose header gives it a different assembler
+symbol, a function the header defines as an inline, a typedef of a scalar,
+and a macro that is not an integer constant. `import * as` of a header is
+refused as well, since it would ask for everything. A name the header does
+not declare at all is the same error.
+
+All the headers of one library are one translation unit, as they are to a C
+compiler. `<stdlib.h>` and `<arpa/inet.h>` are read together, so a struct
+both of them mention is one type, and so are the headers of one package. A
+name is found if any header of the library declares it, whichever one the
+import said.
+
+### Calling it is unsafe unless the import vouches
+
+A function imported from a header is **unsafe to call**, as one from a `.c`
+file is: the front end checks the signature, and nothing about what the C
+does with it. `import safe` vouches for every name the line binds, and a
+call then needs no `unsafe fn` around it ([chapter 4.6](ch04-06-unsafe.md)):
 
 ```gyro
-@extern("m")
-safe fn sqrt(x: f64): f64 !{}          // no f64 misuses it
+import safe { sqrt } from "<math.h>"   // no f64 misuses it
+import { strlen } from "<string.h>"    // reads through an address it is trusted with
+import { heap } from "mem"
+import { c_string, c_data } from "cstring"
 
-@extern("c")
-fn strlen(text: string): usize !{}     // callable from an unsafe fn or a safe fn
+safe fn length_of(text: string): usize {
+  var bytes = c_string(heap(), text)   // from "cstring", below
+  defer bytes.free()
+  return strlen(c_data(bytes))
+}
 ```
 
-The string is the library, spelled as the linker wants it without the `lib`
-prefix — `"m"` is `-lm`, `"SDL2"` is `-lSDL2`. `"c"` names libc, which is
-always linked anyway. The symbol is the declaration's own name unless
-`symbol =` gives another, which is how a C name that is not a legal Gyro
-identifier gets in.
+The types a header declares need no vouching.
 
-A declaration under `@extern` **must have no body** and **must state its
-effect row**: there is no source to read, so an unstated row would be
-assumed to do everything ([chapter 12](ch12-00-effect-rows.md)).
-
-### What can cross
+### What crosses
 
 A linked library is **not a second heap**. It runs on this thread, in this
 address space, over the same allocator the Gyro runtime itself calls. What
 separates it from Gyro is *representation* — C has real widths where a
 METALS register is a qword — and converting that is all the boundary does.
+So an address crosses as itself, a struct crosses as the same bytes, and
+what does not cross is a Gyro runtime object, which C has no spelling for at
+any width.
 
-So an address crosses as itself, and what does not cross is a Gyro runtime
-object, which C has no spelling for at any width.
+Because the signatures are C's, the types are C's:
 
-| Gyro | C | how |
-| --- | --- | --- |
-| `i8`..`u64`, `usize`, `f32`, `f64`, `bool`, `rune` | the same width | by value |
-| `string` | `const char *` | copied and NUL-terminated for the call |
-| `T[]` | `const T *` | the slice's own elements, borrowed for the call |
-| a struct whose fields all cross | the same struct | by value; the same bytes on both sides |
-| a fieldless `@extern` struct | `void *` | an opaque handle, by identity |
-| `T?` of a handle | a pointer that may be `NULL` | null is `NULL` |
-| `*T` | `T *` | the address itself — an out-parameter |
-| `anyptr` | `void *` | the address itself, target forgotten |
-| `code(A, B): C` | `C (*)(A, B)` | the address of a function, either direction |
-| `void` | `void` | |
+| C | Gyro |
+| --- | --- |
+| `char`, `short`, `int`, `long`, and their unsigned forms | `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64` |
+| `_Bool`, `float`, `double` | `bool`, `f32`, `f64` |
+| `size_t` | `usize` |
+| `T *` | `*T?`, a pointer that may be null |
+| `void *` | `anyptr?` |
+| `const char *` | `*i8?`, a pointer to a byte |
+| `struct S`, `union U` | the struct or union, by value |
+| `R (*)(A, B)` | `code(A, B): R?` |
 
-Rejected, with a diagnostic naming the type: `chan<T>`, futures, `fn`
-values, `any`, tuples, enums, and `T?` of anything but a handle — at any
-depth, so a `*chan<i32>` is refused for the same reason a `chan<i32>` is.
-Several results are rejected too — a C function returns one value, and
-`(T, error?)` is Gyro's shape, not C's.
+A Gyro `string` is not a `char *`, and C's text is not a Gyro `string`: one
+is a length and its bytes and the other is bytes up to a NUL. The `cstring`
+module is the whole crossing, written in Gyro ([appendix C](appendix-c-stdlib.md)):
+`c_string` copies a string and its NUL into an array, `c_data` is the
+address C reads, and `from_c` copies a `char *` back out.
 
-A `fn` is refused where a `code` is accepted because the two are different
-sizes: a `fn` is code *and* the environment it captured, which is two
-words, and a C function pointer has room for one. `&f` on a declared
-function is the code pointer, and the diagnostic says so.
+```gyro
+import { heap } from "mem"
+import { c_string, c_data, from_c } from "cstring"
+import safe { SDL_CreateWindow, SDL_GetError } from "pkg:sdl3/SDL3/SDL.h"
 
-A returned `string` is a **copy** of what the pointer addressed, because the
-bytes belong to the library and it may reuse them on the next call. A
-returned null pointer becomes `""`: a Gyro string is never absent.
+safe fn open_window(title: string): *SDL_Window? {
+  var bytes = c_string(heap(), title)
+  defer bytes.free()
+  return SDL_CreateWindow(c_data(bytes), 800, 600, 0)
+}
+
+safe fn failure(): string {
+  return from_c(heap(), SDL_GetError())   // a copy: SDL reuses its buffer
+}
+```
+
+A returned `char *` the library owns is only good until the library's next
+call, which is why `from_c` copies; one the caller owns is freed by whatever
+the library says frees it. **Nothing checks what a library does with an
+address**, which is the same thing that is true of C.
 
 ### Out-parameters and callbacks
 
+A pointer is the address itself, so an out-parameter is a pointer to a Gyro
+variable, and a callback is the address of a Gyro function:
+
 ```gyro
-@extern("m")
-safe fn frexp(value: f64, exponent: *i32): f64 !{}
+import safe { frexp } from "<math.h>"
+import safe { qsort } from "<stdlib.h>"
 
-@extern("c")
-safe fn qsort(base: anyptr, count: usize, size: usize, compare: code(anyptr, anyptr): i32) !{}
-
-safe fn ascending(a: anyptr, b: anyptr): i32 {
+safe fn ascending(a: anyptr?, b: anyptr?): i32 {
+  if a == null || b == null { return 0 }
   var left = cast<i32>(a)
   var right = cast<i32>(b)
   if *left < *right { return 0 - 1 }
@@ -108,71 +162,56 @@ safe fn ascending(a: anyptr, b: anyptr): i32 {
 }
 
 var exponent: i32 = 0
-var fraction = frexp(1024.0, &exponent)   // 0.5, and exponent is 11
+var fraction = frexp(1024.0, &exponent)    // 0.5, and exponent is 11
 
 var xs = [5, 3, 9, 1, 7]
-qsort(&xs[0] as anyptr, 5, 4, &ascending) // C's loop, this program's order
+qsort(&xs[0] as anyptr, 5, 4, &ascending)  // C's loop, this program's order
 ```
 
 `&xs[0]` is the element's own address, and the stride C walks is the one
-Gyro laid out — an `i32` is four bytes of storage
-([chapter 4.1](ch04-01-manual-memory.md)).
+Gyro laid out: an `i32` is four bytes of storage
+([chapter 4.1](ch04-01-manual-memory.md)). A `fn` is refused where a `code`
+is accepted, because a `fn` is code *and* the environment it captured,
+which is two words, and a C function pointer has room for one. `&f` on a
+declared function is the code pointer.
 
-**Nothing checks what the library does with an address**, which is the same
-thing that is true of C. A pointer handed out lives as long as whatever it
-points into, and a library that keeps one keeps it past the call.
+### Structs, unions and handles
 
-### Structs cross as bytes
+A struct crosses by value, in both directions, because the header's struct
+and the Gyro struct the import declares are one type: the same members in
+the same order, laid out the way C lays them out. Nothing is converted, and
+`div` returns the `div_t` `<stdlib.h>` declares.
 
-A struct crosses by value, in both directions, because Gyro lays one out the
-way C does — same widths, same alignment, same padding. A Gyro struct and a
-C struct of the same fields **are the same bytes**, and nothing is
-converted:
+A union crosses as the type C declared, as described [below](#importing-a-c-file):
+every member at offset zero, built with a literal that names one member
+(`SDL_Event{ type: 0 }`), and read inside an unsafe function.
 
-```gyro
-struct Div {
-  quot: i32
-  rem: i32
-}
+A struct the header declares and never defines, as SDL does for `SDL_Window`,
+arrives as a fieldless struct and is only ever held through a pointer. A
+`SDL_Window *` and an `SDL_Renderer *` are different types, so handing a
+renderer to a function that wants a window is an error here and a crash in C.
 
-@extern("c")
-fn div(numerator: i32, denominator: i32): Div !{}
-```
+### The reference
 
-What a struct may *hold* is narrower than what an argument may be, because a
-field is bytes C reads out of the struct rather than a value converted for
-the call. Scalars, fixed arrays and other such structs are members; a
-`string`, a slice and a nullable are not, and the diagnostic names the
-field's type rather than the struct's.
-
-The claim that the two languages agree on the bytes is checked on every
-build: the generated shim declares the struct with its real C members and a
-`_Static_assert` per field offset ([appendix E](appendix-e-native-backend.md)).
-
-### Opaque handles
-
-An opaque handle is a fieldless struct marked `@extern`. It has no literal,
-no fields and no operations of its own — it is a `void *` you can only pass
-back to the library that gave it to you:
-
-```gyro
-@extern("SDL2")
-export struct Window {}
-
-@extern("SDL2")
-export safe fn SDL_CreateWindow(
-  title: string, x: i32, y: i32, w: i32, h: i32, flags: u32,
-): Window? !{ io }
-```
+`examples/triangle.gyro` is the reference: a Gouraud-shaded triangle
+rasterized in pure Gyro and put in an SDL3 window, with SDL reached only
+through `pkg:sdl3/SDL3/SDL.h`.
 
 ### What it costs
 
-A program that calls a foreign function **runs only on the native tiers**.
-The METALS evaluator is Go with no C in it, so it cannot make the call, and
-it refuses the program rather than inventing an answer.
+A header is read when the program is compiled, which for SDL3 is about a
+second and a half, and reading it needs the system's C compiler (to say where
+the headers are) and, for a package, `pkg-config`. The front end targets
+GCC's x86-64 without defining `__GNUC__`, so glibc and SDL take the
+portable paths they keep for other compilers; a construct it cannot read is
+dropped from the header and reported if a name asked for it. Attributes
+that change a layout (`packed`, `aligned`) are refused by name.
 
-`examples/triangle.gyro` is the reference: a Gouraud-shaded triangle
-rasterized in pure Gyro and put in an SDL window.
+A function the header defines as an inline cannot be imported, because a
+header's bodies are not compiled; a variadic function cannot be called,
+because a native callee reads its extra arguments from registers and the
+stack and a Gyro call has no way to lay them out
+([appendix G](appendix-g-known-gaps.md)).
 
 ## Importing a `.c` file
 
@@ -186,6 +225,10 @@ Gyro's own C front end reads the C — its own preprocessor included, so
 declared types. `struct Point *` arrives as a pointer to a `%Point`, not as
 an integer.
 
+`#include <stdlib.h>` finds the system's header, through the include path
+the system's C compiler reports, so the file may call `malloc` and `sqrt`
+with the signatures libc declares.
+
 A function imported from a `.c` file is **unsafe to call** unless the import
 vouches for it, as `safe` does above: the C behind it can corrupt memory
 even though its signature is checked. One word on the import line keeps the
@@ -195,6 +238,12 @@ binds ([chapter 4.6](ch04-06-unsafe.md)). Without it a call needs an
 vouches for the namespace, and `safe` on an import of a Gyro module is an
 error, since a Gyro function already says for itself whether it is unsafe.
 The types a C file declares need no vouching.
+
+A C file may call functions it declares and does not define. A prototype
+for `malloc`, `memcpy` or `sqrt` is C's undefined symbol, and it is
+resolved the way C resolves one: by name, when the program is linked,
+against libc and libm. The call is made in C's ABI, so a variadic callee is
+the one thing it cannot reach.
 
 Because there is no boundary here, the restrictions above do not apply.
 **Pointers cross**, so out-parameters work:
@@ -237,8 +286,9 @@ than the one last written reinterprets the bytes exactly as C does,
 except across members that share an initial sequence, which is the read
 every C tagged union is built on and which C defines.
 
-A C `enum` does not cross: Gyro's is a tagged sum and the two are different
-things.
+A C `enum` does not cross as a type: Gyro's is a tagged sum and the two are
+different things. A header's enumerators arrive as integer constants
+([above](#what-an-import-brings-in)).
 
 An export the generated header cannot spell is left out rather than made an
 error, so one unspellable helper does not make a library unimportable;
@@ -282,9 +332,9 @@ from an integer is `ptr_from_int` in the same module, for the addresses a
 program did not get from an allocation.
 
 An `anyptr` cannot go into an `any`: an `any` promises to give the concrete
-type back, and this one has thrown it away. It does cross to a foreign
-function under `@extern`, because a linked library shares the address space
-the address belongs to. Printing one prints the word `anyptr`.
+type back, and this one has thrown it away. It does cross to a native
+function, because a linked library shares the address space the address
+belongs to. Printing one prints the word `anyptr`.
 
 It exists for C. Every registry, callback table and generic container in C
 is written over `void *`, and until there was a spelling for one, none of
@@ -326,12 +376,13 @@ the allocator it needs from wherever the program keeps it.
 
 ## Which route to use
 
-Use `@extern` when the library is a `.so` you are linking against.
+Use a header import when the library is a `.so` you are linking against,
+and `import "./x.c"` when you have the source.
 
-Use `import "./x.c"` when you have the source. It is still the stronger
-route, for two reasons that have nothing to do with what crosses: the call
-is **checked** — the linker compares your declaration against the C the
-front end actually read, where `@extern` matches a symbol name and trusts
-you — and the program **runs on all three tiers**, because the C became
-METALS like everything else ([appendix D](appendix-d-metals.md)). A
-program that calls `@extern` runs on the two native tiers only.
+The `.c` route is the stronger one, for reasons that have nothing to do
+with what crosses: the call is **checked** — the linker compares your
+declaration against the C the front end actually read — and the program
+needs nothing installed to run it, because the C became METALS like
+everything else ([appendix D](appendix-d-metals.md)). A header import
+trusts that the library on the machine is the one the header describes,
+which is what C itself trusts.
