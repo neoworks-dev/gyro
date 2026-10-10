@@ -1122,8 +1122,8 @@ The compiler knows these traits by where they are declared (the bundled
 module), not by a name that universe scope would have to hold: they are
 imported like anything else.
 
-Things are intentionally small: a trait takes type parameters but has no
-associated types, the operator traits are `Self -> Self -> Self`, impls are
+Things are intentionally small: a trait takes type parameters and, since
+"Associated types in traits", associated types; the operator traits are `Self -> Self -> Self`, impls are
 for types the module declares, and an impl cannot ask more of a type's
 parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 
@@ -1160,6 +1160,43 @@ parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 - The bodies an impl brings are checked again for each concrete instance of
   a generic type, between declarations, because an operator or a method table
   reaches them with no call to name them.
+
+### Associated types in traits *(new)*
+
+**Status: done.** A trait declares a type for each impl to fill in, `type Item`,
+optionally bounded, `type Iter: Iterator<Self::Item>`. An impl gives it,
+`type Item = T`. It is written `Self::Item` in the trait and its impls and
+`C::Item` on a parameter bounded by the trait, and a bound can pin it in the
+trait's argument list, `C: Iterable<Item = i32>`, after the positional
+arguments.
+
+Why: a container's element type is determined by the container. With only
+type parameters a bound has to restate it, `fn sum<C: Iterable<T>, T: Add>`,
+and every use of the trait carries a parameter the impl already fixes.
+
+**Rejected.** A second type parameter on the trait. Every impl and every bound
+has to spell it out, so `C: Container<T>` appears wherever `C: Container`
+would say it all, and a type could implement the trait twice with different
+arguments, which leaves `c.first()` without a type until something annotates
+it. With an associated type there is one impl per type and the type follows
+from it. `Iterator<T>` keeps its parameter for now; moving it is a separate
+decision.
+
+**Settled while building it.**
+
+- `type` is contextual, like `move` and `from`: it begins an associated type
+  only as the first word of a member in a trait or impl body. C headers bring
+  in fields called `type`, and `event.type` has to keep working, so it is not
+  a keyword.
+- `C::Item` looks through the bounds of `C` and the traits they require. No
+  bound declaring it, or two, is an error; nothing picks one silently.
+- A pin in a bound makes `C::Item` that type inside the body, and makes the
+  bound hold only for arguments whose impl gave it.
+- A trait with associated types is not a trait value yet: the table would
+  need the type behind the value to say what `Item` is.
+- A pin is only written in a bound or a required trait. An impl names its trait
+  plainly and gives the types in its body.
+- No defaults for an associated type, as a trait has none for its parameters.
 
 ### Trait values are a pointer and a table, and they borrow *(new)*
 

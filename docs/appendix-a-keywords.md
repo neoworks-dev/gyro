@@ -19,13 +19,13 @@ true   false   null    _
 
 `trait` and `impl` declare a trait and say that a type implements one
 ([chapter 10.1](ch10-01-traits.md)). There is no `switch`, no `goto`, no
-`loop`, no `type` and no `int`; none of them ever existed. `Self`, spelled
+`loop` and no `int`; none of them ever existed. `Self`, spelled
 with a capital, is an ordinary name that means the implementing type inside a
 trait or an impl, and the owner inside a method.
 
 ## Contextual identifiers
 
-`move`, `copy`, `from`, `unsafe`, `safe` and `dyn` are **not** keywords. Each is
+`move`, `copy`, `from`, `unsafe`, `safe`, `dyn` and `type` are **not** keywords. Each is
 recognized by the parser in a position of its own and is an ordinary
 identifier everywhere else:
 
@@ -36,13 +36,14 @@ identifier everywhere else:
 | `unsafe`, `safe` | in front of `fn` (after `export`, before `async`): `unsafe fn f()`, `safe fn f()` |
 | `safe` | in front of an import list or `*`: `import safe { x } from "m.c"` |
 | `dyn` | in a type, in front of a trait's name: `dyn Element` |
+| `type` | the first word of a member of a trait or an impl: `type Item`, `type Item = T` |
 
 `copy` is in the same family and has no special position at all: capture
 lists hold only `move name` entries, because copies are implicit and never
 listed ([chapter 11](ch11-00-closures.md)). It is an ordinary identifier,
 and must stay one.
 
-So `var from = 1`, `fn String::from(...)` and `var safe = 1` all parse. If a word only
+So `var from = 1`, `fn String::from(...)`, `var safe = 1` and `event.type` all parse. If a word only
 means something in one place, it belongs here rather than in the token set —
 this has been broken twice.
 
