@@ -1140,6 +1140,7 @@ func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
 	c.formatOK[e.X] = true
 	base := c.expr(e.X)
 	field := c.selectField(e.NameOffset, base, e.Name, true)
+	c.recordFieldRef(e, base)
 
 	// Nothing records which member of a union is live, so a read is the
 	// program's claim that the bytes are this member's.
@@ -1153,6 +1154,24 @@ func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
 		}
 	}
 	return field
+}
+
+// recordFieldRef notes the struct whose field a selector reads, so a
+// reader can find the field's declaration.
+func (c *checker) recordFieldRef(e *ast.SelectorExpr, base types.Type) {
+	if pointer, ok := base.(*types.Pointer); ok {
+		base = pointer.Elem
+	}
+	strct, ok := base.(*types.Struct)
+	if !ok || strct.FieldNamed(e.Name) == nil {
+		return
+	}
+	if strct.Origin != nil {
+		strct = strct.Origin
+	}
+	if strct.Decl != nil {
+		c.recordRef(e, strct.Decl)
+	}
 }
 
 // selectField resolves field access through pointers, reporting nullable

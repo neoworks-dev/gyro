@@ -36,15 +36,11 @@ func (s *Server) analyze(doc *document) []Diagnostic {
 // analyzeGyro loads the program rooted at the document, with every open
 // buffer overlaid on the file system, and checks it.
 func (s *Server) analyzeGyro(doc *document) []Diagnostic {
-	overlay := map[string]string{}
-	for _, open := range s.documents {
-		if !open.isMetals() {
-			overlay[open.path] = open.text
-		}
-	}
+	// An edit can change what any other module resolves to.
+	s.workspace = nil
 
 	var bag diag.Bag
-	program, err := loader.LoadFromSource(loader.Overlay(overlay), doc.path, doc.text, &bag)
+	analyzed, err := s.check(doc.path, doc.text, &bag)
 	if err != nil {
 		return []Diagnostic{{
 			Range:    rangeFor(doc.text, 0, 1),
@@ -53,12 +49,8 @@ func (s *Server) analyzeGyro(doc *document) []Diagnostic {
 			Message:  err.Error(),
 		}}
 	}
-
-	var info *sema.Info
-	if !bag.HasErrors() {
-		info = sema.CheckProgram(program, &bag)
-	}
-	doc.analysis = &analysis{text: doc.text, program: program, info: info}
+	program, info := analyzed.program, analyzed.info
+	doc.analysis = analyzed
 	if info != nil {
 		// The most recent fully typed analysis backs completion while the
 		// buffer is mid-edit and does not parse.
@@ -95,6 +87,26 @@ func (s *Server) analyzeGyro(doc *document) []Diagnostic {
 		})
 	}
 	return diagnostics
+}
+
+// check loads the program rooted at path, with every open buffer overlaid
+// on the file system, and checks it when it parses.
+func (s *Server) check(path, text string, bag *diag.Bag) (*analysis, error) {
+	overlay := map[string]string{}
+	for _, open := range s.documents {
+		if !open.isMetals() {
+			overlay[open.path] = open.text
+		}
+	}
+	program, err := loader.LoadFromSource(loader.Overlay(overlay), path, text, bag)
+	if err != nil {
+		return nil, err
+	}
+	var info *sema.Info
+	if !bag.HasErrors() {
+		info = sema.CheckProgram(program, bag)
+	}
+	return &analysis{text: text, program: program, info: info}, nil
 }
 
 // analyzeMetals parses and verifies a METALS module.

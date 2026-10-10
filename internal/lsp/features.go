@@ -16,7 +16,7 @@ func indexFor(a *analysis) *index {
 		return nil
 	}
 	if a.idx == nil {
-		a.idx = buildIndex(a.program)
+		a.idx = buildIndex(a.program, a.info)
 	}
 	return a.idx
 }
@@ -94,10 +94,14 @@ func anchorType(a *analysis, hit *anchor) types.Type {
 	return nil
 }
 
-// declTarget resolves the declaration an anchor points at: the anchor's
-// own declaration, what sema resolved the expression to, or for the
-// method name of `value.method(...)` the method the call resolved to.
+// declTarget resolves the declaration an anchor points at: what the index
+// resolved itself, what sema resolved the expression to, for the method
+// name of `value.method(...)` the method the call resolved to, or else
+// the anchor's own declaration.
 func declTarget(a *analysis, hit *anchor) ast.Node {
+	if hit.resolved != nil {
+		return hit.resolved
+	}
 	if hit.expr != nil && a.info != nil {
 		if decl, ok := a.info.Refs[hit.expr]; ok {
 			return decl
@@ -128,7 +132,11 @@ func describeDecl(a *analysis, hit *anchor) string {
 			return signatureText(declSite.module, decl)
 		}
 	case *ast.StructDecl:
-		return "struct " + decl.Name
+		// A field resolves to its struct too, and is described by its
+		// type alone.
+		if hit.name == decl.Name {
+			return "struct " + decl.Name
+		}
 	case *ast.EnumDecl:
 		return "enum " + decl.Name
 	case *ast.TraitDecl:
@@ -246,10 +254,10 @@ func refineSite(declSite site, target ast.Node, name string) site {
 // ---------------------------------------------------------------------------
 
 // handleReferences finds every name that resolves to the same declaration
-// as the one under the cursor. Each open document is analysed as its own
-// program, so the AST nodes of one analysis mean nothing to another; what
-// they share is the place a declaration is written, and that is what two
-// names are compared by. Files that are not open are not searched.
+// as the one under the cursor. Each file is analysed as its own program,
+// so the AST nodes of one analysis mean nothing to another; what they
+// share is the place a declaration is written, and that is what two names
+// are compared by.
 func (s *Server) handleReferences(req *request) error {
 	var params referenceParams
 	if ok, err := decode(s, req, &params); !ok {
@@ -269,27 +277,39 @@ func (s *Server) handleReferences(req *request) error {
 		return s.conn.respond(req.ID, nil)
 	}
 
-	uris := make([]string, 0, len(s.documents))
-	for uri := range s.documents {
-		uris = append(uris, uri)
+	// Every open document, then, when other modules can see the
+	// declaration, every file of the workspace that is not open.
+	searched := map[string]*analysis{}
+	for _, open := range s.documents {
+		if !open.isMetals() && open.analysis != nil {
+			searched[open.path] = open.analysis
+		}
 	}
-	sort.Strings(uris)
+	if visibleElsewhere(want, declTarget(doc.analysis, hit), hit.name) {
+		for path, analyzed := range s.unopenedFiles(workspaceRoot(doc.path), hit.name) {
+			searched[path] = analyzed
+		}
+	}
+
+	paths := make([]string, 0, len(searched))
+	for path := range searched {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
 
 	locations := []Location{}
-	for _, uri := range uris {
-		open := s.documents[uri]
-		if open.isMetals() || open.analysis == nil {
-			continue
-		}
-		for i := range indexFor(open.analysis).anchors {
-			anchor := &indexFor(open.analysis).anchors[i]
-			if anchor.expr == nil && !params.Context.IncludeDeclaration {
+	for _, path := range paths {
+		analyzed := searched[path]
+		anchors := indexFor(analyzed).anchors
+		for i := range anchors {
+			anchor := &anchors[i]
+			if anchor.isDeclaration() && !params.Context.IncludeDeclaration {
 				continue
 			}
-			if found, ok := declarationSite(open.analysis, anchor); ok && sameSite(found, want) {
+			if found, ok := declarationSite(analyzed, anchor); ok && sameSite(found, want) {
 				locations = append(locations, Location{
-					URI:   uri,
-					Range: rangeFor(open.analysis.text, anchor.start, anchor.end),
+					URI:   uriFromPath(path),
+					Range: rangeFor(analyzed.text, anchor.start, anchor.end),
 				})
 			}
 		}

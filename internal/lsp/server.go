@@ -16,6 +16,10 @@ type Server struct {
 	documents map[string]*document
 	// shutdown records that the client asked to stop; exit then ends Run.
 	shutdown bool
+	// workspace caches the analyses of files that are not open, by path,
+	// for the requests that search beyond the open documents. Any edit
+	// to an open document empties it.
+	workspace map[string]*workspaceFile
 }
 
 // document is one open file plus its latest analysis. The analysis is kept
