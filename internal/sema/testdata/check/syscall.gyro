@@ -27,7 +27,7 @@ unsafe fn refused(cell: Cell, text: string, bytes: u8[], ratio: f64, count: i32?
 // Inside a generic function the check waits for the types an
 // instantiation brings: the argument is refused in the body, and the call
 // that brought the type is named beside it.
-unsafe fn forward<T>(value: T): i64 {
+unsafe fn forward<T>(value: T): isize {
   return syscall1(0, value)       //~ E0536 string cannot be a system call argument
 }
 

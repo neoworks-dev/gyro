@@ -75,10 +75,10 @@ export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
 // zero or more on success, an error number negated on failure. Each
 // argument keeps its own type, so a buffer goes in as the pointer it is.
 // They are lowering's: each is one METALS syscall instruction.
-export unsafe fn syscall0(number: usize): i64 !{ io }
-export unsafe fn syscall1<A>(number: usize, a: A): i64 !{ io }
-export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): i64 !{ io }
-export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): i64 !{ io }
-export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): i64 !{ io }
-export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): i64 !{ io }
-export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): i64 !{ io }
+export unsafe fn syscall0(number: usize): isize !{ io }
+export unsafe fn syscall1<A>(number: usize, a: A): isize !{ io }
+export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): isize !{ io }
+export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): isize !{ io }
+export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): isize !{ io }
+export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): isize !{ io }
+export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }

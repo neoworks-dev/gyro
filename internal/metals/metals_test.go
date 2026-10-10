@@ -704,12 +704,12 @@ func TestIsizeIsASignedPointerWidthInteger(t *testing.T) {
 }
 
 func TestSyscallRoundTripsAndVerifies(t *testing.T) {
-	roundTrip(t, header+`fn @write(%n: usize, %fd: i32, %p: ptr<u8>, %len: u8, %maybe: opt<anyptr>) -> i64 {
+	roundTrip(t, header+`fn @write(%n: usize, %fd: i32, %p: ptr<u8>, %len: u8, %maybe: opt<anyptr>) -> isize {
   %r = syscall %n(%fd, %p, %len, %maybe)
   return %r
 }
 `)
-	roundTrip(t, header+`fn @getpid(%n: usize) -> i64 {
+	roundTrip(t, header+`fn @getpid(%n: usize) -> isize {
   %r = syscall %n()
   return %r
 }

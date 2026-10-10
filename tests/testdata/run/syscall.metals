@@ -9,7 +9,7 @@
 module "metals:syscall"
 
 import "gyro:rt" {
-  fn @"println<i64>"(i64)
+  fn @"println<isize>"(isize)
   fn @"println<bool>"(bool)
 }
 
@@ -25,12 +25,12 @@ export fn @main() {
   %length = const.u8 3
   %write = const.usize 1
   %wrote = syscall %write(%stdout, %buffer, %length)
-  call @"println<i64>"(%wrote)
+  call @"println<isize>"(%wrote)
 
   ; getpid() takes nothing and always succeeds with a positive number.
   %getpid = const.usize 39
   %pid = syscall %getpid()
-  %zero = const.i64 0
+  %zero = const.isize 0
   %positive = gt %pid, %zero
   call @"println<bool>"(%positive)
 
@@ -38,13 +38,13 @@ export fn @main() {
   %close = const.usize 3
   %bad = const.i32 -1
   %closed = syscall %close(%bad)
-  call @"println<i64>"(%closed)
+  call @"println<isize>"(%closed)
 
   ; write(1, null, 0) writes nothing and succeeds: a null pointer is the
   ; zero word.
   %nothing = const.null opt<anyptr>
   %none = const.u64 0
   %empty = syscall %write(%stdout, %nothing, %none)
-  call @"println<i64>"(%empty)
+  call @"println<isize>"(%empty)
   return
 }

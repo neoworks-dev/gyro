@@ -253,7 +253,7 @@ type (
 	// vouches for the memory.
 	SliceFrom struct{ Dst, Ptr, Len string }
 	// Syscall is `%r = syscall %n(%a, ...)`: Linux system call n with up
-	// to six one-word arguments, answering the kernel's raw i64.
+	// to six one-word arguments, answering the kernel's raw isize.
 	Syscall struct {
 		Dst, Number string
 		Args        []string

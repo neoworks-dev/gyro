@@ -357,13 +357,13 @@ export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align
 export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
 
-export unsafe fn syscall0(number: usize): i64 !{ io }
-export unsafe fn syscall1<A>(number: usize, a: A): i64 !{ io }
-export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): i64 !{ io }
-export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): i64 !{ io }
-export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): i64 !{ io }
-export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): i64 !{ io }
-export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): i64 !{ io }
+export unsafe fn syscall0(number: usize): isize !{ io }
+export unsafe fn syscall1<A>(number: usize, a: A): isize !{ io }
+export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): isize !{ io }
+export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): isize !{ io }
+export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): isize !{ io }
+export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): isize !{ io }
+export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }
 ```
 
 `cast`, `slice_from_raw`, `env_of`/`with_env` and the `syscall` functions

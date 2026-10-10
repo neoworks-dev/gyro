@@ -549,7 +549,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 				return fmt.Errorf("a syscall argument is one word, an integer, bool or pointer, not %s", typ)
 			}
 		}
-		return fv.def(state, i.Dst, TInt64)
+		return fv.def(state, i.Dst, TIsize)
 
 	case *SliceSub:
 		typ, err := fv.use(state, i.X)

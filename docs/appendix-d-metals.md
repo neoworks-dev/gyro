@@ -644,11 +644,11 @@ is not something `call.indirect` could reach.
 ### System calls
 
 ```metals
-%r = syscall %n(%fd, %buf, %len)   ; Linux x86-64; %n is a usize -> i64
+%r = syscall %n(%fd, %buf, %len)   ; Linux x86-64; %n is a usize -> isize
 ```
 
 `syscall` asks the Linux kernel for call number `%n` with up to six
-arguments, and produces the kernel's raw answer as an `i64`: zero or more on
+arguments, and produces the kernel's raw answer as an `isize`: zero or more on
 success, an error number negated on failure. Each argument is one word: an
 integer of any width, a `bool`, a `ptr<T>`, an `anyptr`, or an optional of
 one of those two whose null is the zero word. The kernel reads every

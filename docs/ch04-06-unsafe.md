@@ -81,7 +81,7 @@ import { cast, offset, ptr_from_int, ptr_to_int, slice_from_raw } from "unsafe"
 | `copy_bytes(to, from: anyptr, bytes: usize)` | copies bytes; the ranges may overlap |
 | `raw_alloc`, `raw_free`, `raw_resize` | the process heap, which every allocator bottoms out in |
 | `env_of<F>(f: F): anyptr?`, `with_env<F>(f: F, env: anyptr?): F` | read and replace a `fn` value's environment |
-| `syscall0(number: usize): i64` … `syscall6` | makes a Linux system call with zero to six arguments |
+| `syscall0(number: usize): isize` … `syscall6` | makes a Linux system call with zero to six arguments |
 
 `cast` is the program's claim that a `T` lives at the address, the same
 claim C's cast makes. It replaces `p as *T`, which no longer exists:
@@ -128,7 +128,7 @@ import { syscall3 } from "unsafe"
 
 const SYS_WRITE: usize = 1
 
-safe fn write(fd: i32, bytes: u8[]): i64 {
+safe fn write(fd: i32, bytes: u8[]): isize {
   if bytes.len() == 0 {
     return 0
   }
@@ -143,7 +143,7 @@ address the program hands the kernel. Anything else, such as a struct, a
 string, a slice or a float, is an error, because none of them fits in the
 one register the kernel reads an argument from.
 
-The result is the kernel's own answer as an `i64`: zero or more on
+The result is the kernel's own answer as an `isize`: zero or more on
 success, and on failure an error number, negated. Nothing is retried and
 nothing is translated, which is what lets ordinary Gyro build `fs`, `os` and
 `time` on top of these seven functions.
