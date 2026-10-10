@@ -16,20 +16,25 @@ const (
 	shfWrite = 0x1
 	shfAlloc = 0x2
 	shfExec  = 0x4
+	shfTLS   = 0x400
 
 	stbLocal  = 0
 	stbGlobal = 1
 
 	sttNotype  = 0
+	sttObject  = 1
 	sttFunc    = 2
 	sttSection = 3
 	sttFile    = 4
+	sttTLS     = 6
 
 	shnAbs = 0xfff1
 
 	rX86_64_64   = 1
 	rX86_64_PC32 = 2
 	rX86_64_32   = 10
+
+	rX86_64_GOTTPOFF = 22
 )
 
 // outSection is a section as the file holds it, program and bookkeeping
@@ -134,6 +139,12 @@ func (a *assembler) object(name string) ([]byte, error) {
 		if sym.defined {
 			s.shndx = uint16(bySection[sym.section].index)
 			s.value = uint64(sym.offset)
+		}
+		if sym.data && sym.defined {
+			s.info |= sttObject
+			if bySection[sym.section].flags&shfTLS != 0 {
+				s.info = s.info&^0xf | sttTLS
+			}
 		}
 		if sym.function {
 			s.info |= sttFunc

@@ -431,6 +431,17 @@ the symbol itself for an extern. Every label is a local symbol, which is
 how a disassembler and a debugger name addresses; a `global` with
 `:function (end - start)` is a sized function symbol.
 
+The atomics add a few forms. `xchg`, `lock xadd` and `lock cmpxchg` take a
+memory operand and a register of the same width, with the operand-size
+prefix after `lock` for a word, and `mfence` is the full barrier. A
+thread-local variable is a `global name:data` in a `section .tbss nobits
+alloc noexec write align=8 tls`, which becomes a `NOBITS` section flagged
+`SHF_TLS` and a symbol of type `STT_TLS` (a `:data` symbol elsewhere is
+`STT_OBJECT`). It is read with `mov rax, [rel name wrt ..gottpoff]`, one
+`R_X86_64_GOTTPOFF` relocation against the symbol itself, and
+`add rax, [fs:0]`, where the `fs` segment prefix goes before everything
+else and the address is a SIB byte with neither base nor index.
+
 The debug sections hold one compilation unit covering `.text`, its
 address range, and the line table, written as DWARF 3. A row starts
 wherever an instruction's file or line differs from the previous row's.

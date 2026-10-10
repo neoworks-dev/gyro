@@ -105,6 +105,40 @@ func TestEncodings(t *testing.T) {
 		{"xorpd xmm0, xmm0", "660f57c0", ""},
 		{"sqrtsd xmm0, xmm0", "f20f51c0", ""},
 		{"roundsd xmm0, xmm1, 9", "660f3a0bc109", ""},
+
+		// Atomics. xchg with memory is locked by the processor and takes no
+		// prefix; xadd and cmpxchg are locked by an F0 that comes before
+		// everything else, the 66 of a word included.
+		{"xchg byte [rdx], al", "8602", "86 is the byte form, 87 the others"},
+		{"xchg word [rdx], ax", "668702", ""},
+		{"xchg dword [rdx], eax", "8702", ""},
+		{"xchg qword [rdx], rax", "488702", ""},
+		{"lock xadd byte [rdx], al", "f00fc002", "xadd is 0F C0, and 0F C1 for wider operands"},
+		{"lock xadd word [rdx], ax", "f0660fc102", "lock, then the operand-size prefix"},
+		{"lock xadd dword [rdx], eax", "f00fc102", ""},
+		{"lock xadd qword [rdx], rax", "f0480fc102", ""},
+		{"lock cmpxchg byte [rdx], r8b", "f0440fb002", "cmpxchg is 0F B0, and 0F B1; r8 is REX.R"},
+		{"lock cmpxchg word [rdx], r8w", "f066440fb102", ""},
+		{"lock cmpxchg dword [rdx], r8d", "f0440fb102", ""},
+		{"lock cmpxchg qword [rdx], r8", "f04c0fb102", "REX.W and REX.R"},
+		{"lock cmpxchg byte [rdx], cl", "f00fb00a", "cl is reg field 1"},
+		{"lock cmpxchg word [rdx], cx", "f0660fb10a", ""},
+		{"lock cmpxchg dword [rdx], ecx", "f00fb10a", ""},
+		{"lock cmpxchg qword [rdx], rcx", "f0480fb10a", ""},
+		{"mfence", "0faef0", ""},
+		{"neg rax", "48f7d8", "F7 /3"},
+		{"mov r8, rax", "4989c0", "REX.B, since the destination is in ModRM.rm"},
+		{"and r8, rcx", "4921c8", ""},
+		{"or r8, rcx", "4909c8", ""},
+		{"xor r8, rcx", "4931c8", ""},
+		{"movzx eax, byte [rdx]", "0fb602", ""},
+		{"movzx eax, word [rdx]", "0fb702", ""},
+		{"mov eax, [rdx]", "8b02", ""},
+		{"mov rax, [rdx]", "488b02", ""},
+
+		// An absolute address under fs: the segment prefix comes first, and
+		// the address is a SIB byte with neither base nor index.
+		{"add rax, [fs:0]", "6448030425" + "00000000", "mod 00, rm 100, SIB 25, then disp32"},
 	}
 	for _, c := range cases {
 		got, err := encodeLine(t, c.line)
@@ -136,6 +170,7 @@ func TestRipRelative(t *testing.T) {
 		{"mov qword [G_b+8], 5", "48c7050000000005000000", 3, 0},
 		{"cmp byte [G_b], 1", "803d0000000001", 2, -5},
 		{"movsd xmm9, [G_c]", "f2440f100d00000000", 5, -4},
+		{"lea rdi, [F_start]", "488d3d00000000", 3, -4},
 	}
 	for _, c := range cases {
 		got, err := encodeLine(t, c.line)
@@ -165,6 +200,13 @@ func TestEncodingErrors(t *testing.T) {
 		"lea rax, rbx",
 		"movzx rax, rbx",
 		"frobnicate rax",
+		"lock mov [rdx], eax",           // lock applies to the read-modify-write operations
+		"lock xadd eax, ecx",            // and to a memory destination
+		"xchg rax, rbx",                 // only the memory form of xchg is written
+		"xchg dword [rdx], rax",         // sizes differ
+		"mov rax, [gs:0]",               // only fs
+		"mov rax, [fs:S_0]",             // a symbol is rip-relative, which a segment cannot be
+		"mov rax, [S_0 wrt ..gottpoff]", // and rel
 	} {
 		if _, err := encodeLine(t, line); err == nil {
 			t.Errorf("%s: no error", line)
@@ -208,5 +250,62 @@ func TestJumpSizes(t *testing.T) {
 		if jump != c.want {
 			t.Errorf("%s: got %s, want %s", c.name, jump, c.want)
 		}
+	}
+}
+
+// A thread-local variable is a NOBITS section marked TLS holding a symbol
+// of type TLS, and reading it goes through the global offset table: one
+// GOTTPOFF relocation against the symbol, whose field holds the offset
+// from the end of the instruction.
+func TestThreadLocal(t *testing.T) {
+	source := `default rel
+global G_t:data
+global G_d:data
+section .tbss nobits alloc noexec write align=8 tls
+	align 8
+G_t:
+	resb 16
+section .data
+G_d:
+	dq 1
+section .text
+	mov rax, [rel G_t wrt ..gottpoff]
+	add rax, [fs:0]
+`
+	object, err := Assemble(source, "test.asm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := elf.NewFile(bytes.NewReader(object))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tbss := file.Section(".tbss")
+	if tbss == nil || tbss.Type != elf.SHT_NOBITS || tbss.Flags != elf.SHF_ALLOC|elf.SHF_WRITE|elf.SHF_TLS || tbss.Size != 16 || tbss.Addralign != 8 {
+		t.Fatalf(".tbss is %+v", tbss)
+	}
+	symbols, err := file.Symbols()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]elf.SymType{}
+	for _, sym := range symbols {
+		kinds[sym.Name] = elf.ST_TYPE(sym.Info)
+	}
+	if kinds["G_t"] != elf.STT_TLS || kinds["G_d"] != elf.STT_OBJECT {
+		t.Errorf("symbol types %v: want G_t TLS and G_d OBJECT", kinds)
+	}
+	rela, err := file.Section(".rela.text").Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rela) != 24 {
+		t.Fatalf("%d bytes of relocations, want one entry", len(rela))
+	}
+	offset := file.ByteOrder.Uint64(rela)
+	info := file.ByteOrder.Uint64(rela[8:])
+	addend := int64(file.ByteOrder.Uint64(rela[16:]))
+	if offset != 3 || elf.R_X86_64(info&0xffffffff) != elf.R_X86_64_GOTTPOFF || symbols[info>>32-1].Name != "G_t" || addend != -4 {
+		t.Errorf("relocation at %d, type %v, symbol %s, addend %d", offset, elf.R_X86_64(info&0xffffffff), symbols[info>>32-1].Name, addend)
 	}
 }

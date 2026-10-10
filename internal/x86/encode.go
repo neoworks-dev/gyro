@@ -22,6 +22,12 @@ type fixup struct {
 	sym    string
 	addend int64
 	pcrel  bool
+
+	// gottpoff makes the field a GOT entry's offset from the next
+	// instruction, which the linker fills in with the symbol's offset in
+	// the thread-local block. It is always a relocation, against the
+	// symbol itself.
+	gottpoff bool
 }
 
 // conditions maps every spelling of a condition code to its number.
@@ -119,7 +125,10 @@ func (e *encoding) build() (encoded, error) {
 			}
 			rex |= x<<1 | b
 			if at >= 0 {
-				fix = &fixup{offset: at, size: 4, sym: e.rmMem.sym, pcrel: true}
+				fix = &fixup{offset: at, size: 4, sym: e.rmMem.sym, pcrel: true, gottpoff: e.rmMem.gottpoff}
+			}
+			if e.rmMem.segment != 0 {
+				out = append(out, e.rmMem.segment)
 			}
 		}
 	}
@@ -150,6 +159,14 @@ func encodeMem(regField int, m *mem) (bytes []byte, rexX, rexB byte, ripAt int, 
 	r := byte(regField&7) << 3
 	if m.sym != "" {
 		return []byte{0x05 | r, 0, 0, 0, 0}, 0, 0, 1, nil
+	}
+	if m.base < 0 && m.index < 0 && m.segment != 0 {
+		// An absolute address under a segment: a SIB byte with neither
+		// base nor index, then a 32-bit displacement.
+		if m.disp < math.MinInt32 || m.disp > math.MaxInt32 {
+			return nil, 0, 0, -1, fmt.Errorf("displacement %d does not fit 32 bits", m.disp)
+		}
+		return append([]byte{4 | r, 0x25}, le32(m.disp)...), 0, 0, -1, nil
 	}
 	if m.base < 0 {
 		return nil, 0, 0, -1, fmt.Errorf("an address needs a base register or a symbol")
@@ -299,12 +316,19 @@ func encodeInst(prefix, mnemonic string, ops []operand) (encoded, error) {
 
 func encodeForm(prefix, mnemonic string, ops []operand) (*encoding, error) {
 	e := &encoding{opcodeReg: -1}
-	if prefix != "" {
+	switch prefix {
+	case "rep":
 		switch mnemonic {
 		case "movsb", "stosb", "movsq", "stosq":
 		default:
 			return nil, fmt.Errorf("rep does not apply to %s", mnemonic)
 		}
+	case "lock":
+		// Only the read-modify-write operations on memory are locked.
+		if (mnemonic != "xadd" && mnemonic != "cmpxchg") || len(ops) != 2 || ops[0].kind != opMem {
+			return nil, fmt.Errorf("lock does not apply to %s", mnemonic)
+		}
+		e.prefixes = []byte{0xf0}
 	}
 	unsupported := func() (*encoding, error) {
 		return nil, fmt.Errorf("unsupported operands for %s", mnemonic)
@@ -412,6 +436,28 @@ func encodeForm(prefix, mnemonic string, ops []operand) (*encoding, error) {
 		e.opcode = []byte{0x8d}
 		e.setReg(ops[0].reg)
 		e.setRM(ops[1])
+		return e, nil
+	case "xchg", "xadd", "cmpxchg":
+		// The memory form, whose first operand is the location: xchg locks
+		// it by itself, the other two under a lock prefix.
+		if n != 2 || ops[0].kind != opMem || !isGP(ops[1]) {
+			return unsupported()
+		}
+		if err := sameSize(ops[1].reg, ops[0]); err != nil {
+			return nil, err
+		}
+		size := ops[1].reg.size
+		e.sizePrefix(size)
+		switch mnemonic {
+		case "xchg":
+			e.opcode = []byte{0x86 | wideBit(size)}
+		case "xadd":
+			e.opcode = []byte{0x0f, 0xc0 | wideBit(size)}
+		default:
+			e.opcode = []byte{0x0f, 0xb0 | wideBit(size)}
+		}
+		e.setRM(ops[0])
+		e.setReg(ops[1].reg)
 		return e, nil
 	case "movzx", "movsx":
 		if n != 2 || !isGP(ops[0]) || !isRM(ops[1]) {
@@ -573,6 +619,7 @@ func encodeForm(prefix, mnemonic string, ops []operand) (*encoding, error) {
 		"ret": {0xc3}, "leave": {0xc9}, "cqo": {0x48, 0x99}, "cdq": {0x99},
 		"syscall": {0x0f, 0x05}, "int3": {0xcc}, "nop": {0x90}, "ud2": {0x0f, 0x0b},
 		"movsb": {0xa4}, "stosb": {0xaa}, "movsq": {0x48, 0xa5}, "stosq": {0x48, 0xab},
+		"mfence": {0x0f, 0xae, 0xf0},
 	}
 	code, ok := fixed[mnemonic]
 	if !ok {
