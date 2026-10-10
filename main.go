@@ -40,6 +40,10 @@ usage:
   gyro nasm <file.gyro>     lower a program and print its x86-64 assembly
   gyro build <file.gyro> [-o out]
                             compile a program to a native executable
+  gyro fmt [--check] <path>...
+                            format .gyro files in place, a directory meaning
+                            every .gyro file under it; --check only lists the
+                            files that would change and exits 1 if any would
   gyro lsp                  run the language server over stdio
   gyro explain [CODE]       explain a diagnostic code, or list them all
   gyro version              print the compiler version
@@ -73,6 +77,8 @@ func main() {
 		os.Exit(runBuild(args))
 	case "explain":
 		os.Exit(runExplain(args))
+	case "fmt":
+		os.Exit(runFmt(args))
 	case "lsp":
 		if err := lsp.Serve(os.Stdin, os.Stdout, version); err != nil {
 			fmt.Fprintf(os.Stderr, "gyro lsp: %v\n", err)
