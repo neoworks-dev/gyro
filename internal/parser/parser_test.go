@@ -1093,3 +1093,40 @@ func TestExamplesParse(t *testing.T) {
 func timeout() <-chan time.Time {
 	return time.After(5 * time.Second)
 }
+
+func TestParseLayout(t *testing.T) {
+	src := "fn f<T>(a: Array<T>, b: i32) {\n\tvar x = g<T>(1) < 2 > 3\n\tvar p = P{ x: 1 }\n\tvar xs = [1]\n\tvar m = (1 + 2)\n}\n"
+
+	var bag diag.Bag
+	_, layout := ParseLayout(diag.NewFile("t.gyro", src), &bag)
+	if bag.HasErrors() {
+		t.Fatal(bag.Render(diag.Style{}))
+	}
+
+	at := func(needle string, nth int) int {
+		offset := -1
+		for i := 0; i <= nth; i++ {
+			offset += 1 + strings.Index(src[offset+1:], needle)
+		}
+		return offset
+	}
+
+	for _, offset := range []int{at("<", 0), at(">", 0), at("<", 1), at(">", 1), at("<", 2), at(">", 2)} {
+		if !layout.Angles[offset] {
+			t.Errorf("offset %d (%q) should be an angle bracket", offset, src[offset:offset+1])
+		}
+	}
+	// The comparison and the `> 3` after it are operators.
+	if layout.Angles[at("<", 3)] || layout.Angles[at(">", 3)] {
+		t.Errorf("the comparison was taken for an angle bracket: %v", layout.Angles)
+	}
+
+	for _, offset := range []int{at("(", 0), at("(", 1), at("{ x", 0), at("[1", 0)} {
+		if !layout.Lists[offset] {
+			t.Errorf("offset %d (%q) should open a list", offset, src[offset:offset+1])
+		}
+	}
+	if layout.Lists[at("(1 +", 0)] {
+		t.Error("a grouping paren is not a list")
+	}
+}

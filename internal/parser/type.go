@@ -59,9 +59,9 @@ func (p *Parser) parseBaseType() ast.Type {
 
 	case token.Chan:
 		p.next()
-		p.expect(token.Lt)
+		p.expectAngle(token.Lt)
 		elem := p.parseType()
-		p.expect(token.Gt)
+		p.expectAngle(token.Gt)
 		return &ast.ChanType{Offset: offset, Elem: elem}
 
 	case token.Ident:
@@ -126,7 +126,7 @@ func (p *Parser) parseArgList(pins bool) ([]ast.Type, []ast.AssocPin) {
 	if !p.at(token.Lt) {
 		return nil, nil
 	}
-	p.next()
+	p.expectAngle(token.Lt)
 
 	var args []ast.Type
 	var fixed []ast.AssocPin
@@ -145,7 +145,7 @@ func (p *Parser) parseArgList(pins bool) ([]ast.Type, []ast.AssocPin) {
 			break
 		}
 	}
-	p.expect(token.Gt)
+	p.expectAngle(token.Gt)
 	return args, fixed
 }
 

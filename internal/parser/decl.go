@@ -318,7 +318,7 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	if !p.at(token.Lt) {
 		return nil
 	}
-	p.next()
+	p.expectAngle(token.Lt)
 
 	var params []ast.TypeParam
 	for !p.at(token.Gt) && !p.atEOF() {
@@ -337,7 +337,7 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 			break
 		}
 	}
-	p.expect(token.Gt)
+	p.expectAngle(token.Gt)
 	return params
 }
 
@@ -521,6 +521,7 @@ func (p *Parser) implOwner(t ast.Type) (string, []ast.TypeParam) {
 // parseParams parses a parenthesized parameter list. A leading `self` or
 // `*self` becomes the receiver rather than an ordinary parameter.
 func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
+	p.noteList()
 	p.expect(token.LParen)
 
 	var recv *ast.Receiver
