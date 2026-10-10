@@ -3960,3 +3960,32 @@ and bound imports opaquely; it is deleted.
 | a pointer that has left its object | `ptr.offset` past an extent and a `ptr.cast` naming the wrong type are a producer's claim and nothing verifies either |
 | green threads | OS threads make `spawn` cost a full pthread; a userspace scheduler is the long-term answer |
 | a fair `select` in the native runtime | the choice among ready arms is unspecified, so in-order polling conforms — but it can starve an arm behind a busy one, and fixing that means arms become a descriptor table the runtime chooses from |
+
+### Debug information is line tables, from a `loc` instruction, always on *(new)*
+
+**Status: decided, done (#112).** METALS has an optional `loc "file" N`
+instruction naming the source position of what follows it. Lowering emits one
+before every statement and at the top of every function; the native backend
+writes it as NASM's `%line` and assembles with `-g -F dwarf`, so `gdb`
+backtraces show Gyro file and line. Appendix E has the details, including the
+two things the assembly does for the debugger.
+
+**Why an instruction.** A position belongs to the code it describes and has to
+survive linking, printing and parsing like the code does. An instruction does
+that with nothing new: it nests in blocks, the printer and parser round-trip
+it, and a producer without source (`.metals` by hand, the C front end) just
+omits it. The verifier accepts it anywhere and checks only that it is
+well-formed.
+
+**Why always on.** The cost is a few rows per statement in the object and no
+code, a flag would be a second configuration to test and a reason a crash
+report is useless, and `gyro run` would have to thread it too. A stripped
+binary is `strip`'s job.
+
+**Rejected: a position field on every instruction.** It touches every
+instruction type, the printer, the parser and the linker for something only
+one consumer reads. **Rejected: a side table keyed by function and index.**
+It breaks the moment a pass inserts an instruction, and the text format would
+need a second section. **Not here:** variable locations (a value's register or
+stack slot as a DWARF location) and a function-level DWARF description; line
+rows and sized symbols are what a backtrace needs.

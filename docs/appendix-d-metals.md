@@ -667,6 +667,20 @@ switch %tag {
 `br` and `br_if` target an enclosing label: a `block` label exits past
 its end, a `loop` label re-enters its top. No other jumps exist.
 
+### Source positions
+
+```metals
+loc "/home/me/prog.gyro" 12
+```
+
+`loc` names the source file and line of the instructions that follow it,
+until the next `loc`. It reads no register and writes none, and the
+verifier only checks that the line counts from 1 and the file is named. It
+is optional: a producer with no source to point at, and every hand-written
+module, emits none. The native backend turns it into a line table
+([appendix E](appendix-e-native-backend.md)); a consumer with no use for
+positions skips it. The file is the path as the debugger should find it.
+
 ### Concurrency
 
 ```metals

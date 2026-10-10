@@ -38,7 +38,9 @@ matching what the built binary sees ([chapter 1.3](ch01-03-hello-world.md)).
 
 `gyro build` emits x86-64 assembly, assembles it with NASM and links it
 against the C runtime with a C compiler
-([appendix E](appendix-e-native-backend.md)).
+([appendix E](appendix-e-native-backend.md)). The binary carries line
+information, so `gdb` shows the Gyro file and line of each frame; variables
+are not described yet.
 
 ## Diagnostics
 
