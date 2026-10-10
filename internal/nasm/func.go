@@ -112,7 +112,6 @@ type frame struct {
 }
 
 const sretSlot = -8
-const scratchSlot = -16
 
 func (g *generator) genFunc(fn *metals.Func) {
 	f := &frame{
@@ -247,11 +246,6 @@ func walkInstrs(body []metals.Instr, visit func(metals.Instr)) {
 		case *metals.Switch:
 			for _, c := range i.Cases {
 				walkInstrs(c.Body, visit)
-			}
-			walkInstrs(i.Default, visit)
-		case *metals.Select:
-			for _, arm := range i.Arms {
-				walkInstrs(arm.Body, visit)
 			}
 			walkInstrs(i.Default, visit)
 		}
@@ -477,6 +471,7 @@ var narrowRegs = map[string][3]string{
 	"rbx": {"bl", "bx", "ebx"},
 	"rcx": {"cl", "cx", "ecx"},
 	"rdx": {"dl", "dx", "edx"},
+	"r8":  {"r8b", "r8w", "r8d"},
 	"r12": {"r12b", "r12w", "r12d"},
 	"r13": {"r13b", "r13w", "r13d"},
 	"r14": {"r14b", "r14w", "r14d"},
@@ -631,7 +626,30 @@ func (f *frame) instr(instr metals.Instr) {
 		f.leaInto(f.slot(i.Dst), memLoc{"rbp", area}.String())
 
 	case *metals.GlobalPtr:
-		f.leaInto(f.slot(i.Dst), "["+g.globalSymbol(i.Name)+"]")
+		symbol := g.globalSymbol(i.Name)
+		if g.globals[i.Name].ThreadLocal {
+			// The thread pointer sits at fs:0, and the variable's offset
+			// from it is fixed when the program is linked (the linker
+			// turns the load into an immediate for an executable), so the
+			// cell is one load and one add away.
+			g.ins("mov rax, [rel %s wrt ..gottpoff]", symbol)
+			g.ins("add rax, [fs:0]")
+			g.ins("mov %s, rax", f.slot(i.Dst))
+			return
+		}
+		f.leaInto(f.slot(i.Dst), "["+symbol+"]")
+
+	case *metals.ThreadStart:
+		if g.funcs[i.Body] == nil {
+			g.fail("@%s: thread.start of the runtime function @%s is not supported", f.fn.Name, i.Body)
+		}
+		g.ins("lea rdi, [%s]", g.symbolFor(i.Body))
+		g.ins("mov rsi, %s", f.slot(i.Data))
+		g.ins("call %s", g.extern("gy_thread_start"))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+
+	case *metals.ThreadExit:
+		g.ins("call %s", g.extern("gy_thread_exit"))
 
 	case *metals.New:
 		g.ins("mov rdi, %d", g.sizeOf(i.Type))
@@ -821,6 +839,9 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("syscall")
 		g.ins("mov %s, rax", f.slot(i.Dst))
 
+	case *metals.AtomicLoad, *metals.AtomicStore, *metals.AtomicRMW, *metals.AtomicCas, *metals.Fence:
+		f.emitAtomic(instr)
+
 	case *metals.IndexGet:
 		element := f.indexedElement(i.X, i.Index)
 		f.loadMember(f.slot(i.Dst), element, f.typeOf(i.Dst))
@@ -907,38 +928,6 @@ func (f *frame) instr(instr metals.Instr) {
 
 	case *metals.Switch:
 		f.emitSwitch(i)
-
-	case *metals.ChanNew:
-		if i.Cap == "" {
-			g.ins("xor edi, edi")
-		} else {
-			g.ins("mov rdi, %s", f.slot(i.Cap))
-		}
-		g.ins("mov rsi, %d", g.sizeOf(i.Elem))
-		g.ins("call %s", g.extern("gy_chan_new"))
-		g.ins("mov %s, rax", f.slot(i.Dst))
-
-	case *metals.Send:
-		element := f.elementOut(i.Val)
-		g.ins("mov rdi, %s", f.slot(i.Ch))
-		g.ins("lea rsi, %s", element)
-		g.ins("call %s", g.extern("gy_chan_send"))
-
-	case *metals.Recv:
-		f.emitRecv(i)
-
-	case *metals.ChanClose:
-		g.ins("mov rdi, %s", f.slot(i.Ch))
-		g.ins("call %s", g.extern("gy_chan_close"))
-
-	case *metals.Await:
-		g.ins("mov rdi, %s", f.slot(i.X))
-		g.ins("lea rsi, %s", f.elementIn(i.Dst))
-		g.ins("call %s", g.extern("gy_future_get"))
-		f.elementBack(i.Dst)
-
-	case *metals.Select:
-		f.emitSelect(i)
 
 	case *metals.OptWrap:
 		opt, ok := f.typeOf(i.Dst).(*metals.Opt)
@@ -1182,71 +1171,6 @@ func (f *frame) emitLen(i *metals.Len) {
 	default:
 		g.fail("@%s: len of a %s", f.fn.Name, t)
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Channels and select
-// ---------------------------------------------------------------------------
-
-// emitRecv fills the tuple<T, bool> a receive answers with. The element
-// lands in the tuple's own first field, which is already in storage
-// representation, so nothing is staged; the open flag is a bool and is
-// stored as the byte one is.
-func (f *frame) emitRecv(i *metals.Recv) {
-	g := f.g
-	tuple := f.tupleOf(i.Dst)
-	f.zeroMem(f.slot(i.Dst), g.sizeOf(tuple))
-	g.ins("mov rdi, %s", f.slot(i.Ch))
-	g.ins("lea rsi, %s", f.addr(i.Dst))
-	g.ins("call %s", g.extern("gy_chan_recv"))
-	f.storeMember(f.slot(i.Dst).plus(g.tupleOffset(tuple, 1)), regAt("rax"), tuple.Elems[1])
-}
-
-func (f *frame) emitSelect(i *metals.Select) {
-	g := f.g
-	top := g.newLabel()
-	end := g.newLabel()
-	g.label(top)
-
-	armLabels := make([]string, len(i.Arms))
-	for index, arm := range i.Arms {
-		armLabels[index] = g.newLabel()
-		if arm.Send {
-			element := f.elementOut(arm.Val)
-			g.ins("mov rdi, %s", f.slot(arm.Ch))
-			g.ins("lea rsi, %s", element)
-			g.ins("call %s", g.extern("gy_chan_try_send"))
-			g.ins("test rax, rax")
-			g.ins("jnz %s", armLabels[index])
-			continue
-		}
-		f.zeroMem(f.slot(arm.Dst), g.slotOf(f.typeOf(arm.Dst)))
-		g.ins("mov rdi, %s", f.slot(arm.Ch))
-		g.ins("lea rsi, %s", f.elementIn(arm.Dst))
-		g.ins("call %s", g.extern("gy_chan_try_recv"))
-		// The arm is taken only if the receive succeeded, so the value is
-		// read back out of staging on that path alone.
-		missed := g.newLabel()
-		g.ins("test rax, rax")
-		g.ins("jz %s", missed)
-		f.elementBack(arm.Dst)
-		g.ins("jmp %s", armLabels[index])
-		g.label(missed)
-	}
-	if len(i.Default) > 0 {
-		f.body(i.Default)
-		g.ins("jmp %s", end)
-	} else {
-		g.ins("call %s", g.extern("gy_select_pause"))
-		g.ins("jmp %s", top)
-	}
-
-	for index, arm := range i.Arms {
-		g.label(armLabels[index])
-		f.body(arm.Body)
-		g.ins("jmp %s", end)
-	}
-	g.label(end)
 }
 
 // ---------------------------------------------------------------------------

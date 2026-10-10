@@ -128,15 +128,11 @@ type (
 		Len  int64
 	}
 	TupleOf struct{ Elems []Type }
-	ChanOf  struct{ Elem Type }
-	// FutureOf is the un-awaited result of an async call.
-	FutureOf struct{ Result Type }
 	// FnType is fn(A, B) -> R. Result nil means the function returns
 	// nothing.
 	FnType struct {
 		Params []Type
 		Result Type
-		Async  bool
 	}
 	// CodeType is code(A, B) -> R: the address of a function and nothing
 	// else. It is one word where FnType is two, because it carries no
@@ -171,14 +167,10 @@ type (
 func (t *Ptr) String() string     { return "ptr<" + t.Elem.String() + ">" }
 func (t *Opt) String() string     { return "opt<" + t.Elem.String() + ">" }
 func (t *SliceOf) String() string { return "slice<" + t.Elem.String() + ">" }
-func (t *ChanOf) String() string  { return "chan<" + t.Elem.String() + ">" }
-func (t *FutureOf) String() string {
-	return "future<" + t.Result.String() + ">"
-}
-func (t *Named) String() string  { return "%" + QuoteName(t.Name) }
-func (t *Any) String() string    { return "any" }
-func (t *AnyPtr) String() string { return "anyptr" }
-func (t *Handle) String() string { return "handle" }
+func (t *Named) String() string   { return "%" + QuoteName(t.Name) }
+func (t *Any) String() string     { return "any" }
+func (t *AnyPtr) String() string  { return "anyptr" }
+func (t *Handle) String() string  { return "handle" }
 
 func (t *ArrayOf) String() string {
 	return "array<" + t.Elem.String() + ", " + strconv.FormatInt(t.Len, 10) + ">"
@@ -198,9 +190,6 @@ func (t *FnType) String() string {
 		parts[i] = param.String()
 	}
 	out := "fn(" + strings.Join(parts, ", ") + ")"
-	if t.Async {
-		out = "async " + out
-	}
 	if t.Result != nil {
 		out += " -> " + t.Result.String()
 	}
@@ -249,15 +238,9 @@ func TypesEqual(a, b Type) bool {
 			}
 		}
 		return true
-	case *ChanOf:
-		b, ok := b.(*ChanOf)
-		return ok && TypesEqual(a.Elem, b.Elem)
-	case *FutureOf:
-		b, ok := b.(*FutureOf)
-		return ok && TypesEqual(a.Result, b.Result)
 	case *FnType:
 		b, ok := b.(*FnType)
-		if !ok || a.Async != b.Async || len(a.Params) != len(b.Params) {
+		if !ok || len(a.Params) != len(b.Params) {
 			return false
 		}
 		for i := range a.Params {
@@ -519,6 +502,15 @@ type Global struct {
 	Name string
 	Type Type
 
+	// ThreadLocal gives every thread a cell of its own, zeroed when the
+	// thread starts, and global.ptr answers the calling thread's. The
+	// module's init runs once, on the first thread, so it cannot set a
+	// thread-local for the rest, and a static image is refused for the
+	// same reason: there would be no image to give the threads that start
+	// later. A pointer to the cell is good on the thread that took it and
+	// no other.
+	ThreadLocal bool
+
 	// Bytes is the storage this global starts with, in place of the zeros
 	// it would otherwise hold. It is exactly Size(Type) bytes, in the
 	// target's own representation — the same image a data segment writes
@@ -541,7 +533,6 @@ type Global struct {
 type Func struct {
 	Name   string
 	Export bool
-	Async  bool
 	Params []Param
 	Result Type
 	Body   []Instr
@@ -558,7 +549,7 @@ func (f *Func) Sig() *FnType {
 	for i, param := range f.Params {
 		params[i] = param.Type
 	}
-	return &FnType{Params: params, Result: f.Result, Async: f.Async}
+	return &FnType{Params: params, Result: f.Result}
 }
 
 // Scheme returns the language prefix of a module name, "" if none.
@@ -633,9 +624,7 @@ func ExternLibrary(moduleName string) string {
 // where a METALS register is a qword — and that is what the generated
 // shim converts.
 //
-// So an address crosses a native boundary as itself, while a channel and
-// a future do not cross either kind: those are Gyro runtime objects with
-// no C spelling at all, which is a different reason than the heap.
+// So an address crosses a native boundary as itself.
 func NativeLibrary(moduleName string) bool {
 	return Scheme(moduleName) == externScheme
 }

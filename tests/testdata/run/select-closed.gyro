@@ -1,0 +1,17 @@
+// A closed channel is ready to receive from: the arm runs, with the zero
+// the language says not to read, and so does a drained one. Which arm runs
+// when two are ready is unspecified, so only one is.
+
+import { println } from "stdlib"
+
+fn main() {
+    var gone = chan<i32>(1)
+    gone.close()
+    var waiting = chan<i32>(1)
+    var ran = false
+    select {
+        var v = <-gone: { ran = true }
+        var w = <-waiting: println("not here")
+    }
+    println(ran)
+}

@@ -200,7 +200,7 @@ func (g *generator) classOf(t metals.Type) argClass {
 			return classSSE
 		}
 		return classInt
-	case *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
+	case *metals.Ptr, *metals.AnyPtr, *metals.Handle, *metals.CodeType:
 		return classInt
 	case *metals.Opt:
 		// A niche optional is a pointer, and travels as one.

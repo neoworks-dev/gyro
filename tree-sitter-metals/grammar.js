@@ -67,7 +67,6 @@ module.exports = grammar({
     ),
 
     imported_function: $ => seq(
-      optional('async'),
       'fn',
       field('name', $.global_name),
       field('signature', $.signature),
@@ -156,9 +155,11 @@ module.exports = grammar({
     ),
 
     // Module storage, zero-initialized unless it carries the bytes it
-    // starts with. Those bytes are storage, not an initializer: an
+    // starts with. A thread_local one is a cell per thread and carries
+    // none. Those bytes are storage, not an initializer: an
     // expression would need an evaluation order, and this has none.
     global_declaration: $ => seq(
+      optional('thread_local'),
       'global',
       field('name', $.global_name),
       ':',
@@ -176,7 +177,7 @@ module.exports = grammar({
     ),
 
     function_declaration: $ => seq(
-      repeat(choice('export', 'async')),
+      optional('export'),
       'fn',
       field('name', $.global_name),
       '(',
@@ -205,7 +206,6 @@ module.exports = grammar({
       $.block_instruction,
       $.loop_instruction,
       $.switch_instruction,
-      $.select_instruction,
       $.instruction,
       $._newline,
     ),
@@ -272,53 +272,6 @@ module.exports = grammar({
       $._end,
     ),
 
-    select_instruction: $ => seq(
-      'select',
-      '{',
-      $._end,
-      repeat(choice(
-        $.select_receive_arm,
-        $.select_send_arm,
-        $.select_default_arm,
-        $._newline,
-      )),
-      '}',
-      $._end,
-    ),
-
-    select_receive_arm: $ => seq(
-      'recv',
-      field('binding', $.register),
-      '=',
-      field('channel', $.register),
-      '{',
-      $._end,
-      optional($._instruction_body),
-      '}',
-      $._end,
-    ),
-
-    select_send_arm: $ => seq(
-      'send',
-      field('channel', $.register),
-      ',',
-      field('value', $.register),
-      '{',
-      $._end,
-      optional($._instruction_body),
-      '}',
-      $._end,
-    ),
-
-    select_default_arm: $ => seq(
-      'default',
-      '{',
-      $._end,
-      optional($._instruction_body),
-      '}',
-      $._end,
-    ),
-
     // A plain one-line instruction: an optional destination, the mnemonic,
     // then operands. The operand run is deliberately token-shaped rather
     // than fully structured; the verifier owns the semantics.
@@ -368,7 +321,7 @@ module.exports = grammar({
 
     generic_type: $ => seq(
       field('constructor', alias(
-        choice('ptr', 'opt', 'slice', 'chan', 'future', 'array', 'tuple'),
+        choice('ptr', 'opt', 'slice', 'array', 'tuple'),
         $.type_constructor,
       )),
       '<',
@@ -377,14 +330,12 @@ module.exports = grammar({
     ),
 
     function_type: $ => seq(
-      optional('async'),
       'fn',
       $.signature,
     ),
 
     // A code pointer: the address of a function, with no environment
-    // beside it and no async form, since an async function is started
-    // rather than called.
+    // beside it.
     code_type: $ => seq(
       'code',
       $.signature,

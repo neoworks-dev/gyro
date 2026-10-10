@@ -1,0 +1,31 @@
+// Eight threads each take the lock a thousand times and add one to the
+// value it guards. The lock is contended enough that threads sleep on it
+// and are woken, which is the path an uncontended test never reaches; the
+// total is exact only if no two of them ever held it together. The order
+// they get it in is not determined, the total is.
+
+import { println, Mutex } from "stdlib"
+import { heap, spawn } from "mem"
+
+fn main() {
+    var total = Mutex::new(0)
+    var done = chan<bool>(8)
+
+    for worker in 0..8 {
+        spawn(heap(), fn() {
+            for i in 0..1000 {
+                var guard = total.lock()
+                guard.set(guard.get() + 1)
+                guard.unlock()
+            }
+            done <- true
+        })
+    }
+    for worker in 0..8 {
+        var _ = <-done
+    }
+
+    var guard = total.lock()
+    defer guard.unlock()
+    println(guard.get())
+}

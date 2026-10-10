@@ -351,6 +351,47 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fmt.Errorf("ptr.from makes an anyptr or an opt<anyptr>, not %s; ptr.cast puts a type on it", i.To)
 
+	case *AtomicLoad:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.load", false)
+		if err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *AtomicStore:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.store", false)
+		if err != nil {
+			return err
+		}
+		return fv.atomicOperand(state, i.Val, elem, "atomic.store")
+
+	case *AtomicRMW:
+		op := "atomic." + i.Op
+		elem, err := fv.atomicCell(state, i.Ptr, op, i.Op != "swap")
+		if err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.Val, elem, op); err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *AtomicCas:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.cas", false)
+		if err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.Expected, elem, "atomic.cas"); err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.New, elem, "atomic.cas"); err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *Fence:
+		return nil
+
 	case *PtrCast:
 		typ, err := fv.use(state, i.X)
 		if err != nil {
@@ -703,9 +744,6 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !ok {
 			return fmt.Errorf("unknown function @%s", i.Callee)
 		}
-		if sig.Async {
-			return fmt.Errorf("code.ref @%s: an async function is started, not called, so its address is not a code pointer", i.Callee)
-		}
 		return fv.def(state, i.Dst, &CodeType{Params: sig.Params, Result: sig.Result})
 
 	case *MakeClosure:
@@ -730,7 +768,7 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		if !TypesEqual(envType, sig.Params[0]) {
 			return fmt.Errorf("closure environment is %s, @%s wants %s", envType, i.Callee, sig.Params[0])
 		}
-		return fv.def(state, i.Dst, &FnType{Params: sig.Params[1:], Result: sig.Result, Async: sig.Async})
+		return fv.def(state, i.Dst, &FnType{Params: sig.Params[1:], Result: sig.Result})
 
 	case *CallIndirect:
 		typ, err := fv.use(state, i.Fn)
@@ -776,9 +814,33 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return nil
 
-	case *Abort:
+	case *Abort, *ThreadExit:
 		state.unreachable = true
 		return nil
+
+	case *ThreadStart:
+		stackType, err := fv.use(state, i.Stack)
+		if err != nil {
+			return err
+		}
+		if !isOptAnyPtr(stackType) {
+			return fmt.Errorf("thread.start's stack is an opt<anyptr>, not %s", stackType)
+		}
+		sig, ok := fv.callables[i.Body]
+		if !ok {
+			return fmt.Errorf("unknown function @%s", i.Body)
+		}
+		if sig.Result != nil || len(sig.Params) != 1 || !TypesEqual(sig.Params[0], &AnyPtr{}) {
+			return fmt.Errorf("thread.start's body takes one anyptr and returns nothing, but @%s is %s", i.Body, sig)
+		}
+		dataType, err := fv.use(state, i.Data)
+		if err != nil {
+			return err
+		}
+		if _, ok := dataType.(*AnyPtr); !ok {
+			return fmt.Errorf("thread.start hands its body an anyptr, not %s", dataType)
+		}
+		return fv.def(state, i.Dst, TUsize)
 
 	case *If:
 		condType, err := fv.use(state, i.Cond)
@@ -890,69 +952,6 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		state.defined = joined.defined
 		return nil
-
-	case *ChanNew:
-		if i.Cap != "" {
-			capType, err := fv.use(state, i.Cap)
-			if err != nil {
-				return err
-			}
-			if !isUsize(capType) {
-				return fmt.Errorf("a channel capacity is usize, not %s", capType)
-			}
-		}
-		return fv.def(state, i.Dst, &ChanOf{Elem: i.Elem})
-
-	case *Send:
-		return fv.checkSend(state, i.Ch, i.Val)
-
-	case *Recv:
-		elem, err := fv.chanElem(state, i.Ch)
-		if err != nil {
-			return err
-		}
-		return fv.def(state, i.Dst, &TupleOf{Elems: []Type{elem, TBool}})
-
-	case *ChanClose:
-		_, err := fv.chanElem(state, i.Ch)
-		return err
-
-	case *Await:
-		if !fv.fn.Async {
-			return fmt.Errorf("await only works inside an async fn")
-		}
-		typ, err := fv.use(state, i.X)
-		if err != nil {
-			return err
-		}
-		future, ok := typ.(*FutureOf)
-		if !ok {
-			return fmt.Errorf("await wants a future, not %s", typ)
-		}
-		return fv.def(state, i.Dst, future.Result)
-
-	case *Select:
-		for _, arm := range i.Arms {
-			armState := state.clone()
-			if arm.Send {
-				if err := fv.checkSend(armState, arm.Ch, arm.Val); err != nil {
-					return err
-				}
-			} else {
-				elem, err := fv.chanElem(armState, arm.Ch)
-				if err != nil {
-					return err
-				}
-				if err := fv.def(armState, arm.Dst, elem); err != nil {
-					return err
-				}
-			}
-			if err := fv.checkBody(arm.Body, armState); err != nil {
-				return err
-			}
-		}
-		defaultState := state.clone()
-		return fv.checkBody(i.Default, defaultState)
 
 	case *OptWrap:
 		typ, err := fv.use(state, i.X)
@@ -1067,9 +1066,6 @@ func (fv *funcVerifier) checkBin(i *Bin, state *regState) error {
 		}
 		return fv.def(state, i.Dst, TBool)
 	default: // eq, ne
-		if _, isChan := left.(*ChanOf); isChan {
-			return fmt.Errorf("channels do not compare")
-		}
 		// Comparing two unions would have to compare storage, and
 		// nothing records which member is live in either of them — C
 		// does not define this and neither does the format. A record
@@ -1100,33 +1096,6 @@ func (fv *funcVerifier) checkIndex(state *regState, base, index string) (Type, e
 	return elem, nil
 }
 
-func (fv *funcVerifier) chanElem(state *regState, name string) (Type, error) {
-	typ, err := fv.use(state, name)
-	if err != nil {
-		return nil, err
-	}
-	channel, ok := typ.(*ChanOf)
-	if !ok {
-		return nil, fmt.Errorf("a channel operation wants chan<...>, not %s", typ)
-	}
-	return channel.Elem, nil
-}
-
-func (fv *funcVerifier) checkSend(state *regState, ch, val string) error {
-	elem, err := fv.chanElem(state, ch)
-	if err != nil {
-		return err
-	}
-	valType, err := fv.use(state, val)
-	if err != nil {
-		return err
-	}
-	if !TypesEqual(valType, elem) {
-		return fmt.Errorf("send of %s on chan<%s>", valType, elem)
-	}
-	return nil
-}
-
 func (fv *funcVerifier) useAny(state *regState, name, what string) error {
 	typ, err := fv.use(state, name)
 	if err != nil {
@@ -1134,6 +1103,54 @@ func (fv *funcVerifier) useAny(state *regState, name, what string) error {
 	}
 	if _, ok := typ.(*Any); !ok {
 		return fmt.Errorf("%s works on any values, not %s", what, typ)
+	}
+	return nil
+}
+
+// atomicCell checks the pointer an atomic operation goes through and
+// answers what it points at. The cell is a word the hardware can update in
+// one step: an integer of 8 to 64 bits, a bool, a ptr or an anyptr, or the
+// nullable form of either, which is the same word. The
+// arithmetic and bitwise operations are for integers alone, since adding to
+// a pointer or a bool means nothing an atomic can promise.
+func (fv *funcVerifier) atomicCell(state *regState, ptr, op string, integersOnly bool) (Type, error) {
+	typ, err := fv.use(state, ptr)
+	if err != nil {
+		return nil, err
+	}
+	pointer, ok := typ.(*Ptr)
+	if !ok {
+		return nil, fmt.Errorf("%s wants a ptr<T>, not %s", op, typ)
+	}
+	if integersOnly {
+		if !intKind(pointer.Elem) {
+			return nil, fmt.Errorf("%s works on an integer, not %s", op, pointer.Elem)
+		}
+		return pointer.Elem, nil
+	}
+	switch elem := pointer.Elem.(type) {
+	case *Ptr, *AnyPtr:
+		return elem, nil
+	case *Opt:
+		// A nullable pointer is one word, which is all an atomic asks.
+		if NicheOpt(elem) {
+			return elem, nil
+		}
+	}
+	if intKind(pointer.Elem) || isBool(pointer.Elem) {
+		return pointer.Elem, nil
+	}
+	return nil, fmt.Errorf("%s works on an integer, a bool or a pointer, not %s", op, pointer.Elem)
+}
+
+// atomicOperand checks that a value is the type the cell holds.
+func (fv *funcVerifier) atomicOperand(state *regState, reg string, elem Type, op string) error {
+	typ, err := fv.use(state, reg)
+	if err != nil {
+		return err
+	}
+	if !TypesEqual(typ, elem) {
+		return fmt.Errorf("%s of %s on a cell of %s", op, typ, elem)
 	}
 	return nil
 }

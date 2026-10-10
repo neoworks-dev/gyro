@@ -1,0 +1,178 @@
+; Atomic operations on a cell of every width. One thread, so what is under
+; test is not the atomicity but the arithmetic around it: each operation
+; answers the value the cell held before, the new value wraps at the cell's
+; width, and a narrow cell widens its old value by its own signedness. A
+; backend that widened an i8 as unsigned, or kept the upper bits of an
+; xadd result, prints a different number here.
+;
+; The ordering is sequentially consistent and there is no operand for it,
+; so the only other instruction is the fence.
+
+module "metals:atomic"
+
+import "gyro:rt" {
+  fn @"println<i8>"(i8)
+  fn @"println<u16>"(u16)
+  fn @"println<i32>"(i32)
+  fn @"println<u32>"(u32)
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+export fn @main() {
+  ; ---- i8: signed widening, wrapping, every operation.
+  %c8 = slot i8
+  %m5 = const.i8 -5
+  atomic.store %c8, %m5
+  %v = atomic.load %c8
+  call @"println<i8>"(%v)                    ; -5
+  %ten = const.i8 10
+  %v = atomic.add %c8, %ten
+  call @"println<i8>"(%v)                    ; -5
+  %seven = const.i8 7
+  %v = atomic.sub %c8, %seven
+  call @"println<i8>"(%v)                    ; 5
+  %v = atomic.load %c8
+  call @"println<i8>"(%v)                    ; -2
+  %mask = const.i8 15
+  %v = atomic.and %c8, %mask
+  call @"println<i8>"(%v)                    ; -2
+  %bits = const.i8 48
+  %v = atomic.or %c8, %bits
+  call @"println<i8>"(%v)                    ; 14
+  %flip = const.i8 127
+  %v = atomic.xor %c8, %flip
+  call @"println<i8>"(%v)                    ; 62
+  %hundred = const.i8 100
+  %v = atomic.swap %c8, %hundred
+  call @"println<i8>"(%v)                    ; 65
+  %low = const.i8 -128
+  %v = atomic.cas %c8, %hundred, %low
+  call @"println<i8>"(%v)                    ; 100
+  %one = const.i8 1
+  %v = atomic.cas %c8, %one, %hundred
+  call @"println<i8>"(%v)                    ; -128
+  %v = atomic.load %c8
+  call @"println<i8>"(%v)                    ; -128
+  %m1 = const.i8 -1
+  %v = atomic.add %c8, %m1
+  call @"println<i8>"(%v)                    ; -128
+  %v = atomic.add %c8, %one
+  call @"println<i8>"(%v)                    ; 127
+  %v = atomic.load %c8
+  call @"println<i8>"(%v)                    ; -128
+
+  ; ---- u16: zero widening.
+  %c16 = slot u16
+  %top = const.u16 65535
+  atomic.store %c16, %top
+  %w = atomic.load %c16
+  call @"println<u16>"(%w)                   ; 65535
+  %two = const.u16 2
+  %w = atomic.add %c16, %two
+  call @"println<u16>"(%w)                   ; 65535
+  %three = const.u16 3
+  %w = atomic.sub %c16, %three
+  call @"println<u16>"(%w)                   ; 1
+  %hi = const.u16 65280
+  %w = atomic.and %c16, %hi
+  call @"println<u16>"(%w)                   ; 65534
+  %nib = const.u16 240
+  %w = atomic.or %c16, %nib
+  call @"println<u16>"(%w)                   ; 65280
+  %w = atomic.xor %c16, %top
+  call @"println<u16>"(%w)                   ; 65520
+  %thousand = const.u16 1000
+  %w = atomic.swap %c16, %thousand
+  call @"println<u16>"(%w)                   ; 15
+  %small = const.u16 7
+  %w = atomic.cas %c16, %thousand, %small
+  call @"println<u16>"(%w)                   ; 1000
+  %eight = const.u16 8
+  %nine = const.u16 9
+  %w = atomic.cas %c16, %eight, %nine
+  call @"println<u16>"(%w)                   ; 7
+  %w = atomic.load %c16
+  call @"println<u16>"(%w)                   ; 7
+
+  ; ---- i32: sign widening of a dword result.
+  %c32 = slot i32
+  %least = const.i32 -2147483648
+  atomic.store %c32, %least
+  %x = atomic.load %c32
+  call @"println<i32>"(%x)                   ; -2147483648
+  %m1x = const.i32 -1
+  %x = atomic.add %c32, %m1x
+  call @"println<i32>"(%x)                   ; -2147483648
+  %five = const.i32 5
+  %x = atomic.swap %c32, %five
+  call @"println<i32>"(%x)                   ; 2147483647
+  %m16 = const.i32 -16
+  %x = atomic.and %c32, %m16
+  call @"println<i32>"(%x)                   ; 5
+  %x = atomic.xor %c32, %m1x
+  call @"println<i32>"(%x)                   ; 0
+  %x = atomic.load %c32
+  call @"println<i32>"(%x)                   ; -1
+
+  ; ---- u32: a dword result is not sign widened.
+  %cu32 = slot u32
+  %all = const.u32 4294967295
+  atomic.store %cu32, %all
+  %y = atomic.load %cu32
+  call @"println<u32>"(%y)                   ; 4294967295
+  %one32 = const.u32 1
+  %y = atomic.add %cu32, %one32
+  call @"println<u32>"(%y)                   ; 4294967295
+  %y = atomic.sub %cu32, %one32
+  call @"println<u32>"(%y)                   ; 0
+  %stripes = const.u32 4042322160
+  %y = atomic.and %cu32, %stripes
+  call @"println<u32>"(%y)                   ; 4294967295
+  %y = atomic.xor %cu32, %all
+  call @"println<u32>"(%y)                   ; 4042322160
+  %y = atomic.load %cu32
+  call @"println<u32>"(%y)                   ; 252645135
+
+  ; ---- i64: the full word.
+  %c64 = slot i64
+  %half = const.i64 4611686018427387904
+  atomic.store %c64, %half
+  %z = atomic.add %c64, %half
+  call @"println<i64>"(%z)                   ; 4611686018427387904
+  %one64 = const.i64 1
+  %z = atomic.sub %c64, %one64
+  call @"println<i64>"(%z)                   ; -9223372036854775808
+  %z = atomic.load %c64
+  call @"println<i64>"(%z)                   ; 9223372036854775807
+
+  ; ---- bool.
+  %cb = slot bool
+  %yes = const.bool true
+  %no = const.bool false
+  atomic.store %cb, %yes
+  %b = atomic.swap %cb, %no
+  call @"println<bool>"(%b)                  ; true
+  %b = atomic.cas %cb, %no, %yes
+  call @"println<bool>"(%b)                  ; false
+  %b = atomic.load %cb
+  call @"println<bool>"(%b)                  ; true
+
+  ; ---- pointers.
+  %px = slot i64
+  %py = slot i64
+  %cp = slot ptr<i64>
+  atomic.store %cp, %px
+  %old = atomic.swap %cp, %py
+  %same = eq %old, %px
+  call @"println<bool>"(%same)               ; true
+  %old = atomic.cas %cp, %py, %px
+  %same = eq %old, %py
+  call @"println<bool>"(%same)               ; true
+  %now = atomic.load %cp
+  %same = eq %now, %px
+  call @"println<bool>"(%same)               ; true
+
+  atomic.fence
+  return
+}

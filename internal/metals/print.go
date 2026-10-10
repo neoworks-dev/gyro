@@ -20,11 +20,7 @@ func Print(m *Module) string {
 			p.typeDecl(decl)
 		}
 		for _, fn := range imp.Funcs {
-			prefix := "fn "
-			if fn.Sig.Async {
-				prefix = "async fn "
-			}
-			p.line(prefix + at(fn.Name) + sigSuffix(fn.Sig))
+			p.line("fn " + at(fn.Name) + sigSuffix(fn.Sig))
 		}
 		p.indent--
 		p.line("}")
@@ -53,11 +49,15 @@ func Print(m *Module) string {
 	}
 
 	for _, global := range m.Globals {
+		prefix := ""
+		if global.ThreadLocal {
+			prefix = "thread_local "
+		}
 		if global.Bytes != nil {
-			p.printf("global %s: %s = %s", at(global.Name), global.Type, quoteBytes(global.Bytes))
+			p.printf("%sglobal %s: %s = %s", prefix, at(global.Name), global.Type, quoteBytes(global.Bytes))
 			continue
 		}
-		p.printf("global %s: %s", at(global.Name), global.Type)
+		p.printf("%sglobal %s: %s", prefix, at(global.Name), global.Type)
 	}
 	if len(m.Globals) > 0 {
 		p.line("")
@@ -164,9 +164,6 @@ func (p *printer) function(fn *Func) {
 	if fn.Export {
 		header += "export "
 	}
-	if fn.Async {
-		header += "async "
-	}
 	params := make([]string, len(fn.Params))
 	for i, param := range fn.Params {
 		params[i] = reg(param.Name) + ": " + param.Type.String()
@@ -244,6 +241,16 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = ptr.addr %s", reg(i.Dst), reg(i.X))
 	case *PtrFrom:
 		p.printf("%s = ptr.from %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *AtomicLoad:
+		p.printf("%s = atomic.load %s", reg(i.Dst), reg(i.Ptr))
+	case *AtomicStore:
+		p.printf("atomic.store %s, %s", reg(i.Ptr), reg(i.Val))
+	case *AtomicRMW:
+		p.printf("%s = atomic.%s %s, %s", reg(i.Dst), i.Op, reg(i.Ptr), reg(i.Val))
+	case *AtomicCas:
+		p.printf("%s = atomic.cas %s, %s, %s", reg(i.Dst), reg(i.Ptr), reg(i.Expected), reg(i.New))
+	case *Fence:
+		p.printf("atomic.fence")
 	case *MemLoad:
 		p.printf("%s = mem.load.%s %s, %s", reg(i.Dst), i.Type, at(i.Memory), reg(i.Addr))
 	case *MemStore:
@@ -324,6 +331,10 @@ func (p *printer) instr(instr Instr) {
 		p.printf("return %s", reg(i.Val))
 	case *Abort:
 		p.printf("abort %s", strconv.Quote(i.Message))
+	case *ThreadStart:
+		p.printf("%s = thread.start %s, %s, %s", reg(i.Dst), reg(i.Stack), at(i.Body), reg(i.Data))
+	case *ThreadExit:
+		p.line("thread.exit")
 	case *If:
 		p.printf("if %s {", reg(i.Cond))
 		p.nested(i.Then)
@@ -350,39 +361,6 @@ func (p *printer) instr(instr Instr) {
 		for _, c := range i.Cases {
 			p.printf("case %d {", c.Value)
 			p.nested(c.Body)
-			p.line("}")
-		}
-		if len(i.Default) > 0 {
-			p.line("default {")
-			p.nested(i.Default)
-			p.line("}")
-		}
-		p.indent--
-		p.line("}")
-	case *ChanNew:
-		if i.Cap == "" {
-			p.printf("%s = chan.new<%s>", reg(i.Dst), i.Elem)
-			return
-		}
-		p.printf("%s = chan.new<%s> %s", reg(i.Dst), i.Elem, reg(i.Cap))
-	case *Send:
-		p.printf("send %s, %s", reg(i.Ch), reg(i.Val))
-	case *Recv:
-		p.printf("%s = recv %s", reg(i.Dst), reg(i.Ch))
-	case *ChanClose:
-		p.printf("chan.close %s", reg(i.Ch))
-	case *Await:
-		p.printf("%s = await %s", reg(i.Dst), reg(i.X))
-	case *Select:
-		p.line("select {")
-		p.indent++
-		for _, arm := range i.Arms {
-			if arm.Send {
-				p.printf("send %s, %s {", reg(arm.Ch), reg(arm.Val))
-			} else {
-				p.printf("recv %s = %s {", reg(arm.Dst), reg(arm.Ch))
-			}
-			p.nested(arm.Body)
 			p.line("}")
 		}
 		if len(i.Default) > 0 {

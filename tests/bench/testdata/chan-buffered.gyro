@@ -1,0 +1,33 @@
+// Channel throughput: four producers send into one buffered channel and one
+// consumer sums what arrives. With a buffer the threads mostly do not wait,
+// so this is the lock and the copy rather than the wake-up.
+
+import { println, eprintln } from "stdlib"
+import { heap, spawn } from "mem"
+import { monotonic } from "time"
+
+fn main() {
+    var values = chan<i64>(256)
+    var done = chan<bool>(4)
+    var start = monotonic()
+    for p in 0..4 {
+        spawn(heap(), fn() {
+            for i in 0..200000 {
+                values <- (i as i64)
+            }
+            done <- true
+        })
+    }
+
+    var total: i64 = 0
+    for i in 0..800000 {
+        total += <-values
+    }
+    for p in 0..4 {
+        var _ = <-done
+    }
+    var stop = monotonic()
+
+    println(total)
+    eprintln("gyro:bench #{stop - start}")
+}

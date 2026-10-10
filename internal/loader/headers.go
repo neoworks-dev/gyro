@@ -259,7 +259,7 @@ func headerText(header *cc.Header) (string, map[string]string) {
 	unspelled := map[string]string{}
 	var decls strings.Builder
 	for _, fn := range header.Funcs {
-		text, err := h.function(fn.Name, fn.Sig.Params, fn.Sig.Result, false, false)
+		text, err := h.function(fn.Name, fn.Sig.Params, fn.Sig.Result, false)
 		if err != nil {
 			unspelled[fn.Name] = "has no Gyro spelling: " + err.Error()
 			continue

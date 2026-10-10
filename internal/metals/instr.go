@@ -1,7 +1,7 @@
 package metals
 
 // Instr is one METALS instruction. Simple instructions write at most one
-// register; the structured ones (If, Block, Loop, Switch, Select) nest.
+// register; the structured ones (If, Block, Loop, Switch) nest.
 //
 // Registers are referenced by name without the % sigil in these structs;
 // the printer and parser add and strip it.
@@ -174,6 +174,40 @@ type (
 		To     Type
 	}
 
+	// AtomicLoad is `%v = atomic.load %p`: the value a ptr<T> holds, read
+	// so that no other thread's write is seen half done and every thread
+	// sees the writes of every atomic operation in one order. T is an
+	// integer, a bool, a ptr or an anyptr, and the address is aligned for
+	// it. There is one ordering, sequentially consistent: every atomic
+	// operation and fence blocks all reordering around it, so there is no
+	// ordering operand to get wrong.
+	AtomicLoad struct{ Dst, Ptr string }
+
+	// AtomicStore is `atomic.store %p, %v`: the write that pairs with
+	// AtomicLoad.
+	AtomicStore struct{ Ptr, Val string }
+
+	// AtomicRMW is `%old = atomic.<op> %p, %v` for op swap, add, sub, and,
+	// or and xor: the value at p becomes v, or the sum, difference or
+	// bitwise combination of it and v, in one indivisible step, and the
+	// result is what it held before. add and sub wrap. swap takes the
+	// integers, bool and pointers; the arithmetic and bitwise ones take
+	// integers.
+	AtomicRMW struct {
+		Dst, Op, Ptr, Val string
+	}
+
+	// AtomicCas is `%old = atomic.cas %p, %expected, %new`: when the value
+	// at p equals expected it becomes new, in one indivisible step, and
+	// the result is what it held before. The exchange happened exactly
+	// when the result equals expected.
+	AtomicCas struct{ Dst, Ptr, Expected, New string }
+
+	// Fence is `atomic.fence`: nothing before it is reordered with
+	// anything after it, which a store followed by a load of another
+	// address needs and neither operation gives on its own.
+	Fence struct{}
+
 	// MemLoad is `%v = mem.load.<T> @mem, %addr`. The suffix names both
 	// the result type and the width read, so mem.load.u8 reads one byte
 	// and mem.load.f64 reads eight. Addresses are u32 and the access is
@@ -318,6 +352,33 @@ type (
 	Return struct{ Val string } // "" for a void return
 	Abort  struct{ Message string }
 
+	// ThreadStart is `%tid = thread.start %stack, @body, %data`: a new
+	// thread that runs @body(%data) and ends when it returns. It says
+	// what happens and not how, so each backend does it its own
+	// operating system's way.
+	//
+	// @body takes one anyptr and returns nothing, and %data is what it
+	// is called with. The thread is detached: nothing waits for it, and
+	// the result is only its identity, a usize that is never zero.
+	// A thread that cannot be started aborts.
+	//
+	// %stack is an opt<anyptr>. A null leaves the stack to the backend. A
+	// non-null one is the address just past the top of a block of memory
+	// the caller owns, aligned to 16 bytes, for the thread to use as its
+	// stack until it ends; a backend whose system library owns thread
+	// stacks may ignore it, and a program that passes one cannot tell.
+	// What the caller may rely on either way is that it must not use the
+	// block until the thread has ended.
+	ThreadStart struct {
+		Dst, Stack, Body, Data string
+	}
+
+	// ThreadExit is `thread.exit`: the calling thread ends, as if @body
+	// had returned from wherever it was. On the main thread it ends the
+	// program's first thread only, and the process lives on while any
+	// other thread does.
+	ThreadExit struct{}
+
 	If struct {
 		Cond string
 		Then []Instr
@@ -336,20 +397,6 @@ type (
 	Switch struct {
 		X       string
 		Cases   []SwitchCase
-		Default []Instr
-	}
-
-	ChanNew struct {
-		Dst  string
-		Elem Type
-		Cap  string // "" for unbuffered
-	}
-	Send      struct{ Ch, Val string }
-	Recv      struct{ Dst, Ch string } // -> tuple<T, bool>
-	ChanClose struct{ Ch string }
-	Await     struct{ Dst, X string }
-	Select    struct {
-		Arms    []SelectArm
 		Default []Instr
 	}
 
@@ -384,16 +431,6 @@ type SwitchCase struct {
 	Body  []Instr
 }
 
-// SelectArm is one arm of a select: a receive binding a register, or a
-// send. Exactly one of Recv/Send applies: Recv arms set Dst.
-type SelectArm struct {
-	Dst  string // receive arms: the bound register
-	Ch   string
-	Val  string // send arms: the sent value
-	Send bool
-	Body []Instr
-}
-
 func (*Const) isInstr()        {}
 func (*Copy) isInstr()         {}
 func (*Bin) isInstr()          {}
@@ -415,6 +452,11 @@ func (*PtrErase) isInstr()     {}
 func (*PtrCast) isInstr()      {}
 func (*PtrAddr) isInstr()      {}
 func (*PtrFrom) isInstr()      {}
+func (*AtomicLoad) isInstr()   {}
+func (*AtomicStore) isInstr()  {}
+func (*AtomicRMW) isInstr()    {}
+func (*AtomicCas) isInstr()    {}
+func (*Fence) isInstr()        {}
 func (*MemLoad) isInstr()      {}
 func (*MemStore) isInstr()     {}
 func (*MemSize) isInstr()      {}
@@ -447,18 +489,14 @@ func (*MakeClosure) isInstr()  {}
 func (*CallIndirect) isInstr() {}
 func (*Return) isInstr()       {}
 func (*Abort) isInstr()        {}
+func (*ThreadStart) isInstr()  {}
+func (*ThreadExit) isInstr()   {}
 func (*If) isInstr()           {}
 func (*Block) isInstr()        {}
 func (*Loop) isInstr()         {}
 func (*Br) isInstr()           {}
 func (*BrIf) isInstr()         {}
 func (*Switch) isInstr()       {}
-func (*ChanNew) isInstr()      {}
-func (*Send) isInstr()         {}
-func (*Recv) isInstr()         {}
-func (*ChanClose) isInstr()    {}
-func (*Await) isInstr()        {}
-func (*Select) isInstr()       {}
 func (*OptWrap) isInstr()      {}
 func (*OptUnwrap) isInstr()    {}
 func (*AnyWrap) isInstr()      {}

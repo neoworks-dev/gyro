@@ -1,3 +1,5 @@
+import { println } from "stdlib"
+
 // A `var x: i32` with no initializer is tracked until every path to a read
 // has written it.
 

@@ -111,6 +111,7 @@ func (c *checker) stmt(stmt ast.Stmt) {
 // assigned. Without an `else` the statement blocks until an arm is ready,
 // which is still exactly one arm.
 func (c *checker) selectStmt(s *ast.SelectStmt) {
+	c.requireStdlib(s.Offset, "a select")
 	var merged flow
 	first := true
 
@@ -562,6 +563,7 @@ func (c *checker) resultAt(i, n int) types.Type {
 }
 
 func (c *checker) sendStmt(s *ast.SendStmt) {
+	c.requireStdlib(s.Offset, "a send")
 	// A sent allocation belongs to whoever receives it.
 	c.settleEscape(s.Value)
 
@@ -791,6 +793,7 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 	case *types.Array:
 		return t.Elem
 	case *types.Chan:
+		c.requireStdlib(e.Pos(), "iterating a channel")
 		return t.Elem
 	case *types.Optional:
 		c.errorf(e.Pos(), "this value is %s and may be null; check it against null before iterating", t)

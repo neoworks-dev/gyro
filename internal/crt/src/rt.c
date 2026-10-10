@@ -1,7 +1,8 @@
 /* gyro:rt — what the generated code still asks the C runtime for. Compiled
  * and linked by `gyro build`. The standard library is Gyro now: this is the
- * floor under it that no METALS instruction reaches, and the threads,
- * channels and mutexes that wait on libc's pthreads. */
+ * floor under it that no METALS instruction reaches, and the one place that
+ * starts a thread, with libc's pthreads. Spawning, channels, mutexes and
+ * futures are Gyro over the thread instructions, the atomics and futex. */
 
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -41,15 +42,9 @@ static gy_str *gy_str_c(const char *text) { return gy_str_from(text, strlen(text
 
 /* ------------------------------------------------------------------ */
 /* Aborts. A panic on the main thread ends the process with status 1; */
-/* on a spawned thread only that thread dies, like the evaluator's    */
-/* goroutine recovery.                                                */
+/* on a spawned thread only that thread dies, which the abort hook    */
+/* Gyro registers sees to.                                            */
 /* ------------------------------------------------------------------ */
-
-typedef struct gy_future gy_future;
-static void gy_future_fulfill(gy_future *fut);
-
-static __thread int gy_on_worker_thread = 0;
-static __thread gy_future *gy_current_future = NULL;
 
 /* The Gyro output layer buffers standard output and registers what writes
  * it out here, the first time it prints. The program ending, a panic, and
@@ -58,18 +53,23 @@ void (*gy_flush_hook)(void) = NULL;
 
 void gy_set_flush_hook(void (*hook)(void)) { gy_flush_hook = hook; }
 
+/* What to do after a panic is printed, set by the Gyro runtime in mem. It
+ * returns when the panic is the process's to end, and does not return when
+ * it has ended a worker thread instead: which of the two is the state of the
+ * thread, and that is Gyro's. */
+static void (*gy_abort_hook)(void) = NULL;
+
+void gy_set_abort_hook(void (*hook)(void)) { gy_abort_hook = hook; }
+
 _Noreturn void gy_abort(const gy_str *message) {
     if (gy_flush_hook != NULL) {
         gy_flush_hook();
     }
     fprintf(stderr, "panic: %.*s\n", (int)message->len, message->bytes);
-    if (!gy_on_worker_thread) {
-        exit(1);
+    if (gy_abort_hook != NULL) {
+        gy_abort_hook();
     }
-    if (gy_current_future != NULL) {
-        gy_future_fulfill(gy_current_future);
-    }
-    pthread_exit(NULL);
+    exit(1);
 }
 
 _Noreturn static void gy_abort_c(const char *message) { gy_abort(gy_str_c(message)); }
@@ -475,328 +475,29 @@ int64_t gy_read_byte(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mutex<T> and its guard.                                            */
+/* Threads: the one place that knows how one begins and ends.         */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    pthread_mutex_t mutex;
-    char *value;
-    int64_t size;
-} gy_mutex;
-
-typedef struct {
-    gy_mutex *mutex;
-    int done;
-} gy_guard;
-
-void *gy_mutex_new(const void *init, int64_t size) {
-    gy_mutex *m = calloc(1, sizeof(gy_mutex));
-    pthread_mutex_init(&m->mutex, NULL);
-    m->size = size;
-    m->value = malloc((size_t)size);
-    memcpy(m->value, init, (size_t)size);
-    return m;
-}
-
-void *gy_mutex_lock(gy_mutex *m) {
-    pthread_mutex_lock(&m->mutex);
-    gy_guard *guard = calloc(1, sizeof(gy_guard));
-    guard->mutex = m;
-    return guard;
-}
-
-static void gy_guard_check(gy_guard *guard) {
-    if (guard->done) {
-        gy_abort_c("the guard was already unlocked");
-    }
-}
-
-void gy_guard_get(void *out, gy_guard *guard) {
-    gy_guard_check(guard);
-    memcpy(out, guard->mutex->value, (size_t)guard->mutex->size);
-}
-
-void gy_guard_set(gy_guard *guard, const void *value) {
-    gy_guard_check(guard);
-    memcpy(guard->mutex->value, value, (size_t)guard->mutex->size);
-}
-
-void gy_guard_unlock(gy_guard *guard) {
-    gy_guard_check(guard);
-    guard->done = 1;
-    pthread_mutex_unlock(&guard->mutex->mutex);
-}
-
-/* ------------------------------------------------------------------ */
-/* Channels: a mutex/condvar ring buffer; capacity 0 is a true        */
-/* rendezvous — the sender blocks until a receiver takes the element. */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    pthread_mutex_t mutex;
-    pthread_cond_t senders;
-    pthread_cond_t receivers;
-    char *buffer;
-    int64_t elemSize;
-    int64_t capacity;
-    int64_t count;
-    int64_t head;
-    int closed;
-    int handoffFull; /* rendezvous slot state */
-    int receiversWaiting;
-    int64_t placedSeq; /* rendezvous tickets: which handoff was taken */
-    int64_t takenSeq;
-} gy_chan;
-
-void *gy_chan_new(int64_t capacity, int64_t elemSize) {
-    gy_chan *ch = calloc(1, sizeof(gy_chan));
-    pthread_mutex_init(&ch->mutex, NULL);
-    pthread_cond_init(&ch->senders, NULL);
-    pthread_cond_init(&ch->receivers, NULL);
-    ch->elemSize = elemSize;
-    ch->capacity = capacity;
-    ch->buffer = malloc((size_t)((capacity > 0 ? capacity : 1) * elemSize));
-    return ch;
-}
-
-void gy_chan_send(gy_chan *ch, const void *elem) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        while (ch->count == ch->capacity && !ch->closed) {
-            pthread_cond_wait(&ch->senders, &ch->mutex);
-        }
-        if (ch->closed) {
-            pthread_mutex_unlock(&ch->mutex);
-            gy_abort_c("send on a closed channel");
-        }
-        int64_t at = (ch->head + ch->count) % ch->capacity;
-        memcpy(ch->buffer + at * ch->elemSize, elem, (size_t)ch->elemSize);
-        ch->count++;
-        pthread_cond_signal(&ch->receivers);
-        pthread_mutex_unlock(&ch->mutex);
-        return;
-    }
-
-    while (ch->handoffFull && !ch->closed) {
-        pthread_cond_wait(&ch->senders, &ch->mutex);
-    }
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    memcpy(ch->buffer, elem, (size_t)ch->elemSize);
-    ch->handoffFull = 1;
-    int64_t ticket = ++ch->placedSeq;
-    pthread_cond_broadcast(&ch->receivers);
-    while (ch->takenSeq < ticket && !ch->closed) {
-        pthread_cond_wait(&ch->senders, &ch->mutex);
-    }
-    if (ch->takenSeq < ticket) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    pthread_mutex_unlock(&ch->mutex);
-}
-
-/* Returns the open flag: 1 with the element written, 0 when the
- * channel is closed and drained (the caller pre-zeroed the cell). */
-int64_t gy_chan_recv(gy_chan *ch, void *out) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        while (ch->count == 0 && !ch->closed) {
-            pthread_cond_wait(&ch->receivers, &ch->mutex);
-        }
-        if (ch->count == 0) {
-            pthread_mutex_unlock(&ch->mutex);
-            return 0;
-        }
-        memcpy(out, ch->buffer + ch->head * ch->elemSize, (size_t)ch->elemSize);
-        ch->head = (ch->head + 1) % ch->capacity;
-        ch->count--;
-        pthread_cond_signal(&ch->senders);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-
-    ch->receiversWaiting++;
-    while (!ch->handoffFull && !ch->closed) {
-        pthread_cond_wait(&ch->receivers, &ch->mutex);
-    }
-    ch->receiversWaiting--;
-    if (!ch->handoffFull) {
-        pthread_mutex_unlock(&ch->mutex);
-        return 0;
-    }
-    memcpy(out, ch->buffer, (size_t)ch->elemSize);
-    ch->handoffFull = 0;
-    ch->takenSeq++;
-    pthread_cond_broadcast(&ch->senders);
-    pthread_mutex_unlock(&ch->mutex);
-    return 1;
-}
-
-void gy_chan_close(gy_chan *ch) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("close of a closed channel");
-    }
-    ch->closed = 1;
-    pthread_cond_broadcast(&ch->senders);
-    pthread_cond_broadcast(&ch->receivers);
-    pthread_mutex_unlock(&ch->mutex);
-}
-
-int64_t gy_chan_try_send(gy_chan *ch, const void *elem) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    if (ch->capacity > 0) {
-        if (ch->count == ch->capacity) {
-            pthread_mutex_unlock(&ch->mutex);
-            return 0;
-        }
-        int64_t at = (ch->head + ch->count) % ch->capacity;
-        memcpy(ch->buffer + at * ch->elemSize, elem, (size_t)ch->elemSize);
-        ch->count++;
-        pthread_cond_signal(&ch->receivers);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-    if (ch->receiversWaiting == 0 || ch->handoffFull) {
-        pthread_mutex_unlock(&ch->mutex);
-        return 0;
-    }
-    memcpy(ch->buffer, elem, (size_t)ch->elemSize);
-    ch->handoffFull = 1;
-    ch->placedSeq++;
-    pthread_cond_broadcast(&ch->receivers);
-    pthread_mutex_unlock(&ch->mutex);
-    return 1;
-}
-
-int64_t gy_chan_try_recv(gy_chan *ch, void *out) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        if (ch->count > 0) {
-            memcpy(out, ch->buffer + ch->head * ch->elemSize, (size_t)ch->elemSize);
-            ch->head = (ch->head + 1) % ch->capacity;
-            ch->count--;
-            pthread_cond_signal(&ch->senders);
-            pthread_mutex_unlock(&ch->mutex);
-            return 1;
-        }
-        int64_t fired = ch->closed;
-        pthread_mutex_unlock(&ch->mutex);
-        return fired;
-    }
-    if (ch->handoffFull) {
-        memcpy(out, ch->buffer, (size_t)ch->elemSize);
-        ch->handoffFull = 0;
-        ch->takenSeq++;
-        pthread_cond_broadcast(&ch->senders);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-    int64_t fired = ch->closed;
-    pthread_mutex_unlock(&ch->mutex);
-    return fired;
-}
-
-void gy_select_pause(void) { usleep(200); }
-
-/* ------------------------------------------------------------------ */
-/* spawn and futures.                                                 */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    void (*entry)(void *);
-    void *data;
-} gy_start_arg;
-
-static void *gy_start_main(void *raw) {
-    gy_start_arg arg = *(gy_start_arg *)raw;
-    free(raw);
-    gy_on_worker_thread = 1;
-    arg.entry(arg.data);
-    return NULL;
-}
-
-/* gy_start runs entry(data) on a detached thread. */
-void gy_start(void (*entry)(void *), void *data) {
-    gy_start_arg *arg = calloc(1, sizeof(gy_start_arg));
-    arg->entry = entry;
-    arg->data = data;
+/* thread.start and thread.exit. The backend implements the METALS
+ * instructions with libc's threads for as long as the program links libc
+ * (#142). The stack the instruction offers is ignored: libc gives every
+ * thread its own. The body is called through a pointer to a function
+ * returning void *, which the generated code is ABI-compatible with; its
+ * return value is ignored. */
+uint64_t gy_thread_start(void (*body)(void *), void *data) {
     pthread_t thread;
     pthread_attr_t attrs;
     pthread_attr_init(&attrs);
     pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&thread, &attrs, gy_start_main, arg);
+    int status = pthread_create(&thread, &attrs, (void *(*)(void *))body, data);
     pthread_attr_destroy(&attrs);
-}
-
-struct gy_future {
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    int done;
-    int64_t size;
-    char *result;
-};
-
-static void gy_future_fulfill(gy_future *fut) {
-    pthread_mutex_lock(&fut->mutex);
-    fut->done = 1;
-    pthread_cond_broadcast(&fut->cond);
-    pthread_mutex_unlock(&fut->mutex);
-}
-
-typedef struct {
-    void (*thunk)(void *, void *);
-    void *args;
-    gy_future *fut;
-} gy_future_arg;
-
-static void *gy_future_main(void *raw) {
-    gy_future_arg arg = *(gy_future_arg *)raw;
-    free(raw);
-    gy_on_worker_thread = 1;
-    gy_current_future = arg.fut;
-    arg.thunk(arg.args, arg.fut->result);
-    gy_current_future = NULL;
-    gy_future_fulfill(arg.fut);
-    return NULL;
-}
-
-void *gy_future_start(void (*thunk)(void *, void *), void *args, int64_t resultSize) {
-    gy_future *fut = calloc(1, sizeof(gy_future));
-    pthread_mutex_init(&fut->mutex, NULL);
-    pthread_cond_init(&fut->cond, NULL);
-    fut->size = resultSize;
-    fut->result = calloc(1, (size_t)(resultSize > 0 ? resultSize : 8));
-
-    gy_future_arg *arg = calloc(1, sizeof(gy_future_arg));
-    arg->thunk = thunk;
-    arg->args = args;
-    arg->fut = fut;
-    pthread_t thread;
-    pthread_attr_t attrs;
-    pthread_attr_init(&attrs);
-    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&thread, &attrs, gy_future_main, arg);
-    pthread_attr_destroy(&attrs);
-    return fut;
-}
-
-void gy_future_get(gy_future *fut, void *out) {
-    pthread_mutex_lock(&fut->mutex);
-    while (!fut->done) {
-        pthread_cond_wait(&fut->cond, &fut->mutex);
+    if (status != 0) {
+        gy_abort_c("could not start a thread");
     }
-    pthread_mutex_unlock(&fut->mutex);
-    memcpy(out, fut->result, (size_t)fut->size);
+    return (uint64_t)thread;
 }
+
+_Noreturn void gy_thread_exit(void) { pthread_exit(NULL); }
 
 /* ------------------------------------------------------------------ */
 /* any: the open dynamic value.                                       */

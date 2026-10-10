@@ -1,0 +1,20 @@
+// A select without an else waits. Nothing is ready when it starts; a
+// thread sends on the second channel a moment later, and that is the arm
+// that runs. The first channel never gets a value.
+
+import { println } from "stdlib"
+import { heap, spawn } from "mem"
+import { sleep } from "time"
+
+fn main() {
+    var never = chan<i32>(1)
+    var later = chan<string>(1)
+    spawn(heap(), fn() {
+        sleep(20)
+        later <- "arrived"
+    })
+    select {
+        var n = <-never: println("never #{n}")
+        var s = <-later: println(s)
+    }
+}

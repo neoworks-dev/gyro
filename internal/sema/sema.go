@@ -168,6 +168,8 @@ type program struct {
 	// #{} in it. Nil until the stdlib module has been checked, and for a
 	// program that never loads it.
 	format *types.Struct
+	// loaded holds the paths of the modules in the program's graph.
+	loaded map[string]bool
 }
 
 func newProgram(bag *diag.Bag) *program {
@@ -181,6 +183,7 @@ func newProgram(bag *diag.Bag) *program {
 		inferredEffects: map[*ast.FuncDecl]effectFacts{},
 		caps:            map[string]*types.Trait{},
 		foreign:         map[string]bool{},
+		loaded:          map[string]bool{},
 	}
 }
 
@@ -373,6 +376,7 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	computed := map[*loader.Module]*Exports{}
 	checkers := make([]*checker, len(prog.Modules))
 	for _, module := range prog.Modules {
+		p.loaded[module.Path] = true
 		if module.Foreign != nil {
 			p.foreign[module.Path] = true
 		}

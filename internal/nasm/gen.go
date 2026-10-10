@@ -20,26 +20,24 @@ func Generate(module *metals.Module) (asm string, err error) {
 	}
 
 	g := &generator{
-		module:         module,
-		regTypes:       registerTypes,
-		types:          map[string]*metals.TypeDecl{},
-		imports:        map[string]*metals.FnType{},
-		funcs:          map[string]*metals.Func{},
-		symbols:        map[string]string{},
-		usedSyms:       map[string]bool{},
-		externs:        map[string]bool{},
-		externSyms:     map[string]bool{},
-		strLits:        map[string]string{},
-		cstrs:          map[string]string{},
-		anyTypes:       map[string]string{},
-		buildingAny:    map[string]bool{},
-		eqHelpers:      map[string]string{},
-		thunks:         map[string]string{},
-		indirectThunks: map[string]string{},
-		globals:        map[string]*metals.Global{},
-		globalSyms:     map[string]string{},
-		memories:       map[string]*metals.Memory{},
-		memorySyms:     map[string]string{},
+		module:      module,
+		regTypes:    registerTypes,
+		types:       map[string]*metals.TypeDecl{},
+		imports:     map[string]*metals.FnType{},
+		funcs:       map[string]*metals.Func{},
+		symbols:     map[string]string{},
+		usedSyms:    map[string]bool{},
+		externs:     map[string]bool{},
+		externSyms:  map[string]bool{},
+		strLits:     map[string]string{},
+		cstrs:       map[string]string{},
+		anyTypes:    map[string]string{},
+		buildingAny: map[string]bool{},
+		eqHelpers:   map[string]string{},
+		globals:     map[string]*metals.Global{},
+		globalSyms:  map[string]string{},
+		memories:    map[string]*metals.Memory{},
+		memorySyms:  map[string]string{},
 	}
 	for _, global := range module.Globals {
 		g.globals[global.Name] = global
@@ -107,6 +105,12 @@ type generator struct {
 	data   strings.Builder
 	rwdata strings.Builder
 	bss    strings.Builder
+	// tbss is the thread-local storage: each thread gets its own zeroed
+	// copy of it when it starts.
+	tbss strings.Builder
+	// tlsSyms are the thread-local symbols, which NASM can only address
+	// through the linker if it knows they are global.
+	tlsSyms []string
 
 	globals    map[string]*metals.Global
 	globalSyms map[string]string
@@ -128,11 +132,7 @@ type generator struct {
 	labelN      int
 
 	eqHelpers map[string]string // type string -> helper symbol
-	thunks    map[string]string // async callee -> thunk symbol
-	// indirectThunks keys on the signature instead: a call through a
-	// function value has no callee symbol to name.
-	indirectThunks map[string]string
-	pending        []func() // helpers and thunks queued during emission
+	pending   []func()          // helpers queued during emission
 }
 
 type genError struct{ err error }
@@ -172,6 +172,10 @@ func (g *generator) assemble() string {
 		out.WriteString("extern " + name + "\n")
 	}
 
+	for _, symbol := range g.tlsSyms {
+		out.WriteString("global " + symbol + ":data\n")
+	}
+
 	out.WriteString("\nsection .text\n")
 	out.WriteString(forwardStores(g.text.String()))
 	if g.at != (metals.Loc{}) {
@@ -190,6 +194,10 @@ func (g *generator) assemble() string {
 	if g.bss.Len() > 0 {
 		out.WriteString("\nsection .bss\n")
 		out.WriteString(g.bss.String())
+	}
+	if g.tbss.Len() > 0 {
+		out.WriteString("\nsection .tbss nobits alloc noexec write align=8 tls\n")
+		out.WriteString(g.tbss.String())
 	}
 	return out.String()
 }
@@ -213,6 +221,13 @@ func (g *generator) globalSymbol(name string) string {
 	// Aligned to a word, which is the most any type asks for: a global
 	// whose size is not a multiple of one would otherwise leave the next
 	// one wherever it fell.
+	if global.ThreadLocal {
+		g.tlsSyms = append(g.tlsSyms, symbol)
+		g.tbss.WriteString("\talign 8\n")
+		g.tbss.WriteString(symbol + ":\n")
+		fmt.Fprintf(&g.tbss, "\tresb %d\n", g.sizeOf(global.Type))
+		return symbol
+	}
 	if global.Bytes != nil {
 		g.rwdata.WriteString("\talign 8\n")
 		g.rwdata.WriteString(symbol + ":\n")

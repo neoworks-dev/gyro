@@ -135,10 +135,7 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.MatchExpr:
 		return f.evalMatch(e, want)
 	case *ast.AwaitExpr:
-		future := f.lowerExpr(e.X, nil)
-		out := f.newReg("awaited")
-		f.emit(&metals.Await{Dst: out, X: future})
-		return out
+		return f.await(e)
 	case *ast.RecvExpr:
 		pair := f.recvPair(e)
 		out := f.newReg("recvd")
@@ -466,26 +463,6 @@ func (f *funcLowerer) evalUnionLit(e *ast.StructLit, union *types.Union) string 
 
 	out := f.newReg("u")
 	f.emit(&metals.Load{Dst: out, Ptr: cell})
-	return out
-}
-
-func (f *funcLowerer) evalChanLit(e *ast.ChanLit) string {
-	chanType, ok := f.typeOf(e).(*types.Chan)
-	if !ok {
-		f.l.fail("@%s: a channel literal without a channel type", f.fn.Name)
-	}
-	out := f.newReg("ch")
-	made := &metals.ChanNew{Dst: out, Elem: f.l.metalsType(chanType.Elem)}
-	if e.Cap != nil {
-		capReg := f.lowerExpr(e.Cap, types.USize)
-		if !types.Identical(types.Default(f.typeOf(e.Cap)), types.USize) {
-			converted := f.newReg("cap")
-			f.emit(&metals.Conv{Dst: converted, X: capReg, To: metals.TUsize})
-			capReg = converted
-		}
-		made.Cap = capReg
-	}
-	f.emit(made)
 	return out
 }
 

@@ -50,11 +50,11 @@
   "import"
   "type"
   "global"
+  "thread_local"
   "init"
   "memory"
   "data"
   "export"
-  "async"
   "fn"
   "code"
   "record"
@@ -67,9 +67,6 @@
   "switch"
   "case"
   "default"
-  "select"
-  "recv"
-  "send"
 ] @keyword.conditional
 
 [

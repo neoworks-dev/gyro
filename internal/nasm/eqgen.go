@@ -74,7 +74,7 @@ func (g *generator) emitEqCompare(t metals.Type, offset int, unequal string) {
 			g.emitScalarCompare(t, a, b, unequal)
 		}
 
-	case *metals.Ptr, *metals.AnyPtr, *metals.ChanOf, *metals.FutureOf, *metals.Handle, *metals.CodeType:
+	case *metals.Ptr, *metals.AnyPtr, *metals.Handle, *metals.CodeType:
 		g.emitWordCompare(a, b, unequal)
 
 	case *metals.SliceOf, *metals.FnType:

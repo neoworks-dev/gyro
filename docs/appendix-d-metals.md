@@ -67,12 +67,15 @@ Settled in review; recorded with rationale in
    boundary is between runtimes and not between languages: producers
    that compile into METALS become one module on one heap and call each
    other outright.
-   Pointers, channels and futures cannot appear in a cross-boundary
-   signature. Long-lived foreign state is an opaque `handle`.
-6. **Concurrency is hybrid**, the same line Gyro's grammar draws:
-   `chan<T>` is an IR type and `send`/`recv`/`select`/`await` are
-   verified instructions, while `spawn`, mutexes and the rest are runtime
-   intrinsics — ordinary imported functions.
+   Pointers cannot appear in a cross-boundary signature. Long-lived
+   foreign state is an opaque `handle`.
+6. **Concurrency is library code over four things.** METALS has threads
+   (`thread.start`, `thread.exit`), cells a thread has of its own
+   (`thread_local`), atomics, and the `futex` system call. Spawning,
+   mutexes, channels, `select` and futures are written in a language over
+   those, and Gyro writes them in its standard library: a channel is not a
+   type of the format and `send`, `recv`, `select` and `await` are not
+   instructions. See *Concurrency*.
 7. **Verified from day one.** METALS cannot trust its producers the way
    Gyro's backend trusts Gyro's checker; third parties will emit it. The
    verifier type-checks every register and instruction and enforces the
@@ -87,7 +90,6 @@ Settled in review; recorded with rationale in
 module "gyro:examples/structs"
 
 import "gyro:rt" {
-  fn @spawn(fn())
   fn @println_str(str)
 }
 import "js:./widgets" {
@@ -144,6 +146,13 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   bytes have none. What an image cannot hold is a pointer, whose value is
   not known until the program is laid out, so the verifier refuses an
   image for any type with a pointer anywhere inside it.
+- `thread_local global @name: T` gives every thread a cell of its own,
+  zeroed when the thread starts, and `global.ptr` answers the calling
+  thread's. It takes no byte image, because a thread that starts later
+  would have none to start from, and an `init` cannot fill one for the
+  threads that do not exist yet: it runs once, on the first thread, and
+  sets only that thread's cell. A pointer to a cell is good on the thread
+  that took it and on no other.
 - `init @name` is the function this module needs run before the program
   starts, which is where a global that *does* name an address gets
   written. It takes nothing and returns nothing. The linker prepends a
@@ -180,9 +189,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 | `slice<T>` | borrowed view |
 | `array<T, N>` | fixed-size array value |
 | `tuple<A, B, ...>` | tuple value |
-| `chan<T>` | channel |
-| `future<T>` | un-awaited async result |
-| `fn(A, B) -> R`, `async fn(A) -> R` | function values: `{ code, env }`, two words |
+| `fn(A, B) -> R` | function values: `{ code, env }`, two words |
 | `code(A, B) -> R` | the address of a function, one word, no environment |
 | `%Name` | module-local record, union, enum, or opaque name |
 | `any` | dynamically typed value, converted with checked ops |
@@ -463,6 +470,40 @@ program is verified again. It does not stop a function from handing a
 `u32` it loaded to another function that claims it, and nothing in the
 format can: a sandboxed producer is one that does not emit `ptr.from`.
 
+### Atomics
+
+```metals
+%v = atomic.load %p            ; ptr<T> -> T
+atomic.store %p, %v
+%old = atomic.swap %p, %v      ; the cell becomes v; the result is what it held
+%old = atomic.cas %p, %expected, %new
+%old = atomic.add %p, %v       ; also sub, and, or, xor
+atomic.fence
+```
+
+An atomic operation acts on a `ptr<T>` where `T` is an integer of 8 to 64
+bits, a `bool`, a `ptr<U>`, an `anyptr`, or the one-word `opt` of either
+pointer, at an address aligned for `T`. `add`, `sub`, `and`, `or` and `xor`
+take integers alone: a pointer or a bool has no sum. The value operands are
+exactly `T`, with no widening, and every read-modify-write answers the
+value the cell held *before* it. `add` and `sub` wrap. `cas` stores `%new`
+only when the cell holds `%expected`, and the exchange happened exactly when
+its result equals `%expected`.
+
+**There is one ordering, sequentially consistent.** Every atomic operation
+and every fence blocks all reordering around it, and all threads see them
+in one order, so there is no ordering operand to choose wrongly. On x86-64
+the choice is nearly free: a load is a plain `mov`, each read-modify-write
+is `lock`-prefixed, and only a store pays, as an `xchg`. `fence` is
+`mfence`. A weaker ordering is an extension for the day a weakly ordered
+backend exists: an operand added to these instructions, with this meaning
+as its default.
+
+An atomic access does not mix with a plain one on the same cell: reading it
+with `load` while another thread uses `atomic.store` is the program's data
+race to avoid, as in C. A `memory`'s `u32` addresses never reach these
+instructions, which take a `ptr<T>` like any other.
+
 ### Linear memory
 
 ```metals
@@ -616,10 +657,9 @@ register, and travels in a register like any other address. `const.null`
 is the zeroed store it already was, a wrap is a move, an unwrap is a null
 test, and equality was always a word compare.
 
-That niche is those three types'. A `handle`, a `chan` and a `future` are
-the runtime's values, and which bit patterns they may hold is the
-runtime's business rather than the format's. Everything else keeps the
-flag-and-payload layout.
+That niche is those three types'. A `handle` is the runtime's value, and
+which bit patterns it may hold is the runtime's business rather than the
+format's. Everything else keeps the flag-and-payload layout.
 
 The reason to have it is C. A C pointer is `opt<ptr<T>>`, a C function
 pointer is `opt<code(...)>` and a C `void *` is `opt<anyptr>` — see the C
@@ -658,9 +698,7 @@ capture, so it is the address alone: one word, one call, no test. That is
 what C's function pointer is — `sizeof(int (*)(int))` answers 8, a struct
 of callbacks is the bytes C lays out, and a table of them has C's stride
 — and it is also what a producer wants whenever a callee is chosen at run
-time without anything travelling beside it. `code.ref` refuses an `async`
-function: an async function is started rather than called, so its address
-is not something `call.indirect` could reach.
+time without anything travelling beside it.
 
 ### System calls
 
@@ -728,22 +766,54 @@ positions skips it. The file is the path as the debugger should find it.
 
 ### Concurrency
 
-```metals
-%ch = chan.new<i32> %cap    ; omit %cap for unbuffered
-send %ch, %v                ; aborts on a closed channel
-%t = recv %ch               ; -> tuple<T, bool>: (element, open)
-chan.close %ch
-%v = await %fut             ; only inside an async fn
+There is no channel in the format, and no `select`, no async function and no
+future. Those are what a language builds out of the four things below, and
+Gyro's lowering and its standard library build them: a `chan<T>` is an
+address of state `stdlib` keeps, `send`, `recv`, `close` and `select` are
+calls of its functions with the element passed as the address of a cell in
+the caller's frame, and an async call is a thread started with the call's
+arguments in a heap record, whose result is stored in a future that `await`
+waits on. `spawn` and `Mutex` are ordinary functions from the same library.
+The format needs to know how to start a thread, what a cell each thread has
+is, how to do an indivisible update, and how to sleep, and nothing more.
 
-select {
-  recv %v = %ch { ... }     ; %v is bound inside the arm
-  send %ch2, %x { ... }
-  default { ... }
-}
+### Threads
+
+```metals
+%tid = thread.start %stack, @body, %data   ; -> usize
+thread.exit
 ```
 
-`spawn`, mutexes and everything else library-shaped are imports from a
-runtime module, called like any function.
+`thread.start` starts a thread that runs `@body(%data)` and ends when it
+returns. `@body` is a function of this module or an import, taking one
+`anyptr` and returning nothing, and `%data` is the `anyptr` it is called
+with; the verifier checks both. The thread is detached: nothing waits for
+it, and the result is its identity, a `usize` that is never zero and that
+no other live thread shares. A thread that cannot be started aborts. It
+says what happens and not how, so each backend starts a thread its
+operating system's way: with `clone` where the program links no C library,
+with `pthread_create` where it does.
+
+`%stack` is an `opt<anyptr>`. A null leaves the stack to the backend. A
+non-null one is the address just past the top of a block of memory the
+caller owns, aligned to 16 bytes, to run the thread on; the block must stay
+valid until the thread has ended and the caller may not use it meanwhile. A
+backend whose system library owns thread stacks, which `pthread_create`
+does, may ignore it, so a program cannot tell whether it was used and has no
+business depending on it. It is an operand so that a backend that starts
+threads with `clone`, which cannot allocate a stack, has one to start on
+without the format changing.
+
+`thread.exit` ends the calling thread, as if `@body` had returned from
+wherever the thread was, and control does not continue past it. Ending the
+first thread this way leaves the process running while any other thread
+does. A panic on a spawned thread ends only that thread, and this is how
+the runtime does it.
+
+Everything a thread shares with another goes through memory, and the
+operations that make that safe are the atomics above. Waiting is not an
+instruction: the Linux `futex` system call, reached through `syscall`, is
+what a mutex or a channel sleeps on.
 
 ### any
 
@@ -814,17 +884,11 @@ result of such a signature:
   `slice`, records and enums, `fn` (the runtime shims it), `any`,
   `handle`;
 - allowed at a native boundary only: `ptr`, `anyptr`, `code`, and a
-  `union` — an address, and storage C reads its own way;
-- forbidden at both: `chan`, `future`, and any type containing one.
+  `union` — an address, and storage C reads its own way.
 
-A channel and a future are refused at a native boundary too, and for a
-different reason than the heap: they are Gyro runtime objects and C has
-no representation for one at any width.
-
-"Containing one" is walked rather than assumed, records and enums
+What a type contains is walked rather than assumed, records and enums
 included, and a `ptr` is walked *through* at a native boundary: a struct
-crossing by value is its fields crossing by value, and `ptr<chan<i32>>`
-is the runtime object the rule refuses with an address in front of it.
+crossing by value is its fields crossing by value.
 
 Crossing a runtime boundary copies: the caller's runtime converts
 arguments into the callee's world and the result back, `slice` crosses as
@@ -843,8 +907,9 @@ makes an out-parameter and a callback ordinary there.
 - every linear-memory address, length and page count is a `u32`, every
   access width is one a memory can hold, and every data segment fits
   inside the pages its memory starts with;
-- `await` only inside `async fn`; `select`/`send`/`recv` only on channel
-  types; `return` matches the declared result;
+- `thread.start` names a function of one `anyptr` that returns nothing, and
+  an atomic goes through a pointer to a word; `return` matches the declared
+  result;
 - boundary rules on every signature imported out of another runtime. An
   export is the linker's, which is the only side that knows who imports
   it.
@@ -1167,7 +1232,7 @@ and not look inside.
   yet: `internal/cc` uses `ptr<T>` and the ordinary heap, which is the
   whole reason it exists, and nothing else emits a memory at all.
 - Whether any other optional deserves a niche. `opt<ptr<T>>` has one and
-  nothing else does: a `handle` and a `chan` are the runtime's values,
+  nothing else does: a `handle` is the runtime's value,
   and what they may hold is the runtime's business rather than the
   format's. `opt<bool>` and a payload-free enum have obvious spare
   patterns and no one has needed them.

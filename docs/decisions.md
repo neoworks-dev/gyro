@@ -2460,8 +2460,8 @@ Lisp module already is METALS by the time anything runs.
 
 ### Values copy at runtime boundaries *(new)*
 
-**Status: decided.** No shared mutable memory between runtimes; `ptr`,
-`chan` and `future` are banned from boundary signatures; long-lived
+**Status: decided.** No shared mutable memory between runtimes; `ptr`
+is banned from boundary signatures; long-lived
 foreign state is an opaque `handle`. This is the WASM-component call,
 and it is what lets manual memory and garbage collectors coexist.
 Rejected one shared object model (forces every runtime onto one memory
@@ -2622,8 +2622,7 @@ arrangement; the checked route is a `.c` file the front end compiles.
 ### A native boundary is representation, not memory *(new)*
 
 **Status: decided.** `*T`, `anyptr` and `code(...)` cross a native import.
-So does a `union`. `chan`, `future`, `fn` and `any` still do not, at any
-depth. Out-parameters and callbacks work, which puts `qsort`,
+So does a `union`. `fn` and `any` still do not, at any depth. Out-parameters and callbacks work, which puts `qsort`,
 `SDL_PollEvent` and every C API built on either within reach of a linked
 `.so`.
 
@@ -2639,10 +2638,7 @@ convert *widths*, C's real ones against a qword register. So a native
 boundary is a boundary of representation, and an address is the one thing
 representation has nothing to say about.
 
-Two of the three that stay refused stay refused for a different reason
-than the heap, and stating it separately is the point: a `chan` and a
-`future` are Gyro runtime objects and C has no representation for one at
-any width. `any` is refused because it may cross *any* boundary, so what
+`any` is refused because it may cross *any* boundary, so what
 may go into one is what the strictest boundary carries — which is also
 why `any.wrap` asks the non-native question.
 
@@ -2685,8 +2681,9 @@ them wrong would compile to something else that also compiles.
 
 ### Concurrency is hybrid, matching the language *(new)*
 
-**Status: decided.** `chan<T>` is an IR type; `send`, `recv`, `select`,
-`await` are verified instructions; `spawn` and mutexes are runtime
+**Status: reversed — see "Concurrency is library code over threads,
+atomics and futex".** `chan<T>` was an IR type; `send`, `recv`, `select`,
+`await` were verified instructions; `spawn` and mutexes were runtime
 imports. The same line the grammar draws — channels and select are
 grammar, spawn is not.
 
@@ -3724,6 +3721,92 @@ for the linking reason above. **Rejected: keeping the runtime functions.**
 A call to C to move a register is a call the backend cannot see through,
 and it keeps C in a runtime #136 is removing.
 
+### Atomics have one ordering *(new)*
+
+**Status: done** (#82, built under #142). METALS has `atomic.load`,
+`atomic.store`, `atomic.swap`, `atomic.cas`, `atomic.add`, `atomic.sub`,
+`atomic.and`, `atomic.or`, `atomic.xor` and `atomic.fence`, with one
+ordering, sequentially consistent, as Go's `sync/atomic` has. Every
+operation blocks all reordering around it, so there is no ordering operand
+to get wrong. On x86-64 that costs almost nothing: loads are plain moves at
+every ordering, read-modify-write instructions are `lock`-prefixed, which is
+already sequentially consistent, and only a store pays, as an `xchg`. The
+weaker C11 orderings only run faster on weakly ordered CPUs, and with one
+x86 backend a too-weak ordering could never be caught by a test. Adding an
+ordering operand later is a plain extension, with this meaning as default.
+The C front end can accept every `memory_order` by strengthening it, which
+is always correct.
+
+**The result is the old value.** Every read-modify-write answers what the
+cell held before, as hardware does, and `atomic.cas` answers the old value
+too, so the exchange happened exactly when it equals the expected one.
+`Atomic<T>::compare_and_swap` builds its `bool` in Gyro from that. A
+`bool`-returning `cas` would have forced a second instruction for the
+failure value that a retry loop wants.
+
+**The cell is a `ptr<T>`, and `T` is a word.** Integers of 8 to 64 bits, a
+`bool`, a `ptr`, an `anyptr` and the one-word nullable pointer, since a
+lock-free stack's head is one. Arithmetic is for integers. A `memory`'s
+`u32` address never reaches an atomic, so linear memory stays a second
+model that no instruction mixes with the first.
+
+**`Atomic<T>` holds its value inline** and is shared by pointer, and the
+race warning leaves a pointer or a slice of it alone. An `Atomic` that was
+a handle, as `Mutex` and `Array` are, would put a heap allocation behind
+every flag and could not sit inside a struct a kernel lays out (#94).
+`fetch_add` and its siblings are spelled that way because `add` is the
+arithmetic trait's name.
+
+**Rejected: an ordering operand now.** Nothing could test a weak ordering,
+and a spelling picked before a weakly ordered backend exists is a guess.
+**Rejected: atomics as `unsafe` functions only, with no instruction.** A
+call to C or to an assembly stub is a call the backend cannot see through,
+and the verifier could not check the cell's type. **Rejected: a separate
+atomic type in METALS.** A `ptr<T>` to an ordinary `T` is what the C front
+end and a struct field already are.
+
+### A thread starts with an instruction, and a thread has its own globals *(new)*
+
+**Status: done for the `pthread_create` path** (#142). `%tid = thread.start
+%stack, @body, %data` starts a detached thread running `@body(%data)`,
+`thread.exit` ends the calling one, and `thread_local global @x: T` gives
+every thread a zeroed cell of its own, which `global.ptr` addresses. The
+instruction says what happens and not how: the C runtime's `pthread_create`
+today, a `clone` sequence once Gyro has its own allocator (#139) and a
+thread no longer needs libc's per-thread state to call `malloc`. As an
+instruction the verifier checks that the body takes one `anyptr`, and no
+producer can get a thread's start-up sequence wrong, which a stub function
+the backend wrote beside the program would have left to each producer.
+
+**The stack operand is advisory.** It is an `opt<anyptr>`: null leaves the
+stack to the backend, and a non-null one is the top of a block the caller
+owns. `pthread_create` cannot be handed a top without a size, so the
+`pthread` path ignores it and the format says a program cannot tell. The
+operand exists now so that adding `clone`, which has to be given a stack,
+changes no instruction. **Rejected: omitting it until `clone` arrives**,
+because the format would change under every producer the day it does.
+**Rejected: making it required and honouring it with
+`pthread_attr_setstack`**, which needs a size the instruction does not have
+and would put an allocation in every `spawn` that libc then ignores the
+use of.
+
+**`thread.exit` is an instruction too.** A panic on a spawned thread
+must end that thread and nothing else, and what ends a thread is as much the
+backend's business as what starts one: `pthread_exit` today, the `exit`
+system call later. **Rejected: a `syscall` of `exit` from Gyro**, which
+works only without libc and skips the library's bookkeeping for the thread
+while it is linked.
+
+**A `thread_local` global takes no image and no initializer.** A module's
+`init` runs once, on the first thread, so it would set one thread's cell and
+leave the rest zero, and a static image would have to be copied into every
+thread that starts. Zero is the one start value every thread can have.
+**Rejected: a per-thread initializer**, which is a function the backend
+would have to run at every thread's start and the format has no place for.
+On x86-64 a cell is addressed through `fs`, from `.tbss`; NASM offers only
+the initial-exec form of that for ELF64, and the linker relaxes it to an
+immediate in an executable.
+
 ### A code pointer is its own type, and `&f` is how you get one *(new)*
 
 **Status: decided.** `code(A, B): C` is the address of a function with no
@@ -4023,14 +4106,95 @@ next codegen decision.
 
 ### Concurrency v1 is OS threads *(new)*
 
-**Status: decided.** `spawn` is `pthread_create`, channels are a
-mutex-and-condvar ring buffer in the C runtime (capacity 0 is a true
+**Status: decided.** `spawn` starts an OS thread, channels are a
+ring buffer under a lock (capacity 0 is a true
 rendezvous), async calls start eagerly on a thread and `await` joins,
-`select` polls its arms. Every example runs natively, so the diff tests
+`select` polls its arms. Where these are implemented moved in #142: see
+"Concurrency is library code over threads, atomics and futex". Every example runs natively, so the diff tests
 keep full coverage. Green threads with growable stacks remain the right
 long-term answer for cheap spawning and are recorded as still open;
 a sequential-only v1 was rejected because it leaves the concurrent
 examples untested.
+
+### Concurrency is library code over threads, atomics and futex *(new)*
+
+**Status: done** (#142). Spawning, `Mutex`, channels, `select`, async calls
+and futures are Gyro: `spawn`, the futures and the thread's own state are in
+`mem`, `Mutex`, `Atomic` and the channel functions are in `stdlib`, and
+lowering supplies the parts that need the program's types. METALS has
+`thread.start`, `thread.exit`, `thread_local` globals, the atomics, and the
+`futex` system call (a `syscall`), and **no longer has `chan<T>`,
+`future<T>`, `send`, `recv`, `chan.new`, `chan.close`, `select`, `await` or
+async functions.** `rt.c` lost the mutex, the channel, the future and the
+two `__thread` variables, and keeps only `gy_thread_start` and
+`gy_thread_exit`, which are libc's thread functions behind the two
+instructions. This reverses "Concurrency is hybrid, matching the language",
+which kept the channel in the IR on the argument that the grammar has it.
+The grammar has a lot of things METALS does not: a `for` loop, `defer`, a
+`match`, a trait value. Each is lowered to what METALS has, and the
+concurrency syntax is no different once METALS can express what it needs.
+
+**What lowering does.** A `chan<T>` is an `anyptr` to a `Chan` that
+`stdlib` allocates. `ch <- v` stores `v` in a cell (a `slot`, in storage
+representation) and calls `chan_send` with the cell's address; a receive
+calls `chan_recv` with a zeroed cell and builds the `(element, open)` tuple;
+`for..in` is a loop of receives; `close` is `chan_close`. A `select` is a
+`loop` of `chan_try_send` and `chan_try_recv` calls in source order, a
+`block` to leave by, and a call of `select_pause` when nothing was ready and
+there is no `else`. An async call allocates a record of the future and the
+arguments, starts a thread on a thunk lowering writes for that callee (or
+for that function type, when the call is through a function value), and
+answers the future; the thunk unpacks the record, calls the function, stores
+the result in the future and wakes whoever waits. `await` is `future_wait`
+with a cell for the result. The element and result sizes are written into
+constants once every type is declared, because `%error` and `%any` are
+declared after the functions that use them.
+
+**What waits.** A lock is one `u32`, 0 free, 1 held, 2 held with a sleeper,
+and sleeping is the `futex` system call, private to the process. A condition
+is a counter: a waiter reads it under the lock, unlocks, and sleeps while it
+is unchanged, which loses no wake-up. `futex_wait` and `futex_wake` are
+lowered to the system call and declare no effect, so `Mutex::lock` keeps the
+row `!{}` it always had; a body that called `syscall4` would have forced
+`io` onto every caller.
+
+**Panics.** A panic on a worker thread has to fulfil the future it was
+computing and end that thread. The C runtime calls a hook after printing,
+the way it calls the flush hook; `spawn` and the first async call register
+`mem`'s `abort_hook`, which reads the thread's `thread_local` state. If the
+hook returns, the process exits with status 1 as before. **`thread_local<T>()`
+is an `unsafe` function** and not a declaration with a decorator, so there
+is no new syntax and no new diagnostic: it is the calling thread's own `T`,
+one cell per type, a `thread_local` global named for the type.
+
+**`await` of a call that returns nothing now waits.** It used to evaluate
+the call and join nothing, which the chapter on async said it did not do.
+
+**A program that uses these constructs must load `stdlib`.** The library is
+what implements a channel, a `select`, an async function and an `await`, and
+the compiler loads no module on a program's behalf. A program whose graph
+does not contain `stdlib` gets E0620 at each such construct, worded like the
+E0616 for string interpolation without `mem`: "a channel is implemented in
+stdlib; this program does not load stdlib". **Rejected: the loader adding
+`stdlib` when a file has a `chan`, `select`, `await`, `async` or `<-`
+token**, which was built first: it makes what a program contains depend on
+what it happens to write, and it is the only place the compiler would load
+anything unasked. **Rejected: loading `stdlib` always**, which would make
+"this program does not load mem" (E0616) impossible to reach.
+
+**Rejected: keeping the IR instructions and having the backend call Gyro
+functions for them.** The backend would need to know the names of library
+functions and that they are in the program, and every other consumer would
+need the same; synthesizing in lowering is done once. **Rejected: pthread
+condition variables** and the `pthread_mutex` for `Mutex`: nothing in the
+program could then run without libc, which is the direction #136 goes the
+other way. **Rejected: a guard object per `lock`**: the old C allocated one
+for every lock and never freed it, because a freed guard cannot be checked
+for use after unlock. The guard is a pair of the mutex and the epoch its lock
+made, and a stale one is caught by comparing epochs. **Rejected: a futex
+syscall with a timeout for `select`.** A select that sleeps on a word the
+channels signal is the right shape and queued; the polling it has is the
+behaviour the language already documents.
 
 ### A C emitter sits beside the assembler, sharing one runtime *(new)*
 

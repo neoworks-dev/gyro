@@ -1,0 +1,123 @@
+; thread.start, thread.exit and thread_local, with the atomics that let
+; threads tell each other anything.
+;
+; Four threads start, each given its own address to work on through the
+; one anyptr the body takes. Each reads its thread_local cell, which must be
+; zero because a thread's cell starts zeroed, writes its own number there,
+; reads it back, and adds what it saw to a shared total with an atomic add.
+; The main thread set its own cell to 100 before any of them started and
+; finds 100 there afterwards, so the cells are not one cell. A thread ends
+; with thread.exit, and the abort after it is never reached.
+;
+; The main thread waits by spinning on a counter of finished threads, which
+; is the only way to wait that METALS has: a mutex is a library's.
+
+module "metals:thread-start"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<usize>"(usize)
+  fn @"println<bool>"(bool)
+}
+
+thread_local global @mine: i64
+global @finished: i64
+global @seen_nonzero: i64
+global @sum: i64
+
+fn @body(%data: anyptr) {
+  %n = ptr.cast %data -> ptr<i64>
+  %number = load %n
+
+  ; A fresh thread's cell is zero. Anything else is counted.
+  %cell = global.ptr @mine
+  %before = load %cell
+  %zero = const.i64 0
+  %dirty = ne %before, %zero
+  if %dirty {
+    %bad = global.ptr @seen_nonzero
+    %one = const.i64 1
+    %old = atomic.add %bad, %one
+  }
+
+  ; The cell is this thread's own: write, and read it back after the other
+  ; threads have had every chance to overwrite a shared one.
+  store %cell, %number
+  %again = load %cell
+  %total = global.ptr @sum
+  %old = atomic.add %total, %again
+
+  %done = global.ptr @finished
+  %one = const.i64 1
+  %old = atomic.add %done, %one
+  thread.exit
+  abort "a thread went on after thread.exit"
+}
+
+fn @wait_for(%want: i64) {
+  %done = global.ptr @finished
+  block $out {
+    loop $spin {
+      %now = atomic.load %done
+      %all = eq %now, %want
+      br_if %all, $out
+      br $spin
+    }
+  }
+  return
+}
+
+export fn @main() {
+  %cell = global.ptr @mine
+  %hundred = const.i64 100
+  store %cell, %hundred
+
+  ; Four numbers, 1 to 4, each in a cell of the array the threads read.
+  %numbers = slot array<i64, 4>
+  %base = elem.ptr %numbers
+  %i = const.i64 0
+  %nothing = const.null opt<anyptr>
+  %stride = const.i64 1
+  %n1 = const.i64 1
+  %n2 = const.i64 2
+  %n3 = const.i64 3
+  %n4 = const.i64 4
+  store %base, %n1
+  %p2 = ptr.offset %base, %stride
+  store %p2, %n2
+  %two = const.i64 2
+  %p3 = ptr.offset %base, %two
+  store %p3, %n3
+  %three = const.i64 3
+  %p4 = ptr.offset %base, %three
+  store %p4, %n4
+
+  %d1 = ptr.erase %base
+  %t1 = thread.start %nothing, @body, %d1
+  %d2 = ptr.erase %p2
+  %t2 = thread.start %nothing, @body, %d2
+  %d3 = ptr.erase %p3
+  %t3 = thread.start %nothing, @body, %d3
+  %d4 = ptr.erase %p4
+  %t4 = thread.start %nothing, @body, %d4
+
+  ; A thread's identity is never zero, and no two live threads share one.
+  %z = const.usize 0
+  %nz = ne %t1, %z
+  call @"println<bool>"(%nz)                 ; true
+  %distinct = ne %t1, %t2
+  call @"println<bool>"(%distinct)           ; true
+
+  %four = const.i64 4
+  call @wait_for(%four)
+
+  %total = global.ptr @sum
+  %got = atomic.load %total
+  call @"println<i64>"(%got)                 ; 10
+  %bad = global.ptr @seen_nonzero
+  %dirty = atomic.load %bad
+  call @"println<i64>"(%dirty)               ; 0
+  %mine = load %cell
+  call @"println<i64>"(%mine)                ; 100
+  return
+}

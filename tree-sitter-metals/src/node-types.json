@@ -50,10 +50,6 @@
           "named": true
         },
         {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
           "type": "switch_instruction",
           "named": true
         }
@@ -234,10 +230,6 @@
           "named": true
         },
         {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
           "type": "switch_instruction",
           "named": true
         }
@@ -390,10 +382,6 @@
         },
         {
           "type": "loop_instruction",
-          "named": true
-        },
-        {
-          "type": "select_instruction",
           "named": true
         },
         {
@@ -571,10 +559,6 @@
           "named": true
         },
         {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
           "type": "switch_instruction",
           "named": true
         }
@@ -694,176 +678,6 @@
         },
         {
           "type": "field_declaration",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "select_default_arm",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "block_instruction",
-          "named": true
-        },
-        {
-          "type": "if_instruction",
-          "named": true
-        },
-        {
-          "type": "instruction",
-          "named": true
-        },
-        {
-          "type": "loop_instruction",
-          "named": true
-        },
-        {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
-          "type": "switch_instruction",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "select_instruction",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "select_default_arm",
-          "named": true
-        },
-        {
-          "type": "select_receive_arm",
-          "named": true
-        },
-        {
-          "type": "select_send_arm",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "select_receive_arm",
-    "named": true,
-    "fields": {
-      "binding": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "register",
-            "named": true
-          }
-        ]
-      },
-      "channel": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "register",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "block_instruction",
-          "named": true
-        },
-        {
-          "type": "if_instruction",
-          "named": true
-        },
-        {
-          "type": "instruction",
-          "named": true
-        },
-        {
-          "type": "loop_instruction",
-          "named": true
-        },
-        {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
-          "type": "switch_instruction",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "select_send_arm",
-    "named": true,
-    "fields": {
-      "channel": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "register",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "register",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "block_instruction",
-          "named": true
-        },
-        {
-          "type": "if_instruction",
-          "named": true
-        },
-        {
-          "type": "instruction",
-          "named": true
-        },
-        {
-          "type": "loop_instruction",
-          "named": true
-        },
-        {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
-          "type": "switch_instruction",
           "named": true
         }
       ]
@@ -1007,10 +821,6 @@
           "named": true
         },
         {
-          "type": "select_instruction",
-          "named": true
-        },
-        {
           "type": "switch_instruction",
           "named": true
         }
@@ -1039,10 +849,6 @@
         },
         {
           "type": "loop_instruction",
-          "named": true
-        },
-        {
-          "type": "select_instruction",
           "named": true
         },
         {
@@ -1230,10 +1036,6 @@
     "named": false
   },
   {
-    "type": "async",
-    "named": false
-  },
-  {
     "type": "block",
     "named": false
   },
@@ -1371,23 +1173,11 @@
     "named": false
   },
   {
-    "type": "recv",
-    "named": false
-  },
-  {
     "type": "register",
     "named": true
   },
   {
     "type": "rune",
-    "named": false
-  },
-  {
-    "type": "select",
-    "named": false
-  },
-  {
-    "type": "send",
     "named": false
   },
   {
@@ -1400,6 +1190,10 @@
   },
   {
     "type": "switch",
+    "named": false
+  },
+  {
+    "type": "thread_local",
     "named": false
   },
   {

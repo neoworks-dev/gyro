@@ -1,5 +1,7 @@
 //gyro:panic closed channel
 
+import { println } from "stdlib"
+
 fn main() {
     var ch = chan<i32>(1)
     ch.close()

@@ -62,7 +62,7 @@ func (l *Layout) Size(t Type) int {
 	switch t := t.(type) {
 	case *Prim:
 		return primSize(t.Kind)
-	case *Ptr, *AnyPtr, *ChanOf, *FutureOf, *Handle, *CodeType:
+	case *Ptr, *AnyPtr, *Handle, *CodeType:
 		return Word
 	case *FnType:
 		return 2 * Word // { code, env }
@@ -94,7 +94,7 @@ func (l *Layout) Align(t Type) int {
 	switch t := t.(type) {
 	case *Prim:
 		return primSize(t.Kind)
-	case *Ptr, *AnyPtr, *ChanOf, *FutureOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
+	case *Ptr, *AnyPtr, *Handle, *CodeType, *FnType, *SliceOf, *Any:
 		return Word
 	case *Opt:
 		return max(Word, l.Align(t.Elem))
@@ -124,7 +124,7 @@ func (l *Layout) Slot(t Type) int {
 // and its storage can be the same bytes.
 func Scalar(t Type) bool {
 	switch t := t.(type) {
-	case *Prim, *Ptr, *AnyPtr, *ChanOf, *FutureOf, *Handle, *CodeType:
+	case *Prim, *Ptr, *AnyPtr, *Handle, *CodeType:
 		return true
 	case *Opt:
 		return NicheOpt(t)

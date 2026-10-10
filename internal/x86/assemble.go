@@ -72,6 +72,7 @@ type symbol struct {
 	order   int // definition order, which is the symbol table's
 
 	function           bool
+	data               bool
 	sizeEnd, sizeStart string
 }
 
@@ -127,6 +128,37 @@ var knownSections = map[string]struct {
 	".bss":    {shfAlloc | shfWrite, 4, true},
 }
 
+// sectionOptions reads what a section directive says beyond its name:
+// `nobits alloc noexec write align=8 tls`. A section the backend does not
+// know by name has only what its options give it.
+func sectionOptions(options []string) (flags uint64, align int64, nobits bool, err error) {
+	align = 1
+	for _, option := range options {
+		switch {
+		case option == "nobits":
+			nobits = true
+		case option == "alloc":
+			flags |= shfAlloc
+		case option == "write":
+			flags |= shfWrite
+		case option == "exec":
+			flags |= shfExec
+		case option == "tls":
+			flags |= shfTLS
+		case option == "noexec" || option == "progbits":
+		case strings.HasPrefix(option, "align="):
+			n, perr := parseInt(strings.TrimPrefix(option, "align="))
+			if perr != nil || n <= 0 || n&(n-1) != 0 {
+				return 0, 0, false, fmt.Errorf("align needs a power of two")
+			}
+			align = n
+		default:
+			return 0, 0, false, fmt.Errorf("unsupported section option %s", option)
+		}
+	}
+	return flags, align, nobits, nil
+}
+
 func (a *assembler) symbol(name string) *symbol {
 	s, ok := a.symbols[name]
 	if !ok {
@@ -156,6 +188,13 @@ func (a *assembler) collect(stmts []stmt) error {
 		switch s.kind {
 		case stmtSection:
 			known, ok := knownSections[s.name]
+			if len(s.options) > 0 {
+				flags, align, nobits, err := sectionOptions(s.options)
+				if err != nil {
+					return fail(s, "%v", err)
+				}
+				known.flags, known.align, known.nobits, ok = flags, align, nobits, true
+			}
 			if !ok {
 				return fail(s, "unknown section %s", s.name)
 			}
@@ -174,6 +213,7 @@ func (a *assembler) collect(stmts []stmt) error {
 				sym.function = true
 				sym.sizeEnd, sym.sizeStart = s.sizeEnd, s.sizeStart
 			}
+			sym.data = sym.data || s.data
 			continue
 		case stmtExtern:
 			a.symbol(s.name).extern = true
@@ -432,6 +472,14 @@ func (a *assembler) resolve(sec *section, it *item, fix fixup) error {
 			return fmt.Errorf("x86: line %d: %s is out of reach", it.line, fix.sym)
 		}
 		copy(sec.data[at:], le32(value))
+		return nil
+	}
+
+	if fix.gottpoff {
+		if !sym.defined && !sym.extern {
+			return fmt.Errorf("x86: line %d: undefined symbol %s", it.line, fix.sym)
+		}
+		sec.relocs = append(sec.relocs, reloc{offset: at, kind: rX86_64_GOTTPOFF, sym: sym, addend: fix.addend})
 		return nil
 	}
 

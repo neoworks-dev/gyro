@@ -158,6 +158,8 @@ func Link(modules []*Module) (*Module, error) {
 				Name:  l.symbol(global.Name),
 				Type:  l.rewrite(global.Type),
 				Bytes: global.Bytes,
+
+				ThreadLocal: global.ThreadLocal,
 			})
 		}
 		for _, fn := range m.Funcs {
@@ -307,10 +309,6 @@ func (l *linker) strayName(importer, exporter *Module, t Type) string {
 		return l.strayName(importer, exporter, t.Elem)
 	case *ArrayOf:
 		return l.strayName(importer, exporter, t.Elem)
-	case *ChanOf:
-		return l.strayName(importer, exporter, t.Elem)
-	case *FutureOf:
-		return l.strayName(importer, exporter, t.Result)
 	case *TupleOf:
 		for _, elem := range t.Elems {
 			if bad := l.strayName(importer, exporter, elem); bad != "" {
@@ -481,7 +479,6 @@ func (l *linker) function(fn *Func) *Func {
 		// exported main from a dependency is an ordinary function once
 		// its name is qualified.
 		Export: fn.Export,
-		Async:  fn.Async,
 		Params: params,
 		Result: l.rewrite(fn.Result),
 		Body:   l.body(fn.Body),
@@ -541,10 +538,6 @@ func (l *linker) rewrite(t Type) Type {
 		return &SliceOf{Elem: l.rewrite(t.Elem)}
 	case *ArrayOf:
 		return &ArrayOf{Elem: l.rewrite(t.Elem), Len: t.Len}
-	case *ChanOf:
-		return &ChanOf{Elem: l.rewrite(t.Elem)}
-	case *FutureOf:
-		return &FutureOf{Result: l.rewrite(t.Result)}
 	case *TupleOf:
 		elems := make([]Type, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -556,7 +549,7 @@ func (l *linker) rewrite(t Type) Type {
 		for i, param := range t.Params {
 			params[i] = l.rewrite(param)
 		}
-		return &FnType{Params: params, Result: l.rewrite(t.Result), Async: t.Async}
+		return &FnType{Params: params, Result: l.rewrite(t.Result)}
 	case *CodeType:
 		params := make([]Type, len(t.Params))
 		for i, param := range t.Params {
@@ -599,8 +592,6 @@ func (l *linker) instr(instr Instr) Instr {
 		return &Slot{Dst: i.Dst, Type: l.rewrite(i.Type)}
 	case *New:
 		return &New{Dst: i.Dst, Type: l.rewrite(i.Type)}
-	case *ChanNew:
-		return &ChanNew{Dst: i.Dst, Elem: l.rewrite(i.Elem), Cap: i.Cap}
 	case *MakeArray:
 		return &MakeArray{Dst: i.Dst, Elem: l.rewrite(i.Elem), Args: i.Args}
 	case *MakeRecord:
@@ -627,6 +618,8 @@ func (l *linker) instr(instr Instr) Instr {
 		return &FnRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
 	case *CodeRef:
 		return &CodeRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
+	case *ThreadStart:
+		return &ThreadStart{Dst: i.Dst, Stack: i.Stack, Body: l.callee(i.Body), Data: i.Data}
 	case *MakeClosure:
 		return &MakeClosure{Dst: i.Dst, Callee: l.callee(i.Callee), Env: i.Env}
 
@@ -642,12 +635,6 @@ func (l *linker) instr(instr Instr) Instr {
 			cases[n] = SwitchCase{Value: c.Value, Body: l.body(c.Body)}
 		}
 		return &Switch{X: i.X, Cases: cases, Default: l.body(i.Default)}
-	case *Select:
-		arms := make([]SelectArm, len(i.Arms))
-		for n, arm := range i.Arms {
-			arms[n] = SelectArm{Dst: arm.Dst, Ch: arm.Ch, Val: arm.Val, Send: arm.Send, Body: l.body(arm.Body)}
-		}
-		return &Select{Arms: arms, Default: l.body(i.Default)}
 	}
 	return instr
 }

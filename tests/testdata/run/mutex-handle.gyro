@@ -1,0 +1,25 @@
+// Each lock makes a guard of its own, and a copy of a Mutex is the same
+// mutex, which is what lets a closure carry one to another thread.
+
+import { println, Mutex } from "stdlib"
+
+fn main() {
+    var m = Mutex::new(5)
+    var first = m.lock()
+    println(first.get())
+    first.set(6)
+    first.unlock()
+
+    var second = m.lock()
+    println(second.get())
+    second.unlock()
+
+    // A copy of the mutex is the same mutex.
+    var alias = m
+    var third = alias.lock()
+    third.set(third.get() * 7)
+    third.unlock()
+    var fourth = m.lock()
+    println(fourth.get())
+    fourth.unlock()
+}

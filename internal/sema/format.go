@@ -24,6 +24,18 @@ func (c *checker) noteFormat(tree *ast.File) {
 	}
 }
 
+// requireStdlib reports a construct whose implementation is code in stdlib
+// when the program does not load it. Nothing is loaded for a program that
+// did not ask: a channel, a select, an async function and an await are
+// syntax over library code, and the library is the program's to import.
+func (c *checker) requireStdlib(offset int, what string) bool {
+	if c.program.loaded[stdlib.Path("stdlib")] {
+		return true
+	}
+	c.errorf(offset, "%s is implemented in stdlib; this program does not load stdlib", what)
+	return false
+}
+
 func (c *checker) isFormat(t types.Type) bool {
 	strct, ok := t.(*types.Struct)
 	return ok && c.program.format != nil && strct == c.program.format

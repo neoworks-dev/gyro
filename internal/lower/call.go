@@ -44,7 +44,10 @@ func (f *funcLowerer) prepareCall(call *ast.CallExpr) func() string {
 	fn := f.eval(call.Fun, nil)
 	args := f.callArgs(call, resolved.Sig, nil)
 	return func() string {
-		if isVoid(resolved.Sig.Result) && !resolved.Sig.Async {
+		if resolved.Sig.Async {
+			return f.startAsyncIndirect(fn, args, resolved.Sig)
+		}
+		if isVoid(resolved.Sig.Result) {
 			f.emit(&metals.CallIndirect{Fn: fn, Args: args})
 			return ""
 		}
@@ -181,7 +184,10 @@ func (f *funcLowerer) packArgs(call *ast.CallExpr, param types.Type, at int) str
 
 func (f *funcLowerer) emitCall(name string, args []string, result types.Type, async bool) func() string {
 	return func() string {
-		if isVoid(result) && !async {
+		if async {
+			return f.startAsync(name, args, result)
+		}
+		if isVoid(result) {
 			f.emit(&metals.Call{Callee: name, Args: args})
 			return ""
 		}
@@ -406,6 +412,13 @@ func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDec
 // supplies, which lower as ordinary natives.
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
+	case "start_thread":
+		return f.startThread(call)
+	case "end_thread":
+		return func() string {
+			f.emit(&metals.ThreadExit{})
+			return ""
+		}
 	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -436,6 +449,8 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 	switch decl.Name {
 	case "env_of", "with_env":
 		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
+	case "thread_local":
+		return f.threadLocal(resolved.Bindings)
 	case "syscall0", "syscall1", "syscall2", "syscall3", "syscall4", "syscall5", "syscall6":
 		// Each argument lowers at the type its own parameter was bound to,
 		// so a pointer stays a pointer all the way into the instruction.
@@ -449,6 +464,11 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 			f.emit(&metals.Syscall{Dst: out, Number: number, Args: args})
 			return out
 		}
+	case "futex_wait", "futex_wake":
+		return f.prepareFutex(call, resolved, decl.Name)
+	case "atomic_load", "atomic_store", "atomic_swap", "atomic_cas", "atomic_add", "atomic_sub",
+		"atomic_and", "atomic_or", "atomic_xor", "atomic_fence":
+		return f.prepareAtomicIntrinsic(call, resolved, decl.Name)
 	case "slice_from_raw":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -531,7 +551,7 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 	case "close":
 		ch := f.lowerExpr(recv, nil)
 		return func() string {
-			f.emit(&metals.ChanClose{Ch: ch})
+			f.closeChan(ch)
 			return ""
 		}
 

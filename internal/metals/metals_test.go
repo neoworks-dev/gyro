@@ -205,54 +205,6 @@ fn @build() -> i32 {
 `)
 }
 
-func TestConcurrencyModule(t *testing.T) {
-	roundTrip(t, `
-module "gyro:test/chans"
-
-import "gyro:rt" {
-  fn @spawn(fn())
-}
-
-async fn @first(%ch: chan<i32>) -> i32 {
-  %t = recv %ch
-  %v = tuple.get %t, 0
-  %open = tuple.get %t, 1
-  if %open {
-    return %v
-  }
-  %zero = const.i32 0
-  return %zero
-}
-
-async fn @relay(%ch: chan<i32>) -> i32 {
-  %f = call @first(%ch)
-  %v = await %f
-  return %v
-}
-
-fn @pump(%vals: chan<i32>, %quit: chan<bool>) {
-  %yes = const.bool true
-  select {
-    recv %v = %vals {
-      chan.close %quit
-      return
-    }
-    send %quit, %yes {
-      return
-    }
-    default {
-    }
-  }
-  %cap = const.usize 4
-  %fresh = chan.new<i32> %cap
-  %unbuffered = chan.new<bool>
-  chan.close %fresh
-  chan.close %unbuffered
-  return
-}
-`)
-}
-
 func TestInteropModule(t *testing.T) {
 	roundTrip(t, `
 module "gyro:test/interop"
@@ -451,28 +403,7 @@ func TestVerifierCatchesUnknownLabel(t *testing.T) {
 `, "no enclosing label $b")
 }
 
-func TestVerifierCatchesAwaitOutsideAsync(t *testing.T) {
-	verifyError(t, header+`async fn @g() -> i32 {
-  %one = const.i32 1
-  return %one
-}
-
-fn @f() -> i32 {
-  %fut = call @g()
-  %v = await %fut
-  return %v
-}
-`, "await only works inside an async fn")
-}
-
 func TestVerifierEnforcesBoundaryRules(t *testing.T) {
-	verifyError(t, `module "gyro:test/v"
-
-import "py:math" {
-  fn @share(chan<i32>)
-}
-`, "values copy at the boundary")
-
 	// A runtime with a heap of its own is what the rule is about, and a
 	// pointer is the whole of what it refuses.
 	verifyError(t, `module "gyro:test/v"
@@ -494,20 +425,11 @@ import "c:SDL2" {
 }
 `)
 
-	// What it does not carry either way is a Gyro runtime object, which
-	// C has no representation for at all.
-	verifyError(t, `module "gyro:test/v"
-
-import "c:SDL2" {
-  fn @SDL_FreeSurface(ptr<chan<i32>>)
-}
-`, "values copy at the boundary")
-
 	// The same signature is fine within one language.
 	roundTrip(t, `module "gyro:test/v"
 
 import "gyro:test/other" {
-  fn @share(chan<i32>)
+  fn @share(ptr<i32>)
 }
 `)
 
@@ -527,14 +449,6 @@ import "lisp:test/other" {
   return %p
 }
 `)
-}
-
-func TestVerifierChecksSends(t *testing.T) {
-	verifyError(t, header+`fn @f(%ch: chan<i32>, %s: str) {
-  send %ch, %s
-  return
-}
-`, "send of str on chan<i32>")
 }
 
 func TestVerifierChecksIndexType(t *testing.T) {
@@ -1217,6 +1131,170 @@ fn @h(%n: usize) -> anyptr {
   return %p
 }
 `)
+}
+
+func TestVerifierChecksAtomics(t *testing.T) {
+	roundTrip(t, header+`fn @f(%p: ptr<u16>, %q: ptr<ptr<i64>>, %r: ptr<bool>, %s: ptr<anyptr>, %w: anyptr, %o: ptr<opt<ptr<i64>>>) {
+  %a = atomic.load %p
+  atomic.store %p, %a
+  %b = atomic.swap %p, %a
+  %c = atomic.add %p, %b
+  %d = atomic.sub %p, %c
+  %e = atomic.and %p, %d
+  %f = atomic.or %p, %e
+  %g = atomic.xor %p, %f
+  %h = atomic.cas %p, %g, %a
+  %i = atomic.load %q
+  %j = atomic.swap %q, %i
+  %k = atomic.cas %q, %i, %j
+  %l = atomic.load %r
+  %m = atomic.cas %r, %l, %l
+  %n = atomic.swap %s, %w
+  %z = atomic.load %o
+  %y = atomic.cas %o, %z, %z
+  atomic.fence
+  return
+}
+`)
+
+	verifyError(t, header+`fn @f(%a: usize) {
+  %v = atomic.load %a
+  return
+}
+`, "atomic.load wants a ptr<T>, not usize")
+
+	// An atomic acts on a word the hardware updates in one step.
+	verifyError(t, header+`fn @f(%p: ptr<f64>) {
+  %v = atomic.load %p
+  return
+}
+`, "atomic.load works on an integer, a bool or a pointer, not f64")
+	verifyError(t, header+`fn @f(%p: ptr<str>, %s: str) {
+  atomic.store %p, %s
+  return
+}
+`, "atomic.store works on an integer, a bool or a pointer, not str")
+
+	// Only the optional that is one word qualifies.
+	verifyError(t, header+`fn @f(%p: ptr<opt<i64>>) {
+  %v = atomic.load %p
+  return
+}
+`, "atomic.load works on an integer, a bool or a pointer, not opt<i64>")
+
+	// Arithmetic is for integers; a pointer or a bool has no sum.
+	verifyError(t, header+`fn @f(%p: ptr<bool>, %b: bool) {
+  %v = atomic.add %p, %b
+  return
+}
+`, "atomic.add works on an integer, not bool")
+	verifyError(t, header+`fn @f(%p: ptr<anyptr>, %b: anyptr) {
+  %v = atomic.xor %p, %b
+  return
+}
+`, "atomic.xor works on an integer, not anyptr")
+
+	// The operand is the cell's type exactly: no widening, no narrowing.
+	verifyError(t, header+`fn @f(%p: ptr<u8>, %n: u32) {
+  atomic.store %p, %n
+  return
+}
+`, "atomic.store of u32 on a cell of u8")
+	verifyError(t, header+`fn @f(%p: ptr<i32>, %a: i32, %b: i64) {
+  %v = atomic.cas %p, %a, %b
+  return
+}
+`, "atomic.cas of i64 on a cell of i32")
+}
+
+func TestVerifierChecksThreads(t *testing.T) {
+	roundTrip(t, header+`thread_local global @cell: i64
+
+global @plain: i64
+
+fn @body(%data: anyptr) {
+  %p = global.ptr @cell
+  %n = const.i64 1
+  store %p, %n
+  thread.exit
+}
+
+fn @main() {
+  %stack = const.null opt<anyptr>
+  %any = const.null opt<anyptr>
+  %cell = global.ptr @plain
+  %data = ptr.erase %cell
+  %tid = thread.start %stack, @body, %data
+  %zero = const.usize 0
+  %ok = ne %tid, %zero
+  return
+}
+`)
+
+	// Nothing follows thread.exit, as nothing follows abort.
+	roundTrip(t, header+`fn @f() -> i64 {
+  thread.exit
+}
+`)
+
+	verifyError(t, header+`fn @body(%d: anyptr) {
+  return
+}
+
+fn @f(%stack: anyptr, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's stack is an opt<anyptr>, not anyptr")
+
+	verifyError(t, header+`fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @missing, %data
+  return
+}
+`, "unknown function @missing")
+
+	// The body takes one anyptr and returns nothing.
+	verifyError(t, header+`fn @body(%d: anyptr, %e: i64) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing, but @body is")
+	verifyError(t, header+`fn @body(%d: anyptr) -> i64 {
+  %z = const.i64 0
+  return %z
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing")
+	verifyError(t, header+`fn @body(%d: ptr<i64>) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing")
+	verifyError(t, header+`fn @body(%d: anyptr) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: ptr<i64>) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start hands its body an anyptr, not ptr<i64>")
+
+	// A thread that starts later has no image to start from.
+	verifyError(t, header+`thread_local global @cell: i64 = "\x01\x00\x00\x00\x00\x00\x00\x00"
+`, "thread_local and has a static image")
 }
 
 func TestVerifierChecksTruncAndBitcast(t *testing.T) {

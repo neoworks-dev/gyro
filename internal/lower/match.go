@@ -382,8 +382,7 @@ func (f *funcLowerer) chanLoop(s *ast.ForInStmt, elemType types.Type) {
 	channel := f.lowerExpr(s.Iterable, nil)
 	element := ""
 	f.loopShell(func(breakLabel string) {
-		pair := f.newReg("recv")
-		f.emit(&metals.Recv{Dst: pair, Ch: channel})
+		pair := f.receive(channel, f.chanElem(s.Iterable))
 		open := f.newReg("open")
 		f.emit(&metals.TupleGet{Dst: open, X: pair, Index: 1})
 		closed := f.newReg("closed")

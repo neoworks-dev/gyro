@@ -320,11 +320,6 @@ func (g *generator) countWeights(body []metals.Instr, factor int, weights map[st
 				g.countWeights(c.Body, factor, weights)
 			}
 			g.countWeights(i.Default, factor, weights)
-		case *metals.Select:
-			for _, arm := range i.Arms {
-				g.countWeights(arm.Body, factor, weights)
-			}
-			g.countWeights(i.Default, factor, weights)
 		}
 	}
 }
@@ -423,6 +418,16 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{}
 	case *metals.SliceFrom:
 		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Len}}
+	case *metals.AtomicLoad:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr}}
+	case *metals.AtomicStore:
+		return roles{uses: []string{i.Ptr, i.Val}}
+	case *metals.AtomicRMW:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Val}}
+	case *metals.AtomicCas:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Expected, i.New}}
+	case *metals.Fence:
+		return roles{}
 	case *metals.Syscall:
 		return roles{defs: []string{i.Dst}, uses: append([]string{i.Number}, i.Args...)}
 	case *metals.SliceSub:
@@ -454,8 +459,10 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{defs: []string{i.Dst}, uses: append([]string{i.Fn}, i.Args...)}
 	case *metals.Return:
 		return roles{uses: []string{i.Val}}
-	case *metals.Abort:
+	case *metals.Abort, *metals.ThreadExit:
 		return roles{}
+	case *metals.ThreadStart:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Data}}
 	case *metals.If:
 		return roles{uses: []string{i.Cond}}
 	case *metals.Block, *metals.Loop:
@@ -466,20 +473,6 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{uses: []string{i.Cond}}
 	case *metals.Switch:
 		return roles{uses: []string{i.X}}
-	case *metals.ChanNew:
-		return roles{defs: []string{i.Dst}, uses: []string{i.Cap}}
-	case *metals.Send:
-		// The runtime takes the element by pointer.
-		return roles{uses: []string{i.Ch, i.Val}, mem: []string{i.Val}}
-	case *metals.Recv:
-		return roles{defs: []string{i.Dst}, uses: []string{i.Ch}, mem: []string{i.Dst}}
-	case *metals.ChanClose:
-		return roles{uses: []string{i.Ch}}
-	case *metals.Await:
-		// gy_future_get fills the destination through a pointer.
-		return roles{defs: []string{i.Dst}, uses: []string{i.X}, mem: []string{i.Dst}}
-	case *metals.Select:
-		return g.selectRoles(i)
 	case *metals.OptWrap:
 		return roles{defs: []string{i.Dst}, uses: []string{i.X}}
 	case *metals.OptUnwrap:
@@ -518,34 +511,13 @@ func (g *generator) callRoles(i *metals.Call) roles {
 		return r
 	}
 	sig := g.imports[i.Callee]
-	if sig == nil || sig.Async {
-		// An unknown callee fails in the emitter; an async import
-		// marshals through a heap buffer and takes no slot addresses.
+	if sig == nil {
+		// An unknown callee fails in the emitter.
 		return r
 	}
 	plan := g.nativePlanFor(i.Callee, sig)
 	if plan.sret {
 		r.mem = append(r.mem, i.Dst)
-	}
-	for _, arg := range plan.args {
-		if arg.pointer {
-			r.mem = append(r.mem, i.Args[arg.index])
-		}
-	}
-	return r
-}
-
-func (g *generator) selectRoles(i *metals.Select) roles {
-	var r roles
-	for _, arm := range i.Arms {
-		r.uses = append(r.uses, arm.Ch)
-		if arm.Send {
-			r.uses = append(r.uses, arm.Val)
-			r.mem = append(r.mem, arm.Val)
-		} else {
-			r.defs = append(r.defs, arm.Dst)
-			r.mem = append(r.mem, arm.Dst)
-		}
 	}
 	return r
 }
@@ -668,13 +640,10 @@ func (s *liveScan) instr(instr metals.Instr, live regSet) regSet {
 		}
 		return s.transfer(roles{uses: []string{i.X}}, out)
 
-	case *metals.Select:
-		return s.selectInstr(i, live)
-
 	case *metals.Return:
 		return s.transfer(roles{uses: []string{i.Val}}, regSet{})
 
-	case *metals.Abort:
+	case *metals.Abort, *metals.ThreadExit:
 		return regSet{}
 	}
 	return s.transfer(s.g.rolesOf(instr), live)
@@ -700,31 +669,6 @@ func (s *liveScan) target(label string) regSet {
 		s.g.fail("br to unknown label $%s", label)
 	}
 	return set
-}
-
-// selectInstr models the poll: an arm's body runs after every arm has
-// been tried, and without a default the whole poll retries, so every
-// channel and every sent value stays live across all of it.
-func (s *liveScan) selectInstr(i *metals.Select, live regSet) regSet {
-	out := regSet{}
-	for _, arm := range i.Arms {
-		out = out.union(s.body(arm.Body, live.clone()))
-	}
-	if len(i.Default) > 0 {
-		out = out.union(s.body(i.Default, live.clone()))
-	}
-	for _, arm := range i.Arms {
-		out.add(arm.Ch)
-		if arm.Send {
-			out.add(arm.Val)
-		}
-	}
-	for _, arm := range i.Arms {
-		if !arm.Send {
-			s.define(arm.Dst, out)
-		}
-	}
-	return out
 }
 
 // transfer applies one instruction to the set live after it and returns

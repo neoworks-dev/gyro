@@ -124,7 +124,7 @@ func compareAssemblers(t *testing.T, asm string) {
 		t.Fatalf("x86.Assemble wrote an unreadable object: %v", err)
 	}
 
-	for _, name := range []string{".text", ".rodata", ".data", ".bss"} {
+	for _, name := range []string{".text", ".rodata", ".data", ".bss", ".tbss"} {
 		compareSection(t, name, wantFile, gotFile)
 	}
 	compareSymbols(t, wantFile, gotFile)

@@ -107,7 +107,7 @@ func header(module *metals.Module) (string, error) {
 		for i, param := range declared {
 			types[i] = param.Type
 		}
-		text, err := h.function(fn.Name, types, fn.Result, variadic, fn.Async)
+		text, err := h.function(fn.Name, types, fn.Result, variadic)
 		if err != nil {
 			continue
 		}
@@ -130,7 +130,7 @@ func header(module *metals.Module) (string, error) {
 // spelling. Each is an `unsafe fn`: nothing about the C behind it is
 // knowable, and an `import safe` is what vouches for the ones a program
 // uses.
-func (h *headerGen) function(name string, declared []metals.Type, result metals.Type, variadic, async bool) (string, error) {
+func (h *headerGen) function(name string, declared []metals.Type, result metals.Type, variadic bool) (string, error) {
 	params := make([]string, len(declared))
 	for i, param := range declared {
 		spelling, err := h.spell(param)
@@ -157,11 +157,7 @@ func (h *headerGen) function(name string, declared []metals.Type, result metals.
 		out = ": " + spelling
 	}
 
-	prefix := ""
-	if async {
-		prefix = "async "
-	}
-	return fmt.Sprintf("export unsafe %sfn %s(%s)%s\n", prefix, name, strings.Join(params, ", "), out), nil
+	return fmt.Sprintf("export unsafe fn %s(%s)%s\n", name, strings.Join(params, ", "), out), nil
 }
 
 // isVariadic reports whether an export is a C variadic function. METALS

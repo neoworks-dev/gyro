@@ -38,6 +38,13 @@ type stmt struct {
 	function  bool
 	sizeEnd   string
 	sizeStart string
+
+	// data is a global's `:data`, a variable rather than code.
+	data bool
+
+	// options are what follows a section's name: `nobits alloc noexec
+	// write align=8 tls`.
+	options []string
 }
 
 // position is where the line table credits a line: the source file and
@@ -74,6 +81,13 @@ type mem struct {
 	scale       int
 	disp        int64
 	sym         string
+
+	// gottpoff is `[rel sym wrt ..gottpoff]`: the symbol's offset in the
+	// thread-local block, read from the global offset table.
+	gottpoff bool
+
+	// segment is the override byte of `[fs:0]`, 0 when there is none.
+	segment byte
 }
 
 type reg struct {
@@ -203,7 +217,11 @@ func parseStatement(text string) ([]stmt, error) {
 		}
 		return nil, nil
 	case "section":
-		return []stmt{{kind: stmtSection, name: rest}}, nil
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			return nil, fmt.Errorf("section needs a name")
+		}
+		return []stmt{{kind: stmtSection, name: fields[0], options: fields[1:]}}, nil
 	case "extern":
 		if !isSymbol(rest) {
 			return nil, fmt.Errorf("malformed extern")
@@ -242,7 +260,7 @@ func parseStatement(text string) ([]stmt, error) {
 	}
 
 	s := stmt{kind: stmtInst, mnemonic: word}
-	if word == "rep" {
+	if word == "rep" || word == "lock" {
 		s.prefix = word
 		s.mnemonic, rest, _ = cutWord(rest)
 		rest = strings.TrimSpace(rest)
@@ -270,7 +288,15 @@ func parseGlobal(rest string) ([]stmt, error) {
 		return []stmt{s}, nil
 	}
 	kind, size, _ := strings.Cut(kind, " ")
-	if kind != "function" {
+	switch kind {
+	case "data":
+		if strings.TrimSpace(size) != "" {
+			return nil, fmt.Errorf("a data symbol takes no size")
+		}
+		s.data = true
+		return []stmt{s}, nil
+	case "function":
+	default:
 		return nil, fmt.Errorf("unsupported symbol type %q", kind)
 	}
 	s.function = true
@@ -358,7 +384,25 @@ func parseSymbolExpr(text string) (string, int64, error) {
 // symbol. The first unscaled register is the base, as nasm takes it.
 func parseMem(text string) (mem, error) {
 	m := mem{base: -1, index: -1, scale: 1}
+	if rest, ok := strings.CutSuffix(strings.TrimSpace(text), " wrt ..gottpoff"); ok {
+		rest, ok = strings.CutPrefix(rest, "rel ")
+		if !ok {
+			return m, fmt.Errorf("wrt ..gottpoff needs rel")
+		}
+		sym := strings.TrimSpace(rest)
+		if !isSymbol(sym) {
+			return m, fmt.Errorf("wrt ..gottpoff needs a symbol")
+		}
+		m.sym, m.gottpoff = sym, true
+		return m, nil
+	}
 	text = strings.ReplaceAll(text, " ", "")
+	if seg, rest, ok := strings.Cut(text, ":"); ok {
+		if seg != "fs" {
+			return m, fmt.Errorf("only the fs segment override is supported")
+		}
+		m.segment, text = 0x64, rest
+	}
 	if text == "" {
 		return m, fmt.Errorf("empty memory operand")
 	}
@@ -414,6 +458,9 @@ func parseMem(text string) (mem, error) {
 	}
 	if m.sym != "" && (m.base >= 0 || m.index >= 0) {
 		return m, fmt.Errorf("a symbol address cannot also use registers")
+	}
+	if m.segment != 0 && m.sym != "" {
+		return m, fmt.Errorf("a segment override takes a number or registers, not a symbol")
 	}
 	if m.index == 4 {
 		return m, fmt.Errorf("rsp cannot be an index register")

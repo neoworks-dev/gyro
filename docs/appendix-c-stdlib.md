@@ -149,12 +149,50 @@ export fn Map<K, V>::free(*self) !{}
 Mutexes ([chapter 13.1](ch13-01-threads.md)):
 
 ```gyro
-export fn Mutex<T>::new(value: T): Mutex<T> !{}
-export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
-export fn MutexGuard<T>::get(self): T !{}
-export fn MutexGuard<T>::set(*self, value: T) !{}
-export fn MutexGuard<T>::unlock(*self) !{}
+export struct Mutex<T> { head: *MutexHead<T> }
+export struct MutexGuard<T> { head: *MutexHead<T>, epoch: u64 }
+export safe fn Mutex<T>::new(value: T): Mutex<T> !{}
+export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+export safe fn MutexGuard<T>::get(self): T !{}
+export safe fn MutexGuard<T>::set(*self, value: T) !{}
+export safe fn MutexGuard<T>::unlock(*self) !{}
 ```
+
+A `Mutex` is a handle to a lock word and the value it guards, as an `Array`
+is a handle to its buffer, so a copy is the same mutex. The lock is a futex:
+taking a free one is an atomic compare-and-swap, and a thread that finds it
+held sleeps in the `futex` system call until the holder's unlock wakes one.
+A guard remembers the epoch its `lock` made, and is stale once `unlock` has
+moved it on, so using a guard after it was unlocked aborts with `the guard
+was already unlocked` however many threads have locked the mutex since.
+
+The channel operations of the language ([chapter 13.2](ch13-02-channels.md))
+are functions of this module too: `chan_new`, `chan_send`, `chan_recv`,
+`chan_close`, `chan_try_send`, `chan_try_recv` and `select_pause`. They are
+not exported, and a program does not call them: lowering does, for `chan<T>`,
+`<-`, `close`, `for..in` and `select`. They take and answer addresses,
+because a channel moves the bytes of an element and knows nothing of `T`
+but its size. A program that uses any of these constructs, or an `async`
+function or an `await`, has to load `stdlib` (E0620 otherwise): the compiler
+never loads a module the program did not import.
+
+Atomics ([chapter 13.1](ch13-01-threads.md)):
+
+```gyro
+export struct Atomic<T: Eq> { value: T }
+export fn Atomic<T>::new(value: T): Atomic<T> !{}
+export safe fn Atomic<T>::load(*self): T !{}
+export safe fn Atomic<T>::store(*self, value: T) !{}
+export safe fn Atomic<T>::swap(*self, value: T): T !{}
+export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{}
+export safe fn Atomic<T>::fetch_add(*self, value: T): T !{}   // also sub, and, or, xor
+export safe fn fence() !{}
+```
+
+`T` is an integer of 8 to 64 bits, a `bool` or a pointer (the arithmetic
+ones take integers). The operations are written in Gyro over `unsafe`'s
+`atomic_*` functions, each of which is one METALS atomic instruction
+([appendix D](appendix-d-metals.md)).
 
 ### `mem`
 
@@ -164,8 +202,8 @@ The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
 them. The raw memory they stand on, the process heap, `copy_bytes`, `offset`
 and a closure's environment, belongs to the `unsafe` module below, which
 `mem` imports. The functions here that use it are `safe fn`s: `alloc`,
-`heap`'s procedure, `Arena`'s, `keep`, `release` and the thread entry under
-`spawn`.
+`heap`'s procedure, `Arena`'s, `keep`, `release`, the thread entry under
+`spawn` and the future functions behind async.
 
 ```gyro
 export enum Mode { Alloc, Free, FreeAll, Resize }
@@ -232,6 +270,17 @@ releasing the copy when the thread's closure returns; it lives in `mem`
 beside `keep`, which it is written over. `keep` and `release` are written over two private intrinsics that
 read a `fn` value's environment word and rebuild one with another; neither
 is exported, since raw memory is not part of the language's surface.
+
+Beside `spawn`, `mem` keeps what is true of a thread (a `thread_local` cell
+holding whether it is a worker and which future it is computing) and the
+futures an async call makes: `future_new`, `future_enter`, `future_result`,
+`future_leave` and `future_wait`, which lowering calls and a program does
+not. A future is a cell holding the result's bytes and a futex word, 0 until
+the result is there. `spawn` and an async call both register a hook with the
+C runtime that runs after a panic is printed: on a worker it fulfils the
+future the thread was computing, so no `await` waits for ever on a thread
+that died, and ends the thread; on the main thread it does nothing and the
+process exits with status 1.
 
 `panic` aborts the process with the message, the way an index out of
 range does. It is a function rather than a keyword because a program that
@@ -408,6 +457,18 @@ export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align
 export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
 
+export unsafe fn thread_local<T>(): *T !{}
+
+export unsafe fn atomic_load<T>(p: *T): T !{}
+export unsafe fn atomic_store<T>(p: *T, value: T) !{}
+export unsafe fn atomic_swap<T>(p: *T, value: T): T !{}
+export unsafe fn atomic_cas<T>(p: *T, expected: T, desired: T): T !{}
+export unsafe fn atomic_add<T>(p: *T, value: T): T !{}   // also sub, and, or, xor
+export unsafe fn atomic_fence() !{}
+
+export unsafe fn futex_wait(word: *u32, expected: u32) !{}
+export unsafe fn futex_wake(word: *u32, count: u32) !{}
+
 export unsafe fn syscall0(number: usize): isize !{ io }
 export unsafe fn syscall1<A>(number: usize, a: A): isize !{ io }
 export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): isize !{ io }
@@ -418,8 +479,15 @@ export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: 
 ```
 
 `cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `slice_from_raw`,
-`env_of`/`with_env` and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
+`env_of`/`with_env`, `thread_local`, the `atomic_*` functions, the `futex_*`
+functions and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
 instruction, and its arguments must be integers, `bool`s or pointers.
+`thread_local<T>()` is the calling thread's own `T`, a zeroed cell every
+thread has, one per type: a `global.ptr` of a `thread_local` global named for
+`T`. `futex_wait` and `futex_wake` are the `futex` system call, private to
+the process, and declare no effect, since a thread waiting for another is not
+input or output; a lock written over them is a value in memory to its
+callers.
 `offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
 Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
 `ptr_to_int` is a `ptr.addr`, and `ptr_from_int` is a `ptr.from` then a
@@ -475,19 +543,21 @@ export async fn get(url: string): (string, error?) !{ io }
 
 ## What is runtime-backed and what is Gyro
 
-Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private
-`start_thread` under `spawn`, `Mutex<T>`/`MutexGuard<T>`, `mem`'s `size`,
+Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, `mem`'s `size`,
 `align` and `panic`, `Format`'s `show`, the `unsafe` module's `raw_alloc`,
 `raw_free`, `raw_resize`, `copy_bytes`, `text_seal` and `text_bytes`
 (`cast`, `offset`, `ptr_from_int`, `ptr_to_int`, `slice_from_raw`,
-`env_of`, `with_env` and the `syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
+`env_of`, `with_env`, `thread_local`, `futex_wait`, `futex_wake`, the
+`atomic_*` functions and the `syscall` functions are lowering's, and so are
+`mem`'s private `start_thread` and `end_thread`, which are `thread.start`
+and `thread.exit`), `to_f64`, the `os` and `time` surfaces
 and `net::get`. The `math` functions are METALS instructions, and so are
 the float conversions: the backend emits them in line.
 
 Ordinary Gyro: `Array<T>`, `String` and its UTF-8 encoder, `from_utf8`,
 `bytes` and `runes`, every text method, `Format`'s methods and `mem`'s
 `format`, `Map<K, V>`, all of `fmt`, `mem`'s `alloc`, `free`, `heap` and
-`Arena`, the integer parsers of `convert`, all of `fs` and `sys`, and the
+`Arena`, `spawn`, `Mutex`, `Atomic`, channels and futures, the integer parsers of `convert`, all of `fs` and `sys`, and the
 leaves lowering reaches for a number shown, a string compared and a word
 hashed.
 

@@ -32,9 +32,10 @@ can be used from another thread.
 `@concurrent(threads = N)` configures a parallel region as a decorator on a
 function.
 
-A spawned thread is a real OS thread on the native tiers and a goroutine
-under the evaluator. A panic on a spawned thread kills that thread only; on
-the main thread it ends the process.
+A spawned thread is a real OS thread, started with the METALS instruction
+`thread.start` ([appendix D](appendix-d-metals.md)): `spawn` is Gyro, in
+`mem`, and the backend alone knows how a thread begins. A panic on a spawned
+thread kills that thread only; on the main thread it ends the process.
 
 ## Mutexes
 
@@ -63,6 +64,36 @@ Remember that a `defer` runs at the exit of its **enclosing block**, so a
 `defer guard.unlock()` inside a loop body unlocks every iteration — which is
 usually what you want, and is worth being deliberate about.
 
+## Atomics
+
+A `Mutex` guards a value larger than one word, or an update that takes
+several steps. For a single number or flag, `Atomic<T>` from `stdlib` does
+it without a lock:
+
+```gyro
+import { Atomic } from "stdlib"
+
+var hits = alloc<Atomic<i64>>(heap())
+hits.store(0)
+spawn(heap(), fn() { var _ = hits.fetch_add(1) })
+```
+
+`T` is an integer of 8 to 64 bits, a `bool` or a pointer. `load`, `store`
+and `swap` do what they say; `compare_and_swap(expected, desired)` stores
+`desired` only if the cell holds `expected` and answers whether it did; the
+`fetch_` operations (`add`, `sub`, `and`, `or`, `xor`, for integers) answer
+the value from before. `fence()` keeps every atomic operation before it
+from being seen after one that follows.
+
+There is exactly one ordering, the strongest: every operation is seen by
+every thread in one order, and nothing moves across it. Gyro has no weaker
+ones to choose, so there is no way to choose wrongly.
+
+The cell is the value, stored where the `Atomic` is. A thread shares one
+the way it shares any memory, by pointer, as above; copying an `Atomic`
+copies the number it holds, not the cell. The race warning below knows
+this and stays quiet for a pointer, or a slice, of `Atomic`.
+
 ## The race warning
 
 A closure captures by copy. That is safe for a value and **not** for a
@@ -81,7 +112,8 @@ spawn(heap(), fn() { ch <- 1 })             // fine: a channel is built for this
 ```
 
 A channel capture is never reported, since carrying work between threads is
-what a channel is for, and a `move` capture hands the binding over rather
+what a channel is for, a pointer to an `Atomic` is not either, since every
+access to one is atomic, and a `move` capture hands the binding over rather
 than sharing it. A closure that is not spawned is not reported either.
 
 **This does not prove the absence of a race.** A pointer reached through a

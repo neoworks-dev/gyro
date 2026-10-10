@@ -160,7 +160,7 @@ func (p *parser) dstInstr() (Instr, error) {
 	}
 
 	switch op.text {
-	case "copy", "load", "len", "slice.of", "variant.tag", "recv", "await",
+	case "copy", "load", "len", "slice.of", "variant.tag",
 		"opt.wrap", "opt.unwrap", "any.wrap":
 		x, err := p.reg()
 		if err != nil {
@@ -172,8 +172,6 @@ func (p *parser) dstInstr() (Instr, error) {
 			"len":         &Len{Dst: dst, X: x},
 			"slice.of":    &Slice{Dst: dst, X: x},
 			"variant.tag": &VariantTag{Dst: dst, X: x},
-			"recv":        &Recv{Dst: dst, Ch: x},
-			"await":       &Await{Dst: dst, X: x},
 			"opt.wrap":    &OptWrap{Dst: dst, X: x},
 			"opt.unwrap":  &OptUnwrap{Dst: dst, X: x},
 			"any.wrap":    &AnyWrap{Dst: dst, X: x},
@@ -254,6 +252,39 @@ func (p *parser) dstInstr() (Instr, error) {
 	case "ptr.addr":
 		x, err := p.reg()
 		return p.line(&PtrAddr{Dst: dst, X: x}, err)
+
+	case "atomic.load":
+		x, err := p.reg()
+		return p.line(&AtomicLoad{Dst: dst, Ptr: x}, err)
+
+	case "atomic.swap", "atomic.add", "atomic.sub", "atomic.and", "atomic.or", "atomic.xor":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		val, err := p.reg()
+		return p.line(&AtomicRMW{Dst: dst, Op: op.text[len("atomic."):], Ptr: ptr, Val: val}, err)
+
+	case "atomic.cas":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		expected, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		next, err := p.reg()
+		return p.line(&AtomicCas{Dst: dst, Ptr: ptr, Expected: expected, New: next}, err)
 
 	case "ptr.offset", "ptr.diff":
 		a, err := p.reg()
@@ -420,6 +451,24 @@ func (p *parser) dstInstr() (Instr, error) {
 		args, err := p.regList()
 		return p.line(&CallIndirect{Dst: dst, Fn: fn, Args: args}, err)
 
+	case "thread.start":
+		stack, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		body, err := p.global()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		data, err := p.reg()
+		return p.line(&ThreadStart{Dst: dst, Stack: stack, Body: body, Data: data}, err)
+
 	case "syscall":
 		number, err := p.reg()
 		if err != nil {
@@ -446,17 +495,6 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		env, err := p.reg()
 		return p.line(&MakeClosure{Dst: dst, Callee: callee, Env: env}, err)
-
-	case "chan.new":
-		elem, err := p.angled()
-		if err != nil {
-			return nil, err
-		}
-		made := &ChanNew{Dst: dst, Elem: elem}
-		if p.scan.peek().kind == tReg {
-			made.Cap, _ = p.reg()
-		}
-		return p.line(made, nil)
 
 	case "any.call":
 		x, err := p.reg()
@@ -537,17 +575,11 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		}
 		return p.line(&MemFill{Memory: memory, To: a, Byte: b, Len: c}, nil)
 
-	case "free", "chan.close":
+	case "free":
 		x, err := p.reg()
-		if err != nil {
-			return nil, err
-		}
-		if op == "free" {
-			return p.line(&Free{X: x}, nil)
-		}
-		return p.line(&ChanClose{Ch: x}, nil)
+		return p.line(&Free{X: x}, err)
 
-	case "store", "send":
+	case "store":
 		a, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -559,10 +591,24 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if op == "store" {
-			return p.line(&Store{Ptr: a, Val: b}, nil)
+		return p.line(&Store{Ptr: a, Val: b}, nil)
+
+	case "atomic.store":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
 		}
-		return p.line(&Send{Ch: a, Val: b}, nil)
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		val, err := p.reg()
+		return p.line(&AtomicStore{Ptr: ptr, Val: val}, err)
+
+	case "thread.exit":
+		return p.line(&ThreadExit{}, nil)
+
+	case "atomic.fence":
+		return p.line(&Fence{}, nil)
 
 	case "field.set":
 		x, err := p.reg()
@@ -692,8 +738,6 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		return &Loop{Label: label, Body: body}, nil
 	case "switch":
 		return p.switchInstr()
-	case "select":
-		return p.selectInstr()
 	}
 	return nil, p.errf("unknown instruction %q", op)
 }
@@ -761,69 +805,6 @@ func (p *parser) switchInstr() (Instr, error) {
 			}
 		default:
 			return nil, p.errf("switch arms are case or default, not %q", tok.text)
-		}
-	}
-}
-
-func (p *parser) selectInstr() (Instr, error) {
-	if err := p.punct("{"); err != nil {
-		return nil, err
-	}
-	if err := p.endOfLine(); err != nil {
-		return nil, err
-	}
-
-	out := &Select{}
-	for {
-		p.skipNewlines()
-		if p.atPunct("}") {
-			p.scan.next()
-			return out, p.endOfLine()
-		}
-		tok := p.scan.next()
-		switch tok.text {
-		case "recv":
-			dst, err := p.reg()
-			if err != nil {
-				return nil, err
-			}
-			if err := p.punct("="); err != nil {
-				return nil, err
-			}
-			ch, err := p.reg()
-			if err != nil {
-				return nil, err
-			}
-			body, err := p.bracedBlock()
-			if err != nil {
-				return nil, err
-			}
-			out.Arms = append(out.Arms, SelectArm{Dst: dst, Ch: ch, Body: body})
-		case "send":
-			ch, err := p.reg()
-			if err != nil {
-				return nil, err
-			}
-			if err := p.punct(","); err != nil {
-				return nil, err
-			}
-			val, err := p.reg()
-			if err != nil {
-				return nil, err
-			}
-			body, err := p.bracedBlock()
-			if err != nil {
-				return nil, err
-			}
-			out.Arms = append(out.Arms, SelectArm{Send: true, Ch: ch, Val: val, Body: body})
-		case "default":
-			var err error
-			out.Default, err = p.bracedBlock()
-			if err != nil {
-				return nil, err
-			}
-		default:
-			return nil, p.errf("select arms are recv, send or default, not %q", tok.text)
 		}
 	}
 }

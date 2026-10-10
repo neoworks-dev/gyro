@@ -1,0 +1,20 @@
+// Awaiting a call that returns nothing still waits for it: when the await
+// is done, so is the work. The call takes long enough that an await which
+// did not wait would print first.
+
+import { println, Atomic } from "stdlib"
+import { heap, alloc, free } from "mem"
+import { sleep } from "time"
+
+async fn slow(flag: *Atomic<bool>) {
+    sleep(50)
+    flag.store(true)
+}
+
+async fn main() {
+    var flag = alloc<Atomic<bool>>(heap())
+    defer free(heap(), flag)
+    flag.store(false)
+    await slow(flag)
+    println(flag.load())
+}

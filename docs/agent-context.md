@@ -503,8 +503,8 @@ so a load widens and a store narrows.
 
 This bites in two places. What the runtime stores it stores the way
 memory looks — a channel's elements, an `Array`'s, an `any`'s payload —
-so a narrow scalar goes through a staging cell rather than by the address
-of its register; forget that and an `i8` loses its sign or an `f32`
+so a narrow scalar goes through a cell of its own type (a `slot`) rather
+than by the address of its register; forget that and an `i8` loses its sign or an `f32`
 arrives as the bits of a double. And `metals.Layout` is the only place
 that computes an offset: a backend that adds up field sizes itself is
 wrong the first time a `u8` sits in front of a `u32`.
@@ -606,8 +606,8 @@ and before an import list. sema checks it in `internal/sema/unsafe.go`
 header are unsafe unless imported with `import safe`.
 `mem` imports `unsafe`, never the other way round.
 
-Runtime-backed (C in `rt.c`): `spawn`, `Mutex<T>`/`MutexGuard<T>`, the
-channel and future operations, `mem`'s `size`/`align`/`panic`, and
+Runtime-backed (C in `rt.c`): `thread.start` and `thread.exit` (libc's
+threads), `mem`'s `size`/`align`/`panic`, and
 `unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`, `copy_bytes`,
 `text_seal`, `text_bytes`, with the output lock and the hook that writes
 standard output out when the program ends. Everything else the standard

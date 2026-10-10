@@ -58,6 +58,9 @@ func isStringSlice(t types.Type) bool {
 // The checker's traversal state is saved and restored, so an instantiation
 // can re-enter while another body is mid-check.
 func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Type) {
+	if decl.Async && bindings == nil {
+		c.requireStdlib(decl.Offset, "an async function")
+	}
 	savedScope, savedFn, savedFacts, savedLenient, savedRec := c.scope, c.fn, c.facts, c.lenient, c.rec
 	savedFlow, savedLoops, savedFloor := c.flow, c.loops, c.allocFloor
 	defer func() {

@@ -1,0 +1,29 @@
+// A pool of workers drains one job channel and answers on another. Which
+// worker takes which job is not determined; the sum of the answers is.
+
+import { println } from "stdlib"
+import { heap, spawn } from "mem"
+
+fn worker(jobs: chan<i64>, answers: chan<i64>) {
+    for job in jobs {
+        answers <- job * job
+    }
+}
+
+fn main() {
+    var jobs = chan<i64>(4)
+    var answers = chan<i64>(100)
+    for w in 0..6 {
+        spawn(heap(), fn() worker(jobs, answers))
+    }
+    for n in 1..51 {
+        jobs <- (n as i64)
+    }
+    jobs.close()
+
+    var total: i64 = 0
+    for n in 1..51 {
+        total += <-answers
+    }
+    println(total)
+}

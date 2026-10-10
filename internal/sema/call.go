@@ -232,6 +232,9 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 		c.errorf(fun.NameOffset, "%s is an associated function; call it as %s::%s(...)", fun.Name, recv, fun.Name)
 		return callee{bad: true}
 	}
+	if _, ok := recv.(*types.Chan); ok && fun.Name == "close" {
+		c.requireStdlib(fun.NameOffset, "closing a channel")
+	}
 	return callee{name: fun.Name, method: method, ownerParams: ownerParams, ownerArgs: ownerArgs}
 }
 

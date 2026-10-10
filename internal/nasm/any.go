@@ -138,9 +138,6 @@ func (g *generator) anyApply(t metals.Type, owner string) string {
 	if !ok {
 		return "0"
 	}
-	if sig.Async {
-		g.fail("any.call of %s: an async function has no result an any can hold yet", sig)
-	}
 	if sig.Result == nil {
 		g.fail("any.call of %s, which returns nothing an any could hold", sig)
 	}

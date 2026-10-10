@@ -1,0 +1,39 @@
+// A channel, a send, a receive, a select, an iteration over a channel,
+// an async function and an await are written in Gyro, in stdlib. This
+// program imports nothing, so none of that code is loaded, and the compiler
+// does not load it on the program's behalf.
+
+fn make(): chan<i32> {
+    return chan<i32>(1) //~ E0620 a channel is implemented in stdlib; this program does not load stdlib
+}
+
+fn send(ch: chan<i32>) {
+    ch <- 1 //~ E0620 a send is implemented in stdlib; this program does not load stdlib
+}
+
+fn receive(ch: chan<i32>) {
+    var v = <-ch //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
+}
+
+fn close(ch: chan<i32>) {
+    ch.close() //~ E0620 closing a channel is implemented in stdlib; this program does not load stdlib
+}
+
+fn drain(ch: chan<i32>) {
+    for v in ch { //~ E0620 iterating a channel is implemented in stdlib; this program does not load stdlib
+    }
+}
+
+fn choose(ch: chan<i32>) {
+    select {                       //~ E0620 a select is implemented in stdlib; this program does not load stdlib
+        var v = <-ch: v.compare(0) //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
+    }
+}
+
+async fn work(): i32 { //~ E0620 an async function is implemented in stdlib; this program does not load stdlib
+    return 1
+}
+
+async fn wait(): i32 {  //~ E0620 an async function is implemented in stdlib; this program does not load stdlib
+    return await work() //~ E0620 an await is implemented in stdlib; this program does not load stdlib
+}

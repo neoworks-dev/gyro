@@ -1,0 +1,16 @@
+// A panic inside an async call ends the thread that was running it and
+// fulfils the future with nothing, so the await that was waiting is let go:
+// it answers a zeroed result rather than waiting for ever.
+
+import { println } from "stdlib"
+import { panic } from "mem"
+
+async fn fails(n: i32): i32 {
+    panic("the call failed")
+    return n
+}
+
+async fn main() {
+    var got = await fails(5)
+    println(got)
+}

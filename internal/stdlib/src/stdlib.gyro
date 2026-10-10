@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { cast, copy_bytes, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -1019,18 +1019,455 @@ export fn Map<K, V>::free(*self) !{} {
     self.count = 0
 }
 
+// A lock over one u32: 0 is free, 1 is held, and 2 is held with a thread
+// asleep on it. Only the last unlock that finds a 2 pays for a system call,
+// so a lock nobody waits for is two atomic instructions.
+safe fn lock_word(word: *u32) !{} {
+    var seen = atomic_cas(word, 0, 1)
+    if seen == 0 {
+        return
+    }
+    if seen != 2 {
+        seen = atomic_swap(word, 2)
+    }
+    while seen != 0 {
+        futex_wait(word, 2)
+        seen = atomic_swap(word, 2)
+    }
+}
+
+safe fn unlock_word(word: *u32) !{} {
+    if atomic_sub(word, 1) != 1 {
+        atomic_store(word, 0)
+        futex_wake(word, 1)
+    }
+}
+
 // Mutex<T> owns the value it guards; lock() returns the guard directly.
 // There is no poisoning: a panic aborts the whole process, so no thread
 // ever observes a lock its holder abandoned.
-export struct Mutex<T> {}
+//
+// A Mutex is a handle, as an Array is: a pointer to the lock and the value,
+// so a copy is the same mutex, which is how a closure carries one to
+// another thread.
+//
+// The epoch counts acquisitions and releases, so it is odd while the lock
+// is held. A guard remembers the epoch its lock made, and is good for
+// exactly as long as the mutex still has it: after unlock the guard is
+// stale, and every use of it says so.
+struct MutexHead<T> {
+    word: u32
+    epoch: u64
+    value: T
+}
 
-export fn Mutex<T>::new(value: T): Mutex<T> !{}
-export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+export struct Mutex<T> {
+    head: *MutexHead<T>
+}
 
-export struct MutexGuard<T> {}
+export safe fn Mutex<T>::new(value: T): Mutex<T> !{} {
+    var head = alloc<MutexHead<T>>(heap())
+    head.value = value
+    return Mutex<T>{ head: head }
+}
 
-export fn MutexGuard<T>::get(self): T !{}
-export fn MutexGuard<T>::set(*self, value: T) !{}
+export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{} {
+    var head = self.head
+    lock_word(&head.word)
+    head.epoch = head.epoch + 1
+    return MutexGuard<T>{ head: head, epoch: head.epoch }
+}
+
+export struct MutexGuard<T> {
+    head: *MutexHead<T>
+    epoch: u64
+}
+
+export safe fn MutexGuard<T>::get(self): T !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    return self.head.value
+}
+
+export safe fn MutexGuard<T>::set(*self, value: T) !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    self.head.value = value
+}
+
 // Release is explicit until a drop-based design is settled; pair lock()
 // with `defer guard.unlock()`.
-export fn MutexGuard<T>::unlock(*self) !{}
+export safe fn MutexGuard<T>::unlock(*self) !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    self.head.epoch = self.epoch + 1
+    unlock_word(&self.head.word)
+}
+
+// Atomic<T> is a cell that threads reach at the same moment without a lock.
+// T is an integer of 8 to 64 bits, a bool or a pointer. Every operation is
+// seen by every thread in one order and nothing moves across it, so there is
+// no ordering to choose.
+//
+// The cell is the value, stored where the Atomic is: a thread shares one the
+// way it shares any memory, by pointer, and the race warning
+// ([chapter 13.1](ch13-01-threads.md)) leaves a pointer to an Atomic alone.
+// Copying an Atomic copies the number it holds at that moment, not the
+// cell.
+export struct Atomic<T: Eq> {
+    value: T
+}
+
+export fn Atomic<T>::new(value: T): Atomic<T> !{} {
+    return Atomic<T>{ value: value }
+}
+
+export safe fn Atomic<T>::load(*self): T !{} {
+    return atomic_load(&self.value)
+}
+
+export safe fn Atomic<T>::store(*self, value: T) !{} {
+    atomic_store(&self.value, value)
+}
+
+// swap stores value and answers what the cell held.
+export safe fn Atomic<T>::swap(*self, value: T): T !{} {
+    return atomic_swap(&self.value, value)
+}
+
+// compare_and_swap stores desired when the cell holds expected, and answers
+// whether it did.
+export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{} {
+    return atomic_cas(&self.value, expected, desired) == expected
+}
+
+// The fetch operations store the result of the arithmetic and answer what the
+// cell held before. They wrap, and they are for integers.
+export safe fn Atomic<T>::fetch_add(*self, value: T): T !{} {
+    return atomic_add(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_sub(*self, value: T): T !{} {
+    return atomic_sub(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_and(*self, value: T): T !{} {
+    return atomic_and(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_or(*self, value: T): T !{} {
+    return atomic_or(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_xor(*self, value: T): T !{} {
+    return atomic_xor(&self.value, value)
+}
+
+// fence keeps every atomic operation before it from being seen after any
+// operation following it.
+export safe fn fence() !{} {
+    atomic_fence()
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+
+// A chan<T> is an address of one of these, and its operations are the
+// functions below, which lowering calls for `<-`, `close`, `for..in` and
+// `select`. A channel holds the bytes of its elements and no more: the
+// element's size is all it knows of T, and lowering passes each element as
+// the address of a cell in the caller's frame.
+//
+// A buffered channel is a ring of `capacity` elements. Capacity 0 is a true
+// rendezvous: the sender puts its element in the one slot and waits until a
+// receiver has taken that very one, which the two tickets say.
+//
+// The lock is a futex word and the two conditions are counters threads
+// sleep on: a thread that must wait for the other side reads the counter
+// under the lock, lets go of the lock and sleeps until the counter has moved
+// from what it read, so a wake-up between the two is not lost. A condition
+// also counts the threads asleep on it, so that signalling one nobody waits
+// on costs no system call.
+struct Cond {
+    // seq moves each time the condition is signalled; a sleeper sleeps while
+    // it is what it read.
+    seq: u32
+    waiters: u32
+}
+
+struct Chan {
+    lock: u32
+    // senders and receivers are the conditions: signalled when room is made
+    // and when an element arrives.
+    senders: Cond
+    receivers: Cond
+    buffer: anyptr
+    elem: usize
+    capacity: usize
+    count: usize
+    head: usize
+    closed: bool
+    // The rendezvous slot: whether it holds an element, how many receivers
+    // are asleep waiting for one, and the tickets of the last element put
+    // in and of the last one taken out.
+    full: bool
+    waiting: usize
+    placed: i64
+    taken: i64
+}
+
+// cond_wait and cond_notify are called with the channel's lock held, which
+// is what makes the plain reads and writes of `waiters` safe; only the
+// sequence word is shared with the sleepers.
+safe fn cond_wait(condition: *Cond, lock: *u32) !{} {
+    condition.waiters += 1
+    var seen = atomic_load(&condition.seq)
+    unlock_word(lock)
+    futex_wait(&condition.seq, seen)
+    lock_word(lock)
+    condition.waiters -= 1
+}
+
+// cond_notify moves the sequence word if anyone is asleep on the condition
+// and answers how many to wake, 0 if nobody. The wake-up itself is the
+// caller's, once it has let go of the lock, through cond_wake: a thread woken
+// while the lock is still held only goes back to sleep on it.
+safe fn cond_notify(condition: *Cond, count: u32): u32 !{} {
+    if condition.waiters == 0 {
+        return 0
+    }
+    var _ = atomic_add(&condition.seq, 1)
+    return count
+}
+
+safe fn cond_wake(condition: *Cond, count: u32) !{} {
+    if count > 0 {
+        futex_wake(&condition.seq, count)
+    }
+}
+
+// One and every are how many threads a notification wakes.
+const ONE: u32 = 1
+const EVERY: u32 = 2147483647
+
+// chan_new makes a channel of `capacity` elements of `elem` bytes each.
+safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
+    var block = raw_alloc(size<Chan>(), 16)
+    if block == null {
+        panic("allocation of a channel failed")
+    }
+    var ch = cast<Chan>(block)
+    ch.elem = elem
+    ch.capacity = capacity
+    var slots = capacity
+    if slots == 0 {
+        slots = 1
+    }
+    var buffer = raw_alloc(slots * elem, 16)
+    if buffer == null {
+        panic("allocation of a channel failed")
+    }
+    ch.buffer = buffer
+    return block
+}
+
+// chan_put and chan_take move an element between the caller's cell and the
+// ring, with the lock held.
+safe fn chan_put(ch: *Chan, value: anyptr) !{} {
+    // head and count are each below the capacity, so one subtraction wraps.
+    var at = ch.head +% ch.count
+    if at >= ch.capacity {
+        at -= ch.capacity
+    }
+    copy_bytes(offset(ch.buffer, at *% ch.elem), value, ch.elem)
+    ch.count += 1
+}
+
+safe fn chan_take(ch: *Chan, out: anyptr) !{} {
+    var at = ch.head
+    copy_bytes(out, offset(ch.buffer, at *% ch.elem), ch.elem)
+    at += 1
+    if at == ch.capacity {
+        at = 0
+    }
+    ch.head = at
+    ch.count -= 1
+}
+
+safe fn chan_send(raw: anyptr, value: anyptr) !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        while ch.count == ch.capacity && !ch.closed {
+            cond_wait(&ch.senders, &ch.lock)
+        }
+        if ch.closed {
+            unlock_word(&ch.lock)
+            panic("send on a closed channel")
+        }
+        chan_put(ch, value)
+        var wake = cond_notify(&ch.receivers, ONE)
+        unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
+        return
+    }
+
+    while ch.full && !ch.closed {
+        cond_wait(&ch.senders, &ch.lock)
+    }
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    copy_bytes(ch.buffer, value, ch.elem)
+    ch.full = true
+    ch.placed += 1
+    var ticket = ch.placed
+    var wake = cond_notify(&ch.receivers, EVERY)
+    if wake > 0 {
+        // The receivers have to be able to take the lock to answer.
+        unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
+        lock_word(&ch.lock)
+    }
+    while ch.taken < ticket && !ch.closed {
+        cond_wait(&ch.senders, &ch.lock)
+    }
+    if ch.taken < ticket {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    unlock_word(&ch.lock)
+}
+
+// chan_recv waits for an element and writes it to `out`, answering true.
+// When the channel is closed and drained it answers false and leaves `out`
+// as the caller zeroed it.
+safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        while ch.count == 0 && !ch.closed {
+            cond_wait(&ch.receivers, &ch.lock)
+        }
+        if ch.count == 0 {
+            unlock_word(&ch.lock)
+            return false
+        }
+        chan_take(ch, out)
+        var wake = cond_notify(&ch.senders, ONE)
+        unlock_word(&ch.lock)
+        cond_wake(&ch.senders, wake)
+        return true
+    }
+
+    ch.waiting += 1
+    while !ch.full && !ch.closed {
+        cond_wait(&ch.receivers, &ch.lock)
+    }
+    ch.waiting -= 1
+    if !ch.full {
+        unlock_word(&ch.lock)
+        return false
+    }
+    copy_bytes(out, ch.buffer, ch.elem)
+    ch.full = false
+    ch.taken += 1
+    var wake = cond_notify(&ch.senders, EVERY)
+    unlock_word(&ch.lock)
+    cond_wake(&ch.senders, wake)
+    return true
+}
+
+safe fn chan_close(raw: anyptr) !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("close of a closed channel")
+    }
+    ch.closed = true
+    var wakeSenders = cond_notify(&ch.senders, EVERY)
+    var wakeReceivers = cond_notify(&ch.receivers, EVERY)
+    unlock_word(&ch.lock)
+    cond_wake(&ch.senders, wakeSenders)
+    cond_wake(&ch.receivers, wakeReceivers)
+}
+
+// chan_try_send sends if it can without waiting, and answers whether it
+// did. An unbuffered channel can only be sent to while a receiver is
+// asleep waiting and the slot is free.
+safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    if ch.capacity > 0 {
+        if ch.count == ch.capacity {
+            unlock_word(&ch.lock)
+            return false
+        }
+        chan_put(ch, value)
+        var wake = cond_notify(&ch.receivers, ONE)
+        unlock_word(&ch.lock)
+        cond_wake(&ch.receivers, wake)
+        return true
+    }
+    if ch.waiting == 0 || ch.full {
+        unlock_word(&ch.lock)
+        return false
+    }
+    copy_bytes(ch.buffer, value, ch.elem)
+    ch.full = true
+    ch.placed += 1
+    var wake = cond_notify(&ch.receivers, EVERY)
+    unlock_word(&ch.lock)
+    cond_wake(&ch.receivers, wake)
+    return true
+}
+
+// chan_try_recv receives if it can without waiting. It answers true when
+// it wrote an element, and also when the channel is closed and drained,
+// which a select takes as a receive that happens: the cell stays as the
+// caller zeroed it.
+safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        if ch.count > 0 {
+            chan_take(ch, out)
+            var wake = cond_notify(&ch.senders, ONE)
+            unlock_word(&ch.lock)
+            cond_wake(&ch.senders, wake)
+            return true
+        }
+        var fired = ch.closed
+        unlock_word(&ch.lock)
+        return fired
+    }
+    if ch.full {
+        copy_bytes(out, ch.buffer, ch.elem)
+        ch.full = false
+        ch.taken += 1
+        var wake = cond_notify(&ch.senders, EVERY)
+        unlock_word(&ch.lock)
+        cond_wake(&ch.senders, wake)
+        return true
+    }
+    var fired = ch.closed
+    unlock_word(&ch.lock)
+    return fired
+}
+
+// select_pause is what a select with nothing ready does before it looks
+// again: it sleeps a moment.
+safe fn select_pause() !{ io } {
+    var span: i64[2] = [0, 200000]
+    var _ = syscall2(35, &span[0], 0)
+}
