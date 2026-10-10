@@ -1,7 +1,8 @@
 // stdlib. A declaration with no body is a runtime intrinsic; everything
 // with a body is ordinary Gyro, compiled like any other module.
 
-import { Allocator, heap, Format } from "mem"
+import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
+import { cast, offset, slice_from_raw, text_bytes } from "unsafe"
 
 export fn print<T: Print>(value: T) !{ io }
 export fn println<T: Print>(value: T) !{ io }
@@ -125,27 +126,147 @@ fn stream_eprintln(message: Format) !{ io } {
 // and its buffer, comes from that allocator, push grows the buffer through
 // it, and free hands the buffer back to it. Nothing else names an
 // allocator, so an array cannot be freed to one it did not come from.
-export struct Array<T> {}
+//
+// An Array is a handle: a pointer to a header, so a copy of the value is
+// the same array, and a method that takes `*self` changes what every copy
+// sees. The header stays allocated after free, which is how a second free
+// or a use after free is caught rather than read through.
+struct ArrayHead<T> {
+    data: anyptr?
+    count: usize
+    capacity: usize
+    // The capacity with_capacity asked for, used at the first growth.
+    hint: usize
+    freed: bool
+    // Where every block this array owns comes from.
+    alloc: Allocator
+}
 
-export fn Array<T>::new(a: Allocator): Array<T> !{ &a }
-export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a }
-export fn Array<T>::push(*self, value: T) !{}
-export fn Array<T>::pop(*self): (T, bool) !{}
-export fn Array<T>::get(self, index: usize): T !{}
-export fn Array<T>::set(*self, index: usize, value: T) !{}
+export struct Array<T> {
+    head: *ArrayHead<T>
+}
+
+export safe fn Array<T>::new(a: Allocator): Array<T> !{ &a } {
+    var head = alloc<ArrayHead<T>>(a)
+    head.alloc = a
+    return Array<T>{ head: head }
+}
+
+export safe fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a } {
+    var out = Array<T>::new(a)
+    out.head.hint = capacity
+    return out
+}
+
+safe fn array_live<T>(head: *ArrayHead<T>) !{} {
+    if head.freed {
+        panic("use after free of an Array")
+    }
+}
+
+// array_base is where the elements start. An array that never grew has no
+// buffer, and a view of nothing may start anywhere, so the header serves.
+safe fn array_base<T>(head: *ArrayHead<T>): anyptr !{} {
+    var base = head.data
+    if base == null {
+        return head as anyptr
+    }
+    return base
+}
+
+safe fn array_slot<T>(head: *ArrayHead<T>, index: usize): *T !{} {
+    return cast<T>(offset(array_base(head), index * size<T>()))
+}
+
+safe fn array_bounds(index: usize, count: usize) !{} {
+    if index >= count {
+        panic(format(heap(), "index #{index} out of range for length #{count}"))
+    }
+}
+
+export safe fn Array<T>::push(*self, value: T) !{} {
+    var head = self.head
+    array_live(head)
+    if head.count == head.capacity {
+        var grown = head.capacity * 2
+        if head.capacity == 0 {
+            grown = 8
+            if head.hint > 8 {
+                grown = head.hint
+            }
+        }
+        var block = head.alloc.proc(head.alloc.data, Mode::Resize, grown * size<T>(), 16, head.data, head.capacity * size<T>())
+        if block == null {
+            panic(format(heap(), "allocation of #{grown * size<T>()} bytes failed"))
+        }
+        head.data = block
+        head.capacity = grown
+    }
+    *array_slot(head, head.count) = value
+    head.count += 1
+}
+
+// pop on an empty array answers a zeroed element and false: Gyro has no
+// value to put there, so the element is read out of a block the allocator
+// zero-filled.
+export safe fn Array<T>::pop(*self): (T, bool) !{} {
+    var head = self.head
+    array_live(head)
+    if head.count == 0 {
+        var blank = alloc<T>(head.alloc)
+        var out = *blank
+        free(head.alloc, blank)
+        return (out, false)
+    }
+    head.count -= 1
+    return (*array_slot(head, head.count), true)
+}
+
+export safe fn Array<T>::get(self, index: usize): T !{} {
+    return *self.at(index)
+}
+
+export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
+    *self.at(index) = value
+}
+
 // The element's own address, bounds-checked. `xs[i]` lowers through it,
 // which is what makes an index a place rather than a copy — `get` hands
 // back a value and mutating that mutates nothing. The address is into
 // the array's buffer, so `push` may move it, exactly as in C.
-export fn Array<T>::at(self, index: usize): *T !{}
-export fn Array<T>::len(self): usize !{}
-export fn Array<T>::slice(self): T[] !{ &self }
-export fn Array<T>::free(*self) !{}
+export safe fn Array<T>::at(self, index: usize): *T !{} {
+    var head = self.head
+    array_live(head)
+    array_bounds(index, head.count)
+    return array_slot(head, index)
+}
 
-// The runtime supplies the buffer; anything above it is ordinary Gyro,
-// written once here rather than once per tier.
+export safe fn Array<T>::len(self): usize !{} {
+    array_live(self.head)
+    return self.head.count
+}
+
+export safe fn Array<T>::slice(self): T[] !{ &self } {
+    var head = self.head
+    array_live(head)
+    return slice_from_raw<T>(array_base(head), head.count)
+}
+
+export safe fn Array<T>::free(*self) !{} {
+    var head = self.head
+    if head.freed {
+        panic("double free of an Array")
+    }
+    head.freed = true
+    var data = head.data
+    if data != null {
+        head.alloc.proc(head.alloc.data, Mode::Free, 0, 0, data, head.capacity * size<T>())
+    }
+    head.data = null
+}
+
 export fn Array<T>::is_empty(self): bool !{} {
-  return self.len() == 0
+    return self.len() == 0
 }
 
 // from_utf8 reads a byte slice as text, and `bytes` is the other
@@ -266,7 +387,9 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
 // makes. The view borrows the string, which is immutable, so the
 // predicates below read through it and allocate nothing. It is private: a
 // caller that wants bytes it can write to asks `bytes` for a copy.
-fn view_bytes(text: string): u8[] !{}
+safe fn view_bytes(text: string): u8[] !{} {
+    return text_bytes(text)
+}
 
 export fn string::starts_with(self, prefix: string): bool !{} {
   return slice_at(view_bytes(self), view_bytes(prefix), 0)

@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -642,20 +643,23 @@ func (f *funcLowerer) ensureErrorMessage() string {
 		callee := f.l.ensureFunc(method.Decl, nil)
 		f.l.metalsStruct(errType)
 
+		// Registers are named per variant: one holds a different type in
+		// each case, and a register's type is fixed at first assignment.
+		value, cell, msg := fmt.Sprintf("v%d", index), fmt.Sprintf("cell%d", index), fmt.Sprintf("msg%d", index)
 		body := []metals.Instr{
-			&metals.VariantField{Dst: "v", X: "e", Variant: index, Index: 0},
+			&metals.VariantField{Dst: value, X: "e", Variant: index, Index: 0},
 		}
-		receiver := "v"
+		receiver := value
 		if method.Recv == types.PointerRecv {
 			body = append(body,
-				&metals.Slot{Dst: "cell", Type: f.l.metalsType(errType)},
-				&metals.Store{Ptr: "cell", Val: "v"},
+				&metals.Slot{Dst: cell, Type: f.l.metalsType(errType)},
+				&metals.Store{Ptr: cell, Val: value},
 			)
-			receiver = "cell"
+			receiver = cell
 		}
 		body = append(body,
-			&metals.Call{Dst: "msg", Callee: callee, Args: []string{receiver}},
-			&metals.Return{Val: "msg"},
+			&metals.Call{Dst: msg, Callee: callee, Args: []string{receiver}},
+			&metals.Return{Val: msg},
 		)
 		sw.Cases = append(sw.Cases, metals.SwitchCase{Value: index, Body: body})
 	}

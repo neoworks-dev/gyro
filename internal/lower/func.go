@@ -1216,42 +1216,48 @@ func (f *funcLowerer) indexPlace(e *ast.IndexExpr) *place {
 }
 
 // arrayElementPlace reaches one element of an Array<T> through the
-// address the runtime hands back. The name it calls is the one an
-// explicit `xs.at(i)` lowers to, so the two share an import.
+// address its `at` method hands back, the one an explicit `xs.at(i)`
+// calls. `at` rather than `get` is what makes an index a place: `get`
+// answers with a copy, and assigning into a copy assigns into nothing.
 func (f *funcLowerer) arrayElementPlace(e *ast.IndexExpr, elemType types.Type) *place {
-	name := "Array<" + elemType.String() + ">::at"
-	f.l.ensureImport(name, &metals.FnType{
-		Params: []metals.Type{&metals.Handle{}, metals.TUsize},
-		Result: &metals.Ptr{Elem: f.l.metalsType(elemType)},
-	})
+	base := f.typeOf(e.X)
+	if pointer, ok := base.(*types.Pointer); ok {
+		base = pointer.Elem
+	}
+	method := methodOfType(base, "at")
+	if method == nil || method.Decl == nil {
+		f.l.fail("@%s: %s is indexed but has no at method", f.fn.Name, base)
+	}
+	callee := f.l.ensureFunc(method.Decl, methodBindings(method, base))
 
 	elementPtr := func() string {
-		handle := f.nativeReceiver(e.X)
+		receiver := f.methodReceiver(e.X, method)
 		index := f.lowerExpr(e.Index, types.USize)
 		ptr := f.newReg("elem.p")
-		f.emit(&metals.Call{Dst: ptr, Callee: name, Args: []string{handle, index}})
+		f.emit(&metals.Call{Dst: ptr, Callee: callee, Args: []string{receiver, index}})
 		return ptr
 	}
 	return f.pointerPlace(elementPtr(), elemType)
 }
 
-// arrayView calls Array<T>::slice, which is the borrow the runtime
-// already offers. The name is the one an explicit `xs.slice()` lowers
-// to, so the two share an import.
+// arrayView calls Array<T>::slice, the borrow an Array already offers.
 func (f *funcLowerer) arrayView(x ast.Expr, elemType types.Type) string {
-	name := "Array<" + elemType.String() + ">::slice"
-	f.l.ensureImport(name, &metals.FnType{
-		Params: []metals.Type{&metals.Handle{}},
-		Result: &metals.SliceOf{Elem: f.l.metalsType(elemType)},
-	})
+	base := f.typeOf(x)
+	if pointer, ok := base.(*types.Pointer); ok {
+		base = pointer.Elem
+	}
+	method := methodOfType(base, "slice")
+	if method == nil || method.Decl == nil {
+		f.l.fail("@%s: %s has no slice method", f.fn.Name, base)
+	}
+	callee := f.l.ensureFunc(method.Decl, methodBindings(method, base))
 	view := f.newReg("view")
-	f.emit(&metals.Call{Dst: view, Callee: name, Args: []string{f.nativeReceiver(x)}})
+	f.emit(&metals.Call{Dst: view, Callee: callee, Args: []string{f.methodReceiver(x, method)}})
 	return view
 }
 
 // arrayElemOf is the element type of an `Array<T>`, or nil. The Array is
-// the runtime's own handle, so it is recognized by being that
-// declaration rather than by shape.
+// recognized by being that declaration rather than by shape.
 func arrayElemOf(t *types.Struct) types.Type {
 	origin := t
 	if t.Origin != nil {
