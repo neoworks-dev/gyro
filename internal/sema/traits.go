@@ -211,6 +211,7 @@ func (c *checker) resolveTraitRef(t ast.Type) *types.TraitRef {
 	if !ok {
 		return nil
 	}
+	c.recordRef(named.Path, entry.decl)
 	args := c.resolveTypeArgs(segment.Args)
 	if len(args) != len(trait.Params) {
 		c.typeArgArityError(segment.Offset, trait.Name, len(trait.Params), len(args))
@@ -351,6 +352,9 @@ func (c *checker) implOwnerOf(d *ast.ImplDecl) (types.Type, []*types.TypeParam, 
 	if owner == nil {
 		c.errorf(named.Offset, "an impl is for a type this module declares; %s is not one", name)
 		return nil, nil, nil
+	}
+	if sym := c.module.lookup(name); sym != nil {
+		c.recordRef(named.Path, sym.decl)
 	}
 	args := named.Path.Segments[0].Args
 	if len(args) != len(params) {

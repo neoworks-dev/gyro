@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -94,11 +95,19 @@ func anchorType(a *analysis, hit *anchor) types.Type {
 }
 
 // declTarget resolves the declaration an anchor points at: the anchor's
-// own declaration, or what sema resolved the expression to.
+// own declaration, what sema resolved the expression to, or for the
+// method name of `value.method(...)` the method the call resolved to.
 func declTarget(a *analysis, hit *anchor) ast.Node {
 	if hit.expr != nil && a.info != nil {
 		if decl, ok := a.info.Refs[hit.expr]; ok {
 			return decl
+		}
+		if selector, ok := hit.expr.(*ast.SelectorExpr); ok {
+			if call := indexFor(a).methodCalls[selector]; call != nil {
+				if resolved := a.info.Calls[call]; resolved != nil && resolved.Method != nil && resolved.Method.Decl != nil {
+					return resolved.Method.Decl
+				}
+			}
 		}
 	}
 	return hit.decl
@@ -189,7 +198,8 @@ func (s *Server) handleDefinition(req *request) error {
 
 // refineSite narrows a declaration site to the member that actually binds
 // the name: sema records a parameter's declaration as its whole function,
-// and a destructured binding's as its whole var declaration.
+// a destructured binding's as its whole var declaration, and a field or
+// a variant as the struct or enum that declares it.
 func refineSite(declSite site, target ast.Node, name string) site {
 	switch decl := target.(type) {
 	case *ast.FuncDecl:
@@ -213,8 +223,95 @@ func refineSite(declSite site, target ast.Node, name string) site {
 				declSite.end = bound.Offset + len(name)
 			}
 		}
+	case *ast.StructDecl:
+		for _, field := range decl.Fields {
+			if field.Name == name && name != decl.Name {
+				declSite.start = field.Offset + fieldNameShift(declSite.module.File.Src, field)
+				declSite.end = declSite.start + len(name)
+			}
+		}
+	case *ast.EnumDecl:
+		for _, variant := range decl.Variants {
+			if variant.Name == name && name != decl.Name {
+				declSite.start = variant.Offset
+				declSite.end = variant.Offset + len(name)
+			}
+		}
 	}
 	return declSite
+}
+
+// ---------------------------------------------------------------------------
+// References
+// ---------------------------------------------------------------------------
+
+// handleReferences finds every name that resolves to the same declaration
+// as the one under the cursor. Each open document is analysed as its own
+// program, so the AST nodes of one analysis mean nothing to another; what
+// they share is the place a declaration is written, and that is what two
+// names are compared by. Files that are not open are not searched.
+func (s *Server) handleReferences(req *request) error {
+	var params referenceParams
+	if ok, err := decode(s, req, &params); !ok {
+		return err
+	}
+
+	doc := s.documentFor(params.TextDocument.URI)
+	if doc == nil || doc.isMetals() || doc.analysis == nil {
+		return s.conn.respond(req.ID, nil)
+	}
+	hit := indexFor(doc.analysis).anchorAt(offsetFor(doc.analysis.text, params.Position))
+	if hit == nil {
+		return s.conn.respond(req.ID, nil)
+	}
+	want, ok := declarationSite(doc.analysis, hit)
+	if !ok {
+		return s.conn.respond(req.ID, nil)
+	}
+
+	uris := make([]string, 0, len(s.documents))
+	for uri := range s.documents {
+		uris = append(uris, uri)
+	}
+	sort.Strings(uris)
+
+	locations := []Location{}
+	for _, uri := range uris {
+		open := s.documents[uri]
+		if open.isMetals() || open.analysis == nil {
+			continue
+		}
+		for i := range indexFor(open.analysis).anchors {
+			anchor := &indexFor(open.analysis).anchors[i]
+			if anchor.expr == nil && !params.Context.IncludeDeclaration {
+				continue
+			}
+			if found, ok := declarationSite(open.analysis, anchor); ok && sameSite(found, want) {
+				locations = append(locations, Location{
+					URI:   uri,
+					Range: rangeFor(open.analysis.text, anchor.start, anchor.end),
+				})
+			}
+		}
+	}
+	return s.conn.respond(req.ID, locations)
+}
+
+// declarationSite is where the declaration a name resolves to is written.
+func declarationSite(a *analysis, hit *anchor) (site, bool) {
+	target := declTarget(a, hit)
+	if target == nil {
+		return site{}, false
+	}
+	declSite, ok := indexFor(a).declSites[target]
+	if !ok {
+		return site{}, false
+	}
+	return refineSite(declSite, target, hit.name), true
+}
+
+func sameSite(a, b site) bool {
+	return a.module.Path == b.module.Path && a.start == b.start
 }
 
 // ---------------------------------------------------------------------------

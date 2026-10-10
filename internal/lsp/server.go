@@ -87,6 +87,8 @@ func (s *Server) dispatch(req *request) error {
 		return s.handleHover(req)
 	case "textDocument/definition":
 		return s.handleDefinition(req)
+	case "textDocument/references":
+		return s.handleReferences(req)
 	case "textDocument/documentSymbol":
 		return s.handleDocumentSymbol(req)
 	case "textDocument/completion":
@@ -124,6 +126,7 @@ func (s *Server) handleInitialize(req *request) error {
 			TextDocumentSync:       textDocumentSyncOptions{OpenClose: true, Change: 1},
 			HoverProvider:          true,
 			DefinitionProvider:     true,
+			ReferencesProvider:     true,
 			DocumentSymbolProvider: true,
 			InlayHintProvider:      true,
 			CompletionProvider: &completionOptions{
