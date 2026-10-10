@@ -21,9 +21,8 @@ fn kind(v: any): string {
 
 // A slice borrowed from a caller keeps its slice-ness: a fixed-size array
 // and a view of one are different types, and the test tells them apart.
-// The row says nothing because an any is not a view type to the borrow
-// analysis, the same way a struct holding a slice is not.
-fn borrow(xs: i32[]): any {
+// The any holds the view, so the row names it like it would for the slice.
+fn borrow(xs: i32[]): any !{ &xs } {
   return xs as any
 }
 

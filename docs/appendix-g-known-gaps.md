@@ -24,13 +24,20 @@ attached — a skip is a program that will fail the day the gap closes
   by the runtime on the process heap first, and nothing frees it. Streaming
   has the same cost for those pieces except the primitives, which the
   runtime writes directly.
-- **A frame closure can outlive its frame through a container.** A
-  closure's environment lives in the frame that wrote it and the borrow
-  analysis rejects returning one, but it does not follow one into a struct
-  field or an `Array`: that is the same hole a slice of an array literal has
-  (issue #58). A closure written in a loop body and pushed without `keep`
-  leaves every element sharing one record. The corpus keeps it as
-  `closure-loop-push.gyro`, skipped with that reason.
+- **A view stored by a callee is not followed.** The borrow analysis
+  follows a view into a struct, a tuple, an `any`, a field and a container
+  the function writes itself, but not into one it hands to another function:
+  `register(&handlers, fn() { ... })` stores in `register`, where the closure
+  is just a parameter. A view of a *parameter* stored into another
+  parameter is also not rejected, since a row describes a result and not
+  where the arguments end up.
+- **Arenas are tracked in order, not around loops.** A value used after
+  its arena's `free` or `free_all` is rejected when the free comes first in
+  the function's own statements. A loop that frees at the end and reads the
+  value at the top of the next iteration is not seen, nor is a free done by a
+  callee, nor an allocator parameter's value returned to a caller that did
+  not name it in a row. The analysis does not kill: assigning a name replaces
+  the arenas it holds, and nothing else un-frees an arena.
 - **No sorting** anywhere in the standard library.
 - **Linux x86-64 only**, which is the one thing the backend emits.
 

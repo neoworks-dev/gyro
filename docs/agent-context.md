@@ -385,8 +385,11 @@ What is tracked is **provenance, not lifetime**.
 
 ```go
 type borrowOrigin struct {
-    params []*symbol   // parameters of the enclosing function it views
-    local  bool        // storage created in this frame
+    params  []*symbol   // parameters of the enclosing function it views
+    local   bool        // storage created in this frame
+    closure bool        // some of it is a closure environment (keep fixes it)
+    depth   int         // loop depth the frame storage was written at
+    arenas  []arenaRef  // arenas the value was allocated from, with a tick
 }
 ```
 
@@ -411,6 +414,24 @@ Facts that took work to get right and are easy to break:
 - a borrow **source** is anything holding storage — a struct counts.
   Only scalars are rejected.
 - `runes()` and `bytes()` borrow **nothing**; both copy.
+- a **view is any type that can hold one** (`holdsView`): slice, string,
+  closure, `any`, and structs, tuples, enums and containers through their
+  fields and type arguments. A new view type (`dyn`) goes into that one
+  predicate. The return check, the row check and the store check all use it.
+- a struct literal keeps a field's origin only if the field's declared type
+  can hold a view (`restrictTo`); a value of any non-scalar type keeps its
+  arenas.
+- a **store** (`*self` method call, field, element or deref assignment)
+  merges the stored origin into the target's root variable, and errors if the
+  root outlives the frame (parameter, receiver, module variable) or was
+  declared outside the loop that wrote the storage. See `borrow_store.go`.
+- the **arena** state is the one place that is not gen-only: assigning a plain
+  name replaces its arenas. `flow.freed` and `flow.reset` hold the tick of the
+  latest free of each arena and merge by union. An allocation records the tick
+  of the call that made it (`restamp`), so a value made after a reset is fine.
+- an `Allocator` parameter's origin is itself as an arena; returning what is
+  allocated from it is not an error and needs no row. A function row `&a` on
+  an allocator passes the arena on.
 - `string` being a view means an accessor returning a string field
   borrows its struct. Real ergonomic cost, deliberately accepted.
 
@@ -479,7 +500,7 @@ in its own `codes.go`. The catalogue and the `gyro explain` text live in
 
 Codes are grouped: E01xx lexer, E02xx parser, E03xx literals/imports,
 E04xx names, E05xx types, E06xx statements/borrows, W07xx leaks, W08xx
-races. Currently E0101–E0610, W0701, W0801.
+races. Currently E0101–E0633, W0701, W0801.
 
 ### Parser progress
 

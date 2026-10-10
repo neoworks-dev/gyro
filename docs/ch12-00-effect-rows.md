@@ -122,8 +122,9 @@ var quiet = fn(n: i32) !{} {
 ## Borrows
 
 An entry written `&name` says **the result is a view into that parameter**.
-`T[]` and `string` borrow storage they do not own, so a function returning
-one has to say where it came from:
+`T[]` and `string` borrow storage they do not own, and so does a closure
+([chapter 11](ch11-00-closures.md)), so a function returning one has to say
+where it came from:
 
 ```gyro
 fn first(xs: i32[]): i32[] !{ &xs }
@@ -178,8 +179,11 @@ and of borrows being written out rather than inferred, and it is an accepted
 ergonomic cost.
 
 The name must be a parameter of the function, and that parameter has to be a
-view itself — there is nothing to borrow from an `i32`. A borrow entry on a
-result that is not a view is an error rather than a no-op.
+view itself, or something holding one — there is nothing to borrow from an
+`i32`. A borrow entry on a result that holds no view is an error rather than
+a no-op. The exception is an `Allocator` or an `Arena`: a result of any type
+can sit in what one hands out, so `fn alloc<T>(a: Allocator): *T !{ &a }` is
+how the standard library says its result is in `a`.
 
 ## Rows are read at call sites
 
@@ -236,6 +240,101 @@ What is tracked here is **provenance, not lifetime**: where a view came
 from, not how long the storage lives. That is why a slice can still outlive
 its backing memory ([chapter 4.4](ch04-04-slices-and-views.md)) — this
 analysis was never the one that would catch it.
+
+## Views inside other values
+
+A view does not have to be the result. A struct, a tuple, an `any`, an
+optional or a container can hold one, and the aggregate then carries whatever
+its parts carry. The row names the source in the same way, and leaving it
+out is the same error:
+
+```gyro
+struct Span { text: string, start: usize }
+
+fn span(s: string): Span !{ &s } {
+  return Span{ text: s, start: 0 }
+}
+
+fn pair(xs: i32[], n: i32): (i32[], i32) !{ &xs } { return xs, n }
+fn wrap(xs: i32[]): any !{ &xs } { return xs as any }
+
+fn bad(xs: i32[]): any {
+  return xs as any        // error: the row does not name xs
+}
+```
+
+Only a field that can hold a view carries one. `Span{ text: "static", start:
+span.start }` views nothing, and a function returning `Array<usize>` needs no
+row however it was built. A container counts through its type arguments:
+an `Array<string>` of pieces of a parameter views that parameter, an
+`Array<fn(): i32>` of closures written here views this frame.
+
+A struct handed in by value is a source like any other. `fn same(span: Span):
+Span { return span }` needs `!{ &span }`, since the `text` in the result is
+the `text` that came in.
+
+## Storing a view
+
+A view that goes into a struct field or a container is judged where it goes
+in, because that is the last place anyone can see where it came from.
+
+A target the function did not make, a parameter, the receiver or a
+module-level variable, outlives the frame. A view into this frame's storage,
+or a closure whose environment is in it, cannot be stored there:
+
+```gyro
+fn fill(handlers: Array<fn(): i32>, n: i32) {
+  handlers.push(fn(): i32 { return n })        // error: n lives in this frame
+}
+
+fn fill(a: Allocator, handlers: Array<fn(): i32>, n: i32) {
+  handlers.push(keep(a, fn(): i32 { return n }))   // fine: kept in a
+}
+```
+
+The store forms are a method taking `*self` (`push`, `set`, `insert`, and any
+method a program writes), and an assignment to a field, an element or
+through a pointer. A view of a parameter may be stored: the row describes a
+function's result, not the places its arguments end up, so a view of
+a parameter stored into another parameter is not followed.
+
+A target declared in this function takes on the origin of what it was given,
+and returning it is judged like returning the view:
+
+```gyro
+fn handlers(n: i32): Array<fn(): i32> {
+  var hs = Array<fn(): i32>::new(heap())
+  hs.push(fn(): i32 { return n })
+  return hs               // error: hs holds a closure that borrows this frame
+}
+```
+
+**A loop body writes the same place every time.** A closure's environment
+and an array literal each have one slot in the frame, and a loop writes it
+once per iteration. Storing a view of one into a variable declared outside
+the loop leaves every element pointing at that slot, whatever the variable is
+for; keep it first, or copy it:
+
+```gyro
+var hs = Array<fn(): i32>::new(heap())
+for i in 0..3 {
+  hs.push(fn(): i32 { return i })           // error: every element would see the last i
+  hs.push(keep(heap(), fn(): i32 { return i }))   // fine
+}
+```
+
+Like the rest of the analysis this only adds, so a target keeps the origin
+of everything ever stored in it. What it does not follow: a store made by a
+function the target is passed to (`register(&handlers, f)` stores in the
+callee, where `f` is simply a parameter), and a store through a pointer the
+analysis cannot trace ([appendix G](appendix-g-known-gaps.md)).
+
+## Arenas
+
+An allocator is a borrow source too. A value allocated from
+`arena.allocator()` sits in the arena, so it borrows `arena`, and the
+rule that keeps a view from outliving a frame keeps it from outliving an
+arena ([chapter 4.5](ch04-05-allocators.md)).
 
 ## Borrows on a generic
 

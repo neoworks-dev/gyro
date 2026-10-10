@@ -118,6 +118,12 @@ const (
 	// Closures
 	EKeepNotFunction Code = "E0617"
 
+	// Stored views and arenas
+	EStoredFrameView  Code = "E0630"
+	EArenaEscape      Code = "E0631"
+	ELoopSharedStore  Code = "E0632"
+	EArenaUseAfterEnd Code = "E0633"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -281,7 +287,7 @@ var explanations = map[Code]explanation{
 	EBadBorrowSource: {"borrow does not name a view parameter",
 		"An entry written &xs in an effect row names a parameter of the same\nfunction, and that parameter has to be a view — a slice or a string.\nAnything else owns what it holds, so there is nothing to borrow from."},
 	EUnnamedBorrow: {"returned view is not named in the row",
-		"T[] and string are views over storage they do not own, so a function\nreturning one states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
+		"T[] and string are views over storage they do not own, and so is a\nclosure. A function returning one, or a struct, tuple, any or container\nholding one, states where the view came from: !{ &xs }. A row with no\n& entry says the result views nothing.\n\nThis is always written out. There is no elision."},
 	EUnnamedEffect: {"effect is not named in the row",
 		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io. This body performs a concrete effect\nits row does not name. Name the effect — !{ io } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow, its effects are inferred from its body, in whatever module that\nbody lives. An intrinsic has no body to infer from, so a rowless one is\nassumed to do everything.\n\nBecause inference reaches that far, the effect is often performed several\ncalls below the one reported, in another file. The frames under the error\nare the route to it: one per hop quoting the call it made, the last\nnaming what performs it."},
 	EUnknownEffect: {"row names something that is not an effect",
@@ -294,6 +300,14 @@ var explanations = map[Code]explanation{
 		"`import safe { parse } from \"./lib.c\"` says that calling the C\nfunctions it binds is safe, which nothing in a C file can say for itself.\nA Gyro function already says whether it is unsafe to call, so vouching for\none from the importing side would let any file override its author."},
 	EKeepNotFunction: {"keep and release take a function value",
 		"A closure's environment lives in the frame that wrote it, and keep copies\nit into an allocator by reading the size every environment starts with.\nOnly a fn value has an environment; a code pointer, a struct or a number\ndoes not, so there is nothing to copy."},
+	EStoredFrameView: {"view stored where it outlives its storage",
+		"A struct field or container element that this function did not make,\na parameter, a receiver or a module-level variable, outlives this frame.\nA view into the frame's storage, or a closure whose environment is in it,\nwould dangle once the function returns.\n\nStore an owning value, or a view the caller handed in. A closure is\ncopied out of the frame with keep(allocator, f) from mem first."},
+	ELoopSharedStore: {"view stored from a loop body into a longer-lived place",
+		"A loop body writes its array literals and closure environments in the\nsame place of the frame every time round. Storing a view of one into a\nvariable declared outside the loop leaves every element pointing at that\none place, so each sees the last iteration's contents.\n\nCopy the element out of the frame first: keep(allocator, f) for a closure,\nan owning Array<T> for storage."},
+	EArenaEscape: {"value outlives the arena it was allocated from",
+		"A value allocated from arena.allocator() sits in the arena and goes\nwith it. When the arena is local to this function it ends with the\nfunction, so returning the value, or storing it into something that\noutlives the function, hands out memory that is gone.\n\nTake the allocator as a parameter and the arena belongs to the caller.\nA value from heap() is not in an arena."},
+	EArenaUseAfterEnd: {"value used after its arena was freed or reset",
+		"Freeing an arena returns the buffer, and free_all hands the same bytes\nout again, so everything allocated from it before is gone. Reading such a\nvalue after the call reads memory that is freed or reused.\n\nThis follows the function's own statements in order; it does not see a\nloop carrying a value from one iteration to the next, or a free inside a\ncallee.\n\nAn allocator is not a value allocated from the arena: after free_all it\ncan allocate again."},
 	EExternSignature: {"type cannot cross to C",
 		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
 	EFormatEscapes: {"format value outlives its statement",

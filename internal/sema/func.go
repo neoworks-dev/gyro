@@ -100,6 +100,7 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 	}
 	if decl.Recv != nil && selfType != nil {
 		c.fn.selfSymbol = &symbol{kind: symValue, name: "self", offset: decl.Offset, decl: decl, typ: selfType}
+		c.fn.selfSymbol.param = true
 		c.fn.selfSymbol.origin = borrowOrigin{params: []*symbol{c.fn.selfSymbol}}
 	}
 	c.recordLocal(decl, "return", c.fn.result)
@@ -121,7 +122,14 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		// A parameter holding storage belongs to the caller, so anything
 		// rooted at it views the caller's memory rather than this frame's.
 		// A struct counts: `s.items.slice()` is a view of s.
-		if sym != nil && !scalarType(paramType) {
+		if sym != nil {
+			sym.param = true
+		}
+		if sym != nil && isAllocator(paramType) {
+			// What is allocated from a parameter is the caller's to free;
+			// the value borrows the allocator, not the frame.
+			sym.origin = borrowOrigin{arenas: []arenaRef{{sym: sym}}}
+		} else if sym != nil && !scalarType(paramType) {
 			sym.origin = borrowOrigin{params: []*symbol{sym}}
 		}
 	}

@@ -39,7 +39,9 @@ func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 		return c.constructVariant(call, target)
 	}
 	if target.method != nil {
-		return c.checkCall(call, target)
+		t := c.checkCall(call, target)
+		c.noteCall(call, target)
+		return t
 	}
 	if target.fnType != nil {
 		return c.checkPlainCall(call, target.fnType, target.name)
@@ -128,6 +130,7 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 	// unwrap a narrowed optional needs is only visible in the type.
 	if fn, ok := typ.(*types.Func); ok {
 		c.record(fun, typ)
+		c.checkArenaLive(sym, fun.Offset)
 		return callee{name: fun.Name, fnType: fn}
 	}
 	if code, ok := typ.(*types.Code); ok {

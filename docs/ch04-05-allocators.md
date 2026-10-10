@@ -144,6 +144,48 @@ An arena answers `Free` by doing nothing, and `Resize` by allocating a
 fresh block and copying. It does not grow: an `Alloc` past its capacity
 answers null, and `alloc<T>(arena.allocator())` panics with the size.
 
+### What lives in an arena goes with it
+
+A value allocated from `arena.allocator()` borrows `arena`: the analysis that
+tracks where a slice came from tracks the allocator the same way
+([chapter 12](ch12-00-effect-rows.md)). That covers everything that takes
+one: `alloc`, the containers, `String`, `format`, `keep`, and the text
+functions that build from an allocator. A value from `heap()` borrows nothing,
+since the heap is never freed as a whole.
+
+```gyro
+var frame = Arena::new(heap(), 4096)
+var node = alloc<Node>(frame.allocator())
+frame.free()
+println(node.value)    // error: node was allocated from frame, which has been freed
+```
+
+Three rules come out of it.
+
+- **Reading a value after `free` or `free_all` of its arena is an error.**
+  The check follows the function's statements in order, and a free on either
+  side of an `if` counts afterwards. An allocator is the one exception for
+  `free_all`: a reset arena hands out blocks again, so `a` stays good and
+  only what was allocated before the reset is gone. A value allocated *after*
+  the reset is a new value, and assigning a name replaces what arena it holds.
+- **A value cannot leave the function that owns its arena.** Returning
+  `alloc<Node>(frame.allocator())` from a function that made `frame`, or
+  storing it into a parameter, is an error; the arena ends with the function
+  and takes the value with it. Take the allocator as a parameter and the
+  caller owns the arena.
+- **An allocator parameter is the caller's.** What a function allocates from
+  an `Allocator` it was handed is not rejected, since the caller chose the
+  arena and keeps it. A function that does so can write `!{ &a }`, and its
+  callers then see the result in the arena they passed; one that does not
+  loses the thread there. That is deliberate, not elided: writing the row on
+  every function that threads an allocator through was the price of making it
+  mandatory, and it was not paid.
+
+What this does not see: a loop carrying a value from one iteration to the
+next across a `free_all`, a free performed by a function the arena is passed
+to, and any use through a pointer the analysis cannot trace. A deferred
+`arena.free()` is read as happening at the end, after every use.
+
 ## Writing one
 
 Anything with the right shape is an allocator. This one counts what

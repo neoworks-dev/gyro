@@ -823,11 +823,11 @@ does, so the existing provenance analysis rejects returning one and `keep`
 is what ends the borrow. Objective-C blocks are the precedent: a block
 literal is on the stack and `Block_copy` moves it to the heap.
 
-**The gap it inherits.** A frame closure stored in a struct field or
-pushed into a container is the problem of a slice outliving its memory
-(#58), and nothing here adds machinery for it. A closure written in a loop
-body and pushed without `keep` shares one record across iterations. It is
-recorded in appendix G and kept in the corpus as a skipped case.
+**The gap it inherited, now closed.** A frame closure stored in a struct
+field or pushed into a container was the problem of a view stored somewhere
+that outlives its storage, and md4c hit it: a function returned a struct of
+closures and crashed until each was wrapped in `keep`. "Provenance reaches
+aggregates and stores" below closes it, for closures and slices together.
 
 **Rejected: heap environments that nothing frees.** It is the hidden
 allocation explicit allocators exist to remove, and a long-running program
@@ -1586,6 +1586,98 @@ the callee's row, apply it here" step.
 Frame storage propagates through a call: passing a local where the callee
 borrows makes the result view the caller's frame. That falls out of mapping
 `&param` onto the argument rather than being a separate rule.
+
+### Provenance reaches aggregates and stores *(new)*
+
+**Status: done.** Provenance used to recognise a slice, a string or an
+optional of those as a returned view, so `fn f(xs: i32[]): any { return xs as
+any }` was accepted, as was a struct of closures, and a view pushed into a
+container went wherever the container went. Now a view is anything whose type
+can hold one: a slice, a string, a closure, an `any`, and any struct, tuple,
+enum, optional or container with one inside, through its fields and its type
+arguments. The result of a function holding a view takes a `&` row exactly as
+a slice result does, and a `!{ &xs }` row on it is legal and required. A
+number read out of an aggregate carries nothing, and only a field whose
+declared type can hold a view carries a view.
+
+**Stores are judged where they happen.** A method taking `*self` is treated as
+possibly keeping its arguments (`push`, `set`, `insert`, and a method a
+program writes), and so is an assignment to a field, an element or through a
+pointer. The target's root variable takes on the origin of what it was given,
+so returning it later is checked like returning the view. If the root is a
+parameter, the receiver or a module-level variable, it outlives the frame,
+and frame storage or a closure environment going into it is an error at the
+store (`E0630`) with `keep` as the help for a closure.
+
+**A loop body is one place.** A closure environment or an array literal has
+one slot in the frame, which a loop rewrites every iteration. Storing a view
+of one into a variable declared outside the loop is rejected (`E0632`) even
+when the container never leaves the function, because every element would
+read the last iteration. This is a depth comparison, the loop depth where the
+storage was written against the loop depth where the target was declared; it
+needs no fixpoint and does not change what the flow analyses do.
+
+**Rejected: a store of a view of a parameter into another parameter.** The row
+describes a function's result, so there is no way to say that `out` now views
+`xs`, and rejecting it would make every parser that pushes slices of its
+input into a caller's token array a false positive. It is allowed and listed
+in appendix G. **Rejected: following a view through a callee.** A call
+`register(&hs, f)` stores in `register`, where `f` is an ordinary parameter;
+following it needs rows on parameters, which is a different feature.
+**Rejected: treating every `*self` method as a store only when its parameter
+type can hold a view.** The receiver's type is what decides, not the
+parameter's, because a container instantiated at a view type has `T` where
+the parameter is declared. **Rejected: a separate check for aggregates beside
+the slice one.** One origin walk now serves returns, stores and rows, so a new
+view type (a trait object, when it lands) is added in one predicate.
+
+The cost is rows in places that had none: `Format::piece` returns an `any`
+over its receiver and says `!{ &self }`, and `fn same(p: Span): Span` needs
+`!{ &p }`. `split` on an empty separator used to return the receiver itself in
+the array, which the new check found: it copies now.
+
+### An allocator is a borrow source *(new)*
+
+**Status: done.** A value allocated from `arena.allocator()` borrows the arena
+the allocator came from. `Arena::allocator` states `!{ &self }`, and the
+functions that take an allocator state `!{ &a }`: `alloc`, `Array::new`,
+`Map::new`, `String::new`, `format`, `keep`, `from_utf8`, `bytes`, `runes`,
+the text functions, and the readers in `os` and `fs`. A value from `heap()`
+borrows nothing, since the heap is never freed as a whole.
+
+Three checks follow. Returning such a value from the function that made the
+arena, or storing it into something that outlives the function, is an error
+(`E0631`). Reading it after the arena's `free` is an error, and so is reading
+it after `free_all` (`E0633`), where "after" is the order of the function's
+own statements: each free carries a tick, each allocation records the tick it
+was made at, and a path on which the arena was freed later than the value was
+made has the value gone. The tick is part of the flow state and merges by
+union, so a free on one side of an `if` counts afterwards; a loop's frees
+survive the loop. An `Allocator` is exempt from the `free_all` rule, since a
+reset arena allocates again.
+
+**Where it is deliberately not gen-only.** Assigning a plain name replaces the
+arenas it holds rather than adding to them. A name reassigned after a reset
+holds a new value, and merging would reject every program that resets an arena
+and reuses a variable, which is the arena's whole use. The rest of the
+analysis, the views, still only adds.
+
+**An allocator parameter is not required in the row.** What a function
+allocates from an `Allocator` it was handed is the caller's, so returning it is
+accepted without `&a`, and a function that writes `!{ &a }` passes the arena
+on to its callers. Requiring the row would be consistent with every other
+parameter and would put `!{ &a }` on every function that threads an allocator,
+which the corpus does constantly. Rejected: requiring it, for that reason, and
+rejected: dropping the exemption for the standard library alone, which leaves
+the same function written by a program a different thing. The consequence is
+that a wrapper without the row loses the thread, so a value from
+`make(frame.allocator())` is not known to be in `frame`. Appendix G lists it.
+
+**Rejected: only rejecting a return past the arena's scope.** It misses the
+example the issue is about, a read after `free()` in the same function, and
+the flow state it needed was already there for definite assignment. **Rejected:
+tracking an arena by its address.** The variable is the identity the analysis
+has, and an arena is almost always a named local or a field of one.
 
 ### Effect rows themselves
 

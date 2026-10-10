@@ -39,6 +39,15 @@ var codes = map[string]diag.Code{
 	"this returns a closure that borrows this frame": diag.EEscapingLocalView,
 	"%s takes a function value; %s is not one":       diag.EKeepNotFunction,
 
+	// A view stored into something, and values in an arena.
+	"this stores a closure that borrows this frame into %s, which outlives it":                         diag.EStoredFrameView,
+	"this stores a view into storage that ends with this function into %s, which outlives it":          diag.EStoredFrameView,
+	"this stores a closure written in a loop body into %s, which is declared outside the loop":         diag.ELoopSharedStore,
+	"this stores a view of storage written in a loop body into %s, which is declared outside the loop": diag.ELoopSharedStore,
+	"this stores a value allocated from %s into %s, which outlives it":                                 diag.EArenaEscape,
+	"this returns a value allocated from %s, which ends with this function":                            diag.EArenaEscape,
+	"%s was allocated from %s, which has been %s":                                                      diag.EArenaUseAfterEnd,
+
 	// Unsafe code. Calls to unsafe functions and reads of union members
 	// are the unchecked operations; a plain fn may do neither.
 	"%s is unsafe to call; this function is a plain fn":                      diag.EUnsafeOperation,

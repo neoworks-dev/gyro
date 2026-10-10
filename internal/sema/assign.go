@@ -20,12 +20,41 @@ type flow struct {
 	assigned map[*symbol]bool
 	// settled holds the tracked allocations that something has freed or
 	// carried out of the block. It merges the same way assigned does.
-	settled   map[*symbol]bool
+	settled map[*symbol]bool
+	// freed and reset hold the tick of the latest free and free_all of each
+	// arena on this path. Unlike assigned they merge by union: an arena
+	// freed on either path may be freed afterwards.
+	freed     map[*symbol]int
+	reset     map[*symbol]int
 	reachable bool
 }
 
 func newFlow() flow {
-	return flow{assigned: map[*symbol]bool{}, settled: map[*symbol]bool{}, reachable: true}
+	return flow{
+		assigned:  map[*symbol]bool{},
+		settled:   map[*symbol]bool{},
+		freed:     map[*symbol]int{},
+		reset:     map[*symbol]int{},
+		reachable: true,
+	}
+}
+
+func copyTicks(from map[*symbol]int) map[*symbol]int {
+	to := make(map[*symbol]int, len(from))
+	for sym, tick := range from {
+		to[sym] = tick
+	}
+	return to
+}
+
+func unionTicks(a, b map[*symbol]int) map[*symbol]int {
+	both := copyTicks(a)
+	for sym, tick := range b {
+		if tick > both[sym] {
+			both[sym] = tick
+		}
+	}
+	return both
 }
 
 func copySet(from map[*symbol]bool) map[*symbol]bool {
@@ -50,6 +79,8 @@ func (f flow) clone() flow {
 	return flow{
 		assigned:  copySet(f.assigned),
 		settled:   copySet(f.settled),
+		freed:     copyTicks(f.freed),
+		reset:     copyTicks(f.reset),
 		reachable: f.reachable,
 	}
 }
@@ -66,6 +97,8 @@ func mergeFlow(a, b flow) flow {
 	return flow{
 		assigned:  intersectSets(a.assigned, b.assigned),
 		settled:   intersectSets(a.settled, b.settled),
+		freed:     unionTicks(a.freed, b.freed),
+		reset:     unionTicks(a.reset, b.reset),
 		reachable: true,
 	}
 }
@@ -105,13 +138,18 @@ func (c *checker) pushLoop(alwaysTrue bool, walk func()) {
 
 	if !alwaysTrue {
 		// The loop may run zero times, so nothing its body wrote survives.
+		// A free is the exception: the body may have run, and an arena it
+		// freed is gone either way.
+		entry.freed = unionTicks(entry.freed, c.flow.freed)
+		entry.reset = unionTicks(entry.reset, c.flow.reset)
 		c.flow = entry
 		return
 	}
 
 	// `while true` is left only by breaking out of it.
 	if len(loop.breaks) == 0 {
-		c.flow = flow{assigned: map[*symbol]bool{}, settled: map[*symbol]bool{}, reachable: false}
+		c.flow = newFlow()
+		c.flow.reachable = false
 		return
 	}
 	merged := loop.breaks[0]
