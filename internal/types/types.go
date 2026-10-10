@@ -702,7 +702,7 @@ type Dyn struct{ Ref *TraitRef }
 
 func (d *Dyn) String() string { return "dyn " + d.Ref.String() }
 
-// Methods lists every method callable through the trait: those of the
+// AllMethods lists every method callable through the trait: those of the
 // traits it requires, then its own. It is the order of a method table.
 func (r *TraitRef) AllMethods() []*TraitMethod {
 	var list []*TraitMethod

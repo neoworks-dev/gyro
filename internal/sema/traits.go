@@ -431,7 +431,9 @@ func (c *checker) checkImpl(d *ast.ImplDecl) {
 	}
 	trait := impl.Trait
 	_, params, _ := c.ownerOf(ownerName(owner))
-	ownerSelf := c.ownerSelfType(owner)
+	// Self inside an impl is the owner, which for a generic one is
+	// parameterized by its own parameters.
+	ownerSelf := owner
 
 	// Everything the trait requires has to be implemented as well.
 	s := bindParams(trait.Params, impl.Args)
@@ -504,10 +506,6 @@ func ownerName(t types.Type) string {
 	}
 	return ""
 }
-
-// ownerSelfType is the type Self stands for inside an impl: the owner
-// itself, which for a generic one is parameterized by its own parameters.
-func (c *checker) ownerSelfType(owner types.Type) types.Type { return owner }
 
 // compareImplMethod holds an impl's method to the trait's signature, with
 // Self and the trait's arguments replaced by what this impl gives them.
