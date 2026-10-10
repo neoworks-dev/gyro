@@ -500,6 +500,7 @@ func (c *checker) collectModule(tree *ast.File) {
 		case *ast.StructDecl:
 			shell := &types.Struct{
 				Name:       d.Name,
+				Decl:       d,
 				Module:     c.modulePath,
 				TypeParams: makeTypeParams(d.TypeParams),
 				Methods:    map[string]*types.Method{},

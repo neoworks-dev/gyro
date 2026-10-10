@@ -286,6 +286,9 @@ type Field struct {
 // declaration and methods, with Args substituted on demand.
 type Struct struct {
 	Name string
+	// Decl is the declaration, nil on a generic instance: its Origin
+	// carries it.
+	Decl *ast.StructDecl
 	// Module identifies the defining module, for field visibility.
 	Module     string
 	TypeParams []*TypeParam

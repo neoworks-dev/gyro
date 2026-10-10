@@ -642,6 +642,7 @@ fn main() {
   counter.bump(2)
   var square = Square{ side: 3 }
   println(square.area())
+  println(counter.count)
 }
 `
 
@@ -703,6 +704,12 @@ func TestReferences(t *testing.T) {
 			[]string{"Square {\n  side", "Square {\n  fn", "Square{"}},
 		{"a trait", "Shape for", true,
 			[]string{"Shape {", "Shape for"}},
+		{"a field, read, written and initialised", "count: i32", true,
+			[]string{"count: i32", "count += by", "count: 0 }", "count)"}},
+		{"a field from a read", "count)", false,
+			[]string{"count += by", "count: 0 }", "count)"}},
+		{"a struct, including the owner of its methods", "Counter {", true,
+			[]string{"Counter {", "Counter::bump", "Counter{ count"}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -750,5 +757,50 @@ func TestReferencesAcrossOpenFiles(t *testing.T) {
 	want := []string{"lib.gyro:0:10", "main.gyro:3:10", "main.gyro:4:10"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestReferencesInFilesThatAreNotOpen(t *testing.T) {
+	c := newClient(t)
+	c.initialize()
+
+	directory := t.TempDir()
+	library := "export fn helper(): i32 {\n  var local = 4\n  return local\n}\n"
+	libraryPath := filepath.Join(directory, "lib.gyro")
+	user := "import { helper } from \"./lib\"\n\nfn main() {\n  var local = helper()\n}\n"
+	stranger := "fn main() {\n  var local = 1\n}\n"
+	for name, text := range map[string]string{"lib.gyro": library, "user.gyro": user, "stranger.gyro": stranger} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Only the library is open; user.gyro has to be found on disk.
+	libraryURI := uriFromPath(libraryPath)
+	c.open(libraryURI, library)
+	c.waitDiagnostics(libraryURI)
+
+	describe := func(needle string) []string {
+		result := c.call("textDocument/references", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s,"context":{"includeDeclaration":true}}`,
+			libraryURI, position(t, library, needle)))
+		var locations []Location
+		if err := json.Unmarshal(result, &locations); err != nil {
+			t.Fatalf("bad references %s: %v", result, err)
+		}
+		var got []string
+		for _, location := range locations {
+			got = append(got, fmt.Sprintf("%s:%d:%d", filepath.Base(pathFromURI(location.URI)),
+				location.Range.Start.Line, location.Range.Start.Character))
+		}
+		return got
+	}
+
+	if got, want := describe("helper"), []string{"lib.gyro:0:10", "user.gyro:3:14"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("an exported function: got %v, want %v", got, want)
+	}
+	// A local is visible only in its own file, whatever other files call
+	// their own locals.
+	if got, want := describe("local\n"), []string{"lib.gyro:1:6", "lib.gyro:2:9"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("a local: got %v, want %v", got, want)
 	}
 }

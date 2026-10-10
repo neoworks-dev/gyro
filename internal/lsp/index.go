@@ -7,6 +7,8 @@ import (
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/types"
 )
 
 // The AST records where each node starts but not where names sit inside
@@ -26,6 +28,16 @@ type anchor struct {
 	decl ast.Node
 	// localOwner keys Info.Locals for a binding introduced here.
 	localOwner ast.Node
+	// resolved is set for a name the index resolves itself, because no
+	// expression of its own records it: the owner in `fn Stack::push`
+	// and a field name in a struct literal.
+	resolved ast.Node
+}
+
+// isDeclaration reports whether the anchor declares its name rather than
+// using it.
+func (a *anchor) isDeclaration() bool {
+	return a.expr == nil && a.resolved == nil
 }
 
 // site is where a declaration's name lives, for go-to-definition targets.
@@ -54,7 +66,9 @@ type topDecl struct {
 }
 
 type index struct {
-	program   *loader.Program
+	program *loader.Program
+	// info is nil when the program did not parse cleanly.
+	info      *sema.Info
 	src       string
 	anchors   []anchor
 	declSites map[ast.Node]site
@@ -65,9 +79,10 @@ type index struct {
 	methodCalls map[*ast.SelectorExpr]*ast.CallExpr
 }
 
-func buildIndex(program *loader.Program) *index {
+func buildIndex(program *loader.Program, info *sema.Info) *index {
 	idx := &index{
 		program:     program,
+		info:        info,
 		src:         program.Root.File.Src,
 		declSites:   map[ast.Node]site{},
 		methodCalls: map[*ast.SelectorExpr]*ast.CallExpr{},
@@ -227,6 +242,7 @@ func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 	switch d := decl.(type) {
 	case *ast.FuncDecl:
 		idx.addModuleBinding(d.Name, completionKindFunction, d)
+		idx.indexOwner(d)
 		idx.indexFunc(d, regionStart, regionEnd)
 
 	case *ast.TraitDecl:
@@ -280,6 +296,34 @@ func (idx *index) indexDecl(decl ast.Decl, regionStart, regionEnd int) {
 		// Export lists name module-level declarations that are anchored at
 		// their definitions.
 	}
+}
+
+// indexOwner anchors the type a method is written on, `Stack` in
+// `fn Stack::push`, at the struct or enum this module declares under that
+// name. A method from an impl block is skipped: its owner is written in
+// the block's header, which anchors through its type.
+func (idx *index) indexOwner(d *ast.FuncDecl) {
+	if d.Owner == "" || d.Impl != nil {
+		return
+	}
+	var owner ast.Node
+	for _, decl := range idx.program.Root.Tree.Decls {
+		switch candidate := decl.(type) {
+		case *ast.StructDecl:
+			if candidate.Name == d.Owner {
+				owner = candidate
+			}
+		case *ast.EnumDecl:
+			if candidate.Name == d.Owner {
+				owner = candidate
+			}
+		}
+	}
+	if owner == nil {
+		return
+	}
+	start, end := findName(idx.src, d.Offset, d.Owner)
+	idx.anchors = append(idx.anchors, anchor{start: start, end: end, name: d.Owner, resolved: owner})
 }
 
 // indexFunc anchors a function's name, its parameters and its body.
@@ -475,7 +519,14 @@ func (idx *index) indexExpr(expr ast.Expr, enclosing ast.Node, regionStart, regi
 		}
 	case *ast.StructLit:
 		idx.indexType(e.Type)
+		decl := idx.structDeclOf(e)
 		for _, field := range e.Fields {
+			if decl != nil && field.Name != "" {
+				idx.anchors = append(idx.anchors, anchor{
+					start: field.Offset, end: field.Offset + len(field.Name),
+					name: field.Name, resolved: decl,
+				})
+			}
 			idx.indexExpr(field.Value, enclosing, regionStart, regionEnd)
 		}
 	case *ast.UnaryExpr:
@@ -539,6 +590,21 @@ func (idx *index) indexExpr(expr ast.Expr, enclosing ast.Node, regionStart, regi
 		idx.indexExpr(e.X, enclosing, regionStart, regionEnd)
 		idx.indexType(e.Type)
 	}
+}
+
+// structDeclOf finds the declaration of the struct a literal builds.
+func (idx *index) structDeclOf(lit *ast.StructLit) *ast.StructDecl {
+	if idx.info == nil {
+		return nil
+	}
+	strct, ok := idx.info.Types[lit].(*types.Struct)
+	if !ok {
+		return nil
+	}
+	if strct.Origin != nil {
+		strct = strct.Origin
+	}
+	return strct.Decl
 }
 
 func (idx *index) indexPattern(pattern ast.Pattern, regionStart, regionEnd int) {
