@@ -960,6 +960,13 @@ The mapping, where it is not obvious:
   It lowers to `const.null` of the type the expression is becoming, and
   the cast is seen through rather than performed: a null of the
   destination's type needs no trip through another one.
+- **A cast between a pointer and an integer is two instructions.**
+  `(T *)n` makes the integer an `unsigned long`, reads it as a `usize`,
+  and claims it with `ptr.from` then `ptr.cast`; `(unsigned long)p` is
+  `ptr.erase` then `ptr.addr`, and a narrower integer keeps the low bits.
+  Under `opt<anyptr>` a computed 0 is the null pointer. Either direction
+  without a cast is refused, since C makes it a constraint violation, and
+  so is either direction through a function pointer.
 - **Varargs are an array the caller builds**, and METALS has no variadic
   call. A variadic function takes two parameters beyond the ones it
   declared: `void **` to the addresses of the arguments after the last

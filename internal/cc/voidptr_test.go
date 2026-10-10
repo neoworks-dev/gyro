@@ -249,8 +249,23 @@ func TestRefusesWhatAVoidPointerCannotDo(t *testing.T) {
 		"count elements neither of them has")
 	refused(t, `int result(void) { void *p = 0; return (int)sizeof(*p); }`,
 		"cannot dereference a void *")
-	refused(t, `struct s { int x; }; int result(void) { void *p = 0; return ((struct s *)p)->x + (int)p; }`,
-		"cannot convert a void * to a int")
+}
+
+// A number becomes an address, and an address a number, only where a cast
+// says so: C makes either one without a cast a constraint violation. A
+// function's address is not storage's, so neither direction reaches one.
+func TestRefusesAnAddressWithoutACast(t *testing.T) {
+	refused(t, `int result(void) { long n = 8; int *p = n; return 0; }`,
+		"cannot convert a long to a int * without a cast")
+	refused(t, `int result(void) { int n = 1; long a = &n; return 0; }`,
+		"cannot convert a int * to a long without a cast")
+	refused(t, `int result(void) { int (*fp)(int) = (int (*)(int))8L; return 0; }`,
+		"cannot convert a long to a")
+	refused(t, `int f(int x) { return x; }
+int result(void) { long n = (long)f; return 0; }`,
+		"cannot convert a")
+	refused(t, `int result(void) { double d = 8; char *p = (char *)d; return 0; }`,
+		"cannot convert a double to a char *")
 }
 
 // A pointer to a function and a pointer to an object are two types here,

@@ -3704,7 +3704,8 @@ They mirror `ptr.erase` and `ptr.cast`. Reading the number cannot fail,
 and taking a number as an address is the producer's claim, so a typed
 pointer from a number is `ptr.from` then `ptr.cast`: where, then what.
 `opt<anyptr>` on either side makes 0 and a null one word, which is what
-C's `(T *)n` needs once the C front end stops refusing it (#81).
+C's `(T *)n` needs, and the C front end lowers that cast to `ptr.from`
+then `ptr.cast`.
 
 **A linear address is never a pointer.** `ptr.from` takes a `usize`, not
 the `u32` a memory is addressed with, and a function that names a memory

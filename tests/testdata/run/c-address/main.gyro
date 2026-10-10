@@ -1,0 +1,16 @@
+// A Gyro program driving C that casts between pointers and integers. The
+// C front end lowers `(T *)n` to METALS' ptr.from and ptr.cast, and
+// `(unsigned long)p` to ptr.erase and ptr.addr.
+
+import { println } from "stdlib"
+import safe {
+    round_trip, tagged_second, second_by_offset, zero_is_null, narrows_to_low_bits,
+} from "./address.c"
+
+fn main() {
+    println(round_trip())
+    println(tagged_second())
+    println(second_by_offset())
+    println(zero_is_null(0))
+    println(narrows_to_low_bits())
+}

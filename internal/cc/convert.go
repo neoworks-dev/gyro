@@ -41,7 +41,7 @@ func (f *funcLowerer) convertTo(v value, to *ctype, pos position, written bool) 
 
 	if to.isPointer() {
 		if !v.typ.isPointer() {
-			fail(pos, "cannot convert a %s to a %s; this front end has no integer-to-pointer conversion", v.typ, to)
+			return f.intToPointer(v, to, pos, written)
 		}
 		if !written && !to.isVoidPointer() && !v.typ.isVoidPointer() {
 			fail(pos, "cannot convert a %s to a %s without a cast; they point at different types", v.typ, to)
@@ -52,7 +52,7 @@ func (f *funcLowerer) convertTo(v value, to *ctype, pos position, written bool) 
 		if to.kind == kBool {
 			return f.toBool(v)
 		}
-		fail(pos, "cannot convert a %s to a %s", v.typ, to)
+		return f.pointerToInt(v, to, pos, written)
 	}
 
 	if to.isVoid() {
@@ -121,6 +121,56 @@ func (f *funcLowerer) convertPointer(v value, to *ctype, pos position) value {
 	reg := f.temp()
 	f.emit(&metals.PtrCast{Dst: reg, X: erased, To: to.metalsType()})
 	return value{reg: reg, typ: to}
+}
+
+// intToPointer is `(T *)n`: a number taken as an address, which only a
+// cast may write. The integer becomes an unsigned long the way any
+// integer conversion would and is read as METALS' usize, the type an
+// address is a number in; `ptr.from` claims it as an address, and
+// `ptr.cast` claims what lives there. Under opt<anyptr> 0 is a null, so a number
+// that happens to be 0 is the null pointer, as C has it.
+func (f *funcLowerer) intToPointer(v value, to *ctype, pos position, written bool) value {
+	if !v.typ.isInteger() || to.isFuncPointer() {
+		fail(pos, "cannot convert a %s to a %s", v.typ, to)
+	}
+	if !written {
+		fail(pos, "cannot convert a %s to a %s without a cast", v.typ, to)
+	}
+	number := f.convertTo(v, typeULong, pos, true)
+	address := f.temp()
+	f.emit(&metals.Bitcast{Dst: address, X: number.reg, To: metals.TUsize})
+	erased := f.temp()
+	f.emit(&metals.PtrFrom{Dst: erased, X: address, To: pointerTo(typeVoid).metalsType()})
+	if to.isVoidPointer() {
+		return value{reg: erased, typ: to}
+	}
+	reg := f.temp()
+	f.emit(&metals.PtrCast{Dst: reg, X: erased, To: to.metalsType()})
+	return value{reg: reg, typ: to}
+}
+
+// pointerToInt is `(uintptr_t)p`: the address as a number, which again
+// only a cast may write. A narrower target keeps the low bits, which is
+// what every C compiler on this machine does with the implementation's
+// choice.
+func (f *funcLowerer) pointerToInt(v value, to *ctype, pos position, written bool) value {
+	if !to.isInteger() || v.typ.isFuncPointer() {
+		fail(pos, "cannot convert a %s to a %s", v.typ, to)
+	}
+	if !written {
+		fail(pos, "cannot convert a %s to a %s without a cast", v.typ, to)
+	}
+	erased := v.reg
+	if !v.typ.isVoidPointer() {
+		reg := f.temp()
+		f.emit(&metals.PtrErase{Dst: reg, X: v.reg})
+		erased = reg
+	}
+	address := f.temp()
+	f.emit(&metals.PtrAddr{Dst: address, X: erased})
+	number := f.temp()
+	f.emit(&metals.Bitcast{Dst: number, X: address, To: metals.TUint64})
+	return f.convertTo(value{reg: number, typ: typeULong}, to, pos, true)
 }
 
 func (f *funcLowerer) convertInt(v value, to *ctype) value {
