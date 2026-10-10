@@ -611,16 +611,45 @@ func (l *lowerer) ensureImport(name string, sig *metals.FnType) {
 // exports. Unlike a runtime intrinsic it names a real module, and the
 // linker checks the signature here against the one that module actually
 // declares.
-func (l *lowerer) ensureForeignImport(module, name string, sig *types.Func) {
+//
+// A header's function is the exception: the module read from a header
+// exports nothing, it imports the function from the native library, and
+// the program imports it from there too. What the generated declaration
+// says is checked against what the header's prototype said, because the
+// native library will not.
+func (l *lowerer) ensureForeignImport(foreign *metals.Module, name string, sig *types.Func) {
 	if l.imports[name] != nil {
 		return
 	}
+	module := foreign.Name
 	if sig.Variadic {
 		l.imports[name] = l.variadicFnType(sig)
 	} else {
 		l.imports[name] = l.metalsFnType(sig)
 	}
+	if native, declared := nativeImport(foreign, name); declared != nil {
+		if !metals.TypesEqual(l.imports[name], declared) {
+			l.fail("%s is declared %s here and %s by %s; the declaration was generated from the header",
+				name, l.imports[name], declared, foreign.Name)
+		}
+		module = native
+	}
 	l.importFrom[name] = module
+}
+
+// nativeImport finds the native library a module imports a function from.
+func nativeImport(foreign *metals.Module, name string) (string, *metals.FnType) {
+	for _, imp := range foreign.Imports {
+		if !metals.NativeLibrary(imp.Module) {
+			continue
+		}
+		for _, fn := range imp.Funcs {
+			if fn.Name == name {
+				return imp.Module, fn.Sig
+			}
+		}
+	}
+	return "", nil
 }
 
 // variadicFnType is a C variadic function's real signature: the declared

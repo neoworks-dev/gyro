@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+
+	"github.com/gyro-lang/gyro/internal/metals"
 )
 
 // Several .c files as one program.
@@ -180,11 +182,29 @@ int otherSide(void) { struct box b; b.w = 1; b.h = 2; return b.w; }
 	refusedOpt(t, program(files), files["case.c"], "declared differently")
 }
 
-// A name nothing supplies is the error C's linker reports, and it is
-// reported against the call rather than against the directory.
-func TestRefusesAnUnresolvedName(t *testing.T) {
+// A name nothing supplies is C's undefined symbol. The front end cannot
+// know where it lives, so it becomes an import from the native library
+// and the link is where a name nobody has is reported, as C's is.
+func TestAnUnresolvedNameIsANativeImport(t *testing.T) {
 	files := map[string]string{
 		"case.c": `int missing(int x); int result(void) { return missing(1); }`,
 	}
-	refusedOpt(t, program(files), files["case.c"], "not defined here")
+	module, err := Compile("case.c", files["case.c"], program(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(module.Imports) != 1 || module.Imports[0].Module != "c:c" ||
+		len(module.Imports[0].Funcs) != 1 || module.Imports[0].Funcs[0].Name != "missing" {
+		t.Fatalf("the call was not an import of missing from the C library:\n%s", metals.Print(module))
+	}
+}
+
+// What a native callee reads from registers cannot be built from the
+// array a variadic caller here makes, so the call is refused rather than
+// made wrongly.
+func TestAVariadicNativeCallIsRefused(t *testing.T) {
+	files := map[string]string{
+		"case.c": `int printf(const char *format, ...); int result(void) { return printf("x"); }`,
+	}
+	refusedOpt(t, program(files), files["case.c"], "is variadic and defined outside this program")
 }

@@ -14,6 +14,13 @@ type unit struct {
 	// resolved during the parse because a local variable of the same
 	// name shadows one, and only lowering knows what is in scope.
 	enums map[string]int64
+	// typedefs, externs and skipped are what an importer of a header
+	// asks about: the names a header gave types, the objects it says
+	// another module owns, and the declarations a tolerant parse
+	// dropped.
+	typedefs map[string]*ctype
+	externs  map[string]*ctype
+	skipped  []skippedDecl
 }
 
 type globalDecl struct {
@@ -60,6 +67,11 @@ type funcDecl struct {
 	body   *blockStmt
 	static bool
 	pos    position
+	// inline marks a definition whose body a header import skipped.
+	inline bool
+	// label is the symbol an `__asm__("name")` gave the declaration, which
+	// is what a linker knows it by.
+	label string
 }
 
 // typ is the function type a declaration has, which is what a

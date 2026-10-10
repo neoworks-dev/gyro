@@ -431,9 +431,11 @@ func scalarCType(t metals.Type) string {
 	case metals.Rune:
 		return "int32_t"
 	case metals.Bool:
-		// C's boolean parameter is an int far more often than a _Bool,
-		// and an int32_t argument satisfies a _Bool parameter anyway.
-		return "int32_t"
+		// A function that returns a _Bool sets the low byte of the
+		// register and leaves the rest as it was, so reading the result
+		// as anything wider reads garbage. The prototype says _Bool and
+		// the compiler reads exactly what the callee wrote.
+		return "_Bool"
 	}
 	return "int64_t"
 }

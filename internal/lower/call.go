@@ -253,7 +253,7 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	// cross-module call: the callee lives in its own METALS module and
 	// the linker resolves the name.
 	if module != nil && module.Foreign != nil {
-		f.l.ensureForeignImport(module.Foreign.Name, decl.Name, resolved.Sig)
+		f.l.ensureForeignImport(module.Foreign, decl.Name, resolved.Sig)
 		var args []string
 		if resolved.Sig.Variadic {
 			named := resolved.Sig.Params[:len(resolved.Sig.Params)-1]

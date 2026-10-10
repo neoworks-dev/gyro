@@ -35,6 +35,7 @@ const (
 	kULong
 	kFloat
 	kDouble
+	kLongDouble
 	kPtr
 	kArray
 	kStruct
@@ -119,6 +120,10 @@ var (
 	typeULong  = &ctype{kind: kULong}
 	typeFloat  = &ctype{kind: kFloat}
 	typeDouble = &ctype{kind: kDouble}
+	// typeLongDouble can be named and held in a declaration. It has no
+	// METALS type, so anything that would need one is refused where it
+	// is lowered.
+	typeLongDouble = &ctype{kind: kLongDouble}
 )
 
 func pointerTo(elem *ctype) *ctype { return &ctype{kind: kPtr, elem: elem} }
@@ -303,6 +308,8 @@ func (t *ctype) String() string {
 		return "float"
 	case kDouble:
 		return "double"
+	case kLongDouble:
+		return "long double"
 	case kPtr:
 		return t.elem.String() + " *"
 	case kArray:
@@ -417,6 +424,8 @@ func (t *ctype) metalsType() metals.Type {
 		return &metals.ArrayOf{Elem: t.elem.metalsType(), Len: t.length}
 	case kStruct, kUnion:
 		return &metals.Named{Name: t.tag}
+	case kLongDouble:
+		panic(failure{errorAt(position{}, "long double is the x87 80-bit type, which METALS has no primitive for")})
 	}
 	return nil
 }

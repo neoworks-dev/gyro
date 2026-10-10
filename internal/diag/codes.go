@@ -47,6 +47,7 @@ const (
 	ENoSuchStdlib     Code = "E0304"
 	ENotExported      Code = "E0305"
 	EExportUndeclared Code = "E0306"
+	EHeaderName       Code = "E0307"
 
 	// Names
 	EUndeclaredName    Code = "E0401"
@@ -186,6 +187,8 @@ var explanations = map[Code]explanation{
 		"The standard library is a fixed set of modules imported by bare name;\nthe message lists them. A specifier that is neither one of those nor a\nrelative path would be a package under .stack/, which needs the Stack\npackage manager."},
 	ENotExported: {"name is not exported",
 		"Visibility is explicit: a declaration is visible to importers only\nwith `export`. There is no capitalization rule."},
+	EHeaderName: {"name cannot be imported from a header",
+		"A header import brings in the functions, types and integer constants the\nimport names. The header may not declare the name at all, or may declare\nit as something that has no Gyro spelling: a variadic function, a function\ntaking a va_list or a long double, a typedef for a scalar, a macro that is\nnot an integer constant. The message says which. Importing a whole header\nwith `import * as` is refused for the same reason: a header declares far\nmore than a program wants."},
 	EExportUndeclared: {"export names an undeclared name",
 		"An export list may only name declarations of this module."},
 
