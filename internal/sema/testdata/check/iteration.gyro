@@ -1,84 +1,84 @@
 import { Iterator } from "stdlib"
 
 fn sources(xs: i32[], fixed: i32[4], ch: chan<string>) {
-  for x in xs {
-    var a: i32 = x
-  }
-  for x in fixed {
-    var b: i32 = x
-  }
-  for s in ch {
-    var c: string = s
-  }
-  for i in 0..10 {
-    var d: i32 = i
-  }
-  for i in 0..xs.len() {
-    var e: usize = i
-  }
+    for x in xs {
+        var a: i32 = x
+    }
+    for x in fixed {
+        var b: i32 = x
+    }
+    for s in ch {
+        var c: string = s
+    }
+    for i in 0..10 {
+        var d: i32 = i
+    }
+    for i in 0..xs.len() {
+        var e: usize = i
+    }
 }
 
 fn badSources(x: i32, s: string, a: i32, b: i64) {
-  for v in x {                   //~ not iterable
-  }
-  for v in s {                   //~ use .runes(a)
-  }
-  for v in a..b {                //~ matching integer endpoints
-  }
+    for v in x { //~ not iterable
+    }
+    for v in s { //~ use .runes(a)
+    }
+    for v in a..b { //~ matching integer endpoints
+    }
 }
 
 // `for..in` accepts anything that implements Iterator<T>.
 struct Counter {
-  n: i32
-  limit: i32
+    n: i32
+    limit: i32
 }
 
 impl Iterator<i32> for Counter {
-  fn next(*self): (i32, bool) {
-    if self.n >= self.limit {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.n >= self.limit {
+            return 0, false
+        }
+        self.n += 1
+        return self.n, true
     }
-    self.n += 1
-    return self.n, true
-  }
 }
 
 struct Bag {
-  size: i32
+    size: i32
 }
 
 // A type with next but no impl is not an iterator: nothing is satisfied by
 // shape alone.
 struct Shaped {
-  n: i32
+    n: i32
 }
 
 fn Shaped::next(*self): (i32, bool) {
-  return 0, false
+    return 0, false
 }
 
 fn iterators(s: Shaped) {
-  for x in (Counter{ 0, 5 }) {
-    var v: i32 = x
-  }
-  for x in s {                   //~ E0606 Shaped is not iterable
-  }
+    for x in (Counter{ 0, 5 }) {
+        var v: i32 = x
+    }
+    for x in s { //~ E0606 Shaped is not iterable
+    }
 }
 
 fn noIterator(b: Bag) {
-  for x in b {                   //~ E0606 Bag is not iterable
-  }
+    for x in b { //~ E0606 Bag is not iterable
+    }
 }
 
 fn throughBound<I: Iterator<i32>>(it: I): i32 {
-  var total: i32 = 0
-  for x in it {
-    total += x
-  }
-  return total
+    var total: i32 = 0
+    for x in it {
+        total += x
+    }
+    return total
 }
 
 fn unbounded<I>(it: I) {
-  for x in it {                  //~ E0606 I is not iterable
-  }
+    for x in it { //~ E0606 I is not iterable
+    }
 }

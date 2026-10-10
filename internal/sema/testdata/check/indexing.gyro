@@ -1,35 +1,35 @@
 fn indexing(xs: i32[], i: usize): i32 {
-  return xs[i]
+    return xs[i]
 }
 
 fn constantIndex(xs: i32[]): i32 {
-  return xs[0]
+    return xs[0]
 }
 
 fn badIndexing(xs: i32[], n: i32, x: i32) {
-  var a = xs[n]                  //~ indexes are usize
-  var b = x[0]                   //~ cannot be indexed
+    var a = xs[n] //~ indexes are usize
+    var b = x[0]  //~ cannot be indexed
 }
 
 fn total(xs: i32[]): i32 {
-  return 0
+    return 0
 }
 
 fn wideTotal(xs: i64[]): i64 {
-  return 0
+    return 0
 }
 
 // A fixed-size array borrows as a slice of the same element type, and only
 // that type.
 fn arraysBorrowAsSlices(): i32 {
-  return total([1, 2, 3])
+    return total([1, 2, 3])
 }
 
 fn elementTypesMustMatch() {
-  var xs: i32[3] = [1, 2, 3]
-  var x = wideTotal(xs)          //~ cannot use i32[3] as i64[]
+    var xs: i32[3] = [1, 2, 3]
+    var x = wideTotal(xs) //~ cannot use i32[3] as i64[]
 }
 
 fn literalsMustAgree() {
-  var xs = [1, "two"]            //~ mixes i32 and string
+    var xs = [1, "two"] //~ mixes i32 and string
 }

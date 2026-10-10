@@ -161,9 +161,9 @@ one. Directives there are spelled `;gyro:`.
 43 fixtures. A Gyro file that says what it expects of itself.
 
 ```gyro
-var x: u8 = 300                //~ E0301 does not fit u8
-return xs                      //~ E0609 which the row does not name
-                               //~^ help: say so in the row: !{ &xs }
+var x: u8 = 300 //~ E0301 does not fit u8
+return xs       //~ E0609 which the row does not name
+//~^ help: say so in the row: !{ &xs }
 ```
 
 Rules:
@@ -824,26 +824,26 @@ import { open, read_all } from "fs"
 import { heap } from "mem"
 
 fn main(args: string[]) {
-  if args.len() < 2 {
-    eprintln("usage: wc <file>")
-    return
-  }
-  var file, err = open(args[1])
-  if err != null {
-    eprintln("cannot open #{args[1]}: #{err.message()}")
-    return
-  }
-  defer file.close()
+    if args.len() < 2 {
+        eprintln("usage: wc <file>")
+        return
+    }
+    var file, err = open(args[1])
+    if err != null {
+        eprintln("cannot open #{args[1]}: #{err.message()}")
+        return
+    }
+    defer file.close()
 
-  var text, readErr = read_all(heap(), file)
-  if readErr != null { return }
+    var text, readErr = read_all(heap(), file)
+    if readErr != null { return }
 
-  var lines = text.split(heap(), "\n")
-  defer lines.free()
-  for line in lines.slice() {
-    var clean = line.trim(heap())
-    if clean.len() == 0 || clean.starts_with("#") { continue }
-    println(clean.split(heap(), " ").get(0))
-  }
+    var lines = text.split(heap(), "\n")
+    defer lines.free()
+    for line in lines.slice() {
+        var clean = line.trim(heap())
+        if clean.len() == 0 || clean.starts_with("#") { continue }
+        println(clean.split(heap(), " ").get(0))
+    }
 }
 ```

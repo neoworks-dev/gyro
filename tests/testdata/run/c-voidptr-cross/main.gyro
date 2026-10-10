@@ -15,56 +15,56 @@
 import { println } from "stdlib"
 import { cast } from "unsafe"
 import safe {
-  Cell, erase, read_through, keep, held, kept, nothing, same,
-  address_size,
+    Cell, erase, read_through, keep, held, kept, nothing, same,
+    address_size,
 } from "./store.c"
 
 // Giving an address its type back is the program's claim about what is
 // there, so it is unsafe; this function vouches for the one place it is
 // made.
 safe fn value_at(address: anyptr): i32 {
-  return cast<Cell>(address).value
+    return cast<Cell>(address).value
 }
 
 fn main() {
-  // An address costs a word whatever it addresses.
-  println(address_size())
+    // An address costs a word whatever it addresses.
+    println(address_size())
 
-  var a = Cell{ value: 7 }
-  var b = Cell{ value: 9 }
+    var a = Cell{ value: 7 }
+    var b = Cell{ value: 9 }
 
-  // Gyro's own pointer, erased here and read by C.
-  println(read_through(&a as anyptr))
+    // Gyro's own pointer, erased here and read by C.
+    println(read_through(&a as anyptr))
 
-  // Erased by C and given its type again on this side.
-  var raw = erase(&b)
-  if raw == null {
-    println("nothing came back")
-    return
-  }
-  println(value_at(raw))
+    // Erased by C and given its type again on this side.
+    var raw = erase(&b)
+    if raw == null {
+        println("nothing came back")
+        return
+    }
+    println(value_at(raw))
 
-  // Held by a library that was never told what it is holding.
-  keep(0, &a as anyptr)
-  keep(1, &b as anyptr)
-  println(kept())
+    // Held by a library that was never told what it is holding.
+    keep(0, &a as anyptr)
+    keep(1, &b as anyptr)
+    println(kept())
 
-  var first = held(0)
-  if first == null {
-    println("slot 0 is empty")
-    return
-  }
-  println(value_at(first))
+    var first = held(0)
+    if first == null {
+        println("slot 0 is empty")
+        return
+    }
+    println(value_at(first))
 
-  // Identity, which is all a program can ask about an address it knows
-  // nothing else about.
-  println(same(&a as anyptr, &a as anyptr))
-  println(same(&a as anyptr, &b as anyptr))
+    // Identity, which is all a program can ask about an address it knows
+    // nothing else about.
+    println(same(&a as anyptr, &a as anyptr))
+    println(same(&a as anyptr, &b as anyptr))
 
-  // The absent address.
-  println(nothing() == null)
-  println(held(3) == null)
+    // The absent address.
+    println(nothing() == null)
+    println(held(3) == null)
 
-  // Nothing at the far end is readable, so what it prints is the word.
-  println(&a as anyptr)
+    // Nothing at the far end is readable, so what it prints is the word.
+    println(&a as anyptr)
 }

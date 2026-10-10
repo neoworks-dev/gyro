@@ -5,9 +5,9 @@
 // receiver, because it is the receiver's own field rather than new text.
 
 export struct CalcError {
-  export text: string
+    export text: string
 }
 
 export fn CalcError::message(self): string !{ &self } {
-  return self.text
+    return self.text
 }

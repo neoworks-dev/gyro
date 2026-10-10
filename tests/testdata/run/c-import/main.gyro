@@ -16,24 +16,24 @@ import { alloc, free, heap } from "mem"
 import safe { add, clamp, fib, gcd, mean_of_range, divmod, hypot_squared, char_wraps } from "./mathlib.c"
 
 fn main() {
-  println(add(2, 3))
-  println(clamp(99, 0, 42))
-  println(clamp(-5, 0, 42))
+    println(add(2, 3))
+    println(clamp(99, 0, 42))
+    println(clamp(-5, 0, 42))
 
-  println(fib(10))
-  println(fib(40))
-  println(gcd(1071, 462))
-  println(mean_of_range(1, 10))
+    println(fib(10))
+    println(fib(40))
+    println(gcd(1071, 462))
+    println(mean_of_range(1, 10))
 
-  // Out-parameters: storage Gyro owns, written by C.
-  var whole = alloc<i32>(heap())
-  var rest = alloc<i32>(heap())
-  defer free(heap(), whole)
-  defer free(heap(), rest)
-  divmod(47, 10, whole, rest)
-  println(*whole)
-  println(*rest)
+    // Out-parameters: storage Gyro owns, written by C.
+    var whole = alloc<i32>(heap())
+    var rest = alloc<i32>(heap())
+    defer free(heap(), whole)
+    defer free(heap(), rest)
+    divmod(47, 10, whole, rest)
+    println(*whole)
+    println(*rest)
 
-  println(hypot_squared(3.0, 4.0))
-  println(char_wraps())
+    println(hypot_squared(3.0, 4.0))
+    println(char_wraps())
 }

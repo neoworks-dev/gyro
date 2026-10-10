@@ -6,11 +6,11 @@ effect `io` against what the body performs, and the borrow
 entries against what the result views.
 
 ```gyro
-fn add(a: i32, b: i32): i32                       // no row: unconstrained
+fn add(a: i32, b: i32): i32 // no row: unconstrained
 export fn log(msg: string) !{ io }
 export fn load(p: string): (string, error?) !{ io }
-fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e     // effect-polymorphic
-@gpu fn kernel(a: *f32) !{}                       // empty row
+fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e // effect-polymorphic
+@gpu fn kernel(a: *f32) !{}                   // empty row
 ```
 
 Forms: `!{}`, `!{ a, b }`, `!e` for a bare row variable, and `!{ a, ..e }`
@@ -40,11 +40,11 @@ simply be read.
 
 ```gyro
 fn quiet(n: i32) !{} {
-  println(n)         // error: println does io, which the row does not name
+    println(n) // error: println does io, which the row does not name
 }
 
 fn loud(n: i32) !{ io } {
-  println("n = #{n}")   // fine: the row names io, and interpolation adds nothing
+    println("n = #{n}") // fine: the row names io, and interpolation adds nothing
 }
 ```
 
@@ -115,7 +115,7 @@ A closure may write its own row, and its body is checked against it:
 
 ```gyro
 var quiet = fn(n: i32) !{} {
-  println(n)           // error: println does io, which the row does not name
+    println(n) // error: println does io, which the row does not name
 }
 ```
 
@@ -130,8 +130,8 @@ where it came from:
 fn first(xs: i32[]): i32[] !{ &xs }
 fn pick(a: i32[], b: i32[]): i32[] !{ &a }
 fn spans(a: i32[], b: i32[]): i32[] !{ &a, &b }
-fn head(s: string): string !{ io, &s }        // beside an effect
-fn make(): i32[]                              // no &: owns its result
+fn head(s: string): string !{ io, &s } // beside an effect
+fn make(): i32[]                       // no &: owns its result
 ```
 
 `&` reads the same way it does everywhere else — a reference to the thing
@@ -143,16 +143,16 @@ entry says the result is a view into nothing.
 
 ```gyro
 fn good(xs: i32[]): i32[] !{ &xs } {
-  return xs        // fine: the row says the result views xs
+    return xs // fine: the row says the result views xs
 }
 
 fn bad(xs: i32[]): i32[] {
-  return xs        // error: the row names no source
+    return xs // error: the row names no source
 }
 
 fn worse(): i32[] {
-  var xs = [1, 2, 3]
-  return xs        // error: that storage ends with this function
+    var xs = [1, 2, 3]
+    return xs // error: that storage ends with this function
 }
 ```
 
@@ -169,7 +169,7 @@ struct it came from:
 
 ```gyro
 fn host(c: Config): string !{ &c } {
-  return c.host
+    return c.host
 }
 ```
 
@@ -193,12 +193,12 @@ What a call views reaches the caller, across a module boundary as well:
 fn pick(a: i32[], b: i32[]): i32[] !{ &a } { return a }
 
 fn caller(xs: i32[], ys: i32[]): i32[] !{ &xs } {
-  return pick(xs, ys)      // views xs, because pick's row says so
+    return pick(xs, ys) // views xs, because pick's row says so
 }
 
 fn bad(ys: i32[]): i32[] !{ &ys } {
-  var local = [1, 2, 3]
-  return pick(local, ys)   // error: the result views this frame
+    var local = [1, 2, 3]
+    return pick(local, ys) // error: the result views this frame
 }
 ```
 
@@ -212,11 +212,11 @@ it — `self.items` is the receiver's storage, `s.items` is `s`'s:
 
 ```gyro
 export fn Stack::view(self): i32[] !{ &self } {
-  return self.items.slice()
+    return self.items.slice()
 }
 
 fn contents(s: Stack): i32[] !{ &s } {
-  return s.items.slice()
+    return s.items.slice()
 }
 ```
 
@@ -227,9 +227,9 @@ still the frame's:
 struct View { data: i32[] }
 
 fn bad(): i32[] {
-  var xs = [1, 2, 3]
-  var v = View{ data: xs }
-  return v.data          // error: xs ends with this function
+    var xs = [1, 2, 3]
+    var v = View{ data: xs }
+    return v.data // error: xs ends with this function
 }
 ```
 
@@ -252,14 +252,14 @@ out is the same error:
 struct Span { text: string, start: usize }
 
 fn span(s: string): Span !{ &s } {
-  return Span{ text: s, start: 0 }
+    return Span{ text: s, start: 0 }
 }
 
 fn pair(xs: i32[], n: i32): (i32[], i32) !{ &xs } { return xs, n }
 fn wrap(xs: i32[]): any !{ &xs } { return xs as any }
 
 fn bad(xs: i32[]): any {
-  return xs as any        // error: the row does not name xs
+    return xs as any // error: the row does not name xs
 }
 ```
 
@@ -284,11 +284,11 @@ or a closure whose environment is in it, cannot be stored there:
 
 ```gyro
 fn fill(handlers: Array<fn(): i32>, n: i32) {
-  handlers.push(fn(): i32 { return n })        // error: n lives in this frame
+    handlers.push(fn(): i32 { return n }) // error: n lives in this frame
 }
 
 fn fill(a: Allocator, handlers: Array<fn(): i32>, n: i32) {
-  handlers.push(keep(a, fn(): i32 { return n }))   // fine: kept in a
+    handlers.push(keep(a, fn(): i32 { return n })) // fine: kept in a
 }
 ```
 
@@ -303,9 +303,9 @@ and returning it is judged like returning the view:
 
 ```gyro
 fn handlers(n: i32): Array<fn(): i32> {
-  var hs = Array<fn(): i32>::new(heap())
-  hs.push(fn(): i32 { return n })
-  return hs               // error: hs holds a closure that borrows this frame
+    var hs = Array<fn(): i32>::new(heap())
+    hs.push(fn(): i32 { return n })
+    return hs // error: hs holds a closure that borrows this frame
 }
 ```
 
@@ -318,8 +318,8 @@ for; keep it first, or copy it:
 ```gyro
 var hs = Array<fn(): i32>::new(heap())
 for i in 0..3 {
-  hs.push(fn(): i32 { return i })           // error: every element would see the last i
-  hs.push(keep(heap(), fn(): i32 { return i }))   // fine
+    hs.push(fn(): i32 { return i })               // error: every element would see the last i
+    hs.push(keep(heap(), fn(): i32 { return i })) // fine
 }
 ```
 

@@ -13,38 +13,38 @@
 
 import { println } from "stdlib"
 import safe {
-  cell_kind, cell_int, cell_x, cell_y, cell_is_null, same_address,
-  sum_via_callback, round_trip, void_pointer_size,
+    cell_kind, cell_int, cell_x, cell_y, cell_is_null, same_address,
+    sum_via_callback, round_trip, void_pointer_size,
 } from "./store.c"
 
 fn main() {
-  // Erasing a type does not change what a pointer costs.
-  println(void_pointer_size())
+    // Erasing a type does not change what a pointer costs.
+    println(void_pointer_size())
 
-  // Four slots, three kinds. The tag is the only thing that says what
-  // an address means.
-  println(cell_kind(0))
-  println(cell_kind(2))
-  println(cell_kind(3))
+    // Four slots, three kinds. The tag is the only thing that says what
+    // an address means.
+    println(cell_kind(0))
+    println(cell_kind(2))
+    println(cell_kind(3))
 
-  // Each read at the type its tag names: two ints out of one array, and
-  // a struct out of the same array of slots.
-  println(cell_int(0))
-  println(cell_int(1))
-  println(cell_x(2))
-  println(cell_y(2))
+    // Each read at the type its tag names: two ints out of one array, and
+    // a struct out of the same array of slots.
+    println(cell_int(0))
+    println(cell_int(1))
+    println(cell_x(2))
+    println(cell_y(2))
 
-  // The absent address, and identity across the erasure.
-  println(cell_is_null(3))
-  println(cell_is_null(0))
-  println(same_address(0, 0))
-  println(same_address(0, 1))
+    // The absent address, and identity across the erasure.
+    println(cell_is_null(3))
+    println(cell_is_null(0))
+    println(same_address(0, 0))
+    println(same_address(0, 1))
 
-  // 10 + 30 + (3 + 4), with the null slot skipped: a visitor that never
-  // learns what it was handed until the tag tells it.
-  println(sum_via_callback())
+    // 10 + 30 + (3 + 4), with the null slot skipped: a visitor that never
+    // learns what it was handed until the tag tells it.
+    println(sum_via_callback())
 
-  // Out as an address, back as an int, written through, read back from
-  // the object itself.
-  println(round_trip(41))
+    // Out as an address, back as an int, written through, read back from
+    // the object itself.
+    println(round_trip(41))
 }

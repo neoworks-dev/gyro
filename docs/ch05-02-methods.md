@@ -6,20 +6,20 @@ any file order.
 
 ```gyro
 export struct Stack {
-  export capacity: i32
-  top: i32
+    export capacity: i32
+    top: i32
 }
 
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, top: 0 }
+    return Stack{ capacity: capacity, top: 0 }
 }
 
 fn Stack::is_empty(self): bool {
-  return self.top == 0
+    return self.top == 0
 }
 
 fn Stack::push(*self, v: i32) {
-  self.top += 1
+    self.top += 1
 }
 ```
 
@@ -45,7 +45,7 @@ Methods on a generic type name the parameter in the qualifier:
 
 ```gyro
 export fn string::shout(self): string {
-  return format(heap(), "#{self}!")
+    return format(heap(), "#{self}!")
 }
 ```
 
@@ -57,7 +57,7 @@ scope:
 import { trim, split } from "stdlib"
 import { heap } from "mem"
 
-var clean = line.trim(heap())      // works because `trim` was imported
+var clean = line.trim(heap()) // works because `trim` was imported
 ```
 
 That is what keeps extensions out of universe scope. `line.trim(heap())` works
@@ -90,17 +90,17 @@ in an `impl` block ([chapter 10.1](ch10-01-traits.md)):
 
 ```gyro
 impl Ord for Version {
-  fn compare(self, other: Version): i32 {
-    if self.major != other.major {
-      if self.major < other.major {
-        return -1
-      }
-      return 1
+    fn compare(self, other: Version): i32 {
+        if self.major != other.major {
+            if self.major < other.major {
+                return -1
+            }
+            return 1
+        }
+        if self.minor < other.minor { return -1 }
+        if self.minor > other.minor { return 1 }
+        return 0
     }
-    if self.minor < other.minor { return -1 }
-    if self.minor > other.minor { return 1 }
-    return 0
-  }
 }
 ```
 
@@ -109,10 +109,10 @@ any generic function bounded by `Ord`:
 
 ```gyro
 export fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
-  if a.compare(b) > 0 {
-    return a
-  }
-  return b
+    if a.compare(b) > 0 {
+        return a
+    }
+    return b
 }
 
 max(older, newer)    // fine
@@ -132,7 +132,7 @@ at whatever holds it:
 
 ```gyro
 export fn Stack::view(self): i32[] !{ &self } {
-  return self.items.slice()
+    return self.items.slice()
 }
 ```
 

@@ -1066,12 +1066,12 @@ implements it in a Rust-style block:
 
 ```gyro
 trait Element {
-  fn paint(self)
-  fn describe(self): string { ... }
+    fn paint(self)
+    fn describe(self): string { ... }
 }
 
 impl Element for Button {
-  fn paint(self) { ... }
+    fn paint(self) { ... }
 }
 ```
 

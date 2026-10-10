@@ -9,62 +9,62 @@ import { println } from "stdlib"
 import { sqrt, abs, ceil, floor, trunc, round, min, max, copysign } from "math"
 
 fn main() {
-  var zero = 0.0
-  var one = 1.0
-  var nan = zero / zero
-  var infinity = one / zero
+    var zero = 0.0
+    var one = 1.0
+    var nan = zero / zero
+    var infinity = one / zero
 
-  println(sqrt(2.0))
-  println(sqrt(0.0))
-  // IEEE gives an answer here rather than a panic, like float division
-  // by zero.
-  println(sqrt(-1.0))
+    println(sqrt(2.0))
+    println(sqrt(0.0))
+    // IEEE gives an answer here rather than a panic, like float division
+    // by zero.
+    println(sqrt(-1.0))
 
-  println(abs(-3.5))
-  println(abs(3.5))
+    println(abs(-3.5))
+    println(abs(3.5))
 
-  // The four roundings, on a value where all four differ.
-  println(ceil(-3.5))
-  println(floor(-3.5))
-  println(trunc(-3.5))
-  println(round(-3.5))
-  println(ceil(2.5))
-  println(floor(2.5))
-  println(trunc(2.5))
-  println(round(2.5))
+    // The four roundings, on a value where all four differ.
+    println(ceil(-3.5))
+    println(floor(-3.5))
+    println(trunc(-3.5))
+    println(round(-3.5))
+    println(ceil(2.5))
+    println(floor(2.5))
+    println(trunc(2.5))
+    println(round(2.5))
 
-  // Halfway cases go to the even neighbour, both signs.
-  println(round(0.5))
-  println(round(1.5))
-  println(round(2.5))
-  println(round(3.5))
-  println(round(-0.5))
-  println(round(-1.5))
+    // Halfway cases go to the even neighbour, both signs.
+    println(round(0.5))
+    println(round(1.5))
+    println(round(2.5))
+    println(round(3.5))
+    println(round(-0.5))
+    println(round(-1.5))
 
-  // An integral value, an infinity and a zero come back unchanged.
-  println(ceil(4.0))
-  println(floor(-0.0))
-  println(trunc(infinity))
+    // An integral value, an infinity and a zero come back unchanged.
+    println(ceil(4.0))
+    println(floor(-0.0))
+    println(trunc(infinity))
 
-  println(min(1.0, 2.0))
-  println(max(1.0, 2.0))
-  println(min(-1.0, -2.0))
-  println(max(-1.0, -2.0))
+    println(min(1.0, 2.0))
+    println(max(1.0, 2.0))
+    println(min(-1.0, -2.0))
+    println(max(-1.0, -2.0))
 
-  // A NaN operand wins rather than losing to the other one.
-  println(min(nan, 1.0))
-  println(max(nan, 1.0))
-  println(min(1.0, nan))
-  println(max(1.0, nan))
+    // A NaN operand wins rather than losing to the other one.
+    println(min(nan, 1.0))
+    println(max(nan, 1.0))
+    println(min(1.0, nan))
+    println(max(1.0, nan))
 
-  // The two zeros are ordered, which is only observable through the
-  // sign that comes back out.
-  println(min(-0.0, 0.0))
-  println(max(-0.0, 0.0))
-  println(min(0.0, -0.0))
-  println(max(0.0, -0.0))
+    // The two zeros are ordered, which is only observable through the
+    // sign that comes back out.
+    println(min(-0.0, 0.0))
+    println(max(-0.0, 0.0))
+    println(min(0.0, -0.0))
+    println(max(0.0, -0.0))
 
-  println(copysign(3.0, -1.0))
-  println(copysign(-3.0, 1.0))
-  println(copysign(3.0, -0.0))
+    println(copysign(3.0, -1.0))
+    println(copysign(-3.0, 1.0))
+    println(copysign(3.0, -0.0))
 }

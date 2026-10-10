@@ -15,52 +15,52 @@
 
 import { println } from "stdlib"
 import safe {
-  Point, Line, Arena,
-  point_at, line_through, line_span, point_size, line_size,
-  point_x, point_shift, line_ends,
-  arena_open, arena_take, arena_used,
+    Point, Line, Arena,
+    point_at, line_through, line_span, point_size, line_size,
+    point_x, point_shift, line_ends,
+    arena_open, arena_take, arena_used,
 } from "./shapes.c"
 
 fn main() {
-  // One layout, measured on both sides.
-  println(point_size())
-  println(line_size())
+    // One layout, measured on both sides.
+    println(point_size())
+    println(line_size())
 
-  // A struct out of C, read in Gyro.
-  var p = point_at(3, 4)
-  println(p.x)
-  println(p.y)
+    // A struct out of C, read in Gyro.
+    var p = point_at(3, 4)
+    println(p.x)
+    println(p.y)
 
-  // A struct built in Gyro, read by C through a pointer to it.
-  var q = Point{ x: 10, y: 20 }
-  println(point_x(&q))
+    // A struct built in Gyro, read by C through a pointer to it.
+    var q = Point{ x: 10, y: 20 }
+    println(point_x(&q))
 
-  // C writing through a pointer to Gyro's storage.
-  point_shift(&p, 1, 1)
-  println(p.x)
-  println(p.y)
+    // C writing through a pointer to Gyro's storage.
+    point_shift(&p, 1, 1)
+    println(p.x)
+    println(p.y)
 
-  // Nesting, by value in both directions.
-  var l = line_through(p, q)
-  println(l.a.x)
-  println(l.b.y)
-  println(line_span(l))
+    // Nesting, by value in both directions.
+    var l = line_through(p, q)
+    println(l.a.x)
+    println(l.b.y)
+    println(line_span(l))
 
-  // Two out-parameters, filled from a struct Gyro holds.
-  var first = Point{ x: 0, y: 0 }
-  var last = Point{ x: 0, y: 0 }
-  line_ends(&l, &first, &last)
-  println(first.y)
-  println(last.x)
+    // Two out-parameters, filled from a struct Gyro holds.
+    var first = Point{ x: 0, y: 0 }
+    var last = Point{ x: 0, y: 0 }
+    line_ends(&l, &first, &last)
+    println(first.y)
+    println(last.x)
 
-  // A handle with no shape: held, passed back, and nothing else.
-  var arena = arena_open()
-  if arena == null {
-    println("no arena")
-    return
-  }
-  println(arena_take(arena, 10))
-  println(arena_take(arena, 10))
-  println(arena_take(arena, 100))
-  println(arena_used(arena))
+    // A handle with no shape: held, passed back, and nothing else.
+    var arena = arena_open()
+    if arena == null {
+        println("no arena")
+        return
+    }
+    println(arena_take(arena, 10))
+    println(arena_take(arena, 10))
+    println(arena_take(arena, 100))
+    println(arena_used(arena))
 }

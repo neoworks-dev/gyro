@@ -1,17 +1,17 @@
 import { Shape } from "./shape"
 
 export struct Circle {
-  export radius: i32
+    export radius: i32
 }
 
 impl Shape for Circle {
-  fn area(self): i32 {
-    return self.radius * self.radius * 3
-  }
-  fn name(self): string {
-    return "circle"
-  }
-  fn summary(self): string {
-    return "a round one"
-  }
+    fn area(self): i32 {
+        return self.radius * self.radius * 3
+    }
+    fn name(self): string {
+        return "circle"
+    }
+    fn summary(self): string {
+        return "a round one"
+    }
 }

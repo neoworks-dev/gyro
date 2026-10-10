@@ -12,5 +12,5 @@ import { println } from "stdlib"
 import safe { too_few } from "./count.c"
 
 fn main() {
-  println(too_few())
+    println(too_few())
 }

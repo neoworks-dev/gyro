@@ -37,14 +37,14 @@ declared:
 ```gyro
 var factor: i32 = 3
 var scale = fn(x: i32): i32 { return x * factor }
-println(scale(5))      // 15
+println(scale(5)) // 15
 ```
 
 The capture list exists for exactly one purpose: **transferring ownership**.
 
 ```gyro
 var node = alloc<Node>(heap())
-var release = fn[move node]() { free(heap(), node) }   // ownership moves in
+var release = fn[move node]() { free(heap(), node) } // ownership moves in
 ```
 
 `fn[move node]` moves the binding into the closure, which is what lets the
@@ -77,19 +77,19 @@ to be copied out of that function's frame ([below](#a-closure-lives-in-its-frame
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new(heap())
-  for value in values {
-    out.push(f(value))
-  }
-  return out
+    var out = Array<i32>::new(heap())
+    for value in values {
+        out.push(f(value))
+    }
+    return out
 }
 
 fn fold(values: i32[], start: i32, f: fn(i32, i32): i32): i32 {
-  var total = start
-  for value in values {
-    total = f(total, value)
-  }
-  return total
+    var total = start
+    for value in values {
+        total = f(total, value)
+    }
+    return total
 }
 
 var doubled = apply([1, 2, 3], fn(x) x * 2)
@@ -110,11 +110,11 @@ function produces one:
 
 ```gyro
 fn big(v: i32): i32 {
-  if v > 5 { return 1 }
-  return 0
+    if v > 5 { return 1 }
+    return 0
 }
 
-var kept = count_kept(&big)      // C's loop, this program's decision
+var kept = count_kept(&big) // C's loop, this program's decision
 ```
 
 The two are separate types rather than one type with a flag, because a type
@@ -147,7 +147,7 @@ no record at all. A named function taken as a value has none either.
 
 ```gyro
 var factor = 3
-var scale = fn(x: i32): i32 { return x * factor }   // the record is in this frame
+var scale = fn(x: i32): i32 { return x * factor } // the record is in this frame
 ```
 
 Every copy of the value shares the one record, so a closure's mutations of
@@ -160,7 +160,7 @@ view of the function that wrote it, and a `return` of one is an error:
 
 ```gyro
 fn adder(n: i32): fn(i32): i32 {
-  return fn(x) x + n     // error: this returns a view into storage that ends with this function
+    return fn(x) x + n // error: this returns a view into storage that ends with this function
 }
 ```
 
@@ -187,7 +187,7 @@ with a null pointer is returned unchanged by `keep` and ignored by
 import { keep, release, Allocator } from "mem"
 
 fn adder(a: Allocator, n: i32): fn(i32): i32 {
-  return keep(a, fn(x: i32): i32 { return x + n })   // copied out of this frame into a
+    return keep(a, fn(x: i32): i32 { return x + n }) // copied out of this frame into a
 }
 ```
 
@@ -214,15 +214,15 @@ receiver, a module-level variable. **Storing a closure takes `keep`.**
 
 ```gyro
 fn on_open(handlers: Array<fn(): i32>, n: i32) {
-  handlers.push(fn(): i32 { return n })              // error: n lives in this frame
-  handlers.push(keep(heap(), fn(): i32 { return n }))   // fine
+    handlers.push(fn(): i32 { return n })               // error: n lives in this frame
+    handlers.push(keep(heap(), fn(): i32 { return n })) // fine
 }
 
 fn parser_for(a: Allocator, depth: i32): Handlers {
-  return Handlers{
-    on_open: keep(a, fn(): i32 { return depth }),
-    on_close: keep(a, fn(): i32 { return depth + 1 }),
-  }
+    return Handlers{
+        on_open: keep(a, fn(): i32 { return depth }),
+        on_close: keep(a, fn(): i32 { return depth + 1 }),
+    }
 }
 ```
 
@@ -233,8 +233,8 @@ element would point at it and see the last iteration's captures.
 
 ```gyro
 for i in 0..3 {
-  fns.push(fn(): i32 { return i })               // error: one record, shared
-  fns.push(keep(a, fn(): i32 { return i }))      // fine: one record each
+    fns.push(fn(): i32 { return i })          // error: one record, shared
+    fns.push(keep(a, fn(): i32 { return i })) // fine: one record each
 }
 ```
 

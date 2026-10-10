@@ -1,37 +1,37 @@
 async fn fetch(url: string): (string, error?) {
-  return "", null
+    return "", null
 }
 
 fn plain(): i32 {
-  return 1
+    return 1
 }
 
 async fn awaited() {
-  var body, err = await fetch("u")
-  var s: string = body
+    var body, err = await fetch("u")
+    var s: string = body
 }
 
 fn awaitNeedsAnAsyncFn() {
-  var x = await fetch("u")       //~ await only works inside an async fn
+    var x = await fetch("u") //~ await only works inside an async fn
 }
 
 async fn unawaitedDoesNothing() {
-  fetch("u")                     //~ does nothing until it is awaited
+    fetch("u") //~ does nothing until it is awaited
 }
 
 async fn theResultIsAFuture() {
-  var body, err = fetch("u")     //~ needs a tuple, not awaitable<(string, error?)>
+    var body, err = fetch("u") //~ needs a tuple, not awaitable<(string, error?)>
 }
 
 async fn awaitNeedsAnAsyncCallee() {
-  var x = await plain()          //~ await needs a call to an async fn
+    var x = await plain() //~ await needs a call to an async fn
 }
 
 fn asyncClosure() {
-  var later = async fn(): i32 { return 1 }
+    var later = async fn(): i32 { return 1 }
 }
 
 async fn awaitAnAsyncClosure(): i32 {
-  var later = async fn(): i32 { return 1 }
-  return await later()
+    var later = async fn(): i32 { return 1 }
+    return await later()
 }

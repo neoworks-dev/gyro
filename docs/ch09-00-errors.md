@@ -6,14 +6,14 @@ no exceptions and no unwinding.**
 
 ```gyro
 fn parse_port(text: string): (i32, error?) {
-  ...
-  return value, null
+    ...
+    return value, null
 }
 
 var port, err = parse_port("8080")
 if err != null {
-  eprintln(err.message())
-  return
+    eprintln(err.message())
+    return
 }
 println("listening on #{port}")
 ```
@@ -31,24 +31,24 @@ match on the concrete kind:
 
 ```gyro
 export struct RangeError {
-  export value: i32
-  export low: i32
-  export high: i32
+    export value: i32
+    export low: i32
+    export high: i32
 }
 
 fn RangeError::message(self): string {
-  return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+    return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
 }
 
 export fn parse_port(text: string): (i32, error?) {
-  var value, err = to_i32(text)
-  if err != null {
-    return 0, err
-  }
-  if value < 1 || value > 65535 {
-    return 0, RangeError{ value: value, low: 1, high: 65535 }
-  }
-  return value, null
+    var value, err = to_i32(text)
+    if err != null {
+        return 0, err
+    }
+    if value < 1 || value > 65535 {
+        return 0, RangeError{ value: value, low: 1, high: 65535 }
+    }
+    return value, null
 }
 ```
 
@@ -62,8 +62,8 @@ test** ([chapter 6.2](ch06-02-match.md)):
 
 ```gyro
 match err {
-  RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
-  _: eprintln("bad port: #{err.message()}")
+    RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
+    _: eprintln("bad port: #{err.message()}")
 }
 ```
 
@@ -126,17 +126,17 @@ import { to_i32 } from "convert"
 import { heap } from "mem"
 
 fn load_config(path: string): (string, error?) {
-  var handle, err = open(path)
-  if err != null {
-    return "", err
-  }
-  defer handle.close()
+    var handle, err = open(path)
+    if err != null {
+        return "", err
+    }
+    defer handle.close()
 
-  var contents, read_err = read_all(heap(), handle)
-  if read_err != null {
-    return "", read_err
-  }
-  return contents, null
+    var contents, read_err = read_all(heap(), handle)
+    if read_err != null {
+        return "", read_err
+    }
+    return contents, null
 }
 ```
 

@@ -1,8 +1,8 @@
 import { println } from "stdlib"
 
 fn main() {
-  println(42)
-  println(3.5)
-  println(true)
-  println("raw text")
+    println(42)
+    println(3.5)
+    println(true)
+    println("raw text")
 }

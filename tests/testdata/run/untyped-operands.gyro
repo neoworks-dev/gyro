@@ -10,32 +10,32 @@
 import { println } from "stdlib"
 
 fn main() {
-  var word: u32 = 0x0f0f0f0f
-  var four: u32 = 4
-  // 0xffffffff is a u32 here; at the i32 default it would not fit.
-  println(word & (0xffffffff >> four))
-  println(word | (0xf << four))
+    var word: u32 = 0x0f0f0f0f
+    var four: u32 = 4
+    // 0xffffffff is a u32 here; at the i32 default it would not fit.
+    println(word & (0xffffffff >> four))
+    println(word | (0xf << four))
 
-  // ~0 is all ones at the width of the other operand.
-  println(word & ~0)
-  println(word | ~0)
-  println(word & ~0x0f0f)
+    // ~0 is all ones at the width of the other operand.
+    println(word & ~0)
+    println(word | ~0)
+    println(word & ~0x0f0f)
 
-  var byte: u8 = 0xff
-  var shift: u8 = 4
-  println(byte & (0xff >> shift))
-  println(byte & ~0xf0)
+    var byte: u8 = 0xff
+    var shift: u8 = 4
+    println(byte & (0xff >> shift))
+    println(byte & ~0xf0)
 
-  var small: i8 = 100
-  println(small & ~4)
+    var small: i8 = 100
+    println(small & ~4)
 
-  var half: u16 = 0xabcd
-  println(half & ~0xff)
+    var half: u16 = 0xabcd
+    println(half & ~0xff)
 
-  // A shift of two literals folds, and the folded value is what has to
-  // fit: 1 << 40 is an i64 here, not an i32 that overflowed.
-  var wide: i64 = 1 << 40
-  println(wide)
-  var high: u32 = 1 << 31
-  println(high)
+    // A shift of two literals folds, and the folded value is what has to
+    // fit: 1 << 40 is an i64 here, not an i32 that overflowed.
+    var wide: i64 = 1 << 40
+    println(wide)
+    var high: u32 = 1 << 31
+    println(high)
 }

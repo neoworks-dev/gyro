@@ -7,214 +7,214 @@ import { Array, Map, String } from "stdlib"
 import { alloc, format, free, heap, keep, Allocator, Arena } from "mem"
 
 struct Node {
-  value: i32
+    value: i32
 }
 
 struct Holder {
-  node: *Node
+    node: *Node
 }
 
 // The example from the issue.
 fn useAfterFree() {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  node.value = 1
-  frame.free()
-  node.value = 2                  //~ E0633 node was allocated from frame, which has been freed
-                                  //~^ help: use node before the freed, or allocate it again afterwards
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    node.value = 1
+    frame.free()
+    node.value = 2 //~ E0633 node was allocated from frame, which has been freed
+    //~^ help: use node before the freed, or allocate it again afterwards
 }
 
 fn readAfterFree() {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  frame.free()
-  var seen = node.value           //~ E0633 node was allocated from frame, which has been freed
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    frame.free()
+    var seen = node.value //~ E0633 node was allocated from frame, which has been freed
 }
 
 // A reset takes the blocks back as well; the allocator itself stays good.
 fn useAfterReset() {
-  var frame = Arena::new(heap(), 4096)
-  var a = frame.allocator()
-  var node = alloc<Node>(a)
-  frame.free_all()
-  var again = alloc<Node>(a)
-  again.value = 3
-  node.value = 4                  //~ E0633 node was allocated from frame, which has been reset
+    var frame = Arena::new(heap(), 4096)
+    var a = frame.allocator()
+    var node = alloc<Node>(a)
+    frame.free_all()
+    var again = alloc<Node>(a)
+    again.value = 3
+    node.value = 4 //~ E0633 node was allocated from frame, which has been reset
 }
 
 fn allocatorAfterFree() {
-  var frame = Arena::new(heap(), 4096)
-  var a = frame.allocator()
-  frame.free()
-  var late = alloc<Node>(a)       //~ E0633 a was allocated from frame, which has been freed
+    var frame = Arena::new(heap(), 4096)
+    var a = frame.allocator()
+    frame.free()
+    var late = alloc<Node>(a) //~ E0633 a was allocated from frame, which has been freed
 }
 
 // Containers, text and closures made with the allocator are in the arena.
 fn containersAndText() {
-  var frame = Arena::new(heap(), 4096)
-  var a = frame.allocator()
-  var xs = Array<i32>::new(a)
-  var table = Map<string, i32>::new(a)
-  var text = format(a, "n = #{1}")
-  var kept = keep(a, fn(): i32 { return 1 })
-  frame.free()
-  xs.push(1)                      //~ E0633 xs was allocated from frame, which has been freed
-  table.insert("k", 1)            //~ E0633 table was allocated from frame, which has been freed
-  var n = text.len()              //~ E0633 text was allocated from frame, which has been freed
-  var r = kept()                  //~ E0633 kept was allocated from frame, which has been freed
+    var frame = Arena::new(heap(), 4096)
+    var a = frame.allocator()
+    var xs = Array<i32>::new(a)
+    var table = Map<string, i32>::new(a)
+    var text = format(a, "n = #{1}")
+    var kept = keep(a, fn(): i32 { return 1 })
+    frame.free()
+    xs.push(1)           //~ E0633 xs was allocated from frame, which has been freed
+    table.insert("k", 1) //~ E0633 table was allocated from frame, which has been freed
+    var n = text.len()   //~ E0633 text was allocated from frame, which has been freed
+    var r = kept()       //~ E0633 kept was allocated from frame, which has been freed
 }
 
 // Allocating again after the reset is a new value.
 fn freshAfterReset() {
-  var frame = Arena::new(heap(), 4096)
-  var a = frame.allocator()
-  var node = alloc<Node>(a)
-  node.value = 1
-  frame.free_all()
-  node = alloc<Node>(a)
-  node.value = 2
-  var other = alloc<Node>(a)
-  other.value = 3
-  frame.free()
+    var frame = Arena::new(heap(), 4096)
+    var a = frame.allocator()
+    var node = alloc<Node>(a)
+    node.value = 1
+    frame.free_all()
+    node = alloc<Node>(a)
+    node.value = 2
+    var other = alloc<Node>(a)
+    other.value = 3
+    frame.free()
 }
 
 // Freed on one path, read after the paths rejoin.
 fn maybeFreed(reset: bool) {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  if reset {
-    frame.free_all()
-  }
-  node.value = 1                  //~ E0633 node was allocated from frame, which has been reset
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    if reset {
+        frame.free_all()
+    }
+    node.value = 1 //~ E0633 node was allocated from frame, which has been reset
 }
 
 fn otherBranch(reset: bool) {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  if reset {
-    frame.free_all()
-  } else {
-    node.value = 1
-  }
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    if reset {
+        frame.free_all()
+    } else {
+        node.value = 1
+    }
 }
 
 // A deferred free runs at the end, after every use.
 fn deferred() {
-  var frame = Arena::new(heap(), 4096)
-  defer frame.free()
-  var node = alloc<Node>(frame.allocator())
-  node.value = 1
+    var frame = Arena::new(heap(), 4096)
+    defer frame.free()
+    var node = alloc<Node>(frame.allocator())
+    node.value = 1
 }
 
 // Used in order, freed last.
 fn inOrder() {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  node.value = 1
-  var items = Array<i32>::new(frame.allocator())
-  items.push(node.value)
-  items.free()
-  frame.free()
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    node.value = 1
+    var items = Array<i32>::new(frame.allocator())
+    items.push(node.value)
+    items.free()
+    frame.free()
 }
 
 // The heap is never freed as a whole.
 fn heapNeverEnds() {
-  var node = alloc<Node>(heap())
-  var other = Arena::new(heap(), 64)
-  other.free()
-  node.value = 1
-  free(heap(), node)
+    var node = alloc<Node>(heap())
+    var other = Arena::new(heap(), 64)
+    other.free()
+    node.value = 1
+    free(heap(), node)
 }
 
 // A local arena ends with the function, so nothing in it can leave.
 fn returnsFromLocal(): *Node {
-  var frame = Arena::new(heap(), 4096)
-  return alloc<Node>(frame.allocator())   //~ E0631 this returns a value allocated from frame, which ends with this function
-                                          //~^ help: take the allocator as a parameter, so the caller owns the arena
+    var frame = Arena::new(heap(), 4096)
+    return alloc<Node>(frame.allocator()) //~ E0631 this returns a value allocated from frame, which ends with this function
+    //~^ help: take the allocator as a parameter, so the caller owns the arena
 }
 
 fn returnsViaLocal(): Array<i32> {
-  var frame = Arena::new(heap(), 4096)
-  var a = frame.allocator()
-  var xs = Array<i32>::new(a)
-  xs.push(1)
-  return xs                       //~ E0631 this returns a value allocated from frame, which ends with this function
+    var frame = Arena::new(heap(), 4096)
+    var a = frame.allocator()
+    var xs = Array<i32>::new(a)
+    xs.push(1)
+    return xs //~ E0631 this returns a value allocated from frame, which ends with this function
 }
 
 fn returnsText(): string {
-  var frame = Arena::new(heap(), 4096)
-  return format(frame.allocator(), "n = #{1}")   //~ E0631 this returns a value allocated from frame, which ends with this function
+    var frame = Arena::new(heap(), 4096)
+    return format(frame.allocator(), "n = #{1}") //~ E0631 this returns a value allocated from frame, which ends with this function
 }
 
 fn returnsInStruct(): Holder {
-  var frame = Arena::new(heap(), 4096)
-  return Holder{ node: alloc<Node>(frame.allocator()) }   //~ E0631 this returns a value allocated from frame, which ends with this function
+    var frame = Arena::new(heap(), 4096)
+    return Holder{ node: alloc<Node>(frame.allocator()) } //~ E0631 this returns a value allocated from frame, which ends with this function
 }
 
 fn returnsClosure(n: i32): fn(): i32 {
-  var frame = Arena::new(heap(), 4096)
-  return keep(frame.allocator(), fn(): i32 { return n })   //~ E0631 this returns a value allocated from frame, which ends with this function
+    var frame = Arena::new(heap(), 4096)
+    return keep(frame.allocator(), fn(): i32 { return n }) //~ E0631 this returns a value allocated from frame, which ends with this function
 }
 
 // A number read out of an arena is a copy.
 fn returnsCopy(): i32 {
-  var frame = Arena::new(heap(), 4096)
-  var node = alloc<Node>(frame.allocator())
-  node.value = 5
-  var out = node.value
-  frame.free()
-  return out
+    var frame = Arena::new(heap(), 4096)
+    var node = alloc<Node>(frame.allocator())
+    node.value = 5
+    var out = node.value
+    frame.free()
+    return out
 }
 
 // An allocator the caller handed in is the caller's to free.
 fn fromParameter(a: Allocator): *Node {
-  return alloc<Node>(a)
+    return alloc<Node>(a)
 }
 
 fn textFromParameter(a: Allocator): string {
-  return format(a, "n = #{1}")
+    return format(a, "n = #{1}")
 }
 
 fn containerFromParameter(a: Allocator): Array<i32> {
-  var xs = Array<i32>::new(a)
-  xs.push(1)
-  return xs
+    var xs = Array<i32>::new(a)
+    xs.push(1)
+    return xs
 }
 
 fn arenaFromParameter(frame: *Arena): *Node {
-  return alloc<Node>(frame.allocator())
+    return alloc<Node>(frame.allocator())
 }
 
 // The caller's arena is not freed by the callee returning.
 fn callerOwns(): i32 {
-  var frame = Arena::new(heap(), 4096)
-  var node = fromParameter(frame.allocator())
-  node.value = 1
-  var result = node.value
-  frame.free()
-  return result
+    var frame = Arena::new(heap(), 4096)
+    var node = fromParameter(frame.allocator())
+    node.value = 1
+    var result = node.value
+    frame.free()
+    return result
 }
 
 // Stored into something that outlives the function.
 fn storeIntoParameter(out: Array<*Node>) {
-  var frame = Arena::new(heap(), 4096)
-  out.push(alloc<Node>(frame.allocator()))   //~ E0631 this stores a value allocated from frame into out, which outlives it
+    var frame = Arena::new(heap(), 4096)
+    out.push(alloc<Node>(frame.allocator())) //~ E0631 this stores a value allocated from frame into out, which outlives it
 }
 
 // Stored into a local, the container takes the arena on.
 fn storeIntoLocal() {
-  var frame = Arena::new(heap(), 4096)
-  var nodes = Array<*Node>::new(heap())
-  nodes.push(alloc<Node>(frame.allocator()))
-  frame.free()
-  var n = nodes.len()             //~ E0633 nodes was allocated from frame, which has been freed
+    var frame = Arena::new(heap(), 4096)
+    var nodes = Array<*Node>::new(heap())
+    nodes.push(alloc<Node>(frame.allocator()))
+    frame.free()
+    var n = nodes.len() //~ E0633 nodes was allocated from frame, which has been freed
 }
 
 // An arena inside an arena goes with its parent.
 fn nested() {
-  var outer = Arena::new(heap(), 4096)
-  var inner = Arena::new(outer.allocator(), 1024)
-  var node = alloc<Node>(inner.allocator())
-  outer.free()
-  node.value = 1                  //~ E0633 node was allocated from outer, which has been freed
+    var outer = Arena::new(heap(), 4096)
+    var inner = Arena::new(outer.allocator(), 1024)
+    var node = alloc<Node>(inner.allocator())
+    outer.free()
+    node.value = 1 //~ E0633 node was allocated from outer, which has been freed
 }

@@ -10,43 +10,43 @@
 
 import { println } from "stdlib"
 import safe {
-  entries, entry_size, callback_size, dispatch, sorted_at, call_or,
-  identity_holds, stepped,
+    entries, entry_size, callback_size, dispatch, sorted_at, call_or,
+    identity_holds, stepped,
 } from "./table.c"
 
 fn main() {
-  // A callback is one word; an entry is a padded int beside one; the
-  // table's length comes from sizeof over both.
-  println(callback_size())
-  println(entry_size())
-  println(entries())
+    // A callback is one word; an entry is a padded int beside one; the
+    // table's length comes from sizeof over both.
+    println(callback_size())
+    println(entry_size())
+    println(entries())
 
-  // Dispatch out of a table of pointers, and a code the table has no
-  // entry for.
-  println(dispatch(1, 20, 5))
-  println(dispatch(2, 20, 5))
-  println(dispatch(3, 20, 5))
-  println(dispatch(9, 20, 5))
+    // Dispatch out of a table of pointers, and a code the table has no
+    // entry for.
+    println(dispatch(1, 20, 5))
+    println(dispatch(2, 20, 5))
+    println(dispatch(3, 20, 5))
+    println(dispatch(9, 20, 5))
 
-  // A sort whose order is a function the caller chose, called through
-  // the pointer a second function returned.
-  println(sorted_at(0, 0))
-  println(sorted_at(0, 5))
-  println(sorted_at(1, 0))
-  println(sorted_at(1, 5))
+    // A sort whose order is a function the caller chose, called through
+    // the pointer a second function returned.
+    println(sorted_at(0, 0))
+    println(sorted_at(0, 5))
+    println(sorted_at(1, 0))
+    println(sorted_at(1, 5))
 
-  // A pointer that may be null: a check, not a jump to address zero.
-  println(call_or(0, 6, 7, -99))
-  println(call_or(1, 6, 7, -99))
+    // A pointer that may be null: a check, not a jump to address zero.
+    println(call_or(0, 6, 7, -99))
+    println(call_or(1, 6, 7, -99))
 
-  // Two names for one function are one address.
-  println(identity_holds())
+    // Two names for one function are one address.
+    println(identity_holds())
 
-  // A function pointer with static storage, walking add, mul, sub and
-  // round to add again.
-  var i = 0
-  while i < 4 {
-    println(stepped(10))
-    i = i + 1
-  }
+    // A function pointer with static storage, walking add, mul, sub and
+    // round to add again.
+    var i = 0
+    while i < 4 {
+        println(stepped(10))
+        i = i + 1
+    }
 }

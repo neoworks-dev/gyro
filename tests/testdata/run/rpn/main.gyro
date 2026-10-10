@@ -64,39 +64,39 @@ import { run } from "./interp"
 import { heap } from "mem"
 
 fn main() {
-  println("rpn — reverse Polish, with variables and words. \"help\" lists them.")
+    println("rpn — reverse Polish, with variables and words. \"help\" lists them.")
 
-  var calc = Calc::new()
-  defer calc.free()
+    var calc = Calc::new()
+    defer calc.free()
 
-  while !calc.done {
-    print("> ")
-    var line = readline(heap())
-    if line == null {
-      break
+    while !calc.done {
+        print("> ")
+        var line = readline(heap())
+        if line == null {
+            break
+        }
+
+        var words = words_of(line)
+        if words.is_empty() {
+            words.free()
+            continue
+        }
+
+        // The stack the line started with, in case it does not finish.
+        var saved = calc.snapshot()
+        var err = run(&calc, words.slice(), 0)
+        if err != null {
+            println("error: #{err.message()}")
+            calc.restore(saved)
+        } else {
+            saved.free()
+            if !calc.done {
+                calc.show()
+            }
+        }
+        words.free()
     }
 
-    var words = words_of(line)
-    if words.is_empty() {
-      words.free()
-      continue
-    }
-
-    // The stack the line started with, in case it does not finish.
-    var saved = calc.snapshot()
-    var err = run(&calc, words.slice(), 0)
-    if err != null {
-      println("error: #{err.message()}")
-      calc.restore(saved)
-    } else {
-      saved.free()
-      if !calc.done {
-        calc.show()
-      }
-    }
-    words.free()
-  }
-
-  // Both ways out say the same thing: `quit`, and the end of the input.
-  println("bye")
+    // Both ways out say the same thing: `quit`, and the end of the input.
+    println("bye")
 }

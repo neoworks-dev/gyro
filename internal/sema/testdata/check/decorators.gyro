@@ -6,5 +6,5 @@
 @concurrent(threads = 8) fn worker() {
 }
 
-@wasm fn unknown() {             //~ unknown decorator @wasm
+@wasm fn unknown() { //~ unknown decorator @wasm
 }

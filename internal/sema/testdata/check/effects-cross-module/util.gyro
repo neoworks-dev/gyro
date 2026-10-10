@@ -3,12 +3,12 @@ import { println } from "stdlib"
 // No row: what this does is read from the body, and the body is readable
 // from any module because Gyro compiles whole-program.
 export fn shout(message: string) {
-  println(message)
+    println(message)
 }
 
 // A row states the interface and is taken at its word.
 export fn quiet(n: i32) !{} {
-  var doubled = n * 2
+    var doubled = n * 2
 }
 
 // An intrinsic has no body to read. Without a row it may do anything.

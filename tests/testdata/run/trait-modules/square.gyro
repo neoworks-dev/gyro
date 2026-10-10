@@ -2,7 +2,7 @@ import { Eq, Print } from "stdlib"
 import * as shape from "./shape"
 
 export struct Square {
-  export side: i32
+    export side: i32
 }
 
 impl Eq for Square
@@ -11,10 +11,10 @@ impl Print for Square
 // The trait arrives through a namespace import, and the type is this
 // module's.
 impl shape::Shape for Square {
-  fn area(self): i32 {
-    return self.side * self.side
-  }
-  fn name(self): string {
-    return "square"
-  }
+    fn area(self): i32 {
+        return self.side * self.side
+    }
+    fn name(self): string {
+        return "square"
+    }
 }

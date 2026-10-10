@@ -5,91 +5,91 @@ import { println, Eq, Hash, Print, Ord, Add, Neg, Map } from "stdlib"
 import { heap } from "mem"
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 struct Tagged {
-  at: Point
-  label: string
+    at: Point
+    label: string
 }
 
 fn printing(p: Point, items: Point[], pair: (Point, i32), maybe: Point?) {
-  println(p)                      //~ E0527 Point does not implement Print
-  println(items)                  //~ E0527 Point[] does not implement Print
-  println(pair)                   //~ E0527 (Point, i32) does not implement Print
-  println(maybe)                  //~ E0527 Point? does not implement Print
-  println("at #{p}")              //~ E0527 Point does not implement Print, which interpolation needs
-  println(3)
-  println("fine")
+    println(p)         //~ E0527 Point does not implement Print
+    println(items)     //~ E0527 Point[] does not implement Print
+    println(pair)      //~ E0527 (Point, i32) does not implement Print
+    println(maybe)     //~ E0527 Point? does not implement Print
+    println("at #{p}") //~ E0527 Point does not implement Print, which interpolation needs
+    println(3)
+    println("fine")
 }
 
 struct Shown {
-  n: i32
+    n: i32
 }
 
 struct Holder {
-  inner: Shown
+    inner: Shown
 }
 
 impl Print for Shown
 impl Print for Holder
 
 fn printed(s: Shown, h: Holder, items: Shown[], pair: (Shown, i32), maybe: Shown?) {
-  println(s)
-  println(h)
-  println(items)
-  println(pair)
-  println(maybe)
+    println(s)
+    println(h)
+    println(items)
+    println(pair)
+    println(maybe)
 }
 
 // Deriving needs the fields to have the capability themselves.
-impl Print for Tagged            //~ E0529 Print cannot be derived: field at is Point
+impl Print for Tagged //~ E0529 Print cannot be derived: field at is Point
 
 fn hashing(p: Point) {
-  var h = p.hash()                //~ E0405 Point has no method hash
-  var m = Map<Point, i32>::new(heap())   //~ E0527 Point does not implement Eq, which Map<K, V> requires of K
-                                  //~^ E0527 Point does not implement Hash
+    var h = p.hash()                     //~ E0405 Point has no method hash
+    var m = Map<Point, i32>::new(heap()) //~ E0527 Point does not implement Eq, which Map<K, V> requires of K
+    //~^ E0527 Point does not implement Hash
 }
 
 fn arithmetic(a: Point, b: Point) {
-  var sum = a + b                 //~ E0527 Point does not implement Add, which the operator + needs
-  var negated = -a                //~ E0527 Point does not implement Neg
-  var scaled = a * 2              //~ E0503 operator * needs matching numeric operands
+    var sum = a + b    //~ E0527 Point does not implement Add, which the operator + needs
+    var negated = -a   //~ E0527 Point does not implement Neg
+    var scaled = a * 2 //~ E0503 operator * needs matching numeric operands
 }
 
 struct Vec2 {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Add for Vec2 {
-  fn add(self, other: Self): Self {
-    return Vec2{ x: self.x + other.x, y: self.y + other.y }
-  }
+    fn add(self, other: Self): Self {
+        return Vec2{ x: self.x + other.x, y: self.y + other.y }
+    }
 }
 
 fn afterTheImpl(a: Vec2, b: Vec2): Vec2 {
-  return a + b
+    return a + b
 }
 
 fn stillNoNeg(a: Vec2): Vec2 {
-  return -a                       //~ E0527 Vec2 does not implement Neg
+    return -a //~ E0527 Vec2 does not implement Neg
 }
 
 // The built-in types have them without any impl.
 fn builtins(a: i32, s: string, f: f64, t: (i32, string), r: rune): bool {
-  println(a)
-  println(t)
-  return a == 1 && s == "x" && f < 2.0 && t == (1, "x") && r < 'z' && s < "y"
+    println(a)
+    println(t)
+    return a == 1 && s == "x" && f < 2.0 && t == (1, "x") && r < 'z' && s < "y"
 }
 
 fn nestedLacks(t: Tagged, u: Tagged): bool {
-  return t == u                   //~ E0527 Tagged does not implement Eq
+    return t == u //~ E0527 Tagged does not implement Eq
 }
 
 // Wrapping and bitwise operators are for the numbers alone.
 fn wrapping(a: Point, b: Point) {
-  var x = a +% b                  //~ E0503 operator +% needs matching integer operands
-  var y = a & b                   //~ E0503 operator & needs matching integer operands
+    var x = a +% b //~ E0503 operator +% needs matching integer operands
+    var y = a & b  //~ E0503 operator & needs matching integer operands
 }

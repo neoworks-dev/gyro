@@ -13,45 +13,45 @@
 
 import { println } from "stdlib"
 import safe {
-  size_of_head, size_of_wide, size_of_signs, size_of_mixed,
-  head_version, head_ihl, head_tos, head_length,
-  neighbours_survive, wide_round_trip,
-  signed_reads_back, unsigned_reads_back,
-  truncates_on_write, wraps_at_its_width,
-  initialized_in_order, file_scope_initializer, union_members_overlap,
+    size_of_head, size_of_wide, size_of_signs, size_of_mixed,
+    head_version, head_ihl, head_tos, head_length,
+    neighbours_survive, wide_round_trip,
+    signed_reads_back, unsigned_reads_back,
+    truncates_on_write, wraps_at_its_width,
+    initialized_in_order, file_scope_initializer, union_members_overlap,
 } from "./flags.c"
 
 fn main() {
-  // Two four-bit fields share one byte, so the header is four bytes and
-  // not six. The straddle rule pushes `second` to bit 32 and makes the
-  // second struct eight. The last is a run of one byte, six bytes of
-  // name behind it, and an int aligned to twelve.
-  println(size_of_head())
-  println(size_of_wide())
-  println(size_of_signs())
-  println(size_of_mixed())
+    // Two four-bit fields share one byte, so the header is four bytes and
+    // not six. The straddle rule pushes `second` to bit 32 and makes the
+    // second struct eight. The last is a run of one byte, six bytes of
+    // name behind it, and an int aligned to twelve.
+    println(size_of_head())
+    println(size_of_wide())
+    println(size_of_signs())
+    println(size_of_mixed())
 
-  // A file-scope initializer writes the members in order, bits and
-  // bytes alike.
-  println(head_version())
-  println(head_ihl())
-  println(head_tos())
-  println(head_length())
+    // A file-scope initializer writes the members in order, bits and
+    // bytes alike.
+    println(head_version())
+    println(head_ihl())
+    println(head_tos())
+    println(head_length())
 
-  println(neighbours_survive())
-  println(wide_round_trip())
+    println(neighbours_survive())
+    println(wide_round_trip())
 
-  // Four bits of ones is -1 signed and 15 unsigned, which is the whole
-  // difference between the two declarations.
-  println(signed_reads_back())
-  println(unsigned_reads_back())
+    // Four bits of ones is -1 signed and 15 unsigned, which is the whole
+    // difference between the two declarations.
+    println(signed_reads_back())
+    println(unsigned_reads_back())
 
-  // What does not fit is dropped, and the increments wrap at the
-  // field's width rather than at int's.
-  println(truncates_on_write())
-  println(wraps_at_its_width())
+    // What does not fit is dropped, and the increments wrap at the
+    // field's width rather than at int's.
+    println(truncates_on_write())
+    println(wraps_at_its_width())
 
-  println(initialized_in_order())
-  println(file_scope_initializer())
-  println(union_members_overlap())
+    println(initialized_in_order())
+    println(file_scope_initializer())
+    println(union_members_overlap())
 }

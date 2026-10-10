@@ -1,35 +1,35 @@
 // An undeclared name is where the checker can be most useful: it knows the
 // built-in spelling, the import that would bind it, and the near miss.
 
-fn builtinSpellings(a: String,  //~ help: the built-in type is spelled string
-                    b: Int,     //~ help: the built-in type is spelled i32
-                    c: boolean) {   //~ help: the built-in type is spelled bool
+fn builtinSpellings(a: String, //~ help: the built-in type is spelled string
+    b: Int,                    //~ help: the built-in type is spelled i32
+    c: boolean) {              //~ help: the built-in type is spelled bool
 }
 
 fn suggestsAnImport() {
-  println(1)                     //~ help: import { println } from "stdlib"
-  var xs = Array<i32>::new()     //~ help: import { Array } from "stdlib"
+    println(1)                 //~ help: import { println } from "stdlib"
+    var xs = Array<i32>::new() //~ help: import { Array } from "stdlib"
 }
 
 fn suggestsAMethod(xs: i32[]) {
-  var n = len(xs)                //~ help: len is a method on Format and Array and String and Map, not a free function
+    var n = len(xs) //~ help: len is a method on Format and Array and String and Map, not a free function
 }
 
 fn suggestsASpelling() {
-  var counter = 1
-  counter = countr + 1           //~ help: did you mean counter?
+    var counter = 1
+    counter = countr + 1 //~ help: did you mean counter?
 }
 
 struct Point {
-  x: i32
+    x: i32
 }
 
-fn suggestsATypeSpelling(p: Pont) {   //~ help: did you mean Point?
+fn suggestsATypeSpelling(p: Pont) { //~ help: did you mean Point?
 }
 
 // A guess is worth printing only when it is close; an unrelated name is
 // noise, so it gets the general fact instead.
 fn unrelatedNamesGetNoGuess() {
-  var counter = 1
-  var v = zqx                    //~ note: nothing is predeclared
+    var counter = 1
+    var v = zqx //~ note: nothing is predeclared
 }

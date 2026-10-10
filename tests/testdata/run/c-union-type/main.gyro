@@ -9,44 +9,44 @@
 
 import { println } from "stdlib"
 import safe {
-  Value, Boxed,
-  make_int, int_of, store_double, boxed, kind_of, value_size, boxed_size,
+    Value, Boxed,
+    make_int, int_of, store_double, boxed, kind_of, value_size, boxed_size,
 } from "./value.c"
 
 safe fn main() {
-  // The size is the widest member's at the strictest member's
-  // alignment, and Gyro lays it out the same way — which is the claim
-  // this case is really making.
-  println(value_size())
-  println(boxed_size())
+    // The size is the widest member's at the strictest member's
+    // alignment, and Gyro lays it out the same way — which is the claim
+    // this case is really making.
+    println(value_size())
+    println(boxed_size())
 
-  // C makes one, Gyro reads its member.
-  var fromC = make_int(42)
-  println(fromC.i)
+    // C makes one, Gyro reads its member.
+    var fromC = make_int(42)
+    println(fromC.i)
 
-  // Gyro makes one, C reads its member.
-  var mine = Value{ i: 7 }
-  println(int_of(mine))
+    // Gyro makes one, C reads its member.
+    var mine = Value{ i: 7 }
+    println(int_of(mine))
 
-  // Gyro writes a member and C reads the same storage.
-  mine.i = 9
-  println(int_of(mine))
+    // Gyro writes a member and C reads the same storage.
+    mine.i = 9
+    println(int_of(mine))
 
-  // An out-parameter: C writes through the address of storage Gyro
-  // owns, and Gyro reads the member C wrote.
-  var out = Value{ i: 0 }
-  store_double(&out, 2.5)
-  println(out.f)
+    // An out-parameter: C writes through the address of storage Gyro
+    // owns, and Gyro reads the member C wrote.
+    var out = Value{ i: 0 }
+    store_double(&out, 2.5)
+    println(out.f)
 
-  // A struct holding a union crosses whole, and the field beside it is
-  // an ordinary field.
-  var b = boxed(3, 11)
-  println(kind_of(&b))
-  println(b.kind)
-  println(b.value.i)
+    // A struct holding a union crosses whole, and the field beside it is
+    // an ordinary field.
+    var b = boxed(3, 11)
+    println(kind_of(&b))
+    println(b.kind)
+    println(b.value.i)
 
-  // ...and Gyro can build one too.
-  var mineBoxed = Boxed{ kind: 4, value: Value{ i: 13 } }
-  println(kind_of(&mineBoxed))
-  println(mineBoxed.value.i)
+    // ...and Gyro can build one too.
+    var mineBoxed = Boxed{ kind: 4, value: Value{ i: 13 } }
+    println(kind_of(&mineBoxed))
+    println(mineBoxed.value.i)
 }

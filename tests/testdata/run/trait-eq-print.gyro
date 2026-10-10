@@ -7,33 +7,33 @@ import { format, heap } from "mem"
 
 // Two prices are the same if the cents agree; the currency is only a label.
 struct Price {
-  cents: i32
-  label: string
+    cents: i32
+    label: string
 }
 
 impl Eq for Price {
-  fn eq(self, other: Self): bool {
-    return self.cents == other.cents
-  }
+    fn eq(self, other: Self): bool {
+        return self.cents == other.cents
+    }
 }
 
 impl Hash for Price {
-  fn hash(self): u64 {
-    return self.cents.hash()
-  }
+    fn hash(self): u64 {
+        return self.cents.hash()
+    }
 }
 
 impl Print for Price {
-  fn to_string(self): string {
-    return format(heap(), "$#{self.cents}")
-  }
+    fn to_string(self): string {
+        return format(heap(), "$#{self.cents}")
+    }
 }
 
 // Derived all the way down: the fields' own implementations are used where
 // they exist.
 struct Line {
-  item: string
-  price: Price
+    item: string
+    price: Price
 }
 
 impl Eq for Line
@@ -41,70 +41,70 @@ impl Hash for Line
 impl Print for Line
 
 enum Entry {
-  Sale(Price),
-  Note(string),
-  Empty,
+    Sale(Price),
+    Note(string),
+    Empty,
 }
 
 impl Eq for Entry
 impl Print for Entry
 
 struct Pair<T> {
-  first: T
-  second: T
+    first: T
+    second: T
 }
 
 impl Eq for Pair<T>
 impl Print for Pair<T>
 
 fn main() {
-  var coffee = Price{ cents: 350, label: "usd" }
-  var also_coffee = Price{ cents: 350, label: "eur" }
-  var tea = Price{ cents: 300, label: "usd" }
+    var coffee = Price{ cents: 350, label: "usd" }
+    var also_coffee = Price{ cents: 350, label: "eur" }
+    var tea = Price{ cents: 300, label: "usd" }
 
-  println(coffee == also_coffee)
-  println(coffee == tea)
-  println(coffee.hash() == also_coffee.hash())
-  println(coffee)
+    println(coffee == also_coffee)
+    println(coffee == tea)
+    println(coffee.hash() == also_coffee.hash())
+    println(coffee)
 
-  var a = Line{ item: "latte", price: coffee }
-  var b = Line{ item: "latte", price: also_coffee }
-  var c = Line{ item: "latte", price: tea }
-  println(a == b)
-  println(a == c)
-  println(a.hash() == b.hash())
-  println(a)
+    var a = Line{ item: "latte", price: coffee }
+    var b = Line{ item: "latte", price: also_coffee }
+    var c = Line{ item: "latte", price: tea }
+    println(a == b)
+    println(a == c)
+    println(a.hash() == b.hash())
+    println(a)
 
-  println(Entry::Sale(coffee) == Entry::Sale(also_coffee))
-  println(Entry::Sale(coffee) == Entry::Sale(tea))
-  println(Entry::Note("x") == Entry::Note("x"))
-  println(Entry::Empty == Entry::Note("x"))
-  println(Entry::Sale(tea))
-  println(Entry::Empty)
+    println(Entry::Sale(coffee) == Entry::Sale(also_coffee))
+    println(Entry::Sale(coffee) == Entry::Sale(tea))
+    println(Entry::Note("x") == Entry::Note("x"))
+    println(Entry::Empty == Entry::Note("x"))
+    println(Entry::Sale(tea))
+    println(Entry::Empty)
 
-  var maybe: Price? = coffee
-  var maybe_too: Price? = also_coffee
-  var nothing: Price? = null
-  println(maybe == maybe_too)
-  println(maybe == nothing)
-  println(nothing == nothing)
+    var maybe: Price? = coffee
+    var maybe_too: Price? = also_coffee
+    var nothing: Price? = null
+    println(maybe == maybe_too)
+    println(maybe == nothing)
+    println(nothing == nothing)
 
-  println((coffee, 1) == (also_coffee, 1))
-  println((coffee, 1) == (tea, 1))
+    println((coffee, 1) == (also_coffee, 1))
+    println((coffee, 1) == (tea, 1))
 
-  println(Pair<Price>{ coffee, tea } == Pair<Price>{ also_coffee, tea })
-  println(Pair<Price>{ coffee, tea } == Pair<Price>{ tea, coffee })
-  println(Pair<i32>{ 1, 2 })
+    println(Pair<Price>{ coffee, tea } == Pair<Price>{ also_coffee, tea })
+    println(Pair<Price>{ coffee, tea } == Pair<Price>{ tea, coffee })
+    println(Pair<i32>{ 1, 2 })
 
-  var row = [coffee, tea]
-  println(row == [also_coffee, tea])
-  println(row == [coffee, coffee])
+    var row = [coffee, tea]
+    println(row == [also_coffee, tea])
+    println(row == [coffee, coffee])
 
-  var tally = Map<Price, i32>::new(heap())
-  defer tally.free()
-  tally.insert(coffee, 1)
-  tally.insert(also_coffee, 2)
-  tally.insert(tea, 5)
-  println(tally.len())
-  println(tally.get(coffee))
+    var tally = Map<Price, i32>::new(heap())
+    defer tally.free()
+    tally.insert(coffee, 1)
+    tally.insert(also_coffee, 2)
+    tally.insert(tea, 5)
+    println(tally.len())
+    println(tally.get(coffee))
 }

@@ -8,13 +8,13 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-  var xs = Array<i32>::new(heap())
-  defer xs.free()
-  xs.push(1)
-  xs.push(2)
+    var xs = Array<i32>::new(heap())
+    defer xs.free()
+    xs.push(1)
+    xs.push(2)
 
-  println("before")
-  var at: usize = 3
-  println(xs[at])
-  println("unreachable")
+    println("before")
+    var at: usize = 3
+    println(xs[at])
+    println("unreachable")
 }

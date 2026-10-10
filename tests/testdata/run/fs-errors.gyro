@@ -5,27 +5,27 @@ import { open, write_file, append_file, remove, read_dir, exists } from "fs"
 import { heap } from "mem"
 
 fn main() {
-  const missing = "/tmp/gyro-fs-nowhere"
-  println(exists(missing))
+    const missing = "/tmp/gyro-fs-nowhere"
+    println(exists(missing))
 
-  var _, openErr = open(missing)
-  if openErr != null {
-    println(openErr.message())
-  }
-  var writeErr = write_file("/tmp/gyro-fs-nowhere/write.txt", "x")
-  if writeErr != null {
-    println(writeErr.message())
-  }
-  var appendErr = append_file("/tmp/gyro-fs-nowhere/append.txt", "x")
-  if appendErr != null {
-    println(appendErr.message())
-  }
-  var removeErr = remove(missing)
-  if removeErr != null {
-    println(removeErr.message())
-  }
-  var _, listErr = read_dir(heap(), missing)
-  if listErr != null {
-    println(listErr.message())
-  }
+    var _, openErr = open(missing)
+    if openErr != null {
+        println(openErr.message())
+    }
+    var writeErr = write_file("/tmp/gyro-fs-nowhere/write.txt", "x")
+    if writeErr != null {
+        println(writeErr.message())
+    }
+    var appendErr = append_file("/tmp/gyro-fs-nowhere/append.txt", "x")
+    if appendErr != null {
+        println(appendErr.message())
+    }
+    var removeErr = remove(missing)
+    if removeErr != null {
+        println(removeErr.message())
+    }
+    var _, listErr = read_dir(heap(), missing)
+    if listErr != null {
+        println(listErr.message())
+    }
 }

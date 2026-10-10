@@ -11,17 +11,17 @@ function takes an `Allocator`, it allocates; if it does not, it does not.
 import { alloc, heap, Allocator, Arena } from "mem"
 
 fn make_node(a: Allocator, value: i32): *Node {
-  var node = alloc<Node>(a)
-  node.value = value
-  return node
+    var node = alloc<Node>(a)
+    node.value = value
+    return node
 }
 
 fn build_tree(depth: i32): i32 {
-  var arena = Arena::new(heap(), 65536)
-  defer arena.free()
+    var arena = Arena::new(heap(), 65536)
+    defer arena.free()
 
-  var root = make_node(arena.allocator(), depth)   // the arena's, as written
-  ...
+    var root = make_node(arena.allocator(), depth)   // the arena's, as written
+    ...
 }                                                  // and arena.free() takes them all back
 ```
 
@@ -31,8 +31,8 @@ fn build_tree(depth: i32): i32 {
 export enum Mode { Alloc, Free, FreeAll, Resize }
 
 export struct Allocator {
-  export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-  export data: anyptr?
+    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    export data: anyptr?
 }
 ```
 
@@ -84,7 +84,7 @@ allocates nothing, so it can be written wherever an allocator is needed:
 import { heap } from "mem"
 
 fn keep(value: i32): *Node {
-  return make_node(heap(), value)   // outlives whatever arena the caller is in
+    return make_node(heap(), value) // outlives whatever arena the caller is in
 }
 ```
 
@@ -100,9 +100,9 @@ each piece, and the choice the caller made reaches all of them:
 
 ```gyro
 fn make_pair(a: Allocator, left: i32, right: i32): *Node {
-  var first = make_node(a, left)
-  first.next = make_node(a, right)
-  return first
+    var first = make_node(a, left)
+    first.next = make_node(a, right)
+    return first
 }
 ```
 
@@ -157,7 +157,7 @@ since the heap is never freed as a whole.
 var frame = Arena::new(heap(), 4096)
 var node = alloc<Node>(frame.allocator())
 frame.free()
-println(node.value)    // error: node was allocated from frame, which has been freed
+println(node.value) // error: node was allocated from frame, which has been freed
 ```
 
 Three rules come out of it.
@@ -193,25 +193,25 @@ reaches it and leaves the work to the heap:
 
 ```gyro
 struct Counter {
-  allocs: i32
+    allocs: i32
 }
 
 safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
-                 old: anyptr?, old_size: usize): anyptr? {
-  if data == null {
-    return null
-  }
-  var counter = cast<Counter>(data)
-  if mode == Mode::Alloc {
-    counter.allocs += 1
-  }
-  var h = heap()
-  return h.proc(h.data, mode, size, align, old, old_size)
+    old: anyptr?, old_size: usize): anyptr? {
+    if data == null {
+        return null
+    }
+    var counter = cast<Counter>(data)
+    if mode == Mode::Alloc {
+        counter.allocs += 1
+    }
+    var h = heap()
+    return h.proc(h.data, mode, size, align, old, old_size)
 }
 
 var counter = Counter{ allocs: 0 }
 var counted = Allocator{ proc: &counting, data: &counter as anyptr }
-var node = make_node(counted, 1)       // counter.allocs is now 1
+var node = make_node(counted, 1) // counter.allocs is now 1
 ```
 
 The procedure is a `safe fn` because it gives `data` its type back with
@@ -233,9 +233,9 @@ allocator argument to get wrong:
 var arena = Arena::new(heap(), 4096)
 defer arena.free()
 
-var words = Array<string>::new(arena.allocator())   // records the arena
-words.push("one")                                   // grows from the arena
-words.free()                                        // gives back to the arena
+var words = Array<string>::new(arena.allocator()) // records the arena
+words.push("one")                                 // grows from the arena
+words.free()                                      // gives back to the arena
 ```
 
 An allocator is recorded once, at construction, so growing a buffer from one

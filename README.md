@@ -16,43 +16,43 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 export struct Stack {
-  export capacity: i32
-  items: Array<i32>
+    export capacity: i32
+    items: Array<i32>
 }
 
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, items: Array<i32>::new(heap()) }
+    return Stack{ capacity: capacity, items: Array<i32>::new(heap()) }
 }
 
 export fn Stack::push(*self, value: i32) {
-  self.items.push(value)
+    self.items.push(value)
 }
 
 // A slice borrows, so the row names where the view came from. Without
 // `&self` this does not compile.
 export fn Stack::view(self): i32[] !{ &self } {
-  return self.items.slice()
+    return self.items.slice()
 }
 
 export fn Stack::free(*self) {
-  self.items.free()
+    self.items.free()
 }
 
 fn total(values: i32[]): i32 {
-  var sum = 0
-  for value in values {
-    sum += value
-  }
-  return sum
+    var sum = 0
+    for value in values {
+        sum += value
+    }
+    return sum
 }
 
 fn main() {
-  var stack = Stack::new(16)
-  defer stack.free()
+    var stack = Stack::new(16)
+    defer stack.free()
 
-  stack.push(2)
-  stack.push(40)
-  println("total: #{total(stack.view())}")
+    stack.push(2)
+    stack.push(40)
+    println("total: #{total(stack.view())}")
 }
 ```
 

@@ -5,35 +5,35 @@ import { open, read_all, write_file, append_file, remove, exists } from "fs"
 import { heap } from "mem"
 
 fn read_back(path: string): string {
-  var file, err = open(path)
-  if err != null {
-    return ""
-  }
-  defer file.close()
-  var text, readErr = read_all(heap(), file)
-  if readErr != null {
-    return ""
-  }
-  return text
+    var file, err = open(path)
+    if err != null {
+        return ""
+    }
+    defer file.close()
+    var text, readErr = read_all(heap(), file)
+    if readErr != null {
+        return ""
+    }
+    return text
 }
 
 fn main() {
-  const path = "/tmp/gyro-fs-write-read.txt"
+    const path = "/tmp/gyro-fs-write-read.txt"
 
-  var created = write_file(path, "one\n")
-  println(created == null)
-  println(exists(path))
-  print(read_back(path))
+    var created = write_file(path, "one\n")
+    println(created == null)
+    println(exists(path))
+    print(read_back(path))
 
-  var extended = append_file(path, "two\n")
-  println(extended == null)
-  print(read_back(path))
+    var extended = append_file(path, "two\n")
+    println(extended == null)
+    print(read_back(path))
 
-  var truncated = write_file(path, "three\n")
-  println(truncated == null)
-  print(read_back(path))
+    var truncated = write_file(path, "three\n")
+    println(truncated == null)
+    print(read_back(path))
 
-  var removed = remove(path)
-  println(removed == null)
-  println(exists(path))
+    var removed = remove(path)
+    println(removed == null)
+    println(exists(path))
 }

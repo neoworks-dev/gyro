@@ -2,89 +2,89 @@
 // the narrowing through &&, !, else and early exits.
 
 struct Node {
-  value: i32
-  next: *Node?
+    value: i32
+    next: *Node?
 }
 
 fn mustBeChecked(n: *Node?) {
-  var v = n.value                //~ may be null
-  var d = *n                     //~ may be null
+    var v = n.value //~ may be null
+    var d = *n      //~ may be null
 }
 
 fn checkedIsFine(n: *Node?) {
-  if n != null {
-    var v = n.value
-  }
+    if n != null {
+        var v = n.value
+    }
 }
 
 fn nullOnlyFitsOptional(n: *Node) {
-  var p: *Node? = n
-  p = null
-  var x: i32 = null              //~ cannot use null as i32
-  var y: i32? = 5
+    var p: *Node? = n
+    p = null
+    var x: i32 = null //~ cannot use null as i32
+    var y: i32? = 5
 }
 
 // An early exit leaves the survivor narrowed.
 fn earlyExit(n: *Node?): i32 {
-  if n == null {
-    return 0
-  }
-  return n.value
+    if n == null {
+        return 0
+    }
+    return n.value
 }
 
 // The else branch knows the check failed.
 fn elseKnows(n: *Node?): i32 {
-  if n == null {
-    var x = 1
-  } else {
-    return n.value
-  }
-  return 0
+    if n == null {
+        var x = 1
+    } else {
+        return n.value
+    }
+    return 0
 }
 
 fn whileNarrowsItsBody(n: *Node?) {
-  while n != null {
-    n = n.next
-  }
+    while n != null {
+        n = n.next
+    }
 }
 
 fn andAppliesToTheRight(n: *Node?): bool {
-  return n != null && n.value > 0
+    return n != null && n.value > 0
 }
 
 fn notFlipsTheBranches(n: *Node?): i32 {
-  if !(n == null) {
-    return n.value
-  }
-  return 0
+    if !(n == null) {
+        return n.value
+    }
+    return 0
 }
 
 fn find(): *Node? {
-  return null
+    return null
 }
 
 fn assignmentKillsNarrowing(n: *Node?) {
-  if n != null {
-    n = find()
-    var v = n.value              //~ may be null
-  }
+    if n != null {
+        n = find()
+        var v = n.value //~ may be null
+    }
 }
 
 fn narrowingStaysInsideTheCheck(n: *Node?) {
-  if n != null {
-  }
-  var v = n.value                //~ may be null
+    if n != null {
+    }
+    var v = n.value //~ may be null
 }
 
 // A pointer to a nullable is spelled with parentheses, since `?` binds to
 // the outermost type, and a diagnostic spells it the same way.
 fn fillSlot(slot: *(i32?)) {
-  *slot = null
+    *slot = null
 }
 
 fn slotMustHoldNullable() {
-  var plain: i32 = 1
-  fillSlot(&plain)               //~ cannot use *i32 as *(i32?)
-  var maybe: i32? = 1
-  fillSlot(&maybe)
+    var plain: i32 = 1
+    fillSlot(&plain) //~ cannot use *i32 as *(i32?)
+    var maybe: i32? = 1
+    fillSlot(&maybe)
 }

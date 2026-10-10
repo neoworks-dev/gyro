@@ -2,19 +2,19 @@ import { println, Print } from "stdlib"
 import { format, heap } from "mem"
 
 struct Version {
-  major: i32
-  minor: i32
+    major: i32
+    minor: i32
 }
 
 impl Print for Version {
-  fn to_string(self): string {
-    return format(heap(), "v#{self.major}.#{self.minor}")
-  }
+    fn to_string(self): string {
+        return format(heap(), "v#{self.major}.#{self.minor}")
+    }
 }
 
 fn main() {
-  var v = Version{ major: 1, minor: 9 }
-  println(v)
-  println("running #{v} now")
-  println("flag: #{1 < 2}")
+    var v = Version{ major: 1, minor: 9 }
+    println(v)
+    println("running #{v} now")
+    println("flag: #{1 < 2}")
 }

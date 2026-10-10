@@ -7,13 +7,13 @@ import { heap, spawn } from "mem"
 import { sleep } from "time"
 
 fn main() {
-  var done = chan<i32>(1)
-  spawn(heap(), fn() {
-    sleep(5)
-    done <- 41
-  })
+    var done = chan<i32>(1)
+    spawn(heap(), fn() {
+        sleep(5)
+        done <- 41
+    })
 
-  sleep(1)
-  var value = <-done
-  println(value + 1)
+    sleep(1)
+    var value = <-done
+    println(value + 1)
 }

@@ -6,6 +6,6 @@
 import { println } from "stdlib"
 
 fn main() {
-  var largest: isize = 9223372036854775807
-  println(largest + 1)
+    var largest: isize = 9223372036854775807
+    println(largest + 1)
 }

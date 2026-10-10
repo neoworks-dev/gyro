@@ -11,57 +11,57 @@ import { get } from "net"
 // --- channels -------------------------------------------------------------
 
 fn produce(out: chan<i32>, count: i32) {
-  for var i = 0; i < count; i += 1 {
-    out <- i * i
-  }
-  out.close()
+    for var i = 0; i < count; i += 1 {
+        out <- i * i
+    }
+    out.close()
 }
 
 fn consume(values: chan<i32>, done: chan<bool>) {
-  var total: i32 = 0
-  for value in values {
-    total += value
-  }
-  println("total: #{total}")
-  done <- true
+    var total: i32 = 0
+    for value in values {
+        total += value
+    }
+    println("total: #{total}")
+    done <- true
 }
 
 // A channel element can be a tuple, so a worker reports a fallible result
 // without a wrapper struct. Closing when there is nothing more to send is
 // what lets the receiver tell "no value yet" from "no value ever".
 fn fetch_into(url: string, results: chan<(string, error?)>) {
-  results <- (format(heap(), "stub body for #{url}"), null)
-  results.close()
+    results <- (format(heap(), "stub body for #{url}"), null)
+    results.close()
 }
 
 // `select` waits on several operations and takes whichever is ready first.
 // Arms end at the newline, and bindings are ordinary declarations: there is
 // no separate `:=` form.
 fn drain(values: chan<i32>, quit: chan<bool>) {
-  while true {
-    select {
-      var value = <-values: println("got #{value}")
-      quit <- true: return
-      else: println("nothing ready")
+    while true {
+        select {
+            var value = <-values: println("got #{value}")
+            quit <- true: return
+            else: println("nothing ready")
+        }
     }
-  }
 }
 
 // --- threads --------------------------------------------------------------
 
 @concurrent(threads = 8)
 fn sum_shared(values: i32[]) {
-  var total = Mutex::new(0)
+    var total = Mutex::new(0)
 
-  for value in values {
-    // lock() returns the guard directly. There is no poisoning: a Gyro
-    // panic aborts the whole process, so no thread ever observes a lock
-    // its holder abandoned. Release is explicit, and a defer runs at the
-    // exit of the enclosing block — here, every loop iteration.
-    var guard = total.lock()
-    defer guard.unlock()
-    guard.set(guard.get() + value)
-  }
+    for value in values {
+        // lock() returns the guard directly. There is no poisoning: a Gyro
+        // panic aborts the whole process, so no thread ever observes a lock
+        // its holder abandoned. Release is explicit, and a defer runs at the
+        // exit of the enclosing block — here, every loop iteration.
+        var guard = total.lock()
+        defer guard.unlock()
+        guard.set(guard.get() + value)
+    }
 }
 
 // --- async ----------------------------------------------------------------
@@ -69,64 +69,64 @@ fn sum_shared(values: i32[]) {
 // Takes a borrowed view of the urls and returns an owning Array the caller
 // is responsible for freeing.
 export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-  var bodies = Array<string>::new(heap())
+    var bodies = Array<string>::new(heap())
 
-  for url in urls {
-    var body, err = await get(url)
-    if err != null {
-      return bodies, err
+    for url in urls {
+        var body, err = await get(url)
+        if err != null {
+            return bodies, err
+        }
+        bodies.push(body)
     }
-    bodies.push(body)
-  }
-  return bodies, null
+    return bodies, null
 }
 
 // async main is allowed; the runtime drives it.
 async fn main() {
-  var values = chan<i32>(64)
-  var done = chan<bool>()
+    var values = chan<i32>(64)
+    var done = chan<bool>()
 
-  // `spawn` is an ordinary stdlib function, not grammar: it takes a closure,
-  // which is what carries the arguments across to the new thread.
-  //
-  // The captures here are channels, which is why this is quiet. A closure
-  // captures by copy, so capturing a `*T` or a `T[]` instead would leave
-  // both threads reaching the same memory, and the compiler warns about it.
-  // Hand a reference over with `fn[move x]()`, or share through a channel
-  // or a Mutex as these do.
-  spawn(heap(), fn() produce(values, 10))
-  spawn(heap(), fn() consume(values, done))
-  var _ = <-done
+    // `spawn` is an ordinary stdlib function, not grammar: it takes a closure,
+    // which is what carries the arguments across to the new thread.
+    //
+    // The captures here are channels, which is why this is quiet. A closure
+    // captures by copy, so capturing a `*T` or a `T[]` instead would leave
+    // both threads reaching the same memory, and the compiler warns about it.
+    // Hand a reference over with `fn[move x]()`, or share through a channel
+    // or a Mutex as these do.
+    spawn(heap(), fn() produce(values, 10))
+    spawn(heap(), fn() consume(values, done))
+    var _ = <-done
 
-  // The tuple comes out whole; a two-name binding on a receive already
-  // means (value, open), so the element is destructured afterwards.
-  var results = chan<(string, error?)>()
-  spawn(heap(), fn() fetch_into("https://example.com", results))
-  var result = <-results
-  println("first fetch: #{result.0}")
+    // The tuple comes out whole; a two-name binding on a receive already
+    // means (value, open), so the element is destructured afterwards.
+    var results = chan<(string, error?)>()
+    spawn(heap(), fn() fetch_into("https://example.com", results))
+    var result = <-results
+    println("first fetch: #{result.0}")
 
-  // A two-name receive reports whether the channel was open. A closed
-  // channel yields no value, so `body` is only readable where `more` is
-  // true — reading it outside the check does not compile.
-  var body, more = <-results
-  if more {
-    println("second fetch: #{body.0}")
-  } else {
-    println("no more results")
-  }
+    // A two-name receive reports whether the channel was open. A closed
+    // channel yields no value, so `body` is only readable where `more` is
+    // true — reading it outside the check does not compile.
+    var body, more = <-results
+    if more {
+        println("second fetch: #{body.0}")
+    } else {
+        println("no more results")
+    }
 
-  var bodies, err = await fetch_all(["https://example.com"])
-  defer bodies.free()
-  if err != null {
-    println("fetch failed: #{err.message()}")
-    return
-  }
-  println("fetched #{bodies.len()} pages")
+    var bodies, err = await fetch_all(["https://example.com"])
+    defer bodies.free()
+    if err != null {
+        println("fetch failed: #{err.message()}")
+        return
+    }
+    println("fetched #{bodies.len()} pages")
 
-  // The lexical hazard `<-` creates, and why it is not a problem: a send is
-  // always a statement, so a comparison against a negative number still
-  // parses as a comparison.
-  var x: i32 = 3
-  var negative = x < -1
-  println(negative)
+    // The lexical hazard `<-` creates, and why it is not a problem: a send is
+    // always a statement, so a comparison against a negative number still
+    // parses as a comparison.
+    var x: i32 = 3
+    var negative = x < -1
+    println(negative)
 }

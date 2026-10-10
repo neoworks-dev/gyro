@@ -5,25 +5,25 @@ import { println, Mutex } from "stdlib"
 import { heap, spawn } from "mem"
 
 fn main() {
-  var total = Mutex::new(0)
-  var done = chan<bool>()
+    var total = Mutex::new(0)
+    var done = chan<bool>()
 
-  spawn(heap(), fn() {
+    spawn(heap(), fn() {
+        for i in 0..100 {
+            var guard = total.lock()
+            defer guard.unlock()
+            guard.set(guard.get() + 1)
+        }
+        done <- true
+    })
     for i in 0..100 {
-      var guard = total.lock()
-      defer guard.unlock()
-      guard.set(guard.get() + 1)
+        var guard = total.lock()
+        defer guard.unlock()
+        guard.set(guard.get() + 1)
     }
-    done <- true
-  })
-  for i in 0..100 {
-    var guard = total.lock()
-    defer guard.unlock()
-    guard.set(guard.get() + 1)
-  }
 
-  var _ = <-done
-  var guard = total.lock()
-  println(guard.get())
-  guard.unlock()
+    var _ = <-done
+    var guard = total.lock()
+    println(guard.get())
+    guard.unlock()
 }

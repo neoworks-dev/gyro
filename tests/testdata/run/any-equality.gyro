@@ -3,11 +3,11 @@ import { println } from "stdlib"
 struct Point { x: i32 }
 
 fn main() {
-  println((1 as any) == (1 as any))
-  println((1 as any) == (2 as any))
-  println(("a" as any) == ("a" as any))
-  println((1 as any) == ("1" as any))
-  println((1 as i64 as any) == (1 as any))
-  println((Point{ x: 1 } as any) == (Point{ x: 1 } as any))
-  println((Point{ x: 1 } as any) == (Point{ x: 2 } as any))
+    println((1 as any) == (1 as any))
+    println((1 as any) == (2 as any))
+    println(("a" as any) == ("a" as any))
+    println((1 as any) == ("1" as any))
+    println((1 as i64 as any) == (1 as any))
+    println((Point{ x: 1 } as any) == (Point{ x: 1 } as any))
+    println((Point{ x: 1 } as any) == (Point{ x: 2 } as any))
 }

@@ -3,73 +3,73 @@
 import { heap } from "mem"
 import { runes } from "stdlib"
 struct Stack {
-  top: i32
+    top: i32
 }
 
 fn Stack::new(): Stack {
-  return Stack{ top: 0 }
+    return Stack{ top: 0 }
 }
 
 fn Stack::push(*self, v: i32) {
-  self.top += 1
+    self.top += 1
 }
 
 fn Stack::depth(self): i32 {
-  return self.top
+    return self.top
 }
 
 fn calls() {
-  var s = Stack::new()
-  s.push(1)
-  var d: i32 = s.depth()
+    var s = Stack::new()
+    s.push(1)
+    var d: i32 = s.depth()
 }
 
 fn badCalls() {
-  var s = Stack::new()
-  s.push("one")                  //~ cannot use string as i32
-  s.fly()                        //~ Stack has no method fly
-  s.new()                        //~ associated function
-  Stack::push(1)                 //~ takes a receiver
-  Stack::misc()                  //~ Stack has no associated function misc
+    var s = Stack::new()
+    s.push("one")  //~ cannot use string as i32
+    s.fly()        //~ Stack has no method fly
+    s.new()        //~ associated function
+    Stack::push(1) //~ takes a receiver
+    Stack::misc()  //~ Stack has no associated function misc
 }
 
 fn throughPointers(s: *Stack) {
-  s.push(1)
-  var v = s.top
+    s.push(1)
+    var v = s.top
 }
 
 // The built-in surface needs no import.
 fn builtins(ch: chan<i32>, xs: i32[], s: string, a: i32, b: i32, e: error): usize {
-  ch.close()
-  for r in s.runes(heap()) {
-    var x: rune = r
-  }
-  var ordered = a.compare(b)
-  var text = e.message()
-  var n = s.len()
-  return xs.len()
+    ch.close()
+    for r in s.runes(heap()) {
+        var x: rune = r
+    }
+    var ordered = a.compare(b)
+    var text = e.message()
+    var n = s.len()
+    return xs.len()
 }
 
 fn compareNeedsTheSameType(a: i32, b: i64) {
-  var x = a.compare(b)           //~ cannot use i64 as i32
+    var x = a.compare(b) //~ cannot use i64 as i32
 }
 
 struct Holder {
-  v: i32
+    v: i32
 }
 
 fn Holder::get(self): i32 {
-  return self.v
+    return self.v
 }
 
 // `string` is a view, so an accessor returning one borrows its receiver
 // whether or not the field type works out.
 fn Holder::wrongResult(self): string {
-  return self.v                  //~ cannot use i32 as string
-                                 //~^ E0609 this returns a view into self, which the row does not name
-                                 //~^^ help: say so in the row: !{ &self }
+    return self.v //~ cannot use i32 as string
+    //~^ E0609 this returns a view into self, which the row does not name
+    //~^^ help: say so in the row: !{ &self }
 }
 
 fn Holder::missingField(self): i32 {
-  return self.missing            //~ no field or method missing
+    return self.missing //~ no field or method missing
 }

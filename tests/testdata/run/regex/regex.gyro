@@ -41,43 +41,43 @@ const MAX_NODES: i64 = 30
 const MAX_CLASS: i64 = 40
 
 export enum Kind {
-  Unused,
-  Dot,
-  Begin,
-  End,
-  Question,
-  Star,
-  Plus,
-  Char,
-  CharClass,
-  InvCharClass,
-  Digit,
-  NotDigit,
-  Alpha,
-  NotAlpha,
-  Whitespace,
-  NotWhitespace,
+    Unused,
+    Dot,
+    Begin,
+    End,
+    Question,
+    Star,
+    Plus,
+    Char,
+    CharClass,
+    InvCharClass,
+    Digit,
+    NotDigit,
+    Alpha,
+    NotAlpha,
+    Whitespace,
+    NotWhitespace,
 }
 
 impl Eq for Kind
 
 export struct Node {
-  export kind: Kind
-  export ch: u8
-  // Offset into Pattern.classes of this node's NUL-terminated class
-  // bytes; 0 for every other kind.
-  export ccl: i64
+    export kind: Kind
+    export ch: u8
+    // Offset into Pattern.classes of this node's NUL-terminated class
+    // bytes; 0 for every other kind.
+    export ccl: i64
 }
 
 export struct Pattern {
-  export nodes: Array<Node>
-  export classes: Array<u8>
-  export ok: bool
+    export nodes: Array<Node>
+    export classes: Array<u8>
+    export ok: bool
 }
 
 export fn Pattern::free(*self) {
-  self.nodes.free()
-  self.classes.free()
+    self.nodes.free()
+    self.classes.free()
 }
 
 // ---------------------------------------------------------------------------
@@ -89,17 +89,17 @@ export fn Pattern::free(*self) {
 // ---------------------------------------------------------------------------
 
 fn byte_at(bytes: u8[], index: i64): u8 {
-  if index < 0 || index >= bytes.len() as i64 {
-    return 0
-  }
-  return bytes[index as usize]
+    if index < 0 || index >= bytes.len() as i64 {
+        return 0
+    }
+    return bytes[index as usize]
 }
 
 fn node_at(nodes: Node[], index: i64): Node {
-  if index < 0 || index >= nodes.len() as i64 {
-    return Node{ kind: Kind::Unused, ch: 0, ccl: 0 }
-  }
-  return nodes[index as usize]
+    if index < 0 || index >= nodes.len() as i64 {
+        return Node{ kind: Kind::Unused, ch: 0, ccl: 0 }
+    }
+    return nodes[index as usize]
 }
 
 // ---------------------------------------------------------------------------
@@ -107,29 +107,29 @@ fn node_at(nodes: Node[], index: i64): Node {
 // ---------------------------------------------------------------------------
 
 fn is_digit(c: u8): bool {
-  return c >= '0' as u8 && c <= '9' as u8
+    return c >= '0' as u8 && c <= '9' as u8
 }
 
 fn is_alpha(c: u8): bool {
-  return (c >= 'a' as u8 && c <= 'z' as u8) || (c >= 'A' as u8 && c <= 'Z' as u8)
+    return (c >= 'a' as u8 && c <= 'z' as u8) || (c >= 'A' as u8 && c <= 'Z' as u8)
 }
 
 // isspace(): space, \t, \n, \v, \f, \r
 fn is_space(c: u8): bool {
-  return c == ' ' as u8 || (c >= 9 && c <= 13)
+    return c == ' ' as u8 || (c >= 9 && c <= 13)
 }
 
 fn is_alphanum(c: u8): bool {
-  return c == '_' as u8 || is_alpha(c) || is_digit(c)
+    return c == '_' as u8 || is_alpha(c) || is_digit(c)
 }
 
 fn is_meta(c: u8): bool {
-  return c == 's' as u8 || c == 'S' as u8 || c == 'w' as u8
-      || c == 'W' as u8 || c == 'd' as u8 || c == 'D' as u8
+    return c == 's' as u8 || c == 'S' as u8 || c == 'w' as u8
+        || c == 'W' as u8 || c == 'd' as u8 || c == 'D' as u8
 }
 
 fn match_dot(c: u8): bool {
-  return c != '\n' as u8 && c != '\r' as u8
+    return c != '\n' as u8 && c != '\r' as u8
 }
 
 // ---------------------------------------------------------------------------
@@ -137,114 +137,114 @@ fn match_dot(c: u8): bool {
 // ---------------------------------------------------------------------------
 
 export fn compile(pattern: u8[]): Pattern {
-  var nodes = Array<Node>::new(heap())
-  var classes = Array<u8>::new(heap())
-  // The C buffer fills from index 1 so that match_class can look one
-  // byte back from the start of a class; the spare byte is that lookback.
-  classes.push(0)
+    var nodes = Array<Node>::new(heap())
+    var classes = Array<u8>::new(heap())
+    // The C buffer fills from index 1 so that match_class can look one
+    // byte back from the start of a class; the spare byte is that lookback.
+    classes.push(0)
 
-  var i: i64 = 0
-  var j: i64 = 0
+    var i: i64 = 0
+    var j: i64 = 0
 
-  while byte_at(pattern, i) != 0 && j + 1 < MAX_NODES {
-    var c = byte_at(pattern, i)
-    var kind = Kind::Char
-    var ch: u8 = 0
-    var ccl: i64 = 0
+    while byte_at(pattern, i) != 0 && j + 1 < MAX_NODES {
+        var c = byte_at(pattern, i)
+        var kind = Kind::Char
+        var ch: u8 = 0
+        var ccl: i64 = 0
 
-    if c == '^' as u8 {
-      kind = Kind::Begin
-    } elif c == '$' as u8 {
-      kind = Kind::End
-    } elif c == '.' as u8 {
-      kind = Kind::Dot
-    } elif c == '*' as u8 {
-      kind = Kind::Star
-    } elif c == '+' as u8 {
-      kind = Kind::Plus
-    } elif c == '?' as u8 {
-      kind = Kind::Question
-    } elif c == '\\' as u8 {
-      // A trailing backslash is not a pattern. C leaves the node
-      // holding whatever the previous compile put there.
-      if byte_at(pattern, i + 1) == 0 {
-        return invalid(nodes, classes)
-      }
-      i += 1
-      var escaped = byte_at(pattern, i)
-      if escaped == 'd' as u8 {
-        kind = Kind::Digit
-      } elif escaped == 'D' as u8 {
-        kind = Kind::NotDigit
-      } elif escaped == 'w' as u8 {
-        kind = Kind::Alpha
-      } elif escaped == 'W' as u8 {
-        kind = Kind::NotAlpha
-      } elif escaped == 's' as u8 {
-        kind = Kind::Whitespace
-      } elif escaped == 'S' as u8 {
-        kind = Kind::NotWhitespace
-      } else {
-        kind = Kind::Char
-        ch = escaped
-      }
-    } elif c == '[' as u8 {
-      var begin = classes.len() as i64
-      kind = Kind::CharClass
-      if byte_at(pattern, i + 1) == '^' as u8 {
-        kind = Kind::InvCharClass
-        i += 1
-        // Incomplete: nothing but the negation inside the brackets.
-        if byte_at(pattern, i + 1) == 0 {
-          return invalid(nodes, classes)
+        if c == '^' as u8 {
+            kind = Kind::Begin
+        } elif c == '$' as u8 {
+            kind = Kind::End
+        } elif c == '.' as u8 {
+            kind = Kind::Dot
+        } elif c == '*' as u8 {
+            kind = Kind::Star
+        } elif c == '+' as u8 {
+            kind = Kind::Plus
+        } elif c == '?' as u8 {
+            kind = Kind::Question
+        } elif c == '\\' as u8 {
+            // A trailing backslash is not a pattern. C leaves the node
+            // holding whatever the previous compile put there.
+            if byte_at(pattern, i + 1) == 0 {
+                return invalid(nodes, classes)
+            }
+            i += 1
+            var escaped = byte_at(pattern, i)
+            if escaped == 'd' as u8 {
+                kind = Kind::Digit
+            } elif escaped == 'D' as u8 {
+                kind = Kind::NotDigit
+            } elif escaped == 'w' as u8 {
+                kind = Kind::Alpha
+            } elif escaped == 'W' as u8 {
+                kind = Kind::NotAlpha
+            } elif escaped == 's' as u8 {
+                kind = Kind::Whitespace
+            } elif escaped == 'S' as u8 {
+                kind = Kind::NotWhitespace
+            } else {
+                kind = Kind::Char
+                ch = escaped
+            }
+        } elif c == '[' as u8 {
+            var begin = classes.len() as i64
+            kind = Kind::CharClass
+            if byte_at(pattern, i + 1) == '^' as u8 {
+                kind = Kind::InvCharClass
+                i += 1
+                // Incomplete: nothing but the negation inside the brackets.
+                if byte_at(pattern, i + 1) == 0 {
+                    return invalid(nodes, classes)
+                }
+            }
+
+            i += 1
+            while byte_at(pattern, i) != ']' as u8 && byte_at(pattern, i) != 0 {
+                if byte_at(pattern, i) == '\\' as u8 {
+                    if classes.len() as i64 >= MAX_CLASS - 1 {
+                        return invalid(nodes, classes)
+                    }
+                    if byte_at(pattern, i + 1) == 0 {
+                        return invalid(nodes, classes)
+                    }
+                    classes.push(byte_at(pattern, i))
+                    i += 1
+                } elif classes.len() as i64 >= MAX_CLASS {
+                    return invalid(nodes, classes)
+                }
+                classes.push(byte_at(pattern, i))
+                i += 1
+            }
+            // Catches patterns such as [0000...0][ that fill the buffer.
+            if classes.len() as i64 >= MAX_CLASS {
+                return invalid(nodes, classes)
+            }
+            classes.push(0)
+            ccl = begin
+        } else {
+            kind = Kind::Char
+            ch = c
         }
-      }
 
-      i += 1
-      while byte_at(pattern, i) != ']' as u8 && byte_at(pattern, i) != 0 {
-        if byte_at(pattern, i) == '\\' as u8 {
-          if classes.len() as i64 >= MAX_CLASS - 1 {
+        nodes.push(Node{ kind: kind, ch: ch, ccl: ccl })
+
+        // An unterminated class or escape ran off the end of the pattern.
+        if byte_at(pattern, i) == 0 {
             return invalid(nodes, classes)
-          }
-          if byte_at(pattern, i + 1) == 0 {
-            return invalid(nodes, classes)
-          }
-          classes.push(byte_at(pattern, i))
-          i += 1
-        } elif classes.len() as i64 >= MAX_CLASS {
-          return invalid(nodes, classes)
         }
-        classes.push(byte_at(pattern, i))
         i += 1
-      }
-      // Catches patterns such as [0000...0][ that fill the buffer.
-      if classes.len() as i64 >= MAX_CLASS {
-        return invalid(nodes, classes)
-      }
-      classes.push(0)
-      ccl = begin
-    } else {
-      kind = Kind::Char
-      ch = c
+        j += 1
     }
 
-    nodes.push(Node{ kind: kind, ch: ch, ccl: ccl })
-
-    // An unterminated class or escape ran off the end of the pattern.
-    if byte_at(pattern, i) == 0 {
-      return invalid(nodes, classes)
-    }
-    i += 1
-    j += 1
-  }
-
-  // Unused is the end-of-pattern sentinel.
-  nodes.push(Node{ kind: Kind::Unused, ch: 0, ccl: 0 })
-  return Pattern{ nodes: nodes, classes: classes, ok: true }
+    // Unused is the end-of-pattern sentinel.
+    nodes.push(Node{ kind: Kind::Unused, ch: 0, ccl: 0 })
+    return Pattern{ nodes: nodes, classes: classes, ok: true }
 }
 
 fn invalid(nodes: Array<Node>, classes: Array<u8>): Pattern {
-  return Pattern{ nodes: nodes, classes: classes, ok: false }
+    return Pattern{ nodes: nodes, classes: classes, ok: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -253,73 +253,73 @@ fn invalid(nodes: Array<Node>, classes: Array<u8>): Pattern {
 
 // match_range recognizes `a-z` at the head of a class.
 fn match_range(c: u8, classes: u8[], at: i64): bool {
-  return c != '-' as u8
-      && byte_at(classes, at) != 0
-      && byte_at(classes, at) != '-' as u8
-      && byte_at(classes, at + 1) == '-' as u8
-      && byte_at(classes, at + 2) != 0
-      && c >= byte_at(classes, at)
-      && c <= byte_at(classes, at + 2)
+    return c != '-' as u8
+        && byte_at(classes, at) != 0
+        && byte_at(classes, at) != '-' as u8
+        && byte_at(classes, at + 1) == '-' as u8
+        && byte_at(classes, at + 2) != 0
+        && c >= byte_at(classes, at)
+        && c <= byte_at(classes, at + 2)
 }
 
 fn match_metachar(c: u8, classes: u8[], at: i64): bool {
-  var head = byte_at(classes, at)
-  if head == 'd' as u8 {
-    return is_digit(c)
-  } elif head == 'D' as u8 {
-    return !is_digit(c)
-  } elif head == 'w' as u8 {
-    return is_alphanum(c)
-  } elif head == 'W' as u8 {
-    return !is_alphanum(c)
-  } elif head == 's' as u8 {
-    return is_space(c)
-  } elif head == 'S' as u8 {
-    return !is_space(c)
-  }
-  return c == head
+    var head = byte_at(classes, at)
+    if head == 'd' as u8 {
+        return is_digit(c)
+    } elif head == 'D' as u8 {
+        return !is_digit(c)
+    } elif head == 'w' as u8 {
+        return is_alphanum(c)
+    } elif head == 'W' as u8 {
+        return !is_alphanum(c)
+    } elif head == 's' as u8 {
+        return is_space(c)
+    } elif head == 'S' as u8 {
+        return !is_space(c)
+    }
+    return c == head
 }
 
 fn match_class(c: u8, classes: u8[], start: i64): bool {
-  var at = start
-  while true {
-    if match_range(c, classes, at) {
-      return true
-    } elif byte_at(classes, at) == '\\' as u8 {
-      at += 1
-      if match_metachar(c, classes, at) {
-        return true
-      } elif c == byte_at(classes, at) && !is_meta(c) {
-        return true
-      }
-    } elif c == byte_at(classes, at) {
-      if c == '-' as u8 {
-        return byte_at(classes, at - 1) == 0 || byte_at(classes, at + 1) == 0
-      }
-      return true
+    var at = start
+    while true {
+        if match_range(c, classes, at) {
+            return true
+        } elif byte_at(classes, at) == '\\' as u8 {
+            at += 1
+            if match_metachar(c, classes, at) {
+                return true
+            } elif c == byte_at(classes, at) && !is_meta(c) {
+                return true
+            }
+        } elif c == byte_at(classes, at) {
+            if c == '-' as u8 {
+                return byte_at(classes, at - 1) == 0 || byte_at(classes, at + 1) == 0
+            }
+            return true
+        }
+        // do/while: the terminator is examined before the loop ends.
+        if byte_at(classes, at) == 0 {
+            return false
+        }
+        at += 1
     }
-    // do/while: the terminator is examined before the loop ends.
-    if byte_at(classes, at) == 0 {
-      return false
-    }
-    at += 1
-  }
-  return false
+    return false
 }
 
 fn match_one(node: Node, classes: u8[], c: u8): bool {
-  return match node.kind {
-    Kind::Dot: match_dot(c)
-    Kind::CharClass: match_class(c, classes, node.ccl)
-    Kind::InvCharClass: !match_class(c, classes, node.ccl)
-    Kind::Digit: is_digit(c)
-    Kind::NotDigit: !is_digit(c)
-    Kind::Alpha: is_alphanum(c)
-    Kind::NotAlpha: !is_alphanum(c)
-    Kind::Whitespace: is_space(c)
-    Kind::NotWhitespace: !is_space(c)
-    _: node.ch == c
-  }
+    return match node.kind {
+        Kind::Dot: match_dot(c)
+        Kind::CharClass: match_class(c, classes, node.ccl)
+        Kind::InvCharClass: !match_class(c, classes, node.ccl)
+        Kind::Digit: is_digit(c)
+        Kind::NotDigit: !is_digit(c)
+        Kind::Alpha: is_alphanum(c)
+        Kind::NotAlpha: !is_alphanum(c)
+        Kind::Whitespace: is_space(c)
+        Kind::NotWhitespace: !is_space(c)
+        _: node.ch == c
+    }
 }
 
 // Each matcher takes the match length so far and returns it alongside
@@ -327,98 +327,98 @@ fn match_one(node: Node, classes: u8[], c: u8): bool {
 // reads it back after a failure.
 
 fn match_star(node: Node, nodes: Node[], next: i64, classes: u8[],
-              text: u8[], start: i64, length: i64): (bool, i64) {
-  var before = length
-  var count = length
-  var at = start
-  while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
-    at += 1
-    count += 1
-  }
-
-  while at >= start {
-    var ok, after = match_pattern(nodes, next, classes, text, at, count)
-    count = after
-    if ok {
-      return (true, count)
+    text: u8[], start: i64, length: i64): (bool, i64) {
+    var before = length
+    var count = length
+    var at = start
+    while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
+        at += 1
+        count += 1
     }
-    at -= 1
-    count -= 1
-  }
-  return (false, before)
+
+    while at >= start {
+        var ok, after = match_pattern(nodes, next, classes, text, at, count)
+        count = after
+        if ok {
+            return (true, count)
+        }
+        at -= 1
+        count -= 1
+    }
+    return (false, before)
 }
 
 fn match_plus(node: Node, nodes: Node[], next: i64, classes: u8[],
-              text: u8[], start: i64, length: i64): (bool, i64) {
-  var count = length
-  var at = start
-  while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
-    at += 1
-    count += 1
-  }
-
-  while at > start {
-    var ok, after = match_pattern(nodes, next, classes, text, at, count)
-    count = after
-    if ok {
-      return (true, count)
+    text: u8[], start: i64, length: i64): (bool, i64) {
+    var count = length
+    var at = start
+    while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
+        at += 1
+        count += 1
     }
-    at -= 1
-    count -= 1
-  }
-  return (false, count)
+
+    while at > start {
+        var ok, after = match_pattern(nodes, next, classes, text, at, count)
+        count = after
+        if ok {
+            return (true, count)
+        }
+        at -= 1
+        count -= 1
+    }
+    return (false, count)
 }
 
 fn match_question(node: Node, nodes: Node[], next: i64, classes: u8[],
-                  text: u8[], start: i64, length: i64): (bool, i64) {
-  if node.kind == Kind::Unused {
-    return (true, length)
-  }
-
-  var ok, after = match_pattern(nodes, next, classes, text, start, length)
-  if ok {
-    return (true, after)
-  }
-
-  if byte_at(text, start) != 0 && match_one(node, classes, byte_at(text, start)) {
-    var ok2, after2 = match_pattern(nodes, next, classes, text, start + 1, after)
-    if ok2 {
-      return (true, after2 + 1)
+    text: u8[], start: i64, length: i64): (bool, i64) {
+    if node.kind == Kind::Unused {
+        return (true, length)
     }
-    return (false, after2)
-  }
-  return (false, after)
+
+    var ok, after = match_pattern(nodes, next, classes, text, start, length)
+    if ok {
+        return (true, after)
+    }
+
+    if byte_at(text, start) != 0 && match_one(node, classes, byte_at(text, start)) {
+        var ok2, after2 = match_pattern(nodes, next, classes, text, start + 1, after)
+        if ok2 {
+            return (true, after2 + 1)
+        }
+        return (false, after2)
+    }
+    return (false, after)
 }
 
 fn match_pattern(nodes: Node[], node: i64, classes: u8[],
-                 text: u8[], start: i64, length: i64): (bool, i64) {
-  var before = length
-  var count = length
-  var current = node
-  var at = start
+    text: u8[], start: i64, length: i64): (bool, i64) {
+    var before = length
+    var count = length
+    var current = node
+    var at = start
 
-  while true {
-    var head = node_at(nodes, current)
-    var following = node_at(nodes, current + 1)
+    while true {
+        var head = node_at(nodes, current)
+        var following = node_at(nodes, current + 1)
 
-    if head.kind == Kind::Unused || following.kind == Kind::Question {
-      return match_question(head, nodes, current + 2, classes, text, at, count)
-    } elif following.kind == Kind::Star {
-      return match_star(head, nodes, current + 2, classes, text, at, count)
-    } elif following.kind == Kind::Plus {
-      return match_plus(head, nodes, current + 2, classes, text, at, count)
-    } elif head.kind == Kind::End && following.kind == Kind::Unused {
-      return (byte_at(text, at) == 0, count)
+        if head.kind == Kind::Unused || following.kind == Kind::Question {
+            return match_question(head, nodes, current + 2, classes, text, at, count)
+        } elif following.kind == Kind::Star {
+            return match_star(head, nodes, current + 2, classes, text, at, count)
+        } elif following.kind == Kind::Plus {
+            return match_plus(head, nodes, current + 2, classes, text, at, count)
+        } elif head.kind == Kind::End && following.kind == Kind::Unused {
+            return (byte_at(text, at) == 0, count)
+        }
+
+        count += 1
+        if byte_at(text, at) == 0 || !match_one(head, classes, byte_at(text, at)) {
+            return (false, before)
+        }
+        current += 1
+        at += 1
     }
-
-    count += 1
-    if byte_at(text, at) == 0 || !match_one(head, classes, byte_at(text, at)) {
-      return (false, before)
-    }
-    current += 1
-    at += 1
-  }
-  return (false, before)
+    return (false, before)
 }
 
 // ---------------------------------------------------------------------------
@@ -427,48 +427,48 @@ fn match_pattern(nodes: Node[], node: i64, classes: u8[],
 
 // matchp returns the offset of the match and its length, or (-1, 0).
 export fn matchp(pattern: Pattern, text: u8[]): (i64, i64) {
-  if !pattern.ok {
-    return (-1, 0)
-  }
-  var nodes = pattern.nodes.slice()
-  var classes = pattern.classes.slice()
+    if !pattern.ok {
+        return (-1, 0)
+    }
+    var nodes = pattern.nodes.slice()
+    var classes = pattern.classes.slice()
 
-  if node_at(nodes, 0).kind == Kind::Begin {
-    var ok, length = match_pattern(nodes, 1, classes, text, 0, 0)
-    if ok {
-      return (0, length)
+    if node_at(nodes, 0).kind == Kind::Begin {
+        var ok, length = match_pattern(nodes, 1, classes, text, 0, 0)
+        if ok {
+            return (0, length)
+        }
+        return (-1, length)
+    }
+
+    // The length that comes back from a failed match is whatever the last
+    // attempt left behind, as in C, where it is an out-parameter the
+    // caller is not meant to read unless the match succeeded.
+    var at: i64 = 0
+    var index: i64 = -1
+    var length: i64 = 0
+    while true {
+        index += 1
+        var ok, found = match_pattern(nodes, 0, classes, text, at, length)
+        length = found
+        if ok {
+            // An empty match at the end of the text is not a match.
+            if byte_at(text, at) == 0 {
+                return (-1, length)
+            }
+            return (index, length)
+        }
+        if byte_at(text, at) == 0 {
+            return (-1, length)
+        }
+        at += 1
     }
     return (-1, length)
-  }
-
-  // The length that comes back from a failed match is whatever the last
-  // attempt left behind, as in C, where it is an out-parameter the
-  // caller is not meant to read unless the match succeeded.
-  var at: i64 = 0
-  var index: i64 = -1
-  var length: i64 = 0
-  while true {
-    index += 1
-    var ok, found = match_pattern(nodes, 0, classes, text, at, length)
-    length = found
-    if ok {
-      // An empty match at the end of the text is not a match.
-      if byte_at(text, at) == 0 {
-        return (-1, length)
-      }
-      return (index, length)
-    }
-    if byte_at(text, at) == 0 {
-      return (-1, length)
-    }
-    at += 1
-  }
-  return (-1, length)
 }
 
 // match_text is the one-shot form: compile, match, release.
 export fn match_text(pattern: string, text: string): (i64, i64) {
-  var compiled = compile(pattern.bytes(heap()))
-  defer compiled.free()
-  return matchp(compiled, text.bytes(heap()))
+    var compiled = compile(pattern.bytes(heap()))
+    defer compiled.free()
+    return matchp(compiled, text.bytes(heap()))
 }

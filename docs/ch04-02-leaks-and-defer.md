@@ -7,14 +7,14 @@ in reverse order of registration. A loop body's defers run every iteration.
 
 ```gyro
 fn sum_pair(a: i32, b: i32): i32 {
-  var node = alloc<Node>(heap())
-  defer free(heap(), node)
+    var node = alloc<Node>(heap())
+    defer free(heap(), node)
 
-  node.value = a + b
-  if node.value < 0 {
-    return 0        // the defer runs here too
-  }
-  return node.value
+    node.value = a + b
+    if node.value < 0 {
+        return 0 // the defer runs here too
+    }
+    return node.value
 }
 ```
 
@@ -28,9 +28,9 @@ Two details that are easy to get wrong, and that every tier is held to:
 
 ```gyro
 for line in lines.slice() {
-  var parts = line.split(heap(), " ")
-  defer parts.free()
-  ...
+    var parts = line.split(heap(), " ")
+    defer parts.free()
+    ...
 }
 ```
 
@@ -56,7 +56,7 @@ warns about nothing:
 var arena = Arena::new(heap(), 4096)
 defer arena.free()
 
-var node = alloc<Node>(arena.allocator())   // the arena's; no free, no warning
+var node = alloc<Node>(arena.allocator()) // the arena's; no free, no warning
 ```
 
 An allocation is **settled** by `free`, and equally by anything that hands
@@ -75,10 +75,10 @@ ownership where it was.
 // The allocation escapes through the return value, so ownership moves to
 // the caller and no warning is reported here.
 export fn make_node(value: i32): *Node {
-  var node = alloc<Node>(heap())
-  node.value = value
-  node.next = null
-  return node
+    var node = alloc<Node>(heap())
+    node.value = value
+    node.next = null
+    return node
 }
 ```
 
@@ -90,11 +90,11 @@ brace:
 
 ```gyro
 fn g(cond: bool) {
-  var node = alloc<Node>(heap())   // warns: the early return loses it
-  if cond {
-    return
-  }
-  free(heap(), node)
+    var node = alloc<Node>(heap()) // warns: the early return loses it
+    if cond {
+        return
+    }
+    free(heap(), node)
 }
 ```
 

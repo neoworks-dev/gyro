@@ -13,29 +13,29 @@ import { Calc } from "./machine"
 import { heap, format } from "mem"
 
 export fn save(calc: *Calc, path: string): error? {
-  var out = String::new(heap())
-  defer out.free()
+    var out = String::new(heap())
+    defer out.free()
 
-  for name in calc.word_list() {
-    var body = calc.body_of(name)
-    if body != null {
-      out.push(format(heap(), ": #{name} #{join(heap(), body.slice(), " ")} ;\n"))
+    for name in calc.word_list() {
+        var body = calc.body_of(name)
+        if body != null {
+            out.push(format(heap(), ": #{name} #{join(heap(), body.slice(), " ")} ;\n"))
+        }
     }
-  }
-  for name in calc.var_list() {
-    var value = calc.recall(name)
-    if value != null {
-      out.push(format(heap(), "#{value} >#{name}\n"))
+    for name in calc.var_list() {
+        var value = calc.recall(name)
+        if value != null {
+            out.push(format(heap(), "#{value} >#{name}\n"))
+        }
     }
-  }
-  return write_file(path, out.text(heap()))
+    return write_file(path, out.text(heap()))
 }
 
 export fn read_source(path: string): (string, error?) {
-  var file, err = open(path)
-  if err != null {
-    return "", err
-  }
-  defer file.close()
-  return read_all(heap(), file)
+    var file, err = open(path)
+    if err != null {
+        return "", err
+    }
+    defer file.close()
+    return read_all(heap(), file)
 }

@@ -1,13 +1,13 @@
 import { println, Print } from "stdlib"
 
 enum Shape {
-  Circle(f64),
-  Point,
+    Circle(f64),
+    Point,
 }
 
 impl Print for Shape
 
 fn main() {
-  println(Shape::Circle(2.5))
-  println(Shape::Point)
+    println(Shape::Circle(2.5))
+    println(Shape::Point)
 }

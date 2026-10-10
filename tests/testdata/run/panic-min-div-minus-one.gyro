@@ -4,7 +4,7 @@
 import { println } from "stdlib"
 
 fn main() {
-  var a: i32 = -2147483648
-  var b: i32 = -1
-  println(a / b)
+    var a: i32 = -2147483648
+    var b: i32 = -1
+    println(a / b)
 }

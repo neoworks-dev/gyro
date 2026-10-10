@@ -3,6 +3,6 @@
 import { println } from "stdlib"
 
 fn main() {
-  var x: i32 = -1
-  println(x as u32)
+    var x: i32 = -1
+    println(x as u32)
 }

@@ -17,17 +17,17 @@ import * as examples from "./examples"
 import { heap } from "mem"
 
 fn main() {
-  for var i: i64 = 0; i < examples::COUNT; i += 1 {
-    var rendered = html::render_html(examples::source(i).bytes(heap()))
-    var text = from_utf8(heap(), rendered.slice())
+    for var i: i64 = 0; i < examples::COUNT; i += 1 {
+        var rendered = html::render_html(examples::source(i).bytes(heap()))
+        var text = from_utf8(heap(), rendered.slice())
 
-    print("### #{examples::number(i)}\n")
-    print(text)
-    // md4c's output ends in a newline whenever it is not empty; the guard
-    // keeps the next header on a line of its own either way.
-    if rendered.len() == 0 || rendered.get(rendered.len() - 1) != 10 {
-      print("\n")
+        print("### #{examples::number(i)}\n")
+        print(text)
+        // md4c's output ends in a newline whenever it is not empty; the guard
+        // keeps the next header on a line of its own either way.
+        if rendered.len() == 0 || rendered.get(rendered.len() - 1) != 10 {
+            print("\n")
+        }
+        rendered.free()
     }
-    rendered.free()
-  }
 }

@@ -20,7 +20,7 @@ export unsafe fn cast<T>(p: anyptr): *T !{}
 // the borrow analysis can see says where it points, so it is treated as
 // coming from outside the program, the way the result of a C function is.
 export unsafe fn ptr_from_int<T>(address: usize): *T !{} {
-  return cast<T>(address_to_pointer(address))
+    return cast<T>(address_to_pointer(address))
 }
 
 // ptr_to_int is the address a pointer holds, as an integer.

@@ -16,38 +16,38 @@
 
 import { println } from "stdlib"
 import safe {
-  acquire_and_release, releases, sum_by_backward_goto,
-  first_pair_multiplying_to, retry_until, skip_a_stage, locals_survive,
+    acquire_and_release, releases, sum_by_backward_goto,
+    first_pair_multiplying_to, retry_until, skip_a_stage, locals_survive,
 } from "./resource.c"
 
 fn main() {
-  // Failing at each step: what was acquired before the jump, and the
-  // code the cleanup returned with.
-  println(acquire_and_release(1))
-  println(acquire_and_release(2))
-  println(acquire_and_release(0))
+    // Failing at each step: what was acquired before the jump, and the
+    // code the cleanup returned with.
+    println(acquire_and_release(1))
+    println(acquire_and_release(2))
+    println(acquire_and_release(0))
 
-  // The cleanup ran once per call, however each call ended.
-  println(releases())
+    // The cleanup ran once per call, however each call ended.
+    println(releases())
 
-  // A backward goto is a loop: 0 + 1 + ... + 8.
-  println(sum_by_backward_goto(8))
+    // A backward goto is a loop: 0 + 1 + ... + 8.
+    println(sum_by_backward_goto(8))
 
-  // Out of two loops at once, which C has no keyword for.
-  println(first_pair_multiplying_to(42))
-  println(first_pair_multiplying_to(97))
+    // Out of two loops at once, which C has no keyword for.
+    println(first_pair_multiplying_to(42))
+    println(first_pair_multiplying_to(97))
 
-  // A label reached from both sides, with both wrappers around it.
-  println(retry_until(0))
-  println(retry_until(1))
-  println(retry_until(3))
+    // A label reached from both sides, with both wrappers around it.
+    println(retry_until(0))
+    println(retry_until(1))
+    println(retry_until(3))
 
-  // A jump over one label to the next, which needs the later label's
-  // block to enclose the earlier one's.
-  println(skip_a_stage(1))
-  println(skip_a_stage(2))
-  println(skip_a_stage(3))
+    // A jump over one label to the next, which needs the later label's
+    // block to enclose the earlier one's.
+    println(skip_a_stage(1))
+    println(skip_a_stage(2))
+    println(skip_a_stage(3))
 
-  // A local declared before a label is still there after it.
-  println(locals_survive())
+    // A local declared before a label is still there after it.
+    println(locals_survive())
 }

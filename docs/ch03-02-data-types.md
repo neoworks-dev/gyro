@@ -66,8 +66,8 @@ The context reaches through an expression built only from literals, so the
 operands adapt too, and only the value that is finally *used* has to fit:
 
 ```gyro
-var x: i8 = -128        // legal, though 128 alone is not an i8
-var y: i64 = 1 << 40    // an i64 shift, not an overflowed i32 one
+var x: i8 = -128     // legal, though 128 alone is not an i8
+var y: i64 = 1 << 40 // an i64 shift, not an overflowed i32 one
 ```
 
 A shift is the case where nothing else can decide, because the count keeps

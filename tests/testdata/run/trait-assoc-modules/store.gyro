@@ -1,17 +1,17 @@
 // A module declares a trait with an associated type and a generic over it.
 
 export trait Store {
-  type Key
-  type Value
+    type Key
+    type Value
 
-  fn key(self): Self::Key
-  fn value(self): Self::Value
+    fn key(self): Self::Key
+    fn value(self): Self::Value
 }
 
 export fn value_of<S: Store>(s: S): S::Value {
-  return s.value()
+    return s.value()
 }
 
 export fn key_of<S: Store>(s: S): S::Key {
-  return s.key()
+    return s.key()
 }

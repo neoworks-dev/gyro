@@ -8,19 +8,19 @@ import { Array } from "stdlib"
 import { heap, keep } from "mem"
 
 fn build(): Array<fn(): i32> {
-  var fns = Array<fn(): i32>::new(heap())
-  for i in 0..3 {
-    fns.push(fn(): i32 { return i })    //~ E0632 this stores a closure written in a loop body into fns, which is declared outside the loop
-                                        //~^ help: a loop body writes the closure's environment in the same place every time, so each element would see the last iteration's captures
-                                        //~^^ help: copy each one out with keep(allocator, f) from mem
-  }
-  return fns
+    var fns = Array<fn(): i32>::new(heap())
+    for i in 0..3 {
+        fns.push(fn(): i32 { return i }) //~ E0632 this stores a closure written in a loop body into fns, which is declared outside the loop
+        //~^ help: a loop body writes the closure's environment in the same place every time, so each element would see the last iteration's captures
+        //~^^ help: copy each one out with keep(allocator, f) from mem
+    }
+    return fns
 }
 
 fn buildKept(): Array<fn(): i32> {
-  var fns = Array<fn(): i32>::new(heap())
-  for i in 0..3 {
-    fns.push(keep(heap(), fn(): i32 { return i }))
-  }
-  return fns
+    var fns = Array<fn(): i32>::new(heap())
+    for i in 0..3 {
+        fns.push(keep(heap(), fn(): i32 { return i }))
+    }
+    return fns
 }

@@ -6,13 +6,13 @@ import { env } from "os"
 import { heap } from "mem"
 
 fn main() {
-  var set = env(heap(), "GYRO_TEST_ENV")
-  if set != null {
-    println(set)
-  } else {
-    println("unset")
-  }
+    var set = env(heap(), "GYRO_TEST_ENV")
+    if set != null {
+        println(set)
+    } else {
+        println("unset")
+    }
 
-  var missing = env(heap(), "GYRO_TEST_ENV_NEVER_SET")
-  println(missing == null)
+    var missing = env(heap(), "GYRO_TEST_ENV_NEVER_SET")
+    println(missing == null)
 }

@@ -24,4 +24,3 @@ export const TEST9: string = "[\n    [0, -1, 0],\n    [1, 0, 0],\n    [0, 0, 1]\
 export const TEST10: string = "[\"Sunday\", \"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\", \"Saturday\"]\n"
 
 export const TEST11: string = "{\n\"name\": \"Jack (\\\"Bee\\\") Nimble\",\n\"format\": {\"type\":       \"rect\",\n\"width\":      1920,\n\"height\":     1080,\n\"interlace\":  false,\"frame rate\": 24\n}\n}\n"
-

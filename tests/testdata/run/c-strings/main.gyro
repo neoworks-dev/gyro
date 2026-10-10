@@ -10,50 +10,50 @@
 
 import { println } from "stdlib"
 import safe {
-  keyword_count, token_count, token_id, token_length, token_char,
-  reverse_token, scratch_char, checksum, pointer_width,
+    keyword_count, token_count, token_id, token_length, token_char,
+    reverse_token, scratch_char, checksum, pointer_width,
 } from "./scan.c"
 
 fn main() {
-  // sizeof over a table of pointers, which only divides evenly if a
-  // nullable pointer is one word.
-  println(pointer_width())
-  println(keyword_count())
+    // sizeof over a table of pointers, which only divides evenly if a
+    // nullable pointer is one word.
+    println(pointer_width())
+    println(keyword_count())
 
-  const tokens = token_count()
-  println(tokens)
+    const tokens = token_count()
+    println(tokens)
 
-  // Every word: its keyword id, then its length.
-  var i = 0
-  while i < tokens {
-    println(token_id(i))
-    println(token_length(i))
-    i = i + 1
-  }
+    // Every word: its keyword id, then its length.
+    var i = 0
+    while i < tokens {
+        println(token_id(i))
+        println(token_length(i))
+        i = i + 1
+    }
 
-  // Past the end, where start_of hands back a null pointer and the
-  // callers say so rather than reading through it.
-  println(token_id(tokens))
-  println(token_length(tokens))
-  println(token_char(0, 9))
+    // Past the end, where start_of hands back a null pointer and the
+    // callers say so rather than reading through it.
+    println(token_id(tokens))
+    println(token_length(tokens))
+    println(token_char(0, 9))
 
-  // The first word, byte by byte.
-  var at = 0
-  while at < token_length(0) {
-    println(token_char(0, at))
-    at = at + 1
-  }
+    // The first word, byte by byte.
+    var at = 0
+    while at < token_length(0) {
+        println(token_char(0, at))
+        at = at + 1
+    }
 
-  // "return" backwards, out of the file-scope buffer.
-  const reversed = reverse_token(2)
-  println(reversed)
-  var back = 0
-  while back < reversed {
-    println(scratch_char(back))
-    back = back + 1
-  }
-  // The buffer started zeroed and the terminator went in at the end.
-  println(scratch_char(reversed))
+    // "return" backwards, out of the file-scope buffer.
+    const reversed = reverse_token(2)
+    println(reversed)
+    var back = 0
+    while back < reversed {
+        println(scratch_char(back))
+        back = back + 1
+    }
+    // The buffer started zeroed and the terminator went in at the end.
+    println(scratch_char(reversed))
 
-  println(checksum())
+    println(checksum())
 }

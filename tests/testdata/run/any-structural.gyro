@@ -7,44 +7,44 @@ import { format, heap } from "mem"
 struct Node { value: i32 }
 
 fn kind(v: any): string {
-  return match v {
-    (i32, string)(pair): format(heap(), "tuple #{pair.0}/#{pair.1}")
-    (i32, i32)(pair):    format(heap(), "int pair #{pair.0}/#{pair.1}")
-    i32[3](a):           format(heap(), "i32[3] holding #{a[0]}")
-    i32[](xs):           format(heap(), "i32 slice of #{xs.len()}")
-    string[](ss):        format(heap(), "string slice of #{ss.len()}")
-    *Node(n):            format(heap(), "pointer to #{n.value}")
-    i32(n):              format(heap(), "i32 #{n}")
-    _:                   "other"
-  }
+    return match v {
+        (i32, string)(pair): format(heap(), "tuple #{pair.0}/#{pair.1}")
+        (i32, i32)(pair):    format(heap(), "int pair #{pair.0}/#{pair.1}")
+        i32[3](a):           format(heap(), "i32[3] holding #{a[0]}")
+        i32[](xs):           format(heap(), "i32 slice of #{xs.len()}")
+        string[](ss):        format(heap(), "string slice of #{ss.len()}")
+        *Node(n):            format(heap(), "pointer to #{n.value}")
+        i32(n):              format(heap(), "i32 #{n}")
+        _:                   "other"
+    }
 }
 
 // A slice borrowed from a caller keeps its slice-ness: a fixed-size array
 // and a view of one are different types, and the test tells them apart.
 // The any holds the view, so the row names it like it would for the slice.
 fn borrow(xs: i32[]): any !{ &xs } {
-  return xs as any
+    return xs as any
 }
 
 fn main() {
-  println(kind((1, "x") as any))
-  println(kind((4, 5) as any))
+    println(kind((1, "x") as any))
+    println(kind((4, 5) as any))
 
-  var arr = [1, 2, 3]
-  println(kind(arr as any))
-  println(kind(borrow(arr)))
-  println(kind(["a", "b"] as any))
+    var arr = [1, 2, 3]
+    println(kind(arr as any))
+    println(kind(borrow(arr)))
+    println(kind(["a", "b"] as any))
 
-  var node = Node{ value: 9 }
-  println(kind(&node as any))
-  println(kind(5 as any))
-  println(kind(true as any))
+    var node = Node{ value: 9 }
+    println(kind(&node as any))
+    println(kind(5 as any))
+    println(kind(true as any))
 
-  // Unwrapping with `as` names the same types.
-  var t = (1, "x") as any
-  var pair = t as (i32, string)
-  println(pair.1)
+    // Unwrapping with `as` names the same types.
+    var t = (1, "x") as any
+    var pair = t as (i32, string)
+    println(pair.1)
 
-  var view = borrow(arr)
-  println((view as i32[]).len())
+    var view = borrow(arr)
+    println((view as i32[]).len())
 }

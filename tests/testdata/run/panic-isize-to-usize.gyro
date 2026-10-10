@@ -6,6 +6,6 @@
 import { println } from "stdlib"
 
 fn main() {
-  var offset: isize = -1
-  println(offset as usize)
+    var offset: isize = -1
+    println(offset as usize)
 }

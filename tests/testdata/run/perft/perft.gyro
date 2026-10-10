@@ -108,11 +108,11 @@ const EMPTY_BITBOARDS: u64[12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 const EMPTY_OCCUPANCIES: u64[3] = [0, 0, 0]
 
 export struct Board {
-  export bitboards: u64[12]
-  export occupancies: u64[3]
-  export side: i32
-  export enpassant: i32
-  export castle: i32
+    export bitboards: u64[12]
+    export occupancies: u64[3]
+    export side: i32
+    export enpassant: i32
+    export castle: i32
 }
 
 // ---------------------------------------------------------------------------
@@ -120,33 +120,33 @@ export struct Board {
 // ---------------------------------------------------------------------------
 
 fn bit(square: i32): u64 {
-  return (1 as u64) << (square as u64)
+    return (1 as u64) << (square as u64)
 }
 
 fn get_bit(bitboard: u64, square: i32): bool {
-  return (bitboard & bit(square)) != 0
+    return (bitboard & bit(square)) != 0
 }
 
 // Brian Kernighan's popcount: clearing the lowest set bit runs once per
 // bit that is set, not once per bit in the word.
 fn count_bits(bitboard: u64): i32 {
-  var count = 0
-  var rest = bitboard
-  while rest != 0 {
-    count += 1
-    rest &= rest - 1
-  }
-  return count
+    var count = 0
+    var rest = bitboard
+    while rest != 0 {
+        count += 1
+        rest &= rest - 1
+    }
+    return count
 }
 
 // The index of the least significant set bit, or -1 for an empty board.
 // `0 -% bitboard` is C's `-bitboard` on an unsigned: Gyro has no unary
 // minus on u64 and `-` would panic anyway.
 fn get_ls1b_index(bitboard: u64): i32 {
-  if bitboard == 0 {
-    return -1
-  }
-  return count_bits((bitboard & (0 -% bitboard)) - 1)
+    if bitboard == 0 {
+        return -1
+    }
+    return count_bits((bitboard & (0 -% bitboard)) - 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -159,79 +159,79 @@ const NOT_HG_FILE: u64 = 4557430888798830399
 const NOT_AB_FILE: u64 = 18229723555195321596
 
 const BISHOP_RELEVANT_BITS: i32[64] = [
-  6, 5, 5, 5, 5, 5, 5, 6,
-  5, 5, 5, 5, 5, 5, 5, 5,
-  5, 5, 7, 7, 7, 7, 5, 5,
-  5, 5, 7, 9, 9, 7, 5, 5,
-  5, 5, 7, 9, 9, 7, 5, 5,
-  5, 5, 7, 7, 7, 7, 5, 5,
-  5, 5, 5, 5, 5, 5, 5, 5,
-  6, 5, 5, 5, 5, 5, 5, 6,
+    6, 5, 5, 5, 5, 5, 5, 6,
+    5, 5, 5, 5, 5, 5, 5, 5,
+    5, 5, 7, 7, 7, 7, 5, 5,
+    5, 5, 7, 9, 9, 7, 5, 5,
+    5, 5, 7, 9, 9, 7, 5, 5,
+    5, 5, 7, 7, 7, 7, 5, 5,
+    5, 5, 5, 5, 5, 5, 5, 5,
+    6, 5, 5, 5, 5, 5, 5, 6,
 ]
 
 const ROOK_RELEVANT_BITS: i32[64] = [
-  12, 11, 11, 11, 11, 11, 11, 12,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  11, 10, 10, 10, 10, 10, 10, 11,
-  12, 11, 11, 11, 11, 11, 11, 12,
+    12, 11, 11, 11, 11, 11, 11, 12,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    11, 10, 10, 10, 10, 10, 10, 11,
+    12, 11, 11, 11, 11, 11, 11, 12,
 ]
 
 // The magic numbers upstream ships. `init_magic_numbers()` is commented
 // out there too — the search that finds these is not on the perft path.
 const ROOK_MAGICS: u64[64] = [
-  0x8a80104000800020, 0x0140002000100040, 0x02801880a0017001, 0x0100081001000420,
-  0x0200020010080420, 0x03001c0002010008, 0x8480008002000100, 0x2080088004402900,
-  0x0000800098204000, 0x2024401000200040, 0x0100802000801000, 0x0120800800801000,
-  0x0208808088000400, 0x0002802200800400, 0x2200800100020080, 0x0801000060821100,
-  0x0080044006422000, 0x0100808020004000, 0x12108a0010204200, 0x0140848010000802,
-  0x0481828014002800, 0x8094004002004100, 0x4010040010010802, 0x0000020008806104,
-  0x0100400080208000, 0x2040002120081000, 0x0021200680100081, 0x0020100080080080,
-  0x0002000a00200410, 0x0000020080800400, 0x0080088400100102, 0x0080004600042881,
-  0x4040008040800020, 0x0440003000200801, 0x0004200011004500, 0x0188020010100100,
-  0x0014800401802800, 0x2080040080800200, 0x0124080204001001, 0x0200046502000484,
-  0x0480400080088020, 0x1000422010034000, 0x0030200100110040, 0x0000100021010009,
-  0x2002080100110004, 0x0202008004008002, 0x0020020004010100, 0x2048440040820001,
-  0x0101002200408200, 0x0040802000401080, 0x4008142004410100, 0x02060820c0120200,
-  0x0001001004080100, 0x020c020080040080, 0x2935610830022400, 0x0044440041009200,
-  0x0280001040802101, 0x2100190040002085, 0x80c0084100102001, 0x4024081001000421,
-  0x00020030a0244872, 0x0012001008414402, 0x02006104900a0804, 0x0001004081002402,
+    0x8a80104000800020, 0x0140002000100040, 0x02801880a0017001, 0x0100081001000420,
+    0x0200020010080420, 0x03001c0002010008, 0x8480008002000100, 0x2080088004402900,
+    0x0000800098204000, 0x2024401000200040, 0x0100802000801000, 0x0120800800801000,
+    0x0208808088000400, 0x0002802200800400, 0x2200800100020080, 0x0801000060821100,
+    0x0080044006422000, 0x0100808020004000, 0x12108a0010204200, 0x0140848010000802,
+    0x0481828014002800, 0x8094004002004100, 0x4010040010010802, 0x0000020008806104,
+    0x0100400080208000, 0x2040002120081000, 0x0021200680100081, 0x0020100080080080,
+    0x0002000a00200410, 0x0000020080800400, 0x0080088400100102, 0x0080004600042881,
+    0x4040008040800020, 0x0440003000200801, 0x0004200011004500, 0x0188020010100100,
+    0x0014800401802800, 0x2080040080800200, 0x0124080204001001, 0x0200046502000484,
+    0x0480400080088020, 0x1000422010034000, 0x0030200100110040, 0x0000100021010009,
+    0x2002080100110004, 0x0202008004008002, 0x0020020004010100, 0x2048440040820001,
+    0x0101002200408200, 0x0040802000401080, 0x4008142004410100, 0x02060820c0120200,
+    0x0001001004080100, 0x020c020080040080, 0x2935610830022400, 0x0044440041009200,
+    0x0280001040802101, 0x2100190040002085, 0x80c0084100102001, 0x4024081001000421,
+    0x00020030a0244872, 0x0012001008414402, 0x02006104900a0804, 0x0001004081002402,
 ]
 
 const BISHOP_MAGICS: u64[64] = [
-  0x0040040844404084, 0x002004208a004208, 0x0010190041080202, 0x0108060845042010,
-  0x0581104180800210, 0x2112080446200010, 0x1080820820060210, 0x03c0808410220200,
-  0x0004050404440404, 0x0000021001420088, 0x24d0080801082102, 0x0001020a0a020400,
-  0x0000040308200402, 0x0004011002100800, 0x0401484104104005, 0x0801010402020200,
-  0x00400210c3880100, 0x0404022024108200, 0x0810018200204102, 0x0004002801a02003,
-  0x0085040820080400, 0x810102c808880400, 0x000e900410884800, 0x8002020480840102,
-  0x0220200865090201, 0x2010100a02021202, 0x0152048408022401, 0x0020080002081110,
-  0x4001001021004000, 0x800040400a011002, 0x00e4004081011002, 0x001c004001012080,
-  0x8004200962a00220, 0x8422100208500202, 0x2000402200300c08, 0x8646020080080080,
-  0x80020a0200100808, 0x2010004880111000, 0x623000a080011400, 0x42008c0340209202,
-  0x0209188240001000, 0x400408a884001800, 0x00110400a6080400, 0x1840060a44020800,
-  0x0090080104000041, 0x0201011000808101, 0x1a2208080504f080, 0x8012020600211212,
-  0x0500861011240000, 0x0180806108200800, 0x4000020e01040044, 0x300000261044000a,
-  0x0802241102020002, 0x0020906061210001, 0x5a84841004010310, 0x0004010801011c04,
-  0x000a010109502200, 0x0000004a02012000, 0x500201010098b028, 0x8040002811040900,
-  0x0028000010020204, 0x06000020202d0240, 0x8918844842082200, 0x4010011029020020,
+    0x0040040844404084, 0x002004208a004208, 0x0010190041080202, 0x0108060845042010,
+    0x0581104180800210, 0x2112080446200010, 0x1080820820060210, 0x03c0808410220200,
+    0x0004050404440404, 0x0000021001420088, 0x24d0080801082102, 0x0001020a0a020400,
+    0x0000040308200402, 0x0004011002100800, 0x0401484104104005, 0x0801010402020200,
+    0x00400210c3880100, 0x0404022024108200, 0x0810018200204102, 0x0004002801a02003,
+    0x0085040820080400, 0x810102c808880400, 0x000e900410884800, 0x8002020480840102,
+    0x0220200865090201, 0x2010100a02021202, 0x0152048408022401, 0x0020080002081110,
+    0x4001001021004000, 0x800040400a011002, 0x00e4004081011002, 0x001c004001012080,
+    0x8004200962a00220, 0x8422100208500202, 0x2000402200300c08, 0x8646020080080080,
+    0x80020a0200100808, 0x2010004880111000, 0x623000a080011400, 0x42008c0340209202,
+    0x0209188240001000, 0x400408a884001800, 0x00110400a6080400, 0x1840060a44020800,
+    0x0090080104000041, 0x0201011000808101, 0x1a2208080504f080, 0x8012020600211212,
+    0x0500861011240000, 0x0180806108200800, 0x4000020e01040044, 0x300000261044000a,
+    0x0802241102020002, 0x0020906061210001, 0x5a84841004010310, 0x0004010801011c04,
+    0x000a010109502200, 0x0000004a02012000, 0x500201010098b028, 0x8040002811040900,
+    0x0028000010020204, 0x06000020202d0240, 0x8918844842082200, 0x4010011029020020,
 ]
 
 // What castling rights survive a move touching a square. A king or a
 // rook leaving its home square, or a rook being captured on one, clears
 // the bit that square owns.
 const CASTLING_RIGHTS: i32[64] = [
-   7, 15, 15, 15,  3, 15, 15, 11,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  15, 15, 15, 15, 15, 15, 15, 15,
-  13, 15, 15, 15, 12, 15, 15, 14,
+    7, 15, 15, 15,  3, 15, 15, 11,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    13, 15, 15, 15, 12, 15, 15, 14,
 ]
 
 // ---------------------------------------------------------------------------
@@ -245,13 +245,13 @@ const CASTLING_RIGHTS: i32[64] = [
 const BISHOP_STRIDE: i32 = 512
 const ROOK_STRIDE: i32 = 4096
 
-var pawn_attacks = Array<u64>::new(heap())    // [side * 64 + square]
-var knight_attacks = Array<u64>::new(heap())  // [square]
-var king_attacks = Array<u64>::new(heap())    // [square]
-var bishop_masks = Array<u64>::new(heap())    // [square]
-var rook_masks = Array<u64>::new(heap())      // [square]
-var bishop_attacks = Array<u64>::new(heap())  // [square * 512 + magic index]
-var rook_attacks = Array<u64>::new(heap())    // [square * 4096 + magic index]
+var pawn_attacks = Array<u64>::new(heap())   // [side * 64 + square]
+var knight_attacks = Array<u64>::new(heap()) // [square]
+var king_attacks = Array<u64>::new(heap())   // [square]
+var bishop_masks = Array<u64>::new(heap())   // [square]
+var rook_masks = Array<u64>::new(heap())     // [square]
+var bishop_attacks = Array<u64>::new(heap()) // [square * 512 + magic index]
+var rook_attacks = Array<u64>::new(heap())   // [square * 4096 + magic index]
 
 // One move buffer for the whole search: ply `p` owns
 // [p * 256, p * 256 + 256). C gives every node its own `int moves[256]`
@@ -264,47 +264,47 @@ var move_stack = Array<i32>::new(heap())
 // ---------------------------------------------------------------------------
 
 fn mask_pawn_attacks(side: i32, square: i32): u64 {
-  var attacks: u64 = 0
-  var board = bit(square)
+    var attacks: u64 = 0
+    var board = bit(square)
 
-  if side == WHITE {
-    if ((board >> 7) & NOT_A_FILE) != 0 { attacks |= board >> 7 }
-    if ((board >> 9) & NOT_H_FILE) != 0 { attacks |= board >> 9 }
-  } else {
-    if ((board << 7) & NOT_H_FILE) != 0 { attacks |= board << 7 }
-    if ((board << 9) & NOT_A_FILE) != 0 { attacks |= board << 9 }
-  }
-  return attacks
+    if side == WHITE {
+        if ((board >> 7) & NOT_A_FILE) != 0 { attacks |= board >> 7 }
+        if ((board >> 9) & NOT_H_FILE) != 0 { attacks |= board >> 9 }
+    } else {
+        if ((board << 7) & NOT_H_FILE) != 0 { attacks |= board << 7 }
+        if ((board << 9) & NOT_A_FILE) != 0 { attacks |= board << 9 }
+    }
+    return attacks
 }
 
 fn mask_knight_attacks(square: i32): u64 {
-  var attacks: u64 = 0
-  var board = bit(square)
+    var attacks: u64 = 0
+    var board = bit(square)
 
-  if ((board >> 17) & NOT_H_FILE) != 0 { attacks |= board >> 17 }
-  if ((board >> 15) & NOT_A_FILE) != 0 { attacks |= board >> 15 }
-  if ((board >> 10) & NOT_HG_FILE) != 0 { attacks |= board >> 10 }
-  if ((board >> 6) & NOT_AB_FILE) != 0 { attacks |= board >> 6 }
-  if ((board << 17) & NOT_A_FILE) != 0 { attacks |= board << 17 }
-  if ((board << 15) & NOT_H_FILE) != 0 { attacks |= board << 15 }
-  if ((board << 10) & NOT_AB_FILE) != 0 { attacks |= board << 10 }
-  if ((board << 6) & NOT_HG_FILE) != 0 { attacks |= board << 6 }
-  return attacks
+    if ((board >> 17) & NOT_H_FILE) != 0 { attacks |= board >> 17 }
+    if ((board >> 15) & NOT_A_FILE) != 0 { attacks |= board >> 15 }
+    if ((board >> 10) & NOT_HG_FILE) != 0 { attacks |= board >> 10 }
+    if ((board >> 6) & NOT_AB_FILE) != 0 { attacks |= board >> 6 }
+    if ((board << 17) & NOT_A_FILE) != 0 { attacks |= board << 17 }
+    if ((board << 15) & NOT_H_FILE) != 0 { attacks |= board << 15 }
+    if ((board << 10) & NOT_AB_FILE) != 0 { attacks |= board << 10 }
+    if ((board << 6) & NOT_HG_FILE) != 0 { attacks |= board << 6 }
+    return attacks
 }
 
 fn mask_king_attacks(square: i32): u64 {
-  var attacks: u64 = 0
-  var board = bit(square)
+    var attacks: u64 = 0
+    var board = bit(square)
 
-  if (board >> 8) != 0 { attacks |= board >> 8 }
-  if ((board >> 9) & NOT_H_FILE) != 0 { attacks |= board >> 9 }
-  if ((board >> 7) & NOT_A_FILE) != 0 { attacks |= board >> 7 }
-  if ((board >> 1) & NOT_H_FILE) != 0 { attacks |= board >> 1 }
-  if (board << 8) != 0 { attacks |= board << 8 }
-  if ((board << 9) & NOT_A_FILE) != 0 { attacks |= board << 9 }
-  if ((board << 7) & NOT_H_FILE) != 0 { attacks |= board << 7 }
-  if ((board << 1) & NOT_A_FILE) != 0 { attacks |= board << 1 }
-  return attacks
+    if (board >> 8) != 0 { attacks |= board >> 8 }
+    if ((board >> 9) & NOT_H_FILE) != 0 { attacks |= board >> 9 }
+    if ((board >> 7) & NOT_A_FILE) != 0 { attacks |= board >> 7 }
+    if ((board >> 1) & NOT_H_FILE) != 0 { attacks |= board >> 1 }
+    if (board << 8) != 0 { attacks |= board << 8 }
+    if ((board << 9) & NOT_A_FILE) != 0 { attacks |= board << 9 }
+    if ((board << 7) & NOT_H_FILE) != 0 { attacks |= board << 7 }
+    if ((board << 1) & NOT_A_FILE) != 0 { attacks |= board << 1 }
+    return attacks
 }
 
 // ---------------------------------------------------------------------------
@@ -315,147 +315,147 @@ fn mask_king_attacks(square: i32): u64 {
 // ---------------------------------------------------------------------------
 
 fn mask_bishop_attacks(square: i32): u64 {
-  var attacks: u64 = 0
-  var target_rank = square / 8
-  var target_file = square % 8
+    var attacks: u64 = 0
+    var target_rank = square / 8
+    var target_file = square % 8
 
-  var rank = target_rank + 1
-  var file = target_file + 1
-  while rank <= 6 && file <= 6 {
-    attacks |= bit(rank * 8 + file)
-    rank += 1
-    file += 1
-  }
-  rank = target_rank - 1
-  file = target_file + 1
-  while rank >= 1 && file <= 6 {
-    attacks |= bit(rank * 8 + file)
-    rank -= 1
-    file += 1
-  }
-  rank = target_rank + 1
-  file = target_file - 1
-  while rank <= 6 && file >= 1 {
-    attacks |= bit(rank * 8 + file)
-    rank += 1
-    file -= 1
-  }
-  rank = target_rank - 1
-  file = target_file - 1
-  while rank >= 1 && file >= 1 {
-    attacks |= bit(rank * 8 + file)
-    rank -= 1
-    file -= 1
-  }
-  return attacks
+    var rank = target_rank + 1
+    var file = target_file + 1
+    while rank <= 6 && file <= 6 {
+        attacks |= bit(rank * 8 + file)
+        rank += 1
+        file += 1
+    }
+    rank = target_rank - 1
+    file = target_file + 1
+    while rank >= 1 && file <= 6 {
+        attacks |= bit(rank * 8 + file)
+        rank -= 1
+        file += 1
+    }
+    rank = target_rank + 1
+    file = target_file - 1
+    while rank <= 6 && file >= 1 {
+        attacks |= bit(rank * 8 + file)
+        rank += 1
+        file -= 1
+    }
+    rank = target_rank - 1
+    file = target_file - 1
+    while rank >= 1 && file >= 1 {
+        attacks |= bit(rank * 8 + file)
+        rank -= 1
+        file -= 1
+    }
+    return attacks
 }
 
 fn mask_rook_attacks(square: i32): u64 {
-  var attacks: u64 = 0
-  var target_rank = square / 8
-  var target_file = square % 8
+    var attacks: u64 = 0
+    var target_rank = square / 8
+    var target_file = square % 8
 
-  var rank = target_rank + 1
-  while rank <= 6 {
-    attacks |= bit(rank * 8 + target_file)
-    rank += 1
-  }
-  rank = target_rank - 1
-  while rank >= 1 {
-    attacks |= bit(rank * 8 + target_file)
-    rank -= 1
-  }
-  var file = target_file + 1
-  while file <= 6 {
-    attacks |= bit(target_rank * 8 + file)
-    file += 1
-  }
-  file = target_file - 1
-  while file >= 1 {
-    attacks |= bit(target_rank * 8 + file)
-    file -= 1
-  }
-  return attacks
+    var rank = target_rank + 1
+    while rank <= 6 {
+        attacks |= bit(rank * 8 + target_file)
+        rank += 1
+    }
+    rank = target_rank - 1
+    while rank >= 1 {
+        attacks |= bit(rank * 8 + target_file)
+        rank -= 1
+    }
+    var file = target_file + 1
+    while file <= 6 {
+        attacks |= bit(target_rank * 8 + file)
+        file += 1
+    }
+    file = target_file - 1
+    while file >= 1 {
+        attacks |= bit(target_rank * 8 + file)
+        file -= 1
+    }
+    return attacks
 }
 
 fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
-  var attacks: u64 = 0
-  var target_rank = square / 8
-  var target_file = square % 8
+    var attacks: u64 = 0
+    var target_rank = square / 8
+    var target_file = square % 8
 
-  var rank = target_rank + 1
-  var file = target_file + 1
-  while rank <= 7 && file <= 7 {
-    var mark = bit(rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank += 1
-    file += 1
-  }
-  rank = target_rank - 1
-  file = target_file + 1
-  while rank >= 0 && file <= 7 {
-    var mark = bit(rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank -= 1
-    file += 1
-  }
-  rank = target_rank + 1
-  file = target_file - 1
-  while rank <= 7 && file >= 0 {
-    var mark = bit(rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank += 1
-    file -= 1
-  }
-  rank = target_rank - 1
-  file = target_file - 1
-  while rank >= 0 && file >= 0 {
-    var mark = bit(rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank -= 1
-    file -= 1
-  }
-  return attacks
+    var rank = target_rank + 1
+    var file = target_file + 1
+    while rank <= 7 && file <= 7 {
+        var mark = bit(rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank += 1
+        file += 1
+    }
+    rank = target_rank - 1
+    file = target_file + 1
+    while rank >= 0 && file <= 7 {
+        var mark = bit(rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank -= 1
+        file += 1
+    }
+    rank = target_rank + 1
+    file = target_file - 1
+    while rank <= 7 && file >= 0 {
+        var mark = bit(rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank += 1
+        file -= 1
+    }
+    rank = target_rank - 1
+    file = target_file - 1
+    while rank >= 0 && file >= 0 {
+        var mark = bit(rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank -= 1
+        file -= 1
+    }
+    return attacks
 }
 
 fn rook_attacks_on_the_fly(square: i32, block: u64): u64 {
-  var attacks: u64 = 0
-  var target_rank = square / 8
-  var target_file = square % 8
+    var attacks: u64 = 0
+    var target_rank = square / 8
+    var target_file = square % 8
 
-  var rank = target_rank + 1
-  while rank <= 7 {
-    var mark = bit(rank * 8 + target_file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank += 1
-  }
-  rank = target_rank - 1
-  while rank >= 0 {
-    var mark = bit(rank * 8 + target_file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    rank -= 1
-  }
-  var file = target_file + 1
-  while file <= 7 {
-    var mark = bit(target_rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    file += 1
-  }
-  file = target_file - 1
-  while file >= 0 {
-    var mark = bit(target_rank * 8 + file)
-    attacks |= mark
-    if (mark & block) != 0 { break }
-    file -= 1
-  }
-  return attacks
+    var rank = target_rank + 1
+    while rank <= 7 {
+        var mark = bit(rank * 8 + target_file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank += 1
+    }
+    rank = target_rank - 1
+    while rank >= 0 {
+        var mark = bit(rank * 8 + target_file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        rank -= 1
+    }
+    var file = target_file + 1
+    while file <= 7 {
+        var mark = bit(target_rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        file += 1
+    }
+    file = target_file - 1
+    while file >= 0 {
+        var mark = bit(target_rank * 8 + file)
+        attacks |= mark
+        if (mark & block) != 0 { break }
+        file -= 1
+    }
+    return attacks
 }
 
 // ---------------------------------------------------------------------------
@@ -463,83 +463,83 @@ fn rook_attacks_on_the_fly(square: i32, block: u64): u64 {
 // ---------------------------------------------------------------------------
 
 fn init_leapers_attacks() {
-  for square in 0..64 {
-    pawn_attacks.push(mask_pawn_attacks(WHITE, square))
-  }
-  for square in 0..64 {
-    pawn_attacks.push(mask_pawn_attacks(BLACK, square))
-  }
-  for square in 0..64 {
-    knight_attacks.push(mask_knight_attacks(square))
-    king_attacks.push(mask_king_attacks(square))
-  }
+    for square in 0..64 {
+        pawn_attacks.push(mask_pawn_attacks(WHITE, square))
+    }
+    for square in 0..64 {
+        pawn_attacks.push(mask_pawn_attacks(BLACK, square))
+    }
+    for square in 0..64 {
+        knight_attacks.push(mask_knight_attacks(square))
+        king_attacks.push(mask_king_attacks(square))
+    }
 }
 
 fn init_sliders_attacks() {
-  for square in 0..64 {
-    bishop_masks.push(mask_bishop_attacks(square))
-    rook_masks.push(mask_rook_attacks(square))
-  }
-
-  // The tables are written by magic index, not in order, so they have to
-  // exist before anything is stored into them.
-  for i in 0..(64 * BISHOP_STRIDE) {
-    bishop_attacks.push(0)
-  }
-  for i in 0..(64 * ROOK_STRIDE) {
-    rook_attacks.push(0)
-  }
-
-  // Every subset of a square's mask is one occupancy variation, and the
-  // carry-rippler walks all of them exactly once: subtracting the mask
-  // borrows through its set bits and the AND throws the rest away, so the
-  // sequence starts at 0, visits each subset and returns to 0. Upstream
-  // spreads the bits of a counter instead, which visits the same subsets
-  // and costs one pass over the mask per variation rather than two
-  // instructions.
-  for square in 0..64 {
-    var mask = bishop_masks.get(square as usize)
-    var occupancy: u64 = 0
-    var more = true
-    while more {
-      var magic_index = magic_index_of(occupancy, BISHOP_MAGICS[square as usize],
-        BISHOP_RELEVANT_BITS[square as usize])
-      bishop_attacks.set((square * BISHOP_STRIDE + magic_index) as usize,
-        bishop_attacks_on_the_fly(square, occupancy))
-      occupancy = (occupancy -% mask) & mask
-      more = occupancy != 0
+    for square in 0..64 {
+        bishop_masks.push(mask_bishop_attacks(square))
+        rook_masks.push(mask_rook_attacks(square))
     }
-  }
 
-  for square in 0..64 {
-    var mask = rook_masks.get(square as usize)
-    var occupancy: u64 = 0
-    var more = true
-    while more {
-      var magic_index = magic_index_of(occupancy, ROOK_MAGICS[square as usize],
-        ROOK_RELEVANT_BITS[square as usize])
-      rook_attacks.set((square * ROOK_STRIDE + magic_index) as usize,
-        rook_attacks_on_the_fly(square, occupancy))
-      occupancy = (occupancy -% mask) & mask
-      more = occupancy != 0
+    // The tables are written by magic index, not in order, so they have to
+    // exist before anything is stored into them.
+    for i in 0..(64 * BISHOP_STRIDE) {
+        bishop_attacks.push(0)
     }
-  }
+    for i in 0..(64 * ROOK_STRIDE) {
+        rook_attacks.push(0)
+    }
+
+    // Every subset of a square's mask is one occupancy variation, and the
+    // carry-rippler walks all of them exactly once: subtracting the mask
+    // borrows through its set bits and the AND throws the rest away, so the
+    // sequence starts at 0, visits each subset and returns to 0. Upstream
+    // spreads the bits of a counter instead, which visits the same subsets
+    // and costs one pass over the mask per variation rather than two
+    // instructions.
+    for square in 0..64 {
+        var mask = bishop_masks.get(square as usize)
+        var occupancy: u64 = 0
+        var more = true
+        while more {
+            var magic_index = magic_index_of(occupancy, BISHOP_MAGICS[square as usize],
+                BISHOP_RELEVANT_BITS[square as usize])
+            bishop_attacks.set((square * BISHOP_STRIDE + magic_index) as usize,
+                bishop_attacks_on_the_fly(square, occupancy))
+            occupancy = (occupancy -% mask) & mask
+            more = occupancy != 0
+        }
+    }
+
+    for square in 0..64 {
+        var mask = rook_masks.get(square as usize)
+        var occupancy: u64 = 0
+        var more = true
+        while more {
+            var magic_index = magic_index_of(occupancy, ROOK_MAGICS[square as usize],
+                ROOK_RELEVANT_BITS[square as usize])
+            rook_attacks.set((square * ROOK_STRIDE + magic_index) as usize,
+                rook_attacks_on_the_fly(square, occupancy))
+            occupancy = (occupancy -% mask) & mask
+            more = occupancy != 0
+        }
+    }
 }
 
 // The magic step itself: a multiply that throws away its high half on
 // purpose, then a shift that keeps only as many bits as the square needs.
 fn magic_index_of(occupancy: u64, magic: u64, relevant_bits: i32): i32 {
-  return ((occupancy *% magic) >> ((64 - relevant_bits) as u64)) as i32
+    return ((occupancy *% magic) >> ((64 - relevant_bits) as u64)) as i32
 }
 
 // init_all builds every table. It has to run before anything else here is
 // called; a program calls it once.
 export fn init_all() {
-  init_leapers_attacks()
-  init_sliders_attacks()
-  for i in 0..(MAX_PLY * MOVES_PER_PLY) {
-    move_stack.push(0)
-  }
+    init_leapers_attacks()
+    init_sliders_attacks()
+    for i in 0..(MAX_PLY * MOVES_PER_PLY) {
+        move_stack.push(0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -547,19 +547,19 @@ export fn init_all() {
 // ---------------------------------------------------------------------------
 
 fn get_bishop_attacks(square: i32, occupancy: u64): u64 {
-  var index = magic_index_of(occupancy & bishop_masks.get(square as usize),
-    BISHOP_MAGICS[square as usize], BISHOP_RELEVANT_BITS[square as usize])
-  return bishop_attacks.get((square * BISHOP_STRIDE + index) as usize)
+    var index = magic_index_of(occupancy & bishop_masks.get(square as usize),
+        BISHOP_MAGICS[square as usize], BISHOP_RELEVANT_BITS[square as usize])
+    return bishop_attacks.get((square * BISHOP_STRIDE + index) as usize)
 }
 
 fn get_rook_attacks(square: i32, occupancy: u64): u64 {
-  var index = magic_index_of(occupancy & rook_masks.get(square as usize),
-    ROOK_MAGICS[square as usize], ROOK_RELEVANT_BITS[square as usize])
-  return rook_attacks.get((square * ROOK_STRIDE + index) as usize)
+    var index = magic_index_of(occupancy & rook_masks.get(square as usize),
+        ROOK_MAGICS[square as usize], ROOK_RELEVANT_BITS[square as usize])
+    return rook_attacks.get((square * ROOK_STRIDE + index) as usize)
 }
 
 fn get_queen_attacks(square: i32, occupancy: u64): u64 {
-  return get_bishop_attacks(square, occupancy) | get_rook_attacks(square, occupancy)
+    return get_bishop_attacks(square, occupancy) | get_rook_attacks(square, occupancy)
 }
 
 // ---------------------------------------------------------------------------
@@ -567,29 +567,29 @@ fn get_queen_attacks(square: i32, occupancy: u64): u64 {
 // ---------------------------------------------------------------------------
 
 fn piece_from_char(letter: rune): i32 {
-  return match letter {
-    'P': WP
-    'N': WN
-    'B': WB
-    'R': WR
-    'Q': WQ
-    'K': WK
-    'p': BP
-    'n': BN
-    'b': BB
-    'r': BR
-    'q': BQ
-    'k': BK
-    _: -1
-  }
+    return match letter {
+        'P': WP
+        'N': WN
+        'B': WB
+        'R': WR
+        'Q': WQ
+        'K': WK
+        'p': BP
+        'n': BN
+        'b': BB
+        'r': BR
+        'q': BQ
+        'k': BK
+        _: -1
+    }
 }
 
 fn is_letter(letter: rune): bool {
-  return (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z')
+    return (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z')
 }
 
 fn is_digit(letter: rune): bool {
-  return letter >= '0' && letter <= '9'
+    return letter >= '0' && letter <= '9'
 }
 
 // parse_fen reads a position. It follows upstream's walk exactly, quirks
@@ -597,92 +597,92 @@ fn is_digit(letter: rune): bool {
 // and a square that a piece was just placed on does not get the extra
 // decrement.
 export fn parse_fen(fen: string): Board {
-  var board = Board{
-    bitboards: EMPTY_BITBOARDS,
-    occupancies: EMPTY_OCCUPANCIES,
-    side: WHITE,
-    enpassant: NO_SQ,
-    castle: 0,
-  }
-
-  var text = fen.bytes(heap())
-  var at: usize = 0
-
-  for rank in 0..8 {
-    var file = 0
-    while file < 8 {
-      var square = rank * 8 + file
-      var letter = text[at] as rune
-
-      if is_letter(letter) {
-        board.bitboards[piece_from_char(letter) as usize] |= bit(square)
-        at += 1
-        letter = text[at] as rune
-      }
-      if is_digit(letter) {
-        var offset = (letter as i32) - ('0' as i32)
-        var occupied = false
-        for piece in 0..12 {
-          if get_bit(board.bitboards[piece as usize], square) {
-            occupied = true
-          }
-        }
-        if !occupied {
-          file -= 1
-        }
-        file += offset
-        at += 1
-        letter = text[at] as rune
-      }
-      if letter == '/' {
-        at += 1
-      }
-      file += 1
+    var board = Board{
+        bitboards: EMPTY_BITBOARDS,
+        occupancies: EMPTY_OCCUPANCIES,
+        side: WHITE,
+        enpassant: NO_SQ,
+        castle: 0,
     }
-  }
 
-  // Side to move, then the castling field, then en passant.
-  at += 1
-  if text[at] as rune == 'w' {
-    board.side = WHITE
-  } else {
-    board.side = BLACK
-  }
-  at += 2
+    var text = fen.bytes(heap())
+    var at: usize = 0
 
-  while text[at] as rune != ' ' {
-    var right = text[at] as rune
-    if right == 'K' {
-      board.castle |= CASTLE_WK
-    } elif right == 'Q' {
-      board.castle |= CASTLE_WQ
-    } elif right == 'k' {
-      board.castle |= CASTLE_BK
-    } elif right == 'q' {
-      board.castle |= CASTLE_BQ
+    for rank in 0..8 {
+        var file = 0
+        while file < 8 {
+            var square = rank * 8 + file
+            var letter = text[at] as rune
+
+            if is_letter(letter) {
+                board.bitboards[piece_from_char(letter) as usize] |= bit(square)
+                at += 1
+                letter = text[at] as rune
+            }
+            if is_digit(letter) {
+                var offset = (letter as i32) - ('0' as i32)
+                var occupied = false
+                for piece in 0..12 {
+                    if get_bit(board.bitboards[piece as usize], square) {
+                        occupied = true
+                    }
+                }
+                if !occupied {
+                    file -= 1
+                }
+                file += offset
+                at += 1
+                letter = text[at] as rune
+            }
+            if letter == '/' {
+                at += 1
+            }
+            file += 1
+        }
+    }
+
+    // Side to move, then the castling field, then en passant.
+    at += 1
+    if text[at] as rune == 'w' {
+        board.side = WHITE
+    } else {
+        board.side = BLACK
+    }
+    at += 2
+
+    while text[at] as rune != ' ' {
+        var right = text[at] as rune
+        if right == 'K' {
+            board.castle |= CASTLE_WK
+        } elif right == 'Q' {
+            board.castle |= CASTLE_WQ
+        } elif right == 'k' {
+            board.castle |= CASTLE_BK
+        } elif right == 'q' {
+            board.castle |= CASTLE_BQ
+        }
+        at += 1
     }
     at += 1
-  }
-  at += 1
 
-  if text[at] as rune != '-' {
-    var file = (text[at] as i32) - ('a' as i32)
-    var rank = 8 - ((text[at + 1] as i32) - ('0' as i32))
-    board.enpassant = rank * 8 + file
-  } else {
-    board.enpassant = NO_SQ
-  }
+    if text[at] as rune != '-' {
+        var file = (text[at] as i32) - ('a' as i32)
+        var rank = 8 - ((text[at + 1] as i32) - ('0' as i32))
+        board.enpassant = rank * 8 + file
+    } else {
+        board.enpassant = NO_SQ
+    }
 
-  for piece in WP..(WK + 1) {
-    board.occupancies[WHITE as usize] |= board.bitboards[piece as usize]
-  }
-  for piece in BP..(BK + 1) {
-    board.occupancies[BLACK as usize] |= board.bitboards[piece as usize]
-  }
-  board.occupancies[BOTH as usize] =
-    board.occupancies[WHITE as usize] | board.occupancies[BLACK as usize]
+    for piece in WP..(WK + 1) {
+        board.occupancies[WHITE as usize] |= board.bitboards[piece as usize]
+    }
+    for piece in BP..(BK + 1) {
+        board.occupancies[BLACK as usize] |= board.bitboards[piece as usize]
+    }
+    board.occupancies[BOTH as usize] =
+        board.occupancies[WHITE as usize] | board.occupancies[BLACK as usize]
 
-  return board
+    return board
 }
 
 // ---------------------------------------------------------------------------
@@ -699,12 +699,12 @@ const FLAG_CASTLING: i32 = 0x800000
 
 fn encode_move(source: i32, target: i32, piece: i32, promoted: i32,
     capture: bool, double_push: bool, enpassant: bool, castling: bool): i32 {
-  var move = source | (target << 6) | (piece << 12) | (promoted << 16)
-  if capture { move |= FLAG_CAPTURE }
-  if double_push { move |= FLAG_DOUBLE }
-  if enpassant { move |= FLAG_ENPASSANT }
-  if castling { move |= FLAG_CASTLING }
-  return move
+    var move = source | (target << 6) | (piece << 12) | (promoted << 16)
+    if capture { move |= FLAG_CAPTURE }
+    if double_push { move |= FLAG_DOUBLE }
+    if enpassant { move |= FLAG_ENPASSANT }
+    if castling { move |= FLAG_CASTLING }
+    return move
 }
 
 export fn move_source(move: i32): i32 { return move & 0x3f }
@@ -720,22 +720,22 @@ fn move_is_castling(move: i32): bool { return (move & FLAG_CASTLING) != 0 }
 // A `match` cannot be used here: a bare name in a pattern position binds
 // rather than compares, so `WQ: "q"` would match every piece.
 export fn promoted_letter(piece: i32): string {
-  if piece == WQ || piece == BQ {
-    return "q"
-  } elif piece == WR || piece == BR {
-    return "r"
-  } elif piece == WB || piece == BB {
-    return "b"
-  } elif piece == WN || piece == BN {
-    return "n"
-  }
-  return " "
+    if piece == WQ || piece == BQ {
+        return "q"
+    } elif piece == WR || piece == BR {
+        return "r"
+    } elif piece == WB || piece == BB {
+        return "b"
+    } elif piece == WN || piece == BN {
+        return "n"
+    }
+    return " "
 }
 
 const FILE_LETTERS: string[8] = ["a", "b", "c", "d", "e", "f", "g", "h"]
 
 export fn square_name(square: i32): string {
-  return format(heap(), "#{FILE_LETTERS[(square % 8) as usize]}#{8 - square / 8}")
+    return format(heap(), "#{FILE_LETTERS[(square % 8) as usize]}#{8 - square / 8}")
 }
 
 // ---------------------------------------------------------------------------
@@ -746,49 +746,49 @@ export fn square_name(square: i32): string {
 // *from* the square: a knight attacks the square exactly when a knight
 // sits on one of the squares a knight there would reach.
 export fn is_square_attacked(board: *Board, square: i32, side: i32): bool {
-  var occupancy = board.occupancies[BOTH as usize]
+    var occupancy = board.occupancies[BOTH as usize]
 
-  if side == WHITE {
-    if (pawn_attacks.get((BLACK * 64 + square) as usize) & board.bitboards[WP as usize]) != 0 {
-      return true
+    if side == WHITE {
+        if (pawn_attacks.get((BLACK * 64 + square) as usize) & board.bitboards[WP as usize]) != 0 {
+            return true
+        }
+        if (knight_attacks.get(square as usize) & board.bitboards[WN as usize]) != 0 {
+            return true
+        }
+        if (get_bishop_attacks(square, occupancy) & board.bitboards[WB as usize]) != 0 {
+            return true
+        }
+        if (get_rook_attacks(square, occupancy) & board.bitboards[WR as usize]) != 0 {
+            return true
+        }
+        if (get_queen_attacks(square, occupancy) & board.bitboards[WQ as usize]) != 0 {
+            return true
+        }
+        if (king_attacks.get(square as usize) & board.bitboards[WK as usize]) != 0 {
+            return true
+        }
+        return false
     }
-    if (knight_attacks.get(square as usize) & board.bitboards[WN as usize]) != 0 {
-      return true
+
+    if (pawn_attacks.get((WHITE * 64 + square) as usize) & board.bitboards[BP as usize]) != 0 {
+        return true
     }
-    if (get_bishop_attacks(square, occupancy) & board.bitboards[WB as usize]) != 0 {
-      return true
+    if (knight_attacks.get(square as usize) & board.bitboards[BN as usize]) != 0 {
+        return true
     }
-    if (get_rook_attacks(square, occupancy) & board.bitboards[WR as usize]) != 0 {
-      return true
+    if (get_bishop_attacks(square, occupancy) & board.bitboards[BB as usize]) != 0 {
+        return true
     }
-    if (get_queen_attacks(square, occupancy) & board.bitboards[WQ as usize]) != 0 {
-      return true
+    if (get_rook_attacks(square, occupancy) & board.bitboards[BR as usize]) != 0 {
+        return true
     }
-    if (king_attacks.get(square as usize) & board.bitboards[WK as usize]) != 0 {
-      return true
+    if (get_queen_attacks(square, occupancy) & board.bitboards[BQ as usize]) != 0 {
+        return true
+    }
+    if (king_attacks.get(square as usize) & board.bitboards[BK as usize]) != 0 {
+        return true
     }
     return false
-  }
-
-  if (pawn_attacks.get((WHITE * 64 + square) as usize) & board.bitboards[BP as usize]) != 0 {
-    return true
-  }
-  if (knight_attacks.get(square as usize) & board.bitboards[BN as usize]) != 0 {
-    return true
-  }
-  if (get_bishop_attacks(square, occupancy) & board.bitboards[BB as usize]) != 0 {
-    return true
-  }
-  if (get_rook_attacks(square, occupancy) & board.bitboards[BR as usize]) != 0 {
-    return true
-  }
-  if (get_queen_attacks(square, occupancy) & board.bitboards[BQ as usize]) != 0 {
-    return true
-  }
-  if (king_attacks.get(square as usize) & board.bitboards[BK as usize]) != 0 {
-    return true
-  }
-  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -800,199 +800,199 @@ export fn is_square_attacked(board: *Board, square: i32, side: i32): bool {
 // Legality — whether the mover leaves its own king in check — is decided
 // by make_move, exactly as upstream does it.
 export fn generate_moves(board: *Board, ply: i32): i32 {
-  var base = ply * MOVES_PER_PLY
-  var count = 0
+    var base = ply * MOVES_PER_PLY
+    var count = 0
 
-  var side = board.side
-  var own = board.occupancies[side as usize]
-  var enemy = board.occupancies[(1 - side) as usize]
-  var occupancy = board.occupancies[BOTH as usize]
+    var side = board.side
+    var own = board.occupancies[side as usize]
+    var enemy = board.occupancies[(1 - side) as usize]
+    var occupancy = board.occupancies[BOTH as usize]
 
-  for piece in 0..12 {
-    var bitboard = board.bitboards[piece as usize]
+    for piece in 0..12 {
+        var bitboard = board.bitboards[piece as usize]
 
-    if side == WHITE && piece == WP {
-      while bitboard != 0 {
-        var source = get_ls1b_index(bitboard)
-        var target = source - 8
+        if side == WHITE && piece == WP {
+            while bitboard != 0 {
+                var source = get_ls1b_index(bitboard)
+                var target = source - 8
 
-        if target >= A8 && !get_bit(occupancy, target) {
-          if source >= A7 && source <= H7 {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, WQ, false, false, false, false))
-            move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, WR, false, false, false, false))
-            move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, WB, false, false, false, false))
-            move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, WN, false, false, false, false))
-            count += 4
-          } else {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, false, false, false, false))
-            count += 1
-            if source >= A2 && source <= H2 && !get_bit(occupancy, target - 8) {
-              move_stack.set((base + count) as usize, encode_move(source, target - 8, piece, 0, false, true, false, false))
-              count += 1
+                if target >= A8 && !get_bit(occupancy, target) {
+                    if source >= A7 && source <= H7 {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, WQ, false, false, false, false))
+                        move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, WR, false, false, false, false))
+                        move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, WB, false, false, false, false))
+                        move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, WN, false, false, false, false))
+                        count += 4
+                    } else {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, false, false, false, false))
+                        count += 1
+                        if source >= A2 && source <= H2 && !get_bit(occupancy, target - 8) {
+                            move_stack.set((base + count) as usize, encode_move(source, target - 8, piece, 0, false, true, false, false))
+                            count += 1
+                        }
+                    }
+                }
+
+                var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
+                while attacks != 0 {
+                    target = get_ls1b_index(attacks)
+                    if source >= A7 && source <= H7 {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, WQ, true, false, false, false))
+                        move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, WR, true, false, false, false))
+                        move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, WB, true, false, false, false))
+                        move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, WN, true, false, false, false))
+                        count += 4
+                    } else {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, true, false, false, false))
+                        count += 1
+                    }
+                    attacks &= ~bit(target)
+                }
+
+                if board.enpassant != NO_SQ {
+                    var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
+                    if enpassant_attacks != 0 {
+                        var enpassant_target = get_ls1b_index(enpassant_attacks)
+                        move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
+                        count += 1
+                    }
+                }
+
+                bitboard &= ~bit(source)
             }
-          }
         }
 
-        var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
-        while attacks != 0 {
-          target = get_ls1b_index(attacks)
-          if source >= A7 && source <= H7 {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, WQ, true, false, false, false))
-            move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, WR, true, false, false, false))
-            move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, WB, true, false, false, false))
-            move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, WN, true, false, false, false))
-            count += 4
-          } else {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, true, false, false, false))
-            count += 1
-          }
-          attacks &= ~bit(target)
-        }
-
-        if board.enpassant != NO_SQ {
-          var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
-          if enpassant_attacks != 0 {
-            var enpassant_target = get_ls1b_index(enpassant_attacks)
-            move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
-            count += 1
-          }
-        }
-
-        bitboard &= ~bit(source)
-      }
-    }
-
-    if side == WHITE && piece == WK {
-      if (board.castle & CASTLE_WK) != 0 {
-        if !get_bit(occupancy, F1) && !get_bit(occupancy, G1) {
-          if !is_square_attacked(board, E1, BLACK) && !is_square_attacked(board, F1, BLACK) {
-            move_stack.set((base + count) as usize, encode_move(E1, G1, piece, 0, false, false, false, true))
-            count += 1
-          }
-        }
-      }
-      if (board.castle & CASTLE_WQ) != 0 {
-        if !get_bit(occupancy, D1) && !get_bit(occupancy, C1) && !get_bit(occupancy, B1) {
-          if !is_square_attacked(board, E1, BLACK) && !is_square_attacked(board, D1, BLACK) {
-            move_stack.set((base + count) as usize, encode_move(E1, C1, piece, 0, false, false, false, true))
-            count += 1
-          }
-        }
-      }
-    }
-
-    if side == BLACK && piece == BP {
-      while bitboard != 0 {
-        var source = get_ls1b_index(bitboard)
-        var target = source + 8
-
-        if target <= H1 && !get_bit(occupancy, target) {
-          if source >= A2 && source <= H2 {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, BQ, false, false, false, false))
-            move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, BR, false, false, false, false))
-            move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, BB, false, false, false, false))
-            move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, BN, false, false, false, false))
-            count += 4
-          } else {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, false, false, false, false))
-            count += 1
-            if source >= A7 && source <= H7 && !get_bit(occupancy, target + 8) {
-              move_stack.set((base + count) as usize, encode_move(source, target + 8, piece, 0, false, true, false, false))
-              count += 1
+        if side == WHITE && piece == WK {
+            if (board.castle & CASTLE_WK) != 0 {
+                if !get_bit(occupancy, F1) && !get_bit(occupancy, G1) {
+                    if !is_square_attacked(board, E1, BLACK) && !is_square_attacked(board, F1, BLACK) {
+                        move_stack.set((base + count) as usize, encode_move(E1, G1, piece, 0, false, false, false, true))
+                        count += 1
+                    }
+                }
             }
-          }
+            if (board.castle & CASTLE_WQ) != 0 {
+                if !get_bit(occupancy, D1) && !get_bit(occupancy, C1) && !get_bit(occupancy, B1) {
+                    if !is_square_attacked(board, E1, BLACK) && !is_square_attacked(board, D1, BLACK) {
+                        move_stack.set((base + count) as usize, encode_move(E1, C1, piece, 0, false, false, false, true))
+                        count += 1
+                    }
+                }
+            }
         }
 
-        var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
-        while attacks != 0 {
-          target = get_ls1b_index(attacks)
-          if source >= A2 && source <= H2 {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, BQ, true, false, false, false))
-            move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, BR, true, false, false, false))
-            move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, BB, true, false, false, false))
-            move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, BN, true, false, false, false))
-            count += 4
-          } else {
-            move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, true, false, false, false))
-            count += 1
-          }
-          attacks &= ~bit(target)
+        if side == BLACK && piece == BP {
+            while bitboard != 0 {
+                var source = get_ls1b_index(bitboard)
+                var target = source + 8
+
+                if target <= H1 && !get_bit(occupancy, target) {
+                    if source >= A2 && source <= H2 {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, BQ, false, false, false, false))
+                        move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, BR, false, false, false, false))
+                        move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, BB, false, false, false, false))
+                        move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, BN, false, false, false, false))
+                        count += 4
+                    } else {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, false, false, false, false))
+                        count += 1
+                        if source >= A7 && source <= H7 && !get_bit(occupancy, target + 8) {
+                            move_stack.set((base + count) as usize, encode_move(source, target + 8, piece, 0, false, true, false, false))
+                            count += 1
+                        }
+                    }
+                }
+
+                var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
+                while attacks != 0 {
+                    target = get_ls1b_index(attacks)
+                    if source >= A2 && source <= H2 {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, BQ, true, false, false, false))
+                        move_stack.set((base + count + 1) as usize, encode_move(source, target, piece, BR, true, false, false, false))
+                        move_stack.set((base + count + 2) as usize, encode_move(source, target, piece, BB, true, false, false, false))
+                        move_stack.set((base + count + 3) as usize, encode_move(source, target, piece, BN, true, false, false, false))
+                        count += 4
+                    } else {
+                        move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, true, false, false, false))
+                        count += 1
+                    }
+                    attacks &= ~bit(target)
+                }
+
+                if board.enpassant != NO_SQ {
+                    var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
+                    if enpassant_attacks != 0 {
+                        var enpassant_target = get_ls1b_index(enpassant_attacks)
+                        move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
+                        count += 1
+                    }
+                }
+
+                bitboard &= ~bit(source)
+            }
         }
 
-        if board.enpassant != NO_SQ {
-          var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
-          if enpassant_attacks != 0 {
-            var enpassant_target = get_ls1b_index(enpassant_attacks)
-            move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
-            count += 1
-          }
+        if side == BLACK && piece == BK {
+            if (board.castle & CASTLE_BK) != 0 {
+                if !get_bit(occupancy, F8) && !get_bit(occupancy, G8) {
+                    if !is_square_attacked(board, E8, WHITE) && !is_square_attacked(board, F8, WHITE) {
+                        move_stack.set((base + count) as usize, encode_move(E8, G8, piece, 0, false, false, false, true))
+                        count += 1
+                    }
+                }
+            }
+            if (board.castle & CASTLE_BQ) != 0 {
+                if !get_bit(occupancy, D8) && !get_bit(occupancy, C8) && !get_bit(occupancy, B8) {
+                    if !is_square_attacked(board, E8, WHITE) && !is_square_attacked(board, D8, WHITE) {
+                        move_stack.set((base + count) as usize, encode_move(E8, C8, piece, 0, false, false, false, true))
+                        count += 1
+                    }
+                }
+            }
         }
 
-        bitboard &= ~bit(source)
-      }
+        // Knights, bishops, rooks, queens and kings all read the same way:
+        // an attack set masked against the squares the mover does not
+        // already occupy, split into quiet moves and captures.
+        var moves_this_piece = (side == WHITE && piece >= WN && piece <= WK)
+            || (side == BLACK && piece >= BN && piece <= BK)
+
+        if moves_this_piece {
+            while bitboard != 0 {
+                var source = get_ls1b_index(bitboard)
+                var attacks: u64 = 0
+                if piece == WN || piece == BN {
+                    attacks = knight_attacks.get(source as usize)
+                } elif piece == WB || piece == BB {
+                    attacks = get_bishop_attacks(source, occupancy)
+                } elif piece == WR || piece == BR {
+                    attacks = get_rook_attacks(source, occupancy)
+                } elif piece == WQ || piece == BQ {
+                    attacks = get_queen_attacks(source, occupancy)
+                } else {
+                    attacks = king_attacks.get(source as usize)
+                }
+                attacks &= ~own
+
+                while attacks != 0 {
+                    var target = get_ls1b_index(attacks)
+                    var capture = get_bit(enemy, target)
+                    move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, capture, false, false, false))
+                    count += 1
+                    attacks &= ~bit(target)
+                }
+
+                bitboard &= ~bit(source)
+            }
+        }
     }
 
-    if side == BLACK && piece == BK {
-      if (board.castle & CASTLE_BK) != 0 {
-        if !get_bit(occupancy, F8) && !get_bit(occupancy, G8) {
-          if !is_square_attacked(board, E8, WHITE) && !is_square_attacked(board, F8, WHITE) {
-            move_stack.set((base + count) as usize, encode_move(E8, G8, piece, 0, false, false, false, true))
-            count += 1
-          }
-        }
-      }
-      if (board.castle & CASTLE_BQ) != 0 {
-        if !get_bit(occupancy, D8) && !get_bit(occupancy, C8) && !get_bit(occupancy, B8) {
-          if !is_square_attacked(board, E8, WHITE) && !is_square_attacked(board, D8, WHITE) {
-            move_stack.set((base + count) as usize, encode_move(E8, C8, piece, 0, false, false, false, true))
-            count += 1
-          }
-        }
-      }
-    }
-
-    // Knights, bishops, rooks, queens and kings all read the same way:
-    // an attack set masked against the squares the mover does not
-    // already occupy, split into quiet moves and captures.
-    var moves_this_piece = (side == WHITE && piece >= WN && piece <= WK)
-      || (side == BLACK && piece >= BN && piece <= BK)
-
-    if moves_this_piece {
-      while bitboard != 0 {
-        var source = get_ls1b_index(bitboard)
-        var attacks: u64 = 0
-        if piece == WN || piece == BN {
-          attacks = knight_attacks.get(source as usize)
-        } elif piece == WB || piece == BB {
-          attacks = get_bishop_attacks(source, occupancy)
-        } elif piece == WR || piece == BR {
-          attacks = get_rook_attacks(source, occupancy)
-        } elif piece == WQ || piece == BQ {
-          attacks = get_queen_attacks(source, occupancy)
-        } else {
-          attacks = king_attacks.get(source as usize)
-        }
-        attacks &= ~own
-
-        while attacks != 0 {
-          var target = get_ls1b_index(attacks)
-          var capture = get_bit(enemy, target)
-          move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, capture, false, false, false))
-          count += 1
-          attacks &= ~bit(target)
-        }
-
-        bitboard &= ~bit(source)
-      }
-    }
-  }
-
-  return count
+    return count
 }
 
 // move_at reads one move back out of a ply's window.
 export fn move_at(ply: i32, index: i32): i32 {
-  return move_stack.get((ply * MOVES_PER_PLY + index) as usize)
+    return move_stack.get((ply * MOVES_PER_PLY + index) as usize)
 }
 
 // ---------------------------------------------------------------------------
@@ -1004,101 +1004,101 @@ export fn move_at(ply: i32, index: i32): i32 {
 // before the answer, which is what C's copy_board()/take_back() pair
 // inside the same function does.
 export fn make_move(board: *Board, move: i32): bool {
-  var saved = *board
+    var saved = *board
 
-  var source = move_source(move)
-  var target = move_target(move)
-  var piece = move_piece(move)
-  var promoted = move_promoted(move)
-  var side = board.side
+    var source = move_source(move)
+    var target = move_target(move)
+    var piece = move_piece(move)
+    var promoted = move_promoted(move)
+    var side = board.side
 
-  board.bitboards[piece as usize] &= ~bit(source)
-  board.bitboards[piece as usize] |= bit(target)
+    board.bitboards[piece as usize] &= ~bit(source)
+    board.bitboards[piece as usize] |= bit(target)
 
-  if move_is_capture(move) {
-    var start_piece = BP
-    var end_piece = BK
+    if move_is_capture(move) {
+        var start_piece = BP
+        var end_piece = BK
+        if side == BLACK {
+            start_piece = WP
+            end_piece = WK
+        }
+        for captured in start_piece..(end_piece + 1) {
+            if get_bit(board.bitboards[captured as usize], target) {
+                board.bitboards[captured as usize] &= ~bit(target)
+                break
+            }
+        }
+    }
+
+    if promoted != 0 {
+        if side == WHITE {
+            board.bitboards[WP as usize] &= ~bit(target)
+        } else {
+            board.bitboards[BP as usize] &= ~bit(target)
+        }
+        board.bitboards[promoted as usize] |= bit(target)
+    }
+
+    if move_is_enpassant(move) {
+        if side == WHITE {
+            board.bitboards[BP as usize] &= ~bit(target + 8)
+        } else {
+            board.bitboards[WP as usize] &= ~bit(target - 8)
+        }
+    }
+
+    board.enpassant = NO_SQ
+
+    if move_is_double(move) {
+        if side == WHITE {
+            board.enpassant = target + 8
+        } else {
+            board.enpassant = target - 8
+        }
+    }
+
+    if move_is_castling(move) {
+        if target == G1 {
+            board.bitboards[WR as usize] &= ~bit(H1)
+            board.bitboards[WR as usize] |= bit(F1)
+        } elif target == C1 {
+            board.bitboards[WR as usize] &= ~bit(A1)
+            board.bitboards[WR as usize] |= bit(D1)
+        } elif target == G8 {
+            board.bitboards[BR as usize] &= ~bit(H8)
+            board.bitboards[BR as usize] |= bit(F8)
+        } elif target == C8 {
+            board.bitboards[BR as usize] &= ~bit(A8)
+            board.bitboards[BR as usize] |= bit(D8)
+        }
+    }
+
+    board.castle &= CASTLING_RIGHTS[source as usize]
+    board.castle &= CASTLING_RIGHTS[target as usize]
+
+    var white_occupancy: u64 = 0
+    for bb in WP..(WK + 1) {
+        white_occupancy |= board.bitboards[bb as usize]
+    }
+    var black_occupancy: u64 = 0
+    for bb in BP..(BK + 1) {
+        black_occupancy |= board.bitboards[bb as usize]
+    }
+    board.occupancies[WHITE as usize] = white_occupancy
+    board.occupancies[BLACK as usize] = black_occupancy
+    board.occupancies[BOTH as usize] = white_occupancy | black_occupancy
+
+    board.side ^= 1
+
+    var king = board.bitboards[WK as usize]
     if side == BLACK {
-      start_piece = WP
-      end_piece = WK
+        king = board.bitboards[BK as usize]
     }
-    for captured in start_piece..(end_piece + 1) {
-      if get_bit(board.bitboards[captured as usize], target) {
-        board.bitboards[captured as usize] &= ~bit(target)
-        break
-      }
+    if is_square_attacked(board, get_ls1b_index(king), board.side) {
+        *board = saved
+        return false
     }
-  }
-
-  if promoted != 0 {
-    if side == WHITE {
-      board.bitboards[WP as usize] &= ~bit(target)
-    } else {
-      board.bitboards[BP as usize] &= ~bit(target)
-    }
-    board.bitboards[promoted as usize] |= bit(target)
-  }
-
-  if move_is_enpassant(move) {
-    if side == WHITE {
-      board.bitboards[BP as usize] &= ~bit(target + 8)
-    } else {
-      board.bitboards[WP as usize] &= ~bit(target - 8)
-    }
-  }
-
-  board.enpassant = NO_SQ
-
-  if move_is_double(move) {
-    if side == WHITE {
-      board.enpassant = target + 8
-    } else {
-      board.enpassant = target - 8
-    }
-  }
-
-  if move_is_castling(move) {
-    if target == G1 {
-      board.bitboards[WR as usize] &= ~bit(H1)
-      board.bitboards[WR as usize] |= bit(F1)
-    } elif target == C1 {
-      board.bitboards[WR as usize] &= ~bit(A1)
-      board.bitboards[WR as usize] |= bit(D1)
-    } elif target == G8 {
-      board.bitboards[BR as usize] &= ~bit(H8)
-      board.bitboards[BR as usize] |= bit(F8)
-    } elif target == C8 {
-      board.bitboards[BR as usize] &= ~bit(A8)
-      board.bitboards[BR as usize] |= bit(D8)
-    }
-  }
-
-  board.castle &= CASTLING_RIGHTS[source as usize]
-  board.castle &= CASTLING_RIGHTS[target as usize]
-
-  var white_occupancy: u64 = 0
-  for bb in WP..(WK + 1) {
-    white_occupancy |= board.bitboards[bb as usize]
-  }
-  var black_occupancy: u64 = 0
-  for bb in BP..(BK + 1) {
-    black_occupancy |= board.bitboards[bb as usize]
-  }
-  board.occupancies[WHITE as usize] = white_occupancy
-  board.occupancies[BLACK as usize] = black_occupancy
-  board.occupancies[BOTH as usize] = white_occupancy | black_occupancy
-
-  board.side ^= 1
-
-  var king = board.bitboards[WK as usize]
-  if side == BLACK {
-    king = board.bitboards[BK as usize]
-  }
-  if is_square_attacked(board, get_ls1b_index(king), board.side) {
-    *board = saved
-    return false
-  }
-  return true
+    return true
 }
 
 // ---------------------------------------------------------------------------
@@ -1109,18 +1109,18 @@ export fn make_move(board: *Board, move: i32): bool {
 // move generator's only real test: an off-by-one anywhere shows up as a
 // wrong number.
 export fn perft(board: *Board, depth: i32, ply: i32): i64 {
-  if depth == 0 {
-    return 1
-  }
-
-  var count = generate_moves(board, ply)
-  var nodes: i64 = 0
-  for index in 0..count {
-    var saved = *board
-    if make_move(board, move_at(ply, index)) {
-      nodes += perft(board, depth - 1, ply + 1)
+    if depth == 0 {
+        return 1
     }
-    *board = saved
-  }
-  return nodes
+
+    var count = generate_moves(board, ply)
+    var nodes: i64 = 0
+    for index in 0..count {
+        var saved = *board
+        if make_move(board, move_at(ply, index)) {
+            nodes += perft(board, depth - 1, ply + 1)
+        }
+        *board = saved
+    }
+    return nodes
 }

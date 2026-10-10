@@ -5,127 +5,127 @@
 import { Eq, Hash, Print, Ord, Add, Neg, Iterator } from "stdlib"
 
 trait Shape {
-  fn area(self): i32
-  fn name(self): string
-  fn scale(*self, by: i32)
-  fn describe(self): string {
-    return self.name()
-  }
+    fn area(self): i32
+    fn name(self): string
+    fn scale(*self, by: i32)
+    fn describe(self): string {
+        return self.name()
+    }
 }
 
 struct Square {
-  side: i32
+    side: i32
 }
 
 impl Shape for Square {
-  fn area(self): i32 {
-    return self.side * self.side
-  }
-  fn name(self): string {
-    return "square"
-  }
-  fn scale(*self, by: i32) {
-    self.side = self.side * by
-  }
+    fn area(self): i32 {
+        return self.side * self.side
+    }
+    fn name(self): string {
+        return "square"
+    }
+    fn scale(*self, by: i32) {
+        self.side = self.side * by
+    }
 }
 
 struct Missing {
-  n: i32
+    n: i32
 }
 
-impl Shape for Missing {         //~ E0528 impl Shape for Missing is missing area, scale
-  fn name(self): string {
-    return "missing"
-  }
+impl Shape for Missing { //~ E0528 impl Shape for Missing is missing area, scale
+    fn name(self): string {
+        return "missing"
+    }
 }
 
 struct Extra {
-  n: i32
+    n: i32
 }
 
 impl Shape for Extra {
-  fn area(self): i32 {
-    return 1
-  }
-  fn name(self): string {
-    return "extra"
-  }
-  fn scale(*self, by: i32) {
-  }
-  fn perimeter(self): i32 {      //~ E0528 perimeter is not a method of Shape
-    return 4
-  }
+    fn area(self): i32 {
+        return 1
+    }
+    fn name(self): string {
+        return "extra"
+    }
+    fn scale(*self, by: i32) {
+    }
+    fn perimeter(self): i32 { //~ E0528 perimeter is not a method of Shape
+        return 4
+    }
 }
 
 struct Mismatched {
-  n: i32
+    n: i32
 }
 
 impl Shape for Mismatched {
-  fn area(self): i64 {           //~ E0528 area does not match the trait: expected fn(): i32, found fn(): i64
-    return 1
-  }
-  fn name(self, extra: i32): string {   //~ E0528 name does not match the trait
-    return "m"
-  }
-  fn scale(self, by: i32) {      //~ E0528 scale takes self, but the trait declares it taking *self
-  }
+    fn area(self): i64 { //~ E0528 area does not match the trait: expected fn(): i32, found fn(): i64
+        return 1
+    }
+    fn name(self, extra: i32): string { //~ E0528 name does not match the trait
+        return "m"
+    }
+    fn scale(self, by: i32) { //~ E0528 scale takes self, but the trait declares it taking *self
+    }
 }
 
 // An impl is for one type, once, and for a type this module declares.
-impl Shape for Square {          //~ E0529 Square already implements Shape
-  fn area(self): i32 {           //~ E0603 Square already has a method area
-    return 0
-  }
-  fn name(self): string {        //~ E0603 Square already has a method name
-    return ""
-  }
-  fn scale(*self, by: i32) {     //~ E0603 Square already has a method scale
-  }
+impl Shape for Square {  //~ E0529 Square already implements Shape
+    fn area(self): i32 { //~ E0603 Square already has a method area
+        return 0
+    }
+    fn name(self): string { //~ E0603 Square already has a method name
+        return ""
+    }
+    fn scale(*self, by: i32) { //~ E0603 Square already has a method scale
+    }
 }
 
-impl Shape for i32 {             //~ E0529 an impl is for a type this module declares; i32 is built in
+impl Shape for i32 { //~ E0529 an impl is for a type this module declares; i32 is built in
 }
 
-impl Shape for Nothing {         //~ E0529 an impl is for a type this module declares
+impl Shape for Nothing { //~ E0529 an impl is for a type this module declares
 }
 
 // Only Eq, Hash and Print are derived.
-impl Ord for Square              //~ E0528 Ord requires Eq, which Square does not implement
-                                 //~^ E0529 Ord cannot be derived
+impl Ord for Square //~ E0528 Ord requires Eq, which Square does not implement
+//~^ E0529 Ord cannot be derived
 
 struct Holds {
-  at: *Square
+    at: *Square
 }
 
-impl Hash for Holds              //~ E0529 Hash cannot be derived: field at is *Square
+impl Hash for Holds //~ E0529 Hash cannot be derived: field at is *Square
 
 // A trait it requires has to be implemented too.
 trait Named {
-  fn id(self): i32
+    fn id(self): i32
 }
 
 trait Entity: Named {
-  fn kind(self): string
+    fn kind(self): string
 }
 
 struct Loose {
-  n: i32
+    n: i32
 }
 
-impl Entity for Loose {          //~ E0528 Entity requires Named, which Loose does not implement
-  fn kind(self): string {
-    return "loose"
-  }
+impl Entity for Loose { //~ E0528 Entity requires Named, which Loose does not implement
+    fn kind(self): string {
+        return "loose"
+    }
 }
 
 // A trait is not a type.
-fn takesTrait(s: Shape) {        //~ E0404 Shape is a trait, not a type
+fn takesTrait(s: Shape) { //~ E0404 Shape is a trait, not a type
 }
 
 fn notATrait(): i32 {
-  return 0
+    return 0
 }
 
-impl notATrait for Square {      //~ E0404 notATrait is not a trait
+impl notATrait for Square { //~ E0404 notATrait is not a trait
 }

@@ -9,57 +9,57 @@ import { heap, spawn } from "mem"
 // A closure's type is the function type that already existed in the language.
 // The input borrows; the result owns and is freed by the caller.
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-  var out = Array<i32>::new(heap())
-  for value in values {
-    out.push(f(value))
-  }
-  return out
+    var out = Array<i32>::new(heap())
+    for value in values {
+        out.push(f(value))
+    }
+    return out
 }
 
 fn fold(values: i32[], start: i32, f: fn(i32, i32): i32): i32 {
-  var total = start
-  for value in values {
-    total = f(total, value)
-  }
-  return total
+    var total = start
+    for value in values {
+        total = f(total, value)
+    }
+    return total
 }
 
 fn main() {
-  // Full form: annotated parameters, annotated result, block body.
-  var double = fn(a: i32): i32 { return a * 2 }
-  println(double(21))
+    // Full form: annotated parameters, annotated result, block body.
+    var double = fn(a: i32): i32 { return a * 2 }
+    println(double(21))
 
-  // Types come from the expected type at the call site, and a body that is
-  // one expression needs neither braces nor `return`.
-  var doubled = apply([1, 2, 3], fn(x) x * 2)
-  defer doubled.free()
+    // Types come from the expected type at the call site, and a body that is
+    // one expression needs neither braces nor `return`.
+    var doubled = apply([1, 2, 3], fn(x) x * 2)
+    defer doubled.free()
 
-  var sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
-  println(sum)
+    var sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
+    println(sum)
 
-  // No parameters and no result.
-  var greet = fn() { println("hello") }
-  greet()
+    // No parameters and no result.
+    var greet = fn() { println("hello") }
+    greet()
 
-  // Locals are captured by copy, with nothing to declare. Ownership
-  // transfer is the one case that must be written: see fn[move node] in
-  // memory.gyro.
-  var factor: i32 = 3
-  var scale = fn(x: i32): i32 { return x * factor }
-  println(scale(5))
+    // Locals are captured by copy, with nothing to declare. Ownership
+    // transfer is the one case that must be written: see fn[move node] in
+    // memory.gyro.
+    var factor: i32 = 3
+    var scale = fn(x: i32): i32 { return x * factor }
+    println(scale(5))
 
-  // Closures are how work reaches another thread, which is why `spawn` can
-  // be a library function rather than a keyword. The channel is what orders
-  // the two prints; without it the output is a race.
-  var done = chan<bool>()
-  spawn(heap(), fn() {
-    println("on another thread")
-    done <- true
-  })
-  var _ = <-done
+    // Closures are how work reaches another thread, which is why `spawn` can
+    // be a library function rather than a keyword. The channel is what orders
+    // the two prints; without it the output is a race.
+    var done = chan<bool>()
+    spawn(heap(), fn() {
+        println("on another thread")
+        done <- true
+    })
+    var _ = <-done
 
-  // An async closure inhabits the type `async fn(): i32`; awaiting a call
-  // to it works like awaiting any async function.
-  var later = async fn(): i32 { return 1 }
-  println(doubled.len())
+    // An async closure inhabits the type `async fn(): i32`; awaiting a call
+    // to it works like awaiting any async function.
+    var later = async fn(): i32 { return 1 }
+    println(doubled.len())
 }

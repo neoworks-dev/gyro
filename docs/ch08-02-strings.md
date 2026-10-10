@@ -137,7 +137,7 @@ is.
 
 ```gyro
 fn host(c: Config): string !{ &c } {
-  return c.host
+    return c.host
 }
 ```
 

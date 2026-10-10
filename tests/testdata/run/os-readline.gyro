@@ -15,18 +15,18 @@ import { readline, read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-  var taken = 0
-  while taken < 3 {
-    var line = readline(heap())
-    if line == null {
-      break
+    var taken = 0
+    while taken < 3 {
+        var line = readline(heap())
+        if line == null {
+            break
+        }
+        taken += 1
+        println("#{taken}: [#{line}]")
     }
-    taken += 1
-    println("#{taken}: [#{line}]")
-  }
 
-  println("rest: [#{read_stdin(heap())}]")
+    println("rest: [#{read_stdin(heap())}]")
 
-  // The stream is drained now, so the next line is the end of it.
-  println(readline(heap()) == null)
+    // The stream is drained now, so the next line is the end of it.
+    println(readline(heap()) == null)
 }

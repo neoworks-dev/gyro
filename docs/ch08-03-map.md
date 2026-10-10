@@ -15,7 +15,7 @@ ages.insert("ada", 36)
 
 var age = ages.get("ada")
 if age != null {
-  println(age)
+    println(age)
 }
 ```
 
@@ -26,8 +26,8 @@ A struct or enum the program declares is a key once it says so:
 
 ```gyro
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Eq for Point
@@ -79,9 +79,9 @@ stored `null`. `contains(key)` is the signal that separates them
 ```gyro
 var seen = counts.get(word)
 if seen == null {
-  counts.insert(word, 1)
+    counts.insert(word, 1)
 } else {
-  counts.insert(word, seen + 1)
+    counts.insert(word, seen + 1)
 }
 ```
 

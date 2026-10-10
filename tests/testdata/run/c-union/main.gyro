@@ -14,36 +14,36 @@
 
 import { println } from "stdlib"
 import safe {
-  events_load, event_kind, event_code, event_pressed, event_x, event_y,
-  events_total, event_size, key_size, move_size,
-  reassign_round_trip, stride_is_one_union, first_member_initialized,
+    events_load, event_kind, event_code, event_pressed, event_x, event_y,
+    events_total, event_size, key_size, move_size,
+    reassign_round_trip, stride_is_one_union, first_member_initialized,
 } from "./event.c"
 
 fn main() {
-  // One storage, so the size is the widest member's at the strictest
-  // member's alignment: a long forces eight, and 4 + 8 + 8 is 24.
-  println(key_size())
-  println(move_size())
-  println(event_size())
+    // One storage, so the size is the widest member's at the strictest
+    // member's alignment: a long forces eight, and 4 + 8 + 8 is 24.
+    println(key_size())
+    println(move_size())
+    println(event_size())
 
-  println(events_load())
+    println(events_load())
 
-  // The tag of each queued event, read through the bare member while a
-  // struct is what was written.
-  println(event_kind(0))
-  println(event_kind(1))
-  println(event_kind(3))
+    // The tag of each queued event, read through the bare member while a
+    // struct is what was written.
+    println(event_kind(0))
+    println(event_kind(1))
+    println(event_kind(3))
 
-  // And the rest of each, read through the member its tag names.
-  println(event_code(0))
-  println(event_pressed(0))
-  println(event_x(1))
-  println(event_y(1))
+    // And the rest of each, read through the member its tag names.
+    println(event_code(0))
+    println(event_pressed(0))
+    println(event_x(1))
+    println(event_y(1))
 
-  // The dispatch: 65 + (30 + 12) + 66 + nothing for the quit.
-  println(events_total())
+    // The dispatch: 65 + (30 + 12) + 66 + nothing for the quit.
+    println(events_total())
 
-  println(reassign_round_trip())
-  println(stride_is_one_union())
-  println(first_member_initialized())
+    println(reassign_round_trip())
+    println(stride_is_one_union())
+    println(first_member_initialized())
 }

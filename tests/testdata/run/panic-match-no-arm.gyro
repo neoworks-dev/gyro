@@ -4,9 +4,9 @@
 import { println } from "stdlib"
 
 fn main() {
-  var n: i32 = 5
-  var s = match n {
-    0: "zero"
-  }
-  println(s)
+    var n: i32 = 5
+    var s = match n {
+        0: "zero"
+    }
+    println(s)
 }

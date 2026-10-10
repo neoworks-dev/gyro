@@ -9,57 +9,57 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 export struct Stack {
-  export capacity: i32
-  top: i32
-  // Array<T> owns its buffer and grows. A slice, i32[], only borrows one.
-  items: Array<i32>
+    export capacity: i32
+    top: i32
+    // Array<T> owns its buffer and grows. A slice, i32[], only borrows one.
+    items: Array<i32>
 }
 
 // An associated function: no receiver, called as Stack::new(..).
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
+    return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
 }
 
 // `self` borrows and never copies the receiver, however large it is.
 export fn Stack::is_empty(self): bool {
-  return self.top == 0
+    return self.top == 0
 }
 
 // A pointer receiver may mutate the value it was called on.
 export fn Stack::push(*self, value: i32) {
-  self.items.push(value)
-  self.top += 1
+    self.items.push(value)
+    self.top += 1
 }
 
 // Lending the contents out as a borrowed view costs nothing. `&self` says
 // the view sits on the receiver, so the stack has to outlive what this
 // returns — a field chain roots at whatever holds it.
 export fn Stack::view(self): i32[] !{ &self } {
-  return self.items.slice()
+    return self.items.slice()
 }
 
 export fn Stack::free(*self) {
-  self.items.free()
+    self.items.free()
 }
 
 // Takes a borrowed view, so it works on an Array, a fixed-size array or a
 // literal without any of them being copied.
 fn total(values: i32[]): i32 {
-  var sum: i32 = 0
-  for value in values {
-    sum += value
-  }
-  return sum
+    var sum: i32 = 0
+    for value in values {
+        sum += value
+    }
+    return sum
 }
 
 // Handing a view back out says where the view came from. `&values` in the
 // effect row is what makes this legal: without it the compiler assumes the
 // result borrows nothing, and a slice never owns its storage.
 fn longest(values: i32[], fallback: i32[]): i32[] !{ &values, &fallback } {
-  if values.len() == 0 {
-    return fallback
-  }
-  return values
+    if values.len() == 0 {
+        return fallback
+    }
+    return values
 }
 
 // The row is read at call sites too, so this has to account for both sources
@@ -67,75 +67,75 @@ fn longest(values: i32[], fallback: i32[]): i32[] !{ &values, &fallback } {
 // passing a local array literal in would be one as well: the view would
 // point at this frame.
 fn preferred(primary: i32[], spare: i32[]): i32[] !{ &primary, &spare } {
-  return longest(primary, spare)
+    return longest(primary, spare)
 }
 
 export enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-  Point,
+    Circle(f64),
+    Rect(f64, f64),
+    Point,
 }
 
 // Match arms end at the newline, like every other statement, and a match
 // over an enum must cover every variant or carry a `_` arm. Dropping one of
 // these three arms is a compile error naming what is missing.
 fn area(shape: Shape): f64 {
-  return match shape {
-    Shape::Circle(r): 3.14159 * r * r
-    Shape::Rect(w, h): w * h
-    Shape::Point: 0.0
-  }
+    return match shape {
+        Shape::Circle(r): 3.14159 * r * r
+        Shape::Rect(w, h): w * h
+        Shape::Point: 0.0
+    }
 }
 
 fn classify(n: i32): string {
-  return match n {
-    0: "zero"
-    1: "one"
-    2: "two"
-    _: "many"
-  }
+    return match n {
+        0: "zero"
+        1: "one"
+        2: "two"
+        _: "many"
+    }
 }
 
 fn is_prime(n: i32): bool {
-  if n < 2 {
-    return false
-  }
-  if n == 2 {
-    return true
-  }
-
-  var i: i32 = 2
-  while i * i <= n {
-    if n % i == 0 {
-      return false
+    if n < 2 {
+        return false
     }
-    i += 1
-  }
-  return true
+    if n == 2 {
+        return true
+    }
+
+    var i: i32 = 2
+    while i * i <= n {
+        if n % i == 0 {
+            return false
+        }
+        i += 1
+    }
+    return true
 }
 
 fn main() {
-  var stack = Stack::new(16)
-  defer stack.free()
+    var stack = Stack::new(16)
+    defer stack.free()
 
-  stack.push(1)
-  stack.push(2)
-  println("stack empty: #{stack.is_empty()}")
-  println(total(stack.view()))
-  println(total([3, 4, 5]))
-  println(total(preferred(stack.view(), [9])))
+    stack.push(1)
+    stack.push(2)
+    println("stack empty: #{stack.is_empty()}")
+    println(total(stack.view()))
+    println(total([3, 4, 5]))
+    println(total(preferred(stack.view(), [9])))
 
-  println(area(Shape::Circle(2.0)))
-  println(area(Shape::Rect(3.0, 4.0)))
+    println(area(Shape::Circle(2.0)))
+    println(area(Shape::Rect(3.0, 4.0)))
 
-  for var n = 0; n <= 4; n += 1 {
-    println(classify(n))
-  }
-
-  println("--- primes below 30 ---")
-  for n in 2..30 {
-    if is_prime(n) {
-      println(n)
+    for var n = 0; n <= 4; n += 1 {
+        println(classify(n))
     }
-  }
+
+    println("--- primes below 30 ---")
+    for n in 2..30 {
+        if is_prime(n) {
+            println(n)
+        }
+    }
 }

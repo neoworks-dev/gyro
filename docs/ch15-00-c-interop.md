@@ -79,15 +79,15 @@ does with it. `import safe` vouches for every name the line binds, and a
 call then needs no `unsafe fn` around it ([chapter 4.6](ch04-06-unsafe.md)):
 
 ```gyro
-import safe { sqrt } from "<math.h>"   // no f64 misuses it
-import { strlen } from "<string.h>"    // reads through an address it is trusted with
+import safe { sqrt } from "<math.h>" // no f64 misuses it
+import { strlen } from "<string.h>"  // reads through an address it is trusted with
 import { heap } from "mem"
 import { c_string, c_data } from "cstring"
 
 safe fn length_of(text: string): usize {
-  var bytes = c_string(heap(), text)   // from "cstring", below
-  defer bytes.free()
-  return strlen(c_data(bytes))
+    var bytes = c_string(heap(), text) // from "cstring", below
+    defer bytes.free()
+    return strlen(c_data(bytes))
 }
 ```
 
@@ -128,13 +128,13 @@ import { c_string, c_data, from_c } from "cstring"
 import safe { SDL_CreateWindow, SDL_GetError } from "pkg:sdl3/SDL3/SDL.h"
 
 safe fn open_window(title: string): *SDL_Window? {
-  var bytes = c_string(heap(), title)
-  defer bytes.free()
-  return SDL_CreateWindow(c_data(bytes), 800, 600, 0)
+    var bytes = c_string(heap(), title)
+    defer bytes.free()
+    return SDL_CreateWindow(c_data(bytes), 800, 600, 0)
 }
 
 safe fn failure(): string {
-  return from_c(heap(), SDL_GetError())   // a copy: SDL reuses its buffer
+    return from_c(heap(), SDL_GetError()) // a copy: SDL reuses its buffer
 }
 ```
 
@@ -153,12 +153,12 @@ import safe { frexp } from "<math.h>"
 import safe { qsort } from "<stdlib.h>"
 
 safe fn ascending(a: anyptr?, b: anyptr?): i32 {
-  if a == null || b == null { return 0 }
-  var left = cast<i32>(a)
-  var right = cast<i32>(b)
-  if *left < *right { return 0 - 1 }
-  if *left > *right { return 1 }
-  return 0
+    if a == null || b == null { return 0 }
+    var left = cast<i32>(a)
+    var right = cast<i32>(b)
+    if *left < *right { return 0 - 1 }
+    if *left > *right { return 1 }
+    return 0
 }
 
 var exponent: i32 = 0
@@ -307,7 +307,7 @@ import { cast } from "unsafe"
 import safe { Cell, keep, held } from "./store.c"
 
 safe fn value_at(address: anyptr): i32 {
-  return cast<Cell>(address).value   // remembering: this program's claim
+    return cast<Cell>(address).value   // remembering: this program's claim
 }
 
 var c = Cell{ value: 7 }
@@ -315,7 +315,7 @@ keep(0, &c as anyptr)          // forgetting: always true, never fails
 
 var back = held(0)             // C's `void *` arrives as anyptr?
 if back != null {
-  println(value_at(back))
+    println(value_at(back))
 }
 ```
 
@@ -349,13 +349,13 @@ a declared function is one:
 import { count_kept, fold } from "./filter.c"
 
 fn big(v: i32): i32 {
-  if v > 5 { return 1 }
-  return 0
+    if v > 5 { return 1 }
+    return 0
 }
 
 fn sum(acc: i32, v: i32): i32 { return acc + v }
 
-var kept = count_kept(&big)      // C's loop, this program's decision
+var kept = count_kept(&big) // C's loop, this program's decision
 var total = fold(&sum, 0)
 ```
 

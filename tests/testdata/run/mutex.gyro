@@ -1,10 +1,10 @@
 import { println, Mutex } from "stdlib"
 
 fn main() {
-  var total = Mutex::new(10)
-  var guard = total.lock()
-  guard.set(guard.get() + 32)
-  var value = guard.get()
-  guard.unlock()
-  println(value)
+    var total = Mutex::new(10)
+    var guard = total.lock()
+    guard.set(guard.get() + 32)
+    var value = guard.get()
+    guard.unlock()
+    println(value)
 }

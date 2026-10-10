@@ -4,14 +4,14 @@
 import { println } from "stdlib"
 
 fn pick(n: i32): string {
-  var label = match n {
-    0: return "early zero"
-    _: "other"
-  }
-  return label
+    var label = match n {
+        0: return "early zero"
+        _: "other"
+    }
+    return label
 }
 
 fn main() {
-  println(pick(0))
-  println(pick(3))
+    println(pick(0))
+    println(pick(3))
 }

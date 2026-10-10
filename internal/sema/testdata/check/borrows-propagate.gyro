@@ -2,86 +2,86 @@
 // fact across a call rather than stopping at each definition.
 
 fn pick(a: i32[], b: i32[]): i32[] !{ &a } {
-  return a
+    return a
 }
 
 fn both(a: i32[], b: i32[]): i32[] !{ &a, &b } {
-  return a
+    return a
 }
 
 fn carried(xs: i32[], ys: i32[]): i32[] !{ &xs } {
-  return pick(xs, ys)
+    return pick(xs, ys)
 }
 
 fn notCarried(xs: i32[], ys: i32[]): i32[] {
-  return pick(xs, ys)            //~ E0609 this returns a view into xs, which the row does not name
+    return pick(xs, ys) //~ E0609 this returns a view into xs, which the row does not name
 }
 
 // The caller must account for every source the callee names.
 fn bothCarried(xs: i32[], ys: i32[]): i32[] !{ &xs, &ys } {
-  return both(xs, ys)
+    return both(xs, ys)
 }
 
 fn oneMissing(xs: i32[], ys: i32[]): i32[] !{ &xs } {
-  return both(xs, ys)            //~ E0609 this returns a view into ys, which the row does not name
+    return both(xs, ys) //~ E0609 this returns a view into ys, which the row does not name
 }
 
 // Frame storage travels through a call.
 fn localThroughACall(ys: i32[]): i32[] !{ &ys } {
-  var local = [1, 2, 3]
-  return pick(local, ys)         //~ E0610 view into storage that ends with this function
+    var local = [1, 2, 3]
+    return pick(local, ys) //~ E0610 view into storage that ends with this function
 }
 
 // A local bound to a call keeps what the call viewed.
 fn throughALocal(xs: i32[], ys: i32[]): i32[] !{ &xs } {
-  var v = pick(xs, ys)
-  return v
+    var v = pick(xs, ys)
+    return v
 }
 
 fn throughALocalUnnamed(xs: i32[], ys: i32[]): i32[] {
-  var v = pick(xs, ys)
-  return v                       //~ E0609 this returns a view into xs, which the row does not name
+    var v = pick(xs, ys)
+    return v //~ E0609 this returns a view into xs, which the row does not name
 }
 
 // `&self` names a method's receiver, and a field chain roots at whatever
 // holds it.
 struct Stack {
-  items: i32[]
+    items: i32[]
 }
 
 fn Stack::view(self): i32[] !{ &self } {
-  return self.items
+    return self.items
 }
 
 fn Stack::loose(self): i32[] {
-  return self.items              //~ E0609 this returns a view into self, which the row does not name
+    return self.items //~ E0609 this returns a view into self, which the row does not name
 }
 
 fn contents(s: Stack): i32[] !{ &s } {
-  return s.items
+    return s.items
 }
 
 fn looseContents(s: Stack): i32[] {
-  return s.items                 //~ E0609 this returns a view into s, which the row does not name
+    return s.items //~ E0609 this returns a view into s, which the row does not name
 }
 
-fn selfOnAPlainFunction(s: Stack): i32[] !{ &self } {  //~ E0608 &self names no parameter of this function
-  return s.items                 //~ E0609 this returns a view into s, which the row does not name
+fn selfOnAPlainFunction(s: Stack): i32[] !{ &self } { //~ E0608 &self names no parameter of this function
+    return s.items                                    //~ E0609 this returns a view into s, which the row does not name
 }
 
 // A struct carries what its fields carry: frame storage behind a field
 // still ends with the frame, a heap buffer does not.
 struct View {
-  data: i32[]
+    data: i32[]
 }
 
 fn structHoldsFrameStorage(): i32[] {
-  var xs = [1, 2, 3]
-  var v = View{ data: xs }
-  return v.data                  //~ E0610 view into storage that ends with this function
+    var xs = [1, 2, 3]
+    var v = View{ data: xs }
+    return v.data //~ E0610 view into storage that ends with this function
 }
 
 fn structHoldsACallersStorage(xs: i32[]): i32[] !{ &xs } {
-  var v = View{ data: xs }
-  return v.data
+    var v = View{ data: xs }
+    return v.data
 }

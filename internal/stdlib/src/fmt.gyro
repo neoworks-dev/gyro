@@ -25,43 +25,43 @@ import { Allocator, heap, format } from "mem"
 //
 // The text is built in blocks from `a`, and the result is a block from it.
 export fn sprintf(a: Allocator, format: string, args: ...any): string !{ &a } {
-  var out = Array<u8>::new(a)
-  var body = format.bytes(a)
-  var next: usize = 0
+    var out = Array<u8>::new(a)
+    var body = format.bytes(a)
+    var next: usize = 0
 
-  var i: usize = 0
-  while i < body.len() {
-    if body[i] != percent {
-      out.push(body[i])
-      i += 1
-      continue
+    var i: usize = 0
+    while i < body.len() {
+        if body[i] != percent {
+            out.push(body[i])
+            i += 1
+            continue
+        }
+
+        var spec, after = read_spec(body, i + 1)
+        i = after
+        if spec.verb == percent {
+            out.push(percent)
+            continue
+        }
+        if next >= args.len() {
+            push_text(a, out, "%!(MISSING)")
+            continue
+        }
+        push_text(a, out, pad(a, render(a, args[next], spec.verb), spec))
+        next += 1
     }
 
-    var spec, after = read_spec(body, i + 1)
-    i = after
-    if spec.verb == percent {
-      out.push(percent)
-      continue
-    }
-    if next >= args.len() {
-      push_text(a, out, "%!(MISSING)")
-      continue
-    }
-    push_text(a, out, pad(a, render(a, args[next], spec.verb), spec))
-    next += 1
-  }
-
-  var text = from_utf8(a, out.slice())
-  out.free()
-  return text
+    var text = from_utf8(a, out.slice())
+    out.free()
+    return text
 }
 
 export fn printf(format: string, args: ...any) !{ io } {
-  print(sprintf(heap(), format, args...))
+    print(sprintf(heap(), format, args...))
 }
 
 export fn eprintf(format: string, args: ...any) !{ io } {
-  eprintln(sprintf(heap(), format, args...))
+    eprintln(sprintf(heap(), format, args...))
 }
 
 // The byte values the format language spells out, named once so the
@@ -73,9 +73,9 @@ const nine_digit: u8 = 57
 const space: u8 = 32
 
 fn push_text(a: Allocator, out: Array<u8>, text: string) !{} {
-  for byte in text.bytes(a) {
-    out.push(byte)
-  }
+    for byte in text.bytes(a) {
+        out.push(byte)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -83,67 +83,67 @@ fn push_text(a: Allocator, out: Array<u8>, text: string) !{} {
 // ---------------------------------------------------------------------------
 
 struct Spec {
-  verb: u8
-  width: usize
-  zero: bool
-  left: bool
+    verb: u8
+    width: usize
+    zero: bool
+    left: bool
 }
 
 // read_spec parses the flags and width, returning the spec and the offset
 // just past the verb. An unterminated spec ends as a `%` verb, which
 // prints itself.
 fn read_spec(body: u8[], from: usize): (Spec, usize) {
-  var spec = Spec{ verb: percent, width: 0, zero: false, left: false }
-  var i = from
+    var spec = Spec{ verb: percent, width: 0, zero: false, left: false }
+    var i = from
 
-  while i < body.len() && (body[i] == minus || body[i] == zero_digit) {
-    if body[i] == minus {
-      spec.left = true
-    } else {
-      spec.zero = true
+    while i < body.len() && (body[i] == minus || body[i] == zero_digit) {
+        if body[i] == minus {
+            spec.left = true
+        } else {
+            spec.zero = true
+        }
+        i += 1
     }
-    i += 1
-  }
-  while i < body.len() && body[i] >= zero_digit && body[i] <= nine_digit {
-    spec.width = spec.width * 10 + ((body[i] - zero_digit) as usize)
-    i += 1
-  }
+    while i < body.len() && body[i] >= zero_digit && body[i] <= nine_digit {
+        spec.width = spec.width * 10 + ((body[i] - zero_digit) as usize)
+        i += 1
+    }
 
-  if i >= body.len() {
-    return (spec, i)
-  }
-  spec.verb = body[i]
-  return (spec, i + 1)
+    if i >= body.len() {
+        return (spec, i)
+    }
+    spec.verb = body[i]
+    return (spec, i + 1)
 }
 
 // pad widens a rendered value to the spec's width. It returns its
 // argument unchanged when nothing has to be added, which is why the row
 // says the result may view it.
 fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
-  var width = text.len()
-  if width >= spec.width {
-    return text
-  }
+    var width = text.len()
+    if width >= spec.width {
+        return text
+    }
 
-  var filler = zero_digit
-  if !spec.zero || spec.left {
-    filler = space
-  }
+    var filler = zero_digit
+    if !spec.zero || spec.left {
+        filler = space
+    }
 
-  var out = Array<u8>::new(a)
-  if spec.left {
-    push_text(a, out, text)
-  }
-  for i in 0..((spec.width - width) as i32) {
-    out.push(filler)
-  }
-  if !spec.left {
-    push_text(a, out, text)
-  }
+    var out = Array<u8>::new(a)
+    if spec.left {
+        push_text(a, out, text)
+    }
+    for i in 0..((spec.width - width) as i32) {
+        out.push(filler)
+    }
+    if !spec.left {
+        push_text(a, out, text)
+    }
 
-  var result = from_utf8(a, out.slice())
-  out.free()
-  return result
+    var result = from_utf8(a, out.slice())
+    out.free()
+    return result
 }
 
 // ---------------------------------------------------------------------------
@@ -155,21 +155,21 @@ fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
 // panicking: a format string is data, and a mismatch in it should not
 // take the program down.
 fn render(a: Allocator, value: any, verb: u8): string !{} {
-  if verb == 120 || verb == 88 {
-    var n, ok = as_unsigned(value)
-    if ok {
-      return hex(a, n, verb == 88)
+    if verb == 120 || verb == 88 {
+        var n, ok = as_unsigned(value)
+        if ok {
+            return hex(a, n, verb == 88)
+        }
+        return format(heap(), "#{value}")
+    }
+    if verb == 99 {
+        var n, ok = as_unsigned(value)
+        if ok {
+            return format(heap(), "#{(n as u32) as rune}")
+        }
+        return format(heap(), "#{value}")
     }
     return format(heap(), "#{value}")
-  }
-  if verb == 99 {
-    var n, ok = as_unsigned(value)
-    if ok {
-      return format(heap(), "#{(n as u32) as rune}")
-    }
-    return format(heap(), "#{value}")
-  }
-  return format(heap(), "#{value}")
 }
 
 // as_unsigned reads an integer of any width out of an any, as the bit
@@ -177,63 +177,63 @@ fn render(a: Allocator, value: any, verb: u8): string !{} {
 // back in two's complement, masked to its own width — so `%x` of an i32
 // -1 is ffffffff, the way C prints it, not the 64-bit form.
 fn as_unsigned(value: any): (u64, bool) {
-  return match value {
-    u8(n): (n as u64, true)
-    u16(n): (n as u64, true)
-    u32(n): (n as u64, true)
-    u64(n): (n, true)
-    usize(n): (n as u64, true)
-    i8(n): (widen(n as i64) & 255, true)
-    i16(n): (widen(n as i64) & 65535, true)
-    i32(n): (widen(n as i64) & 4294967295, true)
-    i64(n): (widen(n), true)
-    isize(n): (widen(n as i64), true)
-    rune(n): ((n as u32) as u64, true)
-    _: (0, false)
-  }
+    return match value {
+        u8(n): (n as u64, true)
+        u16(n): (n as u64, true)
+        u32(n): (n as u64, true)
+        u64(n): (n, true)
+        usize(n): (n as u64, true)
+        i8(n): (widen(n as i64) & 255, true)
+        i16(n): (widen(n as i64) & 65535, true)
+        i32(n): (widen(n as i64) & 4294967295, true)
+        i64(n): (widen(n), true)
+        isize(n): (widen(n as i64), true)
+        rune(n): ((n as u32) as u64, true)
+        _: (0, false)
+    }
 }
 
 // widen reinterprets a signed value as its two's-complement bits. `as`
 // panics on a negative-to-unsigned conversion, so the sign is folded in
 // by arithmetic instead.
 fn widen(value: i64): u64 {
-  if value >= 0 {
-    return value as u64
-  }
-  return 18446744073709551615 - ((-(value + 1)) as u64)
+    if value >= 0 {
+        return value as u64
+    }
+    return 18446744073709551615 - ((-(value + 1)) as u64)
 }
 
 fn hex(a: Allocator, value: u64, upper: bool): string !{} {
-  if value == 0 {
-    return "0"
-  }
+    if value == 0 {
+        return "0"
+    }
 
-  // The digits come out least significant first, so they are collected
-  // and then walked backwards.
-  var digits = Array<u8>::new(a)
-  var n = value
-  while n > 0 {
-    digits.push(hex_digit((n & 15) as u8, upper))
-    n = n >> 4
-  }
+    // The digits come out least significant first, so they are collected
+    // and then walked backwards.
+    var digits = Array<u8>::new(a)
+    var n = value
+    while n > 0 {
+        digits.push(hex_digit((n & 15) as u8, upper))
+        n = n >> 4
+    }
 
-  var out = Array<u8>::new(a)
-  for var i = digits.len(); i > 0; i -= 1 {
-    out.push(digits.get(i - 1))
-  }
-  digits.free()
+    var out = Array<u8>::new(a)
+    for var i = digits.len(); i > 0; i -= 1 {
+        out.push(digits.get(i - 1))
+    }
+    digits.free()
 
-  var text = from_utf8(a, out.slice())
-  out.free()
-  return text
+    var text = from_utf8(a, out.slice())
+    out.free()
+    return text
 }
 
 fn hex_digit(value: u8, upper: bool): u8 {
-  if value < 10 {
-    return zero_digit + value
-  }
-  if upper {
-    return 55 + value
-  }
-  return 87 + value
+    if value < 10 {
+        return zero_digit + value
+    }
+    if upper {
+        return 55 + value
+    }
+    return 87 + value
 }

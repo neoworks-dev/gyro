@@ -14,28 +14,28 @@
 
 import { println } from "stdlib"
 import safe {
-  area, perimeter, describe, scaled_area, bump, counter_value,
+    area, perimeter, describe, scaled_area, bump, counter_value,
 } from "./area.c"
 
 fn main() {
-  // area is in the file named; perimeter is not, and is exported by the
-  // module all the same.
-  println(area(3, 4))
-  println(perimeter(3, 4))
+    // area is in the file named; perimeter is not, and is exported by the
+    // module all the same.
+    println(area(3, 4))
+    println(perimeter(3, 4))
 
-  // describe calls across into geometry.c and adds its own static
-  // helper, which multiplies by ten.
-  println(describe(3, 4))
+    // describe calls across into geometry.c and adds its own static
+    // helper, which multiplies by ten.
+    println(describe(3, 4))
 
-  // scaled_area is in geometry.c and calls back into area.c. Its helper
-  // adds a hundred: same name as area.c's, different function.
-  println(scaled_area(3, 4, 2))
+    // scaled_area is in geometry.c and calls back into area.c. Its helper
+    // adds a hundred: same name as area.c's, different function.
+    println(scaled_area(3, 4, 2))
 
-  // counter.c arrived because geometry.c calls bump. Its state is a
-  // file-scope static that nothing else can reach.
-  println(counter_value())
-  println(scaled_area(1, 1, 5))
-  println(counter_value())
-  println(bump())
-  println(counter_value())
+    // counter.c arrived because geometry.c calls bump. Its state is a
+    // file-scope static that nothing else can reach.
+    println(counter_value())
+    println(scaled_area(1, 1, 5))
+    println(counter_value())
+    println(bump())
+    println(counter_value())
 }

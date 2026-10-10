@@ -3,13 +3,13 @@
 import { println } from "stdlib"
 
 struct Runner {
-  n: i32
+    n: i32
 }
 
 fn Runner::main(self): i32 {
-  return self.n
+    return self.n
 }
 
 fn main(args: string[]) {
-  println(args.len())
+    println(args.len())
 }

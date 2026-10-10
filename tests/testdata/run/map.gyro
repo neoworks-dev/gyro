@@ -7,8 +7,8 @@ import { println, Map, Eq, Hash } from "stdlib"
 import { heap } from "mem"
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Hash for Point
@@ -16,61 +16,61 @@ impl Hash for Point
 impl Eq for Point
 
 fn main() {
-  var ages = Map<string, i32>::new(heap())
-  println(ages.is_empty())
-  ages.insert("ada", 36)
-  ages.insert("grace", 45)
-  ages.insert("ada", 37)
-  println(ages.len())
+    var ages = Map<string, i32>::new(heap())
+    println(ages.is_empty())
+    ages.insert("ada", 36)
+    ages.insert("grace", 45)
+    ages.insert("ada", 37)
+    println(ages.len())
 
-  var age = ages.get("ada")
-  if age != null {
-    println(age)
-  }
-  println(ages.get("missing") == null)
-  println(ages.contains("grace"))
-
-  println(ages.remove("grace"))
-  println(ages.remove("grace"))
-  println(ages.len())
-
-  // Struct keys hash the way == compares: equal points collide on purpose.
-  var walls = Map<Point, string>::new(heap())
-  walls.insert(Point{ x: 1, y: 2 }, "north")
-  walls.insert(Point{ x: 1, y: 2 }, "south")
-  println(walls.len())
-  var side = walls.get(Point{ x: 1, y: 2 })
-  if side != null {
-    println(side)
-  }
-
-  // Push the map through several growths and read everything back.
-  var squares = Map<i32, i32>::new(heap())
-  for i in 0..100 {
-    squares.insert(i, i * i)
-  }
-  println(squares.len())
-  var sum = 0
-  for i in 0..100 {
-    var square = squares.get(i)
-    if square != null {
-      sum += square
+    var age = ages.get("ada")
+    if age != null {
+        println(age)
     }
-  }
-  println(sum)
+    println(ages.get("missing") == null)
+    println(ages.contains("grace"))
 
-  var keys = squares.keys()
-  println(keys.len())
-  keys.free()
+    println(ages.remove("grace"))
+    println(ages.remove("grace"))
+    println(ages.len())
 
-  for i in 0..50 {
-    var _ = squares.remove(i * 2)
-  }
-  println(squares.len())
-  println(squares.contains(99))
-  println(squares.contains(98))
+    // Struct keys hash the way == compares: equal points collide on purpose.
+    var walls = Map<Point, string>::new(heap())
+    walls.insert(Point{ x: 1, y: 2 }, "north")
+    walls.insert(Point{ x: 1, y: 2 }, "south")
+    println(walls.len())
+    var side = walls.get(Point{ x: 1, y: 2 })
+    if side != null {
+        println(side)
+    }
 
-  squares.free()
-  walls.free()
-  ages.free()
+    // Push the map through several growths and read everything back.
+    var squares = Map<i32, i32>::new(heap())
+    for i in 0..100 {
+        squares.insert(i, i * i)
+    }
+    println(squares.len())
+    var sum = 0
+    for i in 0..100 {
+        var square = squares.get(i)
+        if square != null {
+            sum += square
+        }
+    }
+    println(sum)
+
+    var keys = squares.keys()
+    println(keys.len())
+    keys.free()
+
+    for i in 0..50 {
+        var _ = squares.remove(i * 2)
+    }
+    println(squares.len())
+    println(squares.contains(99))
+    println(squares.contains(98))
+
+    squares.free()
+    walls.free()
+    ages.free()
 }

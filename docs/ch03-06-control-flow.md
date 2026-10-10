@@ -7,7 +7,7 @@ if x < 0 {
 }
 
 while i * i <= n {
-  i += 1
+    i += 1
 }
 
 for var i = 0; i < 10; i += 1 {}
@@ -29,8 +29,8 @@ block, so `else if` does not parse. One spelling, one shape.
 C-style header, and `for ... in` over something iterable:
 
 ```gyro
-for var i = 0; i < 10; i += 1 { }
-for i in 0..10 { }
+for var i = 0; i < 10; i += 1 {}
+for i in 0..10 {}
 ```
 
 `a..b` is half-open, so `0..xs.len()` visits every index and an inclusive
@@ -50,13 +50,13 @@ loop.
 
 ```gyro
 impl Iterator<i32> for Counter {
-  fn next(*self): (i32, bool) {
-    if self.n >= self.limit {
-      return 0, false
+    fn next(*self): (i32, bool) {
+        if self.n >= self.limit {
+            return 0, false
+        }
+        self.n += 1
+        return self.n, true
     }
-    self.n += 1
-    return self.n, true
-  }
 }
 
 for x in (Counter{ 0, 5 }) { println(x) }
@@ -79,9 +79,9 @@ control-flow statement.
 
 ```gyro
 var name = match n {
-  0: "zero"
-  1: "one"
-  _: "other"
+    0: "zero"
+    1: "one"
+    _: "other"
 }
 ```
 

@@ -7,10 +7,10 @@
 import { println } from "stdlib"
 
 fn main() {
-  var xs = [10, 20, 30]
-  println("before")
-  var lo: usize = 2
-  var hi: usize = 1
-  var window = xs[lo..hi]
-  println(window.len())
+    var xs = [10, 20, 30]
+    println("before")
+    var lo: usize = 2
+    var hi: usize = 1
+    var window = xs[lo..hi]
+    println(window.len())
 }

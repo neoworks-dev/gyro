@@ -1,43 +1,43 @@
 struct Point {
-  x: i32
+    x: i32
 }
 
 fn sum(xs: ...i32): i32 {
-  return xs.len() as i32
+    return xs.len() as i32
 }
 
 fn labelled(label: string, rest: ...any) {}
 
 fn plain(a: i32, b: i32) {}
 
-fn notLast(xs: ...i32, tail: i32) {}   //~ E0524 only the last parameter may be variadic
+fn notLast(xs: ...i32, tail: i32) {} //~ E0524 only the last parameter may be variadic
 
-fn withDefault(xs: ...i32 = 0) {}      //~ E0524 a variadic parameter takes no default
-                                       //~^ E0501 cannot use an integer literal as i32[] in the default value
+fn withDefault(xs: ...i32 = 0) {} //~ E0524 a variadic parameter takes no default
+//~^ E0501 cannot use an integer literal as i32[] in the default value
 
 fn arity() {
-  sum()
-  sum(1, 2, 3)
-  labelled("x")
-  labelled()                           //~ E0504 takes at least 1 argument(s), got 0
+    sum()
+    sum(1, 2, 3)
+    labelled("x")
+    labelled() //~ E0504 takes at least 1 argument(s), got 0
 }
 
 fn elementTypes(p: Point, s: string) {
-  sum(1, "two")                        //~ E0501 cannot use string as i32
-  labelled("x", 1, s, true, p)
+    sum(1, "two") //~ E0501 cannot use string as i32
+    labelled("x", 1, s, true, p)
 }
 
 fn packing(err: error, maybe: i32?) {
-  labelled("x", err)                   //~ E0509 an any cannot hold error
-  labelled("x", maybe)                 //~ E0509 an any cannot hold i32?
+    labelled("x", err)   //~ E0509 an any cannot hold error
+    labelled("x", maybe) //~ E0509 an any cannot hold i32?
 }
 
 fn spreading(xs: i32[], packed: any[]) {
-  sum(xs...)
-  sum(xs)                              //~ E0501 cannot use i32[] as i32
-  labelled("x", packed...)
-  plain(xs...)                         //~ E0525 plain has no variadic parameter to spread into
-                                       //~^ E0504 plain takes 2 argument(s), got 1
-                                       //~^^ E0501 cannot use i32[] as i32 in argument 1 to plain
-  sum(xs..., 1)                        //~ E0525 a spread argument is the whole pack
+    sum(xs...)
+    sum(xs) //~ E0501 cannot use i32[] as i32
+    labelled("x", packed...)
+    plain(xs...) //~ E0525 plain has no variadic parameter to spread into
+    //~^ E0504 plain takes 2 argument(s), got 1
+    //~^^ E0501 cannot use i32[] as i32 in argument 1 to plain
+    sum(xs..., 1) //~ E0525 a spread argument is the whole pack
 }

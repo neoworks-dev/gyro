@@ -1,35 +1,35 @@
 // self, receivers and the type a method belongs to.
 
 struct S {
-  v: i32
+    v: i32
 }
 
 fn S::get(self): i32 {
-  return self.v
+    return self.v
 }
 
 // A closure inside a method still sees self.
 fn S::getter(self): fn(): i32 {
-  return fn() self.v
+    return fn() self.v
 }
 
 fn S::duplicate(self) {
 }
 
-fn S::duplicate(self) {          //~ E0603 S already has a method duplicate
+fn S::duplicate(self) { //~ E0603 S already has a method duplicate
 }
 
 fn selfOutsideAMethod() {
-  var x = self                   //~ self is only available inside a method
+    var x = self //~ self is only available inside a method
 }
 
-fn Missing::m(self) {            //~ no such type in this module
+fn Missing::m(self) { //~ no such type in this module
 }
 
 var notAType = 1
 
-fn notAType::m(self) {           //~ not a type
+fn notAType::m(self) { //~ not a type
 }
 
-fn looseReceiver(self) {         //~ a receiver needs an owning type
+fn looseReceiver(self) { //~ a receiver needs an owning type
 }

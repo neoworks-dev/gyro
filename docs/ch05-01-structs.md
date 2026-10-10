@@ -5,9 +5,9 @@ free-standing methods ([chapter 5.2](ch05-02-methods.md)).
 
 ```gyro
 export struct Stack {
-  export capacity: i32
-  top: i32
-  items: Array<i32>
+    export capacity: i32
+    top: i32
+    items: Array<i32>
 }
 ```
 
@@ -19,8 +19,8 @@ own visibility is.
 ## Literals come in two forms
 
 ```gyro
-Point{ x: 1, y: 2 }   // named
-Pair<i32>{ 1, 2 }     // positional, in declaration order
+Point{ x: 1, y: 2 } // named
+Pair<i32>{ 1, 2 }   // positional, in declaration order
 ```
 
 A literal is one or the other, never a mix, and it must set **every** field.
@@ -33,7 +33,7 @@ functions:
 
 ```gyro
 export fn Stack::new(capacity: i32): Stack {
-  return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
+    return Stack{ capacity: capacity, top: 0, items: Array<i32>::new(heap()) }
 }
 ```
 
@@ -60,14 +60,14 @@ Without the impl a struct does not compare, hash or print.
 
 ```gyro
 struct Pair<T> {
-  first: T
-  second: T
+    first: T
+    second: T
 }
 
 fn Pair<T>::swap(*self) {
-  var tmp = self.first
-  self.first = self.second
-  self.second = tmp
+    var tmp = self.first
+    self.first = self.second
+    self.second = tmp
 }
 
 var p = Pair<i32>{ 1, 2 }
@@ -82,8 +82,8 @@ Because a condition is followed by `{`, a bare struct literal cannot appear
 at the top level of an `if`, `while` or `for..in` head. Parenthesize:
 
 ```gyro
-if (Point{ x: 1 }).x > 0 { }
-for x in (Counter{ 0, 5 }) { }
+if (Point{ x: 1 }).x > 0 {}
+for x in (Counter{ 0, 5 }) {}
 ```
 
 ## Structs and borrows
@@ -95,9 +95,9 @@ array holds frame storage, and a view of its field is a view of this frame:
 struct View { data: i32[] }
 
 fn bad(): i32[] {
-  var xs = [1, 2, 3]
-  var v = View{ data: xs }
-  return v.data          // error: xs ends with this function
+    var xs = [1, 2, 3]
+    var v = View{ data: xs }
+    return v.data // error: xs ends with this function
 }
 ```
 

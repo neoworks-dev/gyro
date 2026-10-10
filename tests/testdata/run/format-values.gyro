@@ -6,112 +6,112 @@ import { println, print, Print } from "stdlib"
 import { format, heap, Arena, Format } from "mem"
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 impl Print for Point
 
 enum Shape {
-  Dot,
-  Circle(f64),
+    Dot,
+    Circle(f64),
 }
 
 impl Print for Shape
 
 struct Version {
-  major: i32
-  minor: i32
+    major: i32
+    minor: i32
 }
 
 impl Print for Version {
-  fn to_string(self): string {
-    return format(heap(), "v#{self.major}.#{self.minor}")
-  }
+    fn to_string(self): string {
+        return format(heap(), "v#{self.major}.#{self.minor}")
+    }
 }
 
 // A to_string that prints. The pieces of a streamed line are shown as they
 // are written, so its output lands where its piece is.
 struct Loud {
-  id: i32
+    id: i32
 }
 
 impl Print for Loud {
-  fn to_string(self): string {
-    println("(rendering)")
-    return format(heap(), "loud#{self.id}")
-  }
+    fn to_string(self): string {
+        println("(rendering)")
+        return format(heap(), "loud#{self.id}")
+    }
 }
 
 fn log(message: Format) {
-  print("log: ")
-  println(message)
+    print("log: ")
+    println(message)
 }
 
 fn outer(message: Format) {
-  inner(message)
+    inner(message)
 }
 
 fn inner(message: Format) {
-  println(message)
+    println(message)
 }
 
 fn shout(message: Format) {
-  print(message)
-  println("!")
+    print(message)
+    println("!")
 }
 
 fn describe<T: Print>(value: T) {
-  println(value)
+    println(value)
 }
 
 fn length(text: string): usize {
-  return text.len()
+    return text.len()
 }
 
 fn main() {
-  var n = 3
-  var title = "Gyro"
-  var xs = [10, 20, 30]
+    var n = 3
+    var title = "Gyro"
+    var xs = [10, 20, 30]
 
-  // Streamed: every kind of piece, nothing built.
-  println("#{n}. #{title}")
-  println("#{n * 2} #{xs.len()} #{2.5} #{true} #{'x'} #{n as u8} #{1 < 2}")
-  println("#{Point{ x: 1, y: 2 }} #{Shape::Dot} #{Shape::Circle(1.5)} #{(n, title)}")
-  println("#{xs} #{null}")
-  println("#{Version{ major: 1, minor: 9 }}")
-  println("a#{n}#{n}b")
-  println("\#{n} stays literal")
-  println("say \"#{title}\"")
+    // Streamed: every kind of piece, nothing built.
+    println("#{n}. #{title}")
+    println("#{n * 2} #{xs.len()} #{2.5} #{true} #{'x'} #{n as u8} #{1 < 2}")
+    println("#{Point{ x: 1, y: 2 }} #{Shape::Dot} #{Shape::Circle(1.5)} #{(n, title)}")
+    println("#{xs} #{null}")
+    println("#{Version{ major: 1, minor: 9 }}")
+    println("a#{n}#{n}b")
+    println("\#{n} stays literal")
+    println("say \"#{title}\"")
 
-  // Holes are evaluated before anything is written; a to_string runs
-  // while its piece is.
-  println("before #{Loud{ id: 7 }} after")
+    // Holes are evaluated before anything is written; a to_string runs
+    // while its piece is.
+    println("before #{Loud{ id: 7 }} after")
 
-  // Passed on, once or through several helpers, or to a generic one.
-  log("the answer is #{n}")
-  outer("forwarded #{title}")
-  shout("loud #{n}")
-  describe("generic #{n + 1}")
+    // Passed on, once or through several helpers, or to a generic one.
+    log("the answer is #{n}")
+    outer("forwarded #{title}")
+    shout("loud #{n}")
+    describe("generic #{n + 1}")
 
-  // Allocated: a string, usable afterwards.
-  var text = format(heap(), "#{n}. #{title}")
-  println(text)
-  println(length(text))
-  println(text == "3. Gyro")
-  var long = format(heap(), "#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}")
-  println(length(long))
-  println(long)
+    // Allocated: a string, usable afterwards.
+    var text = format(heap(), "#{n}. #{title}")
+    println(text)
+    println(length(text))
+    println(text == "3. Gyro")
+    var long = format(heap(), "#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}")
+    println(length(long))
+    println(long)
 
-  // An arena's free_all takes the text back, and the next one is built over
-  // it. The first text is not read again: that is what the borrow analysis
-  // refuses.
-  var arena = Arena::new(heap(), 512)
-  defer arena.free()
-  var a = arena.allocator()
-  var first = format(a, "first #{n}")
-  println(first)
-  arena.free_all()
-  var second = format(a, "other #{n + 1}")
-  println(second)
+    // An arena's free_all takes the text back, and the next one is built over
+    // it. The first text is not read again: that is what the borrow analysis
+    // refuses.
+    var arena = Arena::new(heap(), 512)
+    defer arena.free()
+    var a = arena.allocator()
+    var first = format(a, "first #{n}")
+    println(first)
+    arena.free_all()
+    var second = format(a, "other #{n + 1}")
+    println(second)
 }

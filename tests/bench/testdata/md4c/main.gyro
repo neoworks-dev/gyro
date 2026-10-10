@@ -30,20 +30,20 @@ const ROUNDS: i64 = 2000
 const DOCUMENT: string = "\# md4c\n\nA *small* but **representative** document: it exercises every block\nand inline construct the CommonMark dialect has, so the hot region is\nthe parser and not one branch of it.\n\n\#\# Blocks\n\n> A block quote, with a [reference link][ref] inside it.\n>\n> - a tight list item\n> - another one\n\n1. an ordered item\n2. a second one\n\n   with a loose paragraph in it\n\nSetext heading\n==============\n\n    an indented code block\n    over two lines\n\n```c\nint main(void) { return 0; }\n```\n\n***\n\n\#\# Inlines\n\nText with `code spans`, <https://example.org/autolink>, an entity &amp;\nand &\#x1F600;, an ![image](/img.png \"title\"), a hard break here  \nand a backslash escape \\*not emphasis\\*.\n\n<div class=\"raw\">\n  <p>raw HTML block</p>\n</div>\n\nNested *emphasis with **strong** inside* and a [collapsed][] reference,\nplus a <span>raw span</span> and an <b>inline tag</b>.\n\n[ref]: /destination \"the title\"\n[collapsed]: /collapsed\n"
 
 fn main() {
-  var source = DOCUMENT.bytes(heap())
+    var source = DOCUMENT.bytes(heap())
 
-  var start = monotonic()
-  var acc: u64 = 14695981039346656037
-  for var round: i64 = 0; round < ROUNDS; round += 1 {
-    var out = html::render_html(source)
-    for byte in out.slice() {
-      acc = (acc ^ byte as u64) *% 1099511628211
+    var start = monotonic()
+    var acc: u64 = 14695981039346656037
+    for var round: i64 = 0; round < ROUNDS; round += 1 {
+        var out = html::render_html(source)
+        for byte in out.slice() {
+            acc = (acc ^ byte as u64) *% 1099511628211
+        }
+        acc = acc *% 31 +% (out.len() as u64)
+        out.free()
     }
-    acc = acc *% 31 +% (out.len() as u64)
-    out.free()
-  }
-  var stop = monotonic()
+    var stop = monotonic()
 
-  println(acc)
-  eprintln("gyro:bench #{stop - start}")
+    println(acc)
+    eprintln("gyro:bench #{stop - start}")
 }

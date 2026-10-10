@@ -7,47 +7,47 @@ fn defaulted(a: i32, b: i32 = 4) {
 }
 
 fn arity() {
-  one()                          //~ takes 1 argument(s), got 0
-  one(1, 2)                      //~ takes 1 argument(s), got 2
-  defaulted(1)
-  defaulted(1, 2)
-  defaulted()                    //~ takes 1 to 2 arguments, got 0
+    one()     //~ takes 1 argument(s), got 0
+    one(1, 2) //~ takes 1 argument(s), got 2
+    defaulted(1)
+    defaulted(1, 2)
+    defaulted() //~ takes 1 to 2 arguments, got 0
 }
 
 fn argumentTypes(x: i32) {
-  one("no")                      //~ cannot use string as i32 in argument 1 to one
-  one(a = 1)                     //~ arguments are positional
-  x(1)                           //~ not callable
+    one("no")  //~ cannot use string as i32 in argument 1 to one
+    one(a = 1) //~ arguments are positional
+    x(1)       //~ not callable
 }
 
 fn returnsInt(): i32 {
-  return 3
+    return 3
 }
 
 fn returnsWrongType(): i32 {
-  return "three"                 //~ cannot use string as i32 in return
+    return "three" //~ cannot use string as i32 in return
 }
 
 fn returnsNothingAtAll(): i32 {
-  return                         //~ returns i32; the return gives nothing
+    return //~ returns i32; the return gives nothing
 }
 
 fn returnsNothing() {
-  return 3                       //~ returns nothing
+    return 3 //~ returns nothing
 }
 
 fn returnsTuple(): (i32, error?) {
-  return 0, null
+    return 0, null
 }
 
 fn returnsSwappedTuple(): (i32, error?) {
-  return null, 0                 //~ cannot use null as i32 in return
-                                 //~^ cannot use an integer literal as error? in return
+    return null, 0 //~ cannot use null as i32 in return
+    //~^ cannot use an integer literal as error? in return
 }
 
 fn returnsTooMany(): i32 {
-  return 1, 2                    //~ the return gives 2 values
+    return 1, 2 //~ the return gives 2 values
 }
 
-fn badDefault(n: i32 = "x") {    //~ cannot use string as i32
+fn badDefault(n: i32 = "x") { //~ cannot use string as i32
 }

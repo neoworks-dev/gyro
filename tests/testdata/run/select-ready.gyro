@@ -3,14 +3,14 @@
 import { println } from "stdlib"
 
 fn main() {
-  var ready = chan<i32>(1)
-  ready <- 42
-  select {
-    var v = <-ready: println("got #{v}")
-    else: println("nothing")
-  }
-  select {
-    var v = <-ready: println("got #{v}")
-    else: println("nothing")
-  }
+    var ready = chan<i32>(1)
+    ready <- 42
+    select {
+        var v = <-ready: println("got #{v}")
+        else: println("nothing")
+    }
+    select {
+        var v = <-ready: println("got #{v}")
+        else: println("nothing")
+    }
 }

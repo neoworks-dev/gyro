@@ -9,8 +9,8 @@ import { read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-  var text = read_stdin(heap())
-  println(text.len())
-  println(text)
-  println("[#{read_stdin(heap())}]")
+    var text = read_stdin(heap())
+    println(text.len())
+    println(text)
+    println("[#{read_stdin(heap())}]")
 }

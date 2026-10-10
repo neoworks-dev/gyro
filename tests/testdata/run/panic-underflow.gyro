@@ -4,7 +4,7 @@
 import { println } from "stdlib"
 
 fn main() {
-  var x: u8 = 0
-  var y: u8 = 1
-  println(x - y)
+    var x: u8 = 0
+    var y: u8 = 1
+    println(x - y)
 }

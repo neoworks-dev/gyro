@@ -1,8 +1,8 @@
 import { println } from "stdlib"
 
 fn main() {
-  var xs: u8[] = [10, 20, 30]
-  println(xs[1])
-  xs[1] = 25
-  println(xs[1])
+    var xs: u8[] = [10, 20, 30]
+    println(xs[1])
+    xs[1] = 25
+    println(xs[1])
 }

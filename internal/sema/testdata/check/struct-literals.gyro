@@ -1,31 +1,31 @@
 // A struct literal sets every field, once, with the right type.
 
 struct Point {
-  x: i32
-  y: i32
+    x: i32
+    y: i32
 }
 
 fn named(): Point {
-  return Point{ x: 1, y: 2 }
+    return Point{ x: 1, y: 2 }
 }
 
 fn positional(): Point {
-  return Point{ 1, 2 }
+    return Point{ 1, 2 }
 }
 
 fn badLiterals() {
-  var a = Point{ x: 1 }                //~ misses the field y
-  var b = Point{ x: 1, y: 2, z: 3 }    //~ no field z
-  var c = Point{ x: 1, x: 2, y: 3 }    //~ set twice
-  var d = Point{ 1 }                   //~ has 2 fields, the literal provides 1
-  var e = Point{ x: "one", y: 2 }      //~ cannot use string as i32
+    var a = Point{ x: 1 }             //~ misses the field y
+    var b = Point{ x: 1, y: 2, z: 3 } //~ no field z
+    var c = Point{ x: 1, x: 2, y: 3 } //~ set twice
+    var d = Point{ 1 }                //~ has 2 fields, the literal provides 1
+    var e = Point{ x: "one", y: 2 }   //~ cannot use string as i32
 }
 
 fn fieldAccess(p: Point): i32 {
-  return p.x
+    return p.x
 }
 
 fn badFieldAccess(p: Point) {
-  var v = p.z                          //~ no field or method z
-  var w: string = p.x                  //~ cannot use i32 as string
+    var v = p.z         //~ no field or method z
+    var w: string = p.x //~ cannot use i32 as string
 }

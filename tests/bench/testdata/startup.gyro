@@ -6,9 +6,9 @@ import { println, eprintln } from "stdlib"
 import { monotonic } from "time"
 
 fn main() {
-  var start = monotonic()
-  var stop = monotonic()
+    var start = monotonic()
+    var stop = monotonic()
 
-  println(0)
-  eprintln("gyro:bench #{stop - start}")
+    println(0)
+    eprintln("gyro:bench #{stop - start}")
 }

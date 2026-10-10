@@ -24,41 +24,41 @@ import { heap, format } from "mem"
 const REPEATS: i64 = 1000
 
 fn show(algorithm: string, label: string, digest: u8[]) {
-  printf("%-6s %-12s ", algorithm, label)
-  for byte in digest {
-    printf("%02x", byte)
-  }
-  printf("\n")
+    printf("%-6s %-12s ", algorithm, label)
+    for byte in digest {
+        printf("%02x", byte)
+    }
+    printf("\n")
 }
 
 fn both(label: string, message: string) {
-  show("md5", label, md5::sum(message.bytes(heap())))
-  show("sha256", label, sha256::sum(message.bytes(heap())))
+    show("md5", label, md5::sum(message.bytes(heap())))
+    show("sha256", label, sha256::sum(message.bytes(heap())))
 }
 
 fn main() {
-  // The vectors the two C test files hash.
-  both("empty", "")
-  both("abc", "abc")
-  both("fips-2", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
-  both("alnum", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+    // The vectors the two C test files hash.
+    both("empty", "")
+    both("abc", "abc")
+    both("fips-2", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+    both("alnum", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 
-  // md5_test.c adds its third message in two chunks, to show that a
-  // context accepts more than one update.
-  var ctx = md5::init()
-  ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes(heap()))
-  ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes(heap()))
-  show("md5", "two-chunk", ctx.final())
+    // md5_test.c adds its third message in two chunks, to show that a
+    // context accepts more than one update.
+    var ctx = md5::init()
+    ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes(heap()))
+    ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes(heap()))
+    show("md5", "two-chunk", ctx.final())
 
-  // sha256_test.c's repeated-update vector, at a tenth of a percent of
-  // its length.
-  show("sha256", "repeated", sha256::sum_repeated("aaaaaaaaaa".bytes(heap()), REPEATS))
+    // sha256_test.c's repeated-update vector, at a tenth of a percent of
+    // its length.
+    show("sha256", "repeated", sha256::sum_repeated("aaaaaaaaaa".bytes(heap()), REPEATS))
 
-  // The padding boundaries: 55 and 56 bytes bracket the branch in
-  // `final`, 63 and 64 bracket the block that `update` flushes on its
-  // own, and 0 and 70 are the ends.
-  for length in 0..71 {
-    var message = "a".repeat(heap(), length)
-    both(format(heap(), "#{length}"), message)
-  }
+    // The padding boundaries: 55 and 56 bytes bracket the branch in
+    // `final`, 63 and 64 bracket the block that `update` flushes on its
+    // own, and 0 and 70 are the ends.
+    for length in 0..71 {
+        var message = "a".repeat(heap(), length)
+        both(format(heap(), "#{length}"), message)
+    }
 }

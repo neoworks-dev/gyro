@@ -5,8 +5,8 @@ import { println } from "stdlib"
 import { hits, record } from "./state"
 
 fn main() {
-  println(hits)
-  record()
-  record()
-  println(hits)
+    println(hits)
+    record()
+    record()
+    println(hits)
 }
