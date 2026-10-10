@@ -43,6 +43,7 @@ internal/lower/      Gyro -> METALS lowering; METALS' first producer
 internal/cc/         C -> METALS; the second producer, and what a .c import goes through
 internal/nasm/       METALS -> x86-64 NASM, the one consumer
 internal/crt/        the C runtime the backend links
+internal/format/     gyro fmt, the formatter
 internal/lsp/        language server
 tree-sitter-gyro/    Gyro tree-sitter grammar and queries
 tree-sitter-metals/  METALS tree-sitter grammar
