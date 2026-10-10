@@ -264,3 +264,31 @@ func TestRepositoryFilesKeepTheirMeaning(t *testing.T) {
 		}
 	}
 }
+
+// TestRepositoryIsFormatted is `gofmt -l` for Gyro: it fails, naming the
+// files, when a .gyro file that parses is not already in the formatter's
+// layout. Run `gyro fmt .` to fix them.
+func TestRepositoryIsFormatted(t *testing.T) {
+	var unformatted []string
+	for _, path := range gyroFiles(t) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bag diag.Bag
+		out, err := Source(path, string(data), &bag)
+		if errors.Is(err, ErrSyntax) {
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", path, err)
+			continue
+		}
+		if out != string(data) {
+			unformatted = append(unformatted, path)
+		}
+	}
+	if len(unformatted) > 0 {
+		t.Errorf("not formatted, run `gyro fmt` on them:\n\t%s", strings.Join(unformatted, "\n\t"))
+	}
+}
