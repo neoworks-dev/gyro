@@ -1,0 +1,157 @@
+// A generic states what it needs of its type parameters, with bounds
+// joined by &, and its body uses only what they provide. Each call below
+// is compiled for the types it is called with.
+
+import { println, Array, Map, Eq, Ord, Hash } from "stdlib"
+import { heap } from "mem"
+
+struct Version {
+  major: i32
+  minor: i32
+}
+
+impl Eq for Version
+impl Hash for Version
+impl Ord for Version {
+  fn compare(self, other: Self): i32 {
+    if self.major != other.major {
+      if self.major < other.major {
+        return -1
+      }
+      return 1
+    }
+    if self.minor < other.minor {
+      return -1
+    }
+    if self.minor > other.minor {
+      return 1
+    }
+    return 0
+  }
+}
+
+fn bigger<T: Ord>(a: T, b: T): T !{ &a, &b } {
+  if a > b {
+    return a
+  }
+  return b
+}
+
+// Ord requires Eq, so a body bounded by Ord may also use ==.
+fn clamp<T: Ord>(value: T, low: T, high: T): T !{ &value, &low, &high } {
+  if value == low {
+    return low
+  }
+  if value < low {
+    return low
+  }
+  if value > high {
+    return high
+  }
+  return value
+}
+
+// A trait of the program's own, with a default that calls the required
+// method through Self.
+trait Shape {
+  fn area(self): i32
+  fn double_area(self): i32 {
+    return self.area() * 2
+  }
+}
+
+struct Square {
+  side: i32
+}
+
+struct Rect {
+  w: i32
+  h: i32
+}
+
+impl Shape for Square {
+  fn area(self): i32 {
+    return self.side * self.side
+  }
+}
+
+impl Shape for Rect {
+  fn area(self): i32 {
+    return self.w * self.h
+  }
+  fn double_area(self): i32 {
+    return 0 - 1
+  }
+}
+
+fn total_area<S: Shape>(shapes: S[]): i32 {
+  var total = 0
+  for shape in shapes {
+    total += shape.area()
+  }
+  return total
+}
+
+fn doubled<S: Shape>(shape: S): i32 {
+  return shape.double_area()
+}
+
+// Two bounds. The key of a Map needs both.
+fn count_distinct<K: Eq & Hash>(keys: K[]): usize {
+  var seen = Map<K, bool>::new(heap())
+  defer seen.free()
+  for key in keys {
+    seen.insert(key, true)
+  }
+  return seen.len()
+}
+
+// A generic type states its bounds on its parameters, and its methods
+// inherit them.
+struct Ranked<T: Ord> {
+  items: Array<T>
+}
+
+fn Ranked<T>::new(): Ranked<T> {
+  return Ranked{ items: Array<T>::new(heap()) }
+}
+
+fn Ranked<T>::add(*self, item: T) {
+  self.items.push(item)
+}
+
+fn Ranked<T>::best(self): T {
+  var best = self.items.get(0)
+  for i in 1..self.items.len() {
+    best = bigger(best, self.items.get(i))
+  }
+  return best
+}
+
+fn main() {
+  println(bigger(3, 9))
+  println(bigger("pear", "apple"))
+  println(bigger(2.5, 1.5))
+  var newest = bigger(Version{ major: 1, minor: 9 }, Version{ major: 2, minor: 0 })
+  println(newest.major)
+
+  println(clamp(15, 0, 10))
+  println(clamp(-4, 0, 10))
+  println(clamp(7, 0, 10))
+  println(clamp(Version{ major: 3, minor: 0 }, Version{ major: 1, minor: 0 }, Version{ major: 2, minor: 5 }).major)
+
+  var squares = [Square{ side: 2 }, Square{ side: 3 }]
+  println(total_area(squares))
+  println(doubled(Square{ side: 4 }))
+  println(doubled(Rect{ w: 2, h: 5 }))
+
+  println(count_distinct([1, 2, 2, 3, 3, 3]))
+  println(count_distinct(["a", "b", "a"]))
+  println(count_distinct([Version{ major: 1, minor: 0 }, Version{ major: 1, minor: 0 }, Version{ major: 2, minor: 0 }]))
+
+  var ranked = Ranked<i32>::new()
+  ranked.add(4)
+  ranked.add(11)
+  ranked.add(7)
+  println(ranked.best())
+}

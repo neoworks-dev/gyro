@@ -593,6 +593,12 @@ func (c *checker) checkDerivable(d *ast.ImplDecl, owner, self types.Type, kind s
 		return
 	}
 	for _, part := range ownedTypes(owner) {
+		// A part written over the type's own parameters has the capability
+		// for the arguments that do, which is judged where the type is
+		// used with them.
+		if containsTypeParam(part.typ) {
+			continue
+		}
 		if !c.hasCapability(part.typ, kind, map[string]bool{}) {
 			c.errorHintf(d.Offset, []string{
 				"every " + part.what + " has to implement " + kind + " too; write its impl, or write this one out with a block",
@@ -976,7 +982,7 @@ func (c *checker) checkBounds(offset int, label string, params []*types.TypePara
 // boundsOnApply checks the bounds of a type applied to arguments. Where the
 // application is written before the impls of the module are known, as a
 // field type may be, the check waits for them.
-func (c *checker) boundsOnApply(offset int, name string, params []*types.TypeParam, args []types.Type) {
+func (c *checker) boundsOnApply(offset int, name string, params []*types.TypeParam, args []types.Type) bool {
 	bounded := false
 	for _, param := range params {
 		if len(param.Bounds) > 0 {
@@ -984,16 +990,15 @@ func (c *checker) boundsOnApply(offset int, name string, params []*types.TypePar
 		}
 	}
 	if !bounded {
-		return
+		return true
 	}
 	s := bindParams(params, args)
 	label := name + "<" + paramNames(params) + ">"
-	check := func() { c.checkBounds(offset, label, params, s) }
 	if c.boundsReady {
-		check()
-		return
+		return c.checkBounds(offset, label, params, s)
 	}
-	c.pendingBounds = append(c.pendingBounds, check)
+	c.pendingBounds = append(c.pendingBounds, func() { c.checkBounds(offset, label, params, s) })
+	return true
 }
 
 func paramNames(params []*types.TypeParam) string {
@@ -1155,8 +1160,6 @@ func (c *checker) objectSafetyProblem(trait *types.Trait, seen map[*types.Trait]
 	}
 	for _, decl := range trait.Decl.Methods {
 		switch {
-		case decl.Recv == nil:
-			return "the method " + decl.Name + " has no receiver"
 		case len(decl.TypeParams) > 0:
 			return "the method " + decl.Name + " is generic"
 		case mentionsSelf(decl):

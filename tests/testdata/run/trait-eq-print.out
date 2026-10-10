@@ -1,0 +1,24 @@
+true
+false
+true
+$350
+true
+false
+true
+Line{ item: "latte", price: $350 }
+true
+false
+true
+false
+Entry::Sale($300)
+Entry::Empty
+true
+false
+true
+true
+false
+true
+false
+Pair{ first: 1, second: 2 }
+2
+2

@@ -225,6 +225,13 @@ func (l *lowerer) indexModules() {
 
 		for _, decl := range module.Tree.Decls {
 			l.moduleOf[decl] = module
+			// A trait's methods are not declarations of the file, but a
+			// default body lowers like a function of the module.
+			if trait, ok := decl.(*ast.TraitDecl); ok {
+				for _, method := range trait.Methods {
+					l.moduleOf[method] = module
+				}
+			}
 		}
 	}
 }
@@ -278,6 +285,10 @@ func (l *lowerer) funcName(decl *ast.FuncDecl, bindings map[string]types.Type) s
 	}
 	if decl.Owner != "" {
 		parts = append(parts, decl.Owner+typeArgSuffix(decl.OwnerParams, bindings))
+	} else if decl.Trait != nil {
+		// A default body is the trait's, compiled once for each type that
+		// takes it: Element<Label>::describe.
+		parts = append(parts, decl.Trait.Name+typeArgSuffix(decl.OwnerParams, bindings))
 	}
 	parts = append(parts, decl.Name+typeArgSuffix(decl.TypeParams, bindings))
 	return strings.Join(parts, "::")

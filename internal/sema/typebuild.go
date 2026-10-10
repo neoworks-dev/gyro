@@ -435,7 +435,9 @@ func (c *checker) applyTypeArgs(named types.Type, offset int, args []types.Type)
 		if len(args) == 0 {
 			return t
 		}
-		c.boundsOnApply(offset, t.Name, t.TypeParams, args)
+		if !c.boundsOnApply(offset, t.Name, t.TypeParams, args) {
+			return types.Unknown
+		}
 		return c.instantiateStruct(t, args)
 	case *types.Enum:
 		if len(args) != len(t.TypeParams) {
@@ -445,7 +447,9 @@ func (c *checker) applyTypeArgs(named types.Type, offset int, args []types.Type)
 		if len(args) == 0 {
 			return t
 		}
-		c.boundsOnApply(offset, t.Name, t.TypeParams, args)
+		if !c.boundsOnApply(offset, t.Name, t.TypeParams, args) {
+			return types.Unknown
+		}
 		return c.instantiateEnum(t, args)
 	case *types.Union:
 		// A union is one storage the widest member fits in, so it takes
