@@ -73,14 +73,20 @@ A sample, so the ranges have a shape:
 | code | meaning |
 | --- | --- |
 | E0105 | no such operator — there is no `++` or `--` |
-| E0209 | generic bounds — there are none to write |
+| E0209 | a bound where it does not belong |
 | E0218 | a function marked both `unsafe` and `safe` |
+| E0219 | a malformed trait or impl |
 | E0303 | circular import |
 | E0305 | not exported by that module |
 | E0401 | undeclared name |
 | E0501 | mismatched types |
 | E0502 | literal out of range for its type |
 | E0510 | a nullable used before it was checked |
+| E0527 | a type that does not implement a trait a bound, an operator or a printer asked for |
+| E0528 | an impl that does not match its trait |
+| E0529 | an impl that cannot be written: a duplicate, a built-in type, or a derivation the fields do not allow |
+| E0530 | a trait that cannot be used as `dyn` |
+| E0531 | a value that cannot become a trait value |
 | E0517 | an error result dropped |
 | E0521 | a match over an enum that is not exhaustive |
 | E0522 | a read of a variable no path has written |
@@ -107,8 +113,9 @@ rejected row entry leaves the row empty, so the return is unaccounted for
 too — two diagnostics, both correct. `return null, 0` against
 `(i32, error?)` is two mismatches. These are not suppressed.
 
-Errors from a generic land **in the generic's body**, with a related "in the
-instantiation required here" note at the call site
+A generic is checked once against its bounds, so a body that uses more than
+they give is reported **in the body**, and a call whose type argument does not
+meet a bound is reported **at the call**, naming the bound
 ([chapter 10](ch10-00-generics.md)).
 
 ## For contributors

@@ -1,39 +1,106 @@
 # 10. Generics
 
-Generics are **duck-typed**. A type parameter declares no bounds; the body's
-usage is the requirement, checked when `T` becomes concrete.
+A generic function or type takes **type parameters**, and a parameter states
+what it needs of its argument with **bounds**: the traits the argument has
+to implement. The body may use exactly what the bounds provide, and a call
+with a type that does not provide it is an error at the call.
 
 ```gyro
-fn max<T>(a: T, b: T): T {
-  if a.compare(b) > 0 {
+import { Ord } from "stdlib"
+
+fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
+  if a > b {
     return a
   }
   return b
 }
 
-max(3, 7)        // ok: i32 has a built-in compare
-max(v1, v2)      // ok: Version has compare
-max(m1, m2)      // error: Mutex has no method compare
+max(3, 7)        // ok: the numbers are Ord
+max(v1, v2)      // ok: Version says so, in an impl
+max(m1, m2)      // error: Mutex does not implement Ord
 ```
 
-There is no `T: Ord`, no `where` clause, and nothing to implement. Any type
-with the methods the body calls works; any type without them is a compile
-error at instantiation.
+`Ord` is a trait ([chapter 10.1](ch10-01-traits.md)). A bound is part of the
+signature, so the requirements of a function are on its first line and
+nowhere else.
 
-## Checking happens per instantiation
+## Bounds
 
-A generic body is **re-checked for every distinct set of type arguments**.
-That is what makes `max(m1, m2)` fail with "Mutex has no method compare" —
-and the diagnostic lands in the generic's body, with a related note reading
-"in the instantiation required here" at the call site. Both positions are
-useful, and neither alone is.
+Several bounds on one parameter are joined with `&`:
 
-Instantiation is cached and depth-capped, so a recursive instantiation
-terminates rather than looping.
+```gyro
+fn count_distinct<K: Eq & Hash>(keys: K[]): usize {
+  var seen = Map<K, bool>::new(heap())
+  defer seen.free()
+  for key in keys {
+    seen.insert(key, true)
+  }
+  return seen.len()
+}
+```
 
-## Generic types
+A trait that is itself bounded by another carries it along: `Ord` requires
+`Eq`, so a parameter bounded by `Ord` may use `==` too.
 
-User structs may be generic, instantiated the same way:
+**Every parameter that the body does anything with states its bounds.**
+There is no way to leave them off and have the body's usage stand in for
+them. A parameter with no bounds can be stored, passed on, returned and put
+in a container, and nothing else:
+
+```gyro
+fn describe<T>(item: T): string {
+  return item.name()      // error: T has no method name
+}
+```
+
+The bounds are what a body may use, and the compiler holds it to them. A
+generic body is checked **once against its bounds**, with the parameter
+opaque, and then **again for every distinct set of type arguments** it is
+called with, to produce the code for them. Because the first check allows
+nothing the bounds do not give, the second cannot fail for a type that met
+them.
+
+## What a bound allows
+
+| the parameter is bounded by | the body may |
+| --- | --- |
+| a trait of the program's own | call that trait's methods, and those of the traits it requires |
+| `Eq` | compare with `==` and `!=` |
+| `Ord` | order with `< <= > >=` and call `compare` (which also gives `Eq`) |
+| `Add`, `Sub`, `Mul`, `Div`, `Rem` | use `+ - * / %` on two values of the parameter |
+| `Neg` | negate with unary `-` |
+| `Hash` | call `hash` |
+| `Print` | pass the value to `println` and interpolate it |
+| `Iterator<T>` | walk it with `for..in` |
+| `Index<T>` | index it |
+
+The other operators are the numbers' alone. A parameter has no `&`, `<<`
+or `+%`, and no fields: it is some type, and the bounds are all the body
+knows about it.
+
+## Where bounds are written
+
+On a generic function, after the parameter name, and on a generic type, where
+the parameter is introduced:
+
+```gyro
+struct Map<K: Eq & Hash, V> {
+  buckets: Array<Array<(K, V)>>
+  count: usize
+}
+
+fn Map<K, V>::insert(*self, key: K, value: V) {
+  // K is Eq and Hash here, because the type says so
+}
+```
+
+A method of a generic type **inherits the bounds of the type** and does not
+restate them: `fn Pair<T: Eq>::swap` is an error, since the type is the one
+place that says what its parameter must be. Naming the type with an
+argument that does not meet its bounds — `Map<Mutex<i32>, bool>` — is the
+error, at the mention.
+
+A type whose parameters are only stored needs no bounds:
 
 ```gyro
 struct Pair<T> {
@@ -53,19 +120,40 @@ var p = Pair<i32>{ 1, 2 }
 Inference does the obvious things: a struct literal infers from its fields
 (`Pair{ 1, 2 }`), and an owner argument infers through an associated
 function, so `Mutex::new(0)` is a `Mutex<i32>` without the argument being
-written.
+written. The bounds are checked against what was inferred.
 
-## Type arguments live on path segments
+## An impl cannot add bounds to the type
 
-`Array<i32>::new` parameterizes a **non-final** segment. That is why paths
-are never treated as flat strings anywhere in the compiler, and why the
-parser has to decide speculatively whether `<` opens a type-argument list or
-is a comparison.
+`impl Add for Money<T>` is an impl of `Add` for every `Money<T>` the type
+allows, and cannot ask for more than the type does. A type whose impls need
+`T: Add` declares `struct Money<T: Add>`. Conditional impls — `Money<T>` is
+`Add` only when `T` is — are not built ([appendix G](appendix-g-known-gaps.md)).
+
+## Where errors land
+
+An unmet bound is reported **at the call**, naming the bound and who asked
+for it:
+
+```text
+error[E0527]: Mutex<i32> does not implement Ord, which max requires of T
+```
+
+A body that does something its bounds do not allow is reported **in the body**,
+once, whether or not anything calls it:
+
+```text
+error[E0405]: T has no method name
+```
+
+Instantiation is cached and depth-capped, so a recursive instantiation
+terminates rather than looping. An instantiation that fails anyway — which
+only a bug in the checker can cause — reports its error in the generic's body
+with a related note reading "in the instantiation required here".
 
 ## Effects and borrows on a generic
 
-A generic body's effects are judged per instantiation too: what a call on a
-type parameter reaches is only known once the parameter is concrete.
+A generic body's effects are judged per instantiation: what a call on a type
+parameter reaches is only known once the parameter is concrete.
 
 Borrow rows on a generic are **conditional** — load-bearing where `T` turns
 out to be a view, vacuous where it does not:
@@ -102,6 +190,13 @@ apply(5, fn(v) v * 3)      // T is i32, from the 5
 twice(fn(v) v + 1, 10)     // likewise, though the closure comes first
 ```
 
+## Type arguments live on path segments
+
+`Array<i32>::new` parameterizes a **non-final** segment. That is why paths
+are never treated as flat strings anywhere in the compiler, and why the
+parser has to decide speculatively whether `<` opens a type-argument list or
+is a comparison.
+
 ## What happens to a generic at compile time
 
 Generics do not survive lowering. The compiler **monomorphizes**: each
@@ -113,16 +208,12 @@ One consequence is visible from the language: a generic function has one
 address *per instantiation*, so `&f` on a generic is not a code pointer that
 a C signature could take ([chapter 15](ch15-00-c-interop.md)).
 
-## Why no bounds
+## Why bounds are required
 
-Bounds would need traits, and traits were removed. The duck-typed rule that
-replaced them runs through the whole language — `error`, iteration,
-printing, ordering and generics all work the same way, by having a method
-rather than by declaring anything. The reasoning, and what was given up
-along with it, is in [`decisions.md`](decisions.md) under "Traits were
-removed" and "Generics are duck-typed".
-
-What is given up is real: a generic's requirements are not visible in its
-signature, and an unusable type argument is caught at the call site rather
-than at the declaration. What is bought is that no type ever has to be
-adapted to a contract it did not know about.
+Gyro once checked a generic by what its body used and declared nothing. The
+errors then pointed into the body, the requirement was nowhere in the
+signature, and a type was adapted to a contract only by accident of having
+a method of the right name. Bounds put the requirement where a reader and a
+caller both look, and make a type opt in on purpose. The reasoning, and the
+alternatives that were rejected, are in [`decisions.md`](decisions.md) under
+"Generics are bounded" and "Traits".

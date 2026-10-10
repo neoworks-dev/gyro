@@ -17,17 +17,25 @@ same name does not displace one of these.
 | `bytes()` | `string` | `u8[]` — a copy |
 | `close()` | `chan<T>` | |
 | `compare(other)` | numeric primitives, `rune`, `string` | `i32`: -1, 0 or 1 |
-| `hash()` | those, and tuples, structs and enums of them | `u64` |
+| `hash()` | types that are `Hash`: those, and tuples, and structs and enums that implement it | `u64` |
+| `eq(other)` | types that are `Eq` | `bool` |
+| `add`, `sub`, `mul`, `div`, `rem`, `neg` | the numeric primitives | the same type |
 | `message()` | `error` | `string` |
-| `to_string()` | any type that declares one | `string` |
 
-`len`, `close`, `hash`, `compare` and `message` do nothing observable, so
+The last two rows are the methods of the capability traits below, present on
+the built-in types so a generic body may call `a.add(b)` where `a + b` would
+do. `to_string` is not on the list: a type that implements `Print` with a
+block has its own, and no built-in type does, since a number's text is made
+by the runtime.
+
+`len`, `close`, `hash`, `eq`, `compare` and `message` do nothing observable, so
 they contribute no effects; `runes()` and `bytes()` copy, so they do `alloc`
 ([chapter 12](ch12-00-effect-rows.md)).
 
-Indexing is syntax rather than a method, and reaches three containers:
-`xs[i]` on a slice, on a fixed-size array, and on an `Array<T>`. Every one
-is a **place**, so `xs[i] = v` and `&xs[i]` work. Narrowing — `xs[lo..hi]`
+Indexing is syntax rather than a method, and reaches three built-in
+containers: `xs[i]` on a slice, on a fixed-size array, and on an `Array<T>`,
+and any type that implements `Index<T>`. Every one is a **place**, so
+`xs[i] = v` and `&xs[i]` work. Narrowing — `xs[lo..hi]`
 — reaches all three too, and answers with a slice
 ([chapter 4.4](ch04-04-slices-and-views.md)).
 
@@ -47,10 +55,30 @@ compiled like any other module.**
 Printing:
 
 ```gyro
-export fn print<T>(value: T) !{ io }
-export fn println<T>(value: T) !{ io }
-export fn eprint<T>(value: T) !{ io }
-export fn eprintln<T>(value: T) !{ io }
+export fn print<T: Print>(value: T) !{ io }
+export fn println<T: Print>(value: T) !{ io }
+export fn eprint<T: Print>(value: T) !{ io }
+export fn eprintln<T: Print>(value: T) !{ io }
+```
+
+The capability traits ([chapter 10.1](ch10-01-traits.md)). The compiler gives
+each its meaning by where it is declared; the built-in types implement the
+ones that apply to them, and a type a program declares implements one with
+`impl Trait for Type`.
+
+```gyro
+export trait Eq { fn eq(self, other: Self): bool }
+export trait Hash { fn hash(self): u64 }
+export trait Print { fn to_string(self): string }
+export trait Ord: Eq { fn compare(self, other: Self): i32 }
+export trait Add { fn add(self, other: Self): Self }
+export trait Sub { fn sub(self, other: Self): Self }
+export trait Mul { fn mul(self, other: Self): Self }
+export trait Div { fn div(self, other: Self): Self }
+export trait Rem { fn rem(self, other: Self): Self }
+export trait Neg { fn neg(self): Self }
+export trait Iterator<T> { fn next(*self): (T, bool) }
+export trait Index<T> { fn at(*self, index: usize): *T }
 ```
 
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
@@ -104,7 +132,7 @@ export fn string::repeat(self, a: Allocator, times: i32): string !{}
 export fn join(a: Allocator, parts: string[], sep: string): string !{}
 ```
 
-`Map<K, V>` ([chapter 8.3](ch08-03-map.md)):
+`Map<K: Eq & Hash, V>` ([chapter 8.3](ch08-03-map.md)):
 
 ```gyro
 export fn Map<K, V>::new(a: Allocator): Map<K, V> !{}

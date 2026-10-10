@@ -7,28 +7,35 @@ rejected, so settled questions are not relitigated from scratch.
 Status column: **done** means the parser implements it, **sema** means the
 syntax exists but no stage checks it, **planned** means neither.
 
-Two rounds of decisions, both on 2026-07-31: the first when the compiler was
-ported from TypeScript to Go and the Peggy grammar was dropped; the second in
-a full design review that removed traits, made tuples first-class, and made
-duck typing the language's one contract mechanism. Entries below marked
-*(revised)* changed in the second round; the original choice and the reason
-it fell are kept, because the reversal is itself a decision.
+Three rounds of decisions: the first on 2026-07-31, when the compiler was
+ported from TypeScript to Go and the Peggy grammar was dropped; the second
+the same day, in a full design review that removed traits, made tuples
+first-class, and made duck typing the language's one contract mechanism; and
+the third on 2026-10-10, which brought traits back ("Traits") and replaced
+the duck typing with them. Entries below marked *(revised)* changed in the
+second or third round; the original choice and the reason it fell are kept,
+because the reversal is itself a decision.
 
 ---
 
-## The unifying rule: duck typing
+## One contract mechanism: traits *(revised)*
 
-**Status: planned.** Wherever Gyro needs a contract, the test is "does the
-type have the method", never "did the type declare membership":
+**Status: done.** Wherever Gyro needs a contract, a type states on purpose
+that it keeps it:
 
-- `error` — any type with `message(): string`
-- generic functions — any `T` with the methods the body calls
-- iteration — any type with `next(*self): (T, bool)` (or `iter()`)
-- printing — `to_string(): string` overrides the derived representation
+- generic functions and types — bounds on the type parameters, which the
+  body may use and nothing more
+- iteration — `impl Iterator<T> for Type`
+- printing — `impl Print for Type`, optionally with a `to_string` that
+  replaces the derived text
+- equality, hashing and ordering — `Eq`, `Hash` and `Ord`
+- the operators — `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`
+- indexing — `Index<T>`
 
-Nothing is ever declared to satisfy a contract. This replaced nominal traits
-(below) and is deliberately one rule applied four times rather than four
-mechanisms.
+This is one rule applied everywhere, replacing the duck typing that was
+the unifying rule from the second round: "does the type have the method".
+The reasoning is in "Traits". The one exception is `error`, which is still
+any type with `message(): string`; folding it into traits is future work.
 
 ---
 
@@ -511,13 +518,19 @@ styles in the wild for no gain.
 
 ### Trait objects use inline storage with a size cap
 
-**Status: planned.** Now specific to `error`, the one dynamically-typed
-value in the language: a vtable pointer plus a fixed inline buffer. Small
-error types are returned by value with no allocation. A type exceeding the
-cap is a compile error naming the size, and the author boxes it explicitly.
+**Status: planned.** Specific to `error`, whose value is a vtable pointer
+plus a fixed inline buffer. Small error types are returned by value with no
+allocation. A type exceeding the cap is a compile error naming the size, and
+the author boxes it explicitly.
 
 The alternative — a hidden heap allocation on every error path — contradicts
 explicit `alloc`/`free`.
+
+This is not how a trait value (`dyn Trait`) is represented. A trait value
+borrows ("Trait values are a pointer and a table"); inline storage was
+considered for them and rejected there, because a cap that rejects types
+by size is the wrong rule for a general-purpose value and because it copies
+the value, so mutating through one would mutate a copy.
 
 ---
 
@@ -1026,45 +1039,166 @@ transcode at every boundary.
 
 ## Types
 
-### Traits were removed *(revised — the big one)*
+### Traits *(revised — the big one, twice)*
 
-**Status: done.** `trait` and `impl` are no longer keywords; the syntax is
-gone from the grammar.
+**Status: done.** A trait lists method signatures, some with a default
+body, and may require other traits and take type parameters. A type
+implements it in a Rust-style block:
 
-The first round designed nominal traits: `trait Ord`, `impl Ord for
-Version`, bounds `<T: Ord & Display>`, operator traits, trait objects. The
-review deleted the entire mechanism. What each piece became:
+```gyro
+trait Element {
+  fn paint(self)
+  fn describe(self): string { ... }
+}
 
-- **Contracts** → duck typing (see the unifying rule at the top). Rust-style
-  "having the method isn't enough, you must declare `impl`" bought
-  accidental-satisfaction protection at the price of a whole declaration
-  layer; the review judged exact-signature collisions rare enough not to pay
-  it.
-- **Generic bounds** → nothing. `fn max<T>` declares no constraint; the
-  body's method calls are the requirement, checked at instantiation (the
-  C++-template model). The known cost: errors point into the generic's body
-  rather than at the bad call. Considered and not taken: a fixed built-in
-  constraint vocabulary (`Comparable`, …) for better error locations, and
-  Go-style structural interfaces as constraints — both add a naming layer
-  the language just deleted.
-- **Operator overloading** → removed entirely (next entry).
-- **Trait objects** → survive only as `error`'s representation.
-- **`Self`, `impl`, bound-joining `&`** → gone from the grammar.
+impl Element for Button {
+  fn paint(self) { ... }
+}
+```
 
-### Operators are not overloadable *(revised)*
+and a generic states what it needs: `fn bigger<T: Ord>(a: T, b: T): T`,
+bounds joined with `&`. The body may use exactly what the bounds provide, so
+a call that cannot work is reported at the call, naming the bound.
 
-**Status: planned.** Operators work on primitives only. Ordering a user type
-is spelled `a.compare(b)`, arithmetic on one is `a.add(b)` — visible calls,
-Go's position. `==`/`!=` work on structs, tuples and enums as
-compiler-derived field-wise comparison, on pointers as identity, and not on
-slices.
+**History.** The first round designed nominal traits. The review on
+2026-07-31 deleted the mechanism and made duck typing the one contract rule,
+on the argument that Rust's "having the method isn't enough, you must declare
+`impl`" bought protection from accidental satisfaction at the price of a
+whole declaration layer, and that exact-signature collisions were rare
+enough not to pay it. On 2026-10-10 (issue #111) the mechanism came back,
+because a GUI's element tree needs what duck typing cannot give:
 
-The first round mapped operators to a fixed trait set (`Ord`, `Eq`, `Add`…);
-that died with traits. Also considered and rejected: C++-style well-known
-method names unlocking operators (`compare` enabling `<`) — hidden calls
-behind operators for modest sugar.
+- **Values of different types behind one set of methods.** A list that holds
+  buttons and labels and calls the right `paint` on each needs a promise the
+  program can name, and a method table behind it. This is the reason; the rest
+  follow from reversing the decision once it was needed.
+- **Opting in on purpose.** `impl Element for Button` is a statement by the
+  author, so nothing fits by accident.
+- **A bad call is reported at the call.** With no bounds a generic is checked
+  at each instantiation, and the error was reported inside the generic's body
+  with a note at the call. The requirement was in no signature, and a reader had
+  to read the body to know what it asked for.
+- **Default bodies.** A method every implementer shares is written once.
 
-### Methods are free-standing `fn Type::name(self)` *(revised)*
+A consequence worth recording: the compiler's own capabilities — `==`,
+printing, hashing, ordering, the operators and `for..in` — were each
+special-cased in the checker and the lowering. As traits they are one
+mechanism, and `Map<K: Eq & Hash, V>` says what a key is.
+
+**Rejected.** Go-style structural interfaces: a type satisfying one by
+having the methods is exactly the accidental opt-in this reverses, and it is
+what the duck typing was. Optional bounds — a generic that states some and
+infers the rest: there should be one way to write a generic, and an
+inferred requirement is back to errors in the wrong place. A type's own
+methods inside an `impl Type { }` block: unchanged from "Methods are
+free-standing", since an `impl` block here is how a type keeps a promise, not
+a place for its own methods.
+
+**Capability traits are explicit.** `Eq`, `Hash`, `Print`, `Ord` and the
+operator traits are declared in the bundled `stdlib`, and a type the program
+declares has one only by an `impl`. `impl Eq for Point` with no block takes
+the implementation the compiler builds from the fields; a block replaces it.
+The built-in types implement the ones that apply to them without any impl.
+Rejected: deriving `Eq`, `Hash` and `Print` automatically for every
+struct, as before. It made `==` on a struct that was never meant to compare
+compile, and a `Point` with a pointer field print an address nobody asked
+for; Rust's `#[derive]` made the opposite choice for the same reason. The
+cost is one `impl` line per type that wants them, which is a line of intent.
+The compiler knows these traits by where they are declared (the bundled
+module), not by a name that universe scope would have to hold: they are
+imported like anything else.
+
+Things are intentionally small: a trait takes type parameters but has no
+associated types, the operator traits are `Self -> Self -> Self`, impls are
+for types the module declares, and an impl cannot ask more of a type's
+parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
+
+**Settled while building it.**
+
+- `trait` and `impl` are keywords; `dyn` is contextual, a trait value only
+  where a name follows it in a type, so it stays usable as an identifier. `Self`
+  is an ordinary name, bound inside a trait, an impl and any method.
+- An impl's methods are ordinary methods of the type, in its one namespace: a
+  trait method that shares a name with an own method, or with another trait's,
+  is the existing duplicate-method error. There is no `Trait::method` call
+  syntax to tell them apart, which is the price of a method being a method.
+- An impl is for a struct, enum or union that **the same module declares**,
+  and a generic type is named by its own parameters, `impl Eq for Pair<T>`,
+  with no `impl<T>` list: the parameters and their bounds are the type's.
+  Conditional impls and impls for built-in types are not built.
+- **A type from a C file keeps the structural answer.** Its layout is someone
+  else's, there is no module of ours to write an impl in, and printing or
+  comparing a `SDL_Rect` worked before and keeps working. So do the types the
+  bundled library declares.
+- **`Print` is a hook, not a call.** A body bounded by `Print` cannot call
+  `to_string` on the parameter, because the built-in types have no `to_string`
+  to call: a number's text is made by the runtime, with nowhere to be
+  allocated from.
+- `a.eq(b)`, `a.add(b)` and the other methods of the capability traits exist
+  on the built-in types, so a generic body that calls them works for the
+  numbers as it does for a declared type.
+- `Index<T>` is `at(*self, index: usize): *T`, the address of element `i`,
+  because "An index is a place, on every container": `value[i]` lowers through
+  it as `Array<T>` lowers through its own `at`.
+- Default bodies need a trait without type parameters, and a trait value needs
+  one too; both are what the tables and the monomorphization carry without
+  substituting the trait's arguments in lowering.
+- The bodies an impl brings are checked again for each concrete instance of
+  a generic type, between declarations, because an operator or a method table
+  reaches them with no call to name them.
+
+### Trait values are a pointer and a table, and they borrow *(new)*
+
+**Status: done.** `dyn Trait` is two words: a pointer to the value, and a
+pointer to the table of the methods of its type for that trait. The table is
+one global per type and trait in the program, written by the module's
+initializer, and each entry is a thunk that puts the type back on the
+address. A trait value is made from a pointer with `as`:
+`&button as dyn Element`.
+
+A trait value is a **view of its value**, the way a slice is a view of its
+array: nothing is allocated to make one, and the borrow analysis follows it
+with the slice's rules (a function returning one names where it came from,
+and a view of this frame's storage cannot be returned).
+
+**Rejected: inline storage with a cap.** The `error` mechanism, a buffer
+inside the value. It would make `Array<dyn Element>` a fixed-size-element
+array of whatever the biggest implementer is, reject types by their size,
+and copy the value so that a `*self` method mutated a copy. **Rejected:
+boxing into an allocator.** The value is allocated when the trait value is
+made and nobody knows who frees it — hidden ownership, against explicit
+allocation. **Rejected: an implicit conversion from a pointer.** Gyro has
+none between typed values, and the cast keeps the borrow visible where it
+begins.
+
+Only methods are callable through a table: a trait with a generic method, a
+method that mentions `Self` other than as its receiver, or type parameters of
+its own is not a trait value, and the error names the method. The capability
+traits are answered by the type at compile time and are not trait values
+either.
+
+### Operators dispatch to traits *(revised)*
+
+**Status: done.** On a type the program declares, `+ - * / %` are `Add`,
+`Sub`, `Mul`, `Div` and `Rem`, unary `-` is `Neg`, `== !=` are `Eq`, and
+`< <= > >=` are `Ord`, which calls `compare` and tests the answer against
+zero; `value[i]` is `Index`. The numbers have them built in, and nothing about
+their overflow or NaN rules changes. Wrapping arithmetic, the bitwise operators
+and shifts are not traits.
+
+Replaces "Operators are not overloadable", which kept arithmetic on a user
+type as a visible call (`a.add(b)`) on Go's reasoning. The calls are still
+visible in the type's impl; the operator is the sugar Rust gives, and the
+cost the review feared, hidden calls behind operators, is bounded by the
+operators being the ones whose traits are written down. C++-style
+well-known method names unlocking operators (a `compare` enabling `<`
+without saying so) stays rejected, for the same reason as duck typing.
+
+The operator traits take and give `Self`. A vector scaled by a number is a
+method. Rust's `Add<Rhs>` with its `Output` would need trait parameters
+with defaults and associated types.
+
+### Methods are free-standing### Methods are free-standing `fn Type::name(self)` *(revised)*
 
 **Status: done (syntax; sema checks the owner names a type in the module).**
 
@@ -1081,15 +1215,26 @@ function called `Stack::new(16)`.
 
 Rejected `class` (first round — implied inheritance fights a simple SSA IR),
 methods-inside-struct (mixes data and code back together), and `impl` blocks
-(a grouping construct that exists only to hold what free functions can say
-alone).
+for a type's own methods (a grouping construct that exists only to hold what
+free functions can say alone). An `impl Trait for Type` block exists, and
+does something free functions cannot: it says a type keeps a promise. Its
+methods are ordinary methods of the type afterwards.
 
-### Generics are duck-typed; user types may be generic *(revised)*
+### Generics state their bounds; user types may be generic *(revised)*
 
-**Status: done (syntax — a written bound is rejected with an error naming
-duck typing), planned (instantiation checking).** `fn max<T>(a: T, b: T):
-T` — no bounds exist. `struct Pair<T>` and `fn Pair<T>::swap(*self)` are
-legal; instantiation stamps out concrete code per type argument.
+**Status: done.** `fn max<T: Ord>(a: T, b: T): T`. A type parameter's bounds
+are the traits its argument has to implement, joined with `&`, and the body
+may use exactly what they provide. A parameter with no bounds can be stored,
+passed and returned, and nothing else. `struct Pair<T>` and `fn
+Pair<T>::swap(*self)` are legal with no bounds, and a type may bound its
+parameters where it introduces them, `struct Map<K: Eq & Hash, V>`, which its
+methods inherit. Instantiation stamps out concrete code per type argument.
+
+The previous rule was the opposite: `fn max<T>` declared no bounds, and the
+body's method calls were the requirement, checked at instantiation, C++-template
+style. It is rejected for the reasons under "Traits". Every generic stating
+its bounds also means the signature is the whole interface, which is what a
+caller reads.
 
 Bare angle brackets stay: `max<i32>(3, 7)`. Rejected turbofish. Cost: the
 parser needs bounded backtracking to tell `f<T>(x)` from `a < b`, resolved
@@ -1188,22 +1333,38 @@ the same shape for free.
   statement, and it unifies match with `select`. The first round used
   commas.
 
-### Iteration is duck-typed *(new)*
+### Iteration goes through `Iterator` *(revised)*
 
-**Status: planned.** `for x in ...` handles slices, arrays, ranges and
-channels natively; any other type qualifies by having `next(*self): (T,
-bool)` (or `iter()` returning such a type). Rejected a closed built-in set:
-user containers could never be iterated.
+**Status: done.** `for x in ...` handles slices, arrays, ranges and
+channels natively; any other type qualifies by implementing
+`Iterator<T>`, whose one method is `next(*self): (T, bool)` and where
+`false` ends the loop. Rejected a closed built-in set: user containers could
+never be iterated.
 
-### Printing is derived, overridable *(new)*
+The previous rule took any type with a `next` method, or an `iter()` that
+returned one. The `iter()` form is dropped: with no associated types a trait
+has no way to name what `iter` returns, and a collection that hands out an
+iterator is one `fn Bag::iter(self): Walk` away from `for x in bag.iter()`.
 
-**Status: planned.** Every type prints: `println` and `#{}` use a
-compiler-derived representation (`Point{ x: 1, y: 2 }`) unless the type
-defines `to_string(): string`. Primitives print natively.
+### Printing is derived, opt-in, and overridable *(revised)*
+
+**Status: done.** `println` and `#{}` take a value that implements
+`Print`. The built-in types do; a struct or enum the program declares says so
+with `impl Print for Point`, and gets a compiler-derived representation
+(`Point{ x: 1, y: 2 }`), or supplies `to_string(): string` in a block to
+replace it, which a derived representation that reaches the type also uses.
+Primitives print natively.
 
 Rejected primitives-only printing (debugging convenience matters more than
 avoiding generated code) — the derived form is compiler-emitted, accepted as
-the one place code generation is invisible.
+the one place code generation is invisible. Rejected printing every type
+whether or not it asked: a struct that holds something that should never be
+shown printed it anyway, and the opt-in is the line of intent that says
+the representation is fine to expose.
+
+`to_string` on a type parameter is not callable. A number's text is made by
+the runtime and has nowhere to be allocated from, so a body bounded by
+`Print` hands the value to `println`.
 
 ### Interpolation is a format value, streamed or formatted into an allocator *(new)*
 
@@ -1752,20 +1913,23 @@ readings never collide.
 
 ---
 
-### The type checker re-checks generic bodies per instantiation *(new)*
+### The type checker re-checks generic bodies per instantiation *(revised)*
 
-**Status: done.** A generic body is first name-resolved leniently —
-operations involving an opaque type parameter poison to Unknown instead of
-erroring — and then fully re-checked for every distinct set of type
-arguments, C++-template style. That is the honest reading of "the body's
-usage is the requirement": the requirement cannot be stated, only tested.
-Instantiations are cached by (declaration, arguments), recursion converges
-through the cache, and a depth cap of 32 stops types that grow forever.
-The error appears twice on purpose: once inside the body where the missing
-method is used, once at the call site that demanded the instantiation.
+**Status: done.** A generic body is first checked against its bounds, with
+its type parameters opaque: a method call, a field, an operator or a
+capability on a parameter has to come from a bound, and anything else is an
+error in the body. It is then re-checked for every distinct set of type
+arguments, which is what produces the code for them; because the first check
+allows nothing the bounds do not give, the second does not fail for a type that
+met them. Instantiations are cached by (declaration, arguments), recursion
+converges through the cache, and a depth cap of 32 stops types that grow
+forever. A type argument that does not meet a bound is reported at the call
+that asked for it, and the instantiation is not attempted.
 
-Rejected checking generic bodies once against inferred constraints — that
-is traits by the back door, and traits were removed.
+The previous rule checked the body only at instantiation, C++-template style,
+with operations on an opaque parameter poisoning to Unknown, and an error
+reported twice: in the body and at the call. Rejected checking against
+inferred constraints — that is bounds without a place to write them.
 
 Inference reads the arguments left to right, with one exception: an
 argument that cannot be typed without knowing what is wanted — a closure
@@ -1887,17 +2051,18 @@ order. Numeric compare is synthesized into two IR instructions during
 lowering; the string one walks bytes, so it is a runtime import beside
 `runes` and `bytes` instead.
 
-### `hash` is derived, alongside `==` *(new)*
+### `Hash` is derived, alongside `Eq` *(revised)*
 
-**Status: decided.** `hash(): u64` is part of the built-in method
-surface, derived over exactly what `==` compares: the primitives by
-value, a struct by its fields, a tuple by its elements, an enum by its
-tag and payload. A type may declare its own `hash`, which displaces the
-derived one the way `to_string` displaces derived printing.
+**Status: decided.** `hash(): u64` is the trait `Hash`, derived over exactly
+what `Eq` compares: the primitives by value, a struct by its fields, a tuple
+by its elements, an enum by its tag and payload. A struct or enum the program
+declares has it with `impl Hash for Point`, and a block with `hash` displaces
+the derived one the way `to_string` displaces derived printing. A map's key
+is `Map<K: Eq & Hash, V>`.
 
 What forced it: a hash map cannot be written in Gyro without one.
-Generics are duck-typed, so `Map<K, V>` calling `key.hash()` means `K` is
-a key only if it has that method — and the alternatives both fail.
+`Map<K, V>` calls `key.hash()`, so `K` has to provide it — and the
+alternatives both fail.
 Shipping `hash` as stdlib extension methods would mean
 `import { hash }` is a prerequisite for using a map, and every struct
 used as a key needs a hand-written hash. Leaving it to the user is worse
@@ -1909,8 +2074,8 @@ construction.
 A pointer is left out although `==` accepts one: `==` on a pointer is
 identity and an address is not stable from run to run, so a derived hash
 over one would differ between the three tiers. A struct holding a
-pointer is therefore not hashable either, which is the duck-typed error
-the checker already knows how to report.
+pointer is therefore not hashable either, and `impl Hash for` it is refused
+for that field.
 
 The numbers are pinned rather than left to each tier: a scalar goes
 through the splitmix64 finalizer, a string is FNV-1a over its bytes, and
@@ -3666,15 +3831,16 @@ under its own method name, exported and imported like a function, and
 callable exactly where that name is in scope. `line.trim()` works because
 `trim` was imported.
 
-That also disposes of coherence without a trait system. Two modules may
-each define `string::trim`; importing both is the duplicate-name error
+That also keeps coherence trivial, and it is why a trait cannot be
+implemented for a built-in type: the type would then gain methods from a
+module nobody imported. Two modules may each define `string::trim`; importing both is the duplicate-name error
 Gyro already reports, and importing one is unambiguous. Nothing is
 global, so nothing can conflict globally.
 
 The compiler's own surface stays separate and wins on a name clash: `len`
 and `runes` are part of the type, not additions to it, and they need no
 import. `void` and `error` are not extensible — nothing has type void,
-and `error` is a duck-typed contract rather than a type.
+and `error` is a contract met by shape rather than a type.
 
 ### `bytes()` and `from_utf8` both copy *(new)*
 
@@ -3920,6 +4086,8 @@ and bound imports opaquely; it is deleted.
 
 | question | why it matters |
 | --- | --- |
+| `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
+| conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; associated types, parameter defaults and a `Trait::method` call syntax are not built either |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
 | `@comptime` evaluation subset | which operations may run at compile time |
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |

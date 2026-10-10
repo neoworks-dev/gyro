@@ -96,8 +96,8 @@ compiler-compiler.
 | --- | --- |
 | declarations | `var` / `const`, annotation optional, types inferred; no `:=` |
 | functions | `fn f(a: i32): i32` — return type after a colon |
-| methods | free-standing `fn Type::name(self)`; no `impl`, no `trait`, no `Self` |
-| generics | duck-typed: no bounds, the body's usage is the requirement |
+| methods | free-standing `fn Type::name(self)`; an `impl Trait for Type` block is how a type keeps a promise to a trait |
+| traits | `trait`, `impl`, bounded generics (`<T: Eq & Hash>`), `dyn Trait` values, operator traits; `Eq`, `Hash`, `Print` and `Ord` are explicit |
 | syntax | no semicolons, no parentheses on `if` / `while` / `for`; `elif`, never `else if` |
 | primitives | explicit widths: `i8`–`i64`, `u8`–`u64`, `usize`, `f32`, `f64`, `rune` |
 | null | `*T` is never null; only `T?` is, and it must be checked |
@@ -172,7 +172,8 @@ syntax; each one is checked by the test suite.
 | `errors.gyro` | `(T, error?)` returns and explicit handling |
 | `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, `move` |
 | `closures.gyro` | anonymous functions, inference, capture lists |
-| `methods.gyro` | methods, duck-typed generics, `to_string` |
+| `methods.gyro` | methods, traits, bounded generics, operator traits, `to_string` |
+| `traits.gyro` | a trait with a default method, `dyn Trait` in an `Array`, `Iterator` |
 | `variadics.gyro` | `...T` packs, `...any`, `printf` |
 | `concurrency.gyro` | threads, channels, `select`, `async` / `await` |
 | `triangle.gyro` | a Gouraud-shaded triangle in an SDL window, through `@extern` |

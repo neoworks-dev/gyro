@@ -45,6 +45,8 @@
 
 - [9. Errors](ch09-00-errors.md)
 - [10. Generics](ch10-00-generics.md)
+- [10.1. Traits](ch10-01-traits.md)
+- [10.2. Trait values](ch10-02-trait-values.md)
 - [11. Closures and function values](ch11-00-closures.md)
 - [12. Effect rows](ch12-00-effect-rows.md)
 

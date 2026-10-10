@@ -225,6 +225,8 @@ func (l *lowerer) eqFor(t types.Type) string {
 		b.enumBody(t)
 	case *types.Optional:
 		b.optionalBody(t)
+	case *types.Array:
+		b.arrayBody(t)
 	default:
 		l.fail("== over %s, which has parts that implement Eq by hand, is not built yet", t)
 	}
@@ -421,4 +423,26 @@ func (f *funcLowerer) declaredElementPlace(e *ast.IndexExpr, base, elemType type
 	ptr := f.newReg("elem.p")
 	f.emit(&metals.Call{Dst: ptr, Callee: callee, Args: []string{receiver, index}})
 	return f.pointerPlace(ptr, elemType)
+}
+
+// arrayBody walks the elements of two fixed-size arrays in step.
+func (b *eqBuilder) arrayBody(t *types.Array) {
+	length, index, one := b.reg("n"), b.reg("i"), b.reg("one")
+	b.emit(&metals.Const{Dst: length, Type: metals.TUsize, Value: strconv.FormatInt(t.Length, 10)})
+	b.emit(&metals.Const{Dst: index, Type: metals.TUsize, Value: "0"})
+	b.emit(&metals.Const{Dst: one, Type: metals.TUsize, Value: "1"})
+
+	loop := b.nested(func() {
+		stop := b.reg("stop")
+		b.emit(&metals.Bin{Dst: stop, Op: "ge", A: index, B: length})
+		b.emit(&metals.BrIf{Cond: stop, Label: "done"})
+		left, right := b.reg("l"), b.reg("r")
+		b.emit(&metals.IndexGet{Dst: left, X: "a", Index: index})
+		b.emit(&metals.IndexGet{Dst: right, X: "b", Index: index})
+		b.returnIfDiffers(left, right, t.Elem)
+		b.emit(&metals.Bin{Dst: index, Op: "iadd", A: index, B: one})
+		b.emit(&metals.Br{Label: "again"})
+	})
+	b.emit(&metals.Block{Label: "done", Body: []metals.Instr{&metals.Loop{Label: "again", Body: loop}}})
+	b.emit(&metals.Return{Val: b.boolean(true)})
 }

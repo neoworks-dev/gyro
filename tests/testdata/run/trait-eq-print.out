@@ -20,5 +20,7 @@ false
 true
 false
 Pair{ first: 1, second: 2 }
+true
+false
 2
 2

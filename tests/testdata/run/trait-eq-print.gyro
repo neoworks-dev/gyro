@@ -96,6 +96,10 @@ fn main() {
   println(Pair<Price>{ coffee, tea } == Pair<Price>{ tea, coffee })
   println(Pair<i32>{ 1, 2 })
 
+  var row = [coffee, tea]
+  println(row == [also_coffee, tea])
+  println(row == [coffee, coffee])
+
   var tally = Map<Price, i32>::new(heap())
   defer tally.free()
   tally.insert(coffee, 1)

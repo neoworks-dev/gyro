@@ -1,7 +1,8 @@
 # 8.3. `Map<K, V>`
 
 The hash map. Like `String`, it is **ordinary Gyro over `Array<T>`**:
-buckets of `(K, V)` pairs chained on the derived `hash()`.
+buckets of `(K, V)` pairs chained on `hash()`. Its declaration is
+`Map<K: Eq & Hash, V>`: a key is any type that is `Eq` and `Hash`.
 
 ```gyro
 import { println, Map } from "stdlib"
@@ -18,16 +19,31 @@ if age != null {
 }
 ```
 
-## Any key that supports `==` works
+## A key is `Eq` and `Hash`
 
-There is no `Hashable` to implement, because `hash()` is derived wherever
-`==` is and over the same parts: a struct hashes its fields, a tuple its
-elements, an enum its tag and payload. Two values that compare equal
-therefore hash equal without anything being written down
-([chapter 3.2](ch03-02-data-types.md)).
+The numbers, `string`, `bool` and `rune` are both, and so are tuples of them.
+A struct or enum the program declares is a key once it says so:
 
-A type that wants a different rule declares its own `hash(): u64`, which
-displaces the derived one — and then owns keeping the two consistent.
+```gyro
+struct Point {
+  x: i32
+  y: i32
+}
+
+impl Eq for Point
+impl Hash for Point
+
+var visited = Map<Point, bool>::new(heap())
+```
+
+With no block each is derived from the fields: a struct hashes its fields, a
+tuple its elements, an enum its tag and payload, so two values that compare
+equal hash equal without anything being written down
+([chapter 10.1](ch10-01-traits.md)). A map keyed by a type that lacks either
+is an error where the map type is written.
+
+A type that wants a different rule writes the impl out with a block, which
+replaces the derived one — and then owns keeping `Eq` and `Hash` consistent.
 
 Pointers are the exception: `==` accepts them and `hash` does not, because
 an address is not the same from run to run.

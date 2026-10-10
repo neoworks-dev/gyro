@@ -279,8 +279,8 @@ them. Highlights an agent needs loaded:
 - bindings are `var` and `const`; assignment is `=`; **there is no `:=`**
 - `else` takes a block; chaining is `elif`, one way only — `else if` does
   not parse
-- trait bounds join with `&`, not `+` (there are no traits, but the
-  syntax is reserved and this has been "fixed" wrongly before)
+- trait bounds join with `&`, not `+`: `<K: Eq & Hash>` (this has been
+  "fixed" wrongly before)
 - `?` binds to the **outermost** type: `*Node?` is a nullable pointer,
   not a pointer to a nullable
 - no default exports, therefore no default imports
@@ -295,7 +295,7 @@ them. Highlights an agent needs loaded:
 
 ### Contextual keywords
 
-`move`, `copy` and `from` are **not tokens**. They are identifiers the
+`move`, `copy`, `from` and `dyn` are **not tokens**. They are identifiers the
 parser recognizes only in the one position each can occupy. They must
 stay usable as ordinary names — `var from = 1` and `fn String::from(...)`
 both parse.
@@ -321,19 +321,56 @@ attached to the type**. It is a module-scope name under its own method
 name, exported and imported like a function, callable exactly where that
 name is in scope. `line.trim(heap())` works because `trim` was imported.
 
-That also disposes of coherence without traits: two modules may each
-define `string::trim`; importing both is the duplicate-name error Gyro
-already reports.
+That also keeps coherence trivial: two modules may each define
+`string::trim`; importing both is the duplicate-name error Gyro already
+reports. A trait cannot be implemented for a built-in type, so a built-in
+type has no second source of methods.
 
 The compiler's own surface wins a name clash. `void` and `error` are not
 extensible. An extension is still a method — calling one without a
 receiver is an error.
 
+### Traits
+
+Read `docs/ch10-01-traits.md` and `docs/ch10-02-trait-values.md`; the
+decisions are in `decisions.md` under "Traits". What an agent needs loaded:
+
+- a **trait** lists methods, some with a default body; `impl Trait for
+  Type { ... }` implements it, and `impl Trait for Type` with no block asks
+  for the derived implementation (Eq, Hash and Print only). A type's own
+  methods stay free-standing. The parser gives an impl's methods the impl's
+  type as `Owner` and also lists them in `File.Decls`, so everything that
+  handles methods handles them; `FuncDecl.Impl` says they came from a block.
+- **bounds are required.** A generic body may use only what its bounds give
+  it. Lenient mode (a generic body checked with its parameters opaque) is
+  strict about method calls, fields, operators and the capability traits on
+  a type parameter, and still lenient about everything else; the second pass
+  at each instantiation produces the code and is what lowering reads.
+- **the capability traits** (`Eq`, `Hash`, `Print`, `Ord`, `Add`..`Neg`,
+  `Iterator`, `Index`) are declared in the bundled `stdlib` and known by
+  where they are declared: `types.Trait.Kind`. The built-in types answer for
+  themselves (`hasCapability`); a type a program declares answers by the
+  impl it wrote. Types from the bundled library and from C files are not
+  "user-named" and keep the structural answer.
+- an impl's methods are ordinary methods in the type's `Methods`, so the
+  lowering finds `eq`, `hash`, `to_string`, `next`, `at` and the operators'
+  methods by name, and `types.Impl.Derived` says whether one was written.
+- `dyn Trait` is a record of the value's address and a table of code
+  pointers (`internal/lower/dyn.go`). The table for a (type, trait) is a
+  global the module initializer fills; each entry is a thunk that puts the
+  type back on the address. It borrows, so `viewType` counts it.
+- the bodies an impl brings are checked for every concrete instance of a
+  generic type between declarations (`flushInstances`), since an operator
+  or a method table reaches them with no call to name them.
+- a default method is the trait's declaration with `OwnerParams` of `Self`;
+  it is lowered once per type under `Trait<Type>::name`.
+
 ### Errors
 
 Errors are values. A fallible function returns `(T, error?)`. **There is
 no propagation operator** — no `?`, no exceptions, no unwinding. `error`
-is duck-typed: any type with `message(): string` is one.
+is the one contract still met by shape: any type with `message(): string` is
+one. Folding it into traits is future work.
 
 Dropping an error is an error; discarding takes an explicit `var _, _ =`.
 
@@ -708,9 +745,10 @@ nor uninitialized reads. Each tier had kept its own hand-picked subset.
 written in place by assignment. Anything capturing "the register name"
 for later use captures the _final_ value. This is what broke defer.
 
-**Instantiation errors land in the generic's body**, with a _related_
-"in the instantiation X required here" at the call site. Tests that
-assume both are at the call site are wrong.
+**An unmet bound is reported at the call; a body that uses more than its
+bounds allow is reported in the body.** The "in the instantiation X required
+here" note only appears when the second, per-instantiation check fails where
+the first passed, which means a hole in the first.
 
 **Cascading diagnostics are real.** A rejected row entry leaves the row
 empty, so the return is unaccounted for too — two diagnostics, both
