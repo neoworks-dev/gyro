@@ -190,16 +190,19 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
   return true
 }
 
-// The predicates below allocate because bytes() copies: a string's bytes
-// are packed UTF-8 and a slice element is a full word, so reading a string
-// as u8[] builds new storage.
-export fn string::starts_with(self, a: Allocator, prefix: string): bool !{} {
-  return slice_at(self.bytes(a), prefix.bytes(a), 0)
+// view_bytes is a string's bytes as a slice, without the copy `bytes`
+// makes. The view borrows the string, which is immutable, so the
+// predicates below read through it and allocate nothing. It is private: a
+// caller that wants bytes it can write to asks `bytes` for a copy.
+fn view_bytes(text: string): u8[] !{}
+
+export fn string::starts_with(self, prefix: string): bool !{} {
+  return slice_at(view_bytes(self), view_bytes(prefix), 0)
 }
 
-export fn string::ends_with(self, a: Allocator, suffix: string): bool !{} {
-  var body = self.bytes(a)
-  var tail = suffix.bytes(a)
+export fn string::ends_with(self, suffix: string): bool !{} {
+  var body = view_bytes(self)
+  var tail = view_bytes(suffix)
   if tail.len() > body.len() {
     return false
   }
@@ -207,9 +210,9 @@ export fn string::ends_with(self, a: Allocator, suffix: string): bool !{} {
 }
 
 // index_of returns the byte offset of the first match, or null.
-export fn string::index_of(self, a: Allocator, needle: string): usize? !{} {
-  var body = self.bytes(a)
-  var want = needle.bytes(a)
+export fn string::index_of(self, needle: string): usize? !{} {
+  var body = view_bytes(self)
+  var want = view_bytes(needle)
   if want.len() > body.len() {
     return null
   }
@@ -221,8 +224,8 @@ export fn string::index_of(self, a: Allocator, needle: string): usize? !{} {
   return null
 }
 
-export fn string::contains(self, a: Allocator, needle: string): bool !{} {
-  return self.index_of(a, needle) != null
+export fn string::contains(self, needle: string): bool !{} {
+  return self.index_of(needle) != null
 }
 
 // substring takes the half-open byte range [from, to). It does not
