@@ -632,7 +632,30 @@ func (f *frame) instr(instr metals.Instr) {
 		f.leaInto(f.slot(i.Dst), memLoc{"rbp", area}.String())
 
 	case *metals.GlobalPtr:
-		f.leaInto(f.slot(i.Dst), "["+g.globalSymbol(i.Name)+"]")
+		symbol := g.globalSymbol(i.Name)
+		if g.globals[i.Name].ThreadLocal {
+			// The thread pointer sits at fs:0, and the variable's offset
+			// from it is fixed when the program is linked (the linker
+			// turns the load into an immediate for an executable), so the
+			// cell is one load and one add away.
+			g.ins("mov rax, [rel %s wrt ..gottpoff]", symbol)
+			g.ins("add rax, [fs:0]")
+			g.ins("mov %s, rax", f.slot(i.Dst))
+			return
+		}
+		f.leaInto(f.slot(i.Dst), "["+symbol+"]")
+
+	case *metals.ThreadStart:
+		if g.funcs[i.Body] == nil {
+			g.fail("@%s: thread.start of the runtime function @%s is not supported", f.fn.Name, i.Body)
+		}
+		g.ins("lea rdi, [%s]", g.symbolFor(i.Body))
+		g.ins("mov rsi, %s", f.slot(i.Data))
+		g.ins("call %s", g.extern("gy_thread_start"))
+		g.ins("mov %s, rax", f.slot(i.Dst))
+
+	case *metals.ThreadExit:
+		g.ins("call %s", g.extern("gy_thread_exit"))
 
 	case *metals.New:
 		g.ins("mov rdi, %d", g.sizeOf(i.Type))

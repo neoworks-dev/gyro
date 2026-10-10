@@ -453,6 +453,24 @@ func (p *parser) dstInstr() (Instr, error) {
 		args, err := p.regList()
 		return p.line(&CallIndirect{Dst: dst, Fn: fn, Args: args}, err)
 
+	case "thread.start":
+		stack, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		body, err := p.global()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		data, err := p.reg()
+		return p.line(&ThreadStart{Dst: dst, Stack: stack, Body: body, Data: data}, err)
+
 	case "syscall":
 		number, err := p.reg()
 		if err != nil {
@@ -607,6 +625,9 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 		}
 		val, err := p.reg()
 		return p.line(&AtomicStore{Ptr: ptr, Val: val}, err)
+
+	case "thread.exit":
+		return p.line(&ThreadExit{}, nil)
 
 	case "atomic.fence":
 		return p.line(&Fence{}, nil)

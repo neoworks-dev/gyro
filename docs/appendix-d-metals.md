@@ -144,6 +144,13 @@ export fn @add(%a: i32, %b: i32) -> i32 {
   bytes have none. What an image cannot hold is a pointer, whose value is
   not known until the program is laid out, so the verifier refuses an
   image for any type with a pointer anywhere inside it.
+- `thread_local global @name: T` gives every thread a cell of its own,
+  zeroed when the thread starts, and `global.ptr` answers the calling
+  thread's. It takes no byte image, because a thread that starts later
+  would have none to start from, and an `init` cannot fill one for the
+  threads that do not exist yet: it runs once, on the first thread, and
+  sets only that thread's cell. A pointer to a cell is good on the thread
+  that took it and on no other.
 - `init @name` is the function this module needs run before the program
   starts, which is where a global that *does* name an address gets
   written. It takes nothing and returns nothing. The linker prepends a
@@ -778,6 +785,44 @@ select {
 
 `spawn`, mutexes and everything else library-shaped are imports from a
 runtime module, called like any function.
+
+### Threads
+
+```metals
+%tid = thread.start %stack, @body, %data   ; -> usize
+thread.exit
+```
+
+`thread.start` starts a thread that runs `@body(%data)` and ends when it
+returns. `@body` is a function of this module or an import, taking one
+`anyptr` and returning nothing, and `%data` is the `anyptr` it is called
+with; the verifier checks both. The thread is detached: nothing waits for
+it, and the result is its identity, a `usize` that is never zero and that
+no other live thread shares. A thread that cannot be started aborts. It
+says what happens and not how, so each backend starts a thread its
+operating system's way: with `clone` where the program links no C library,
+with `pthread_create` where it does.
+
+`%stack` is an `opt<anyptr>`. A null leaves the stack to the backend. A
+non-null one is the address just past the top of a block of memory the
+caller owns, aligned to 16 bytes, to run the thread on; the block must stay
+valid until the thread has ended and the caller may not use it meanwhile. A
+backend whose system library owns thread stacks, which `pthread_create`
+does, may ignore it, so a program cannot tell whether it was used and has no
+business depending on it. It is an operand so that a backend that starts
+threads with `clone`, which cannot allocate a stack, has one to start on
+without the format changing.
+
+`thread.exit` ends the calling thread, as if `@body` had returned from
+wherever the thread was, and control does not continue past it. Ending the
+first thread this way leaves the process running while any other thread
+does. A panic on a spawned thread ends only that thread, and this is how
+the runtime does it.
+
+Everything a thread shares with another goes through memory, and the
+operations that make that safe are the atomics above. Waiting is not an
+instruction: the Linux `futex` system call, reached through `syscall`, is
+what a mutex or a channel sleeps on.
 
 ### any
 

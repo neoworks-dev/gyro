@@ -50,6 +50,7 @@
   "import"
   "type"
   "global"
+  "thread_local"
   "init"
   "memory"
   "data"

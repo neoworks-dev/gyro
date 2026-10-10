@@ -327,7 +327,13 @@ func (p *parser) module() (*Module, error) {
 		case "data":
 			err = p.dataDecl(m)
 		case "global":
-			err = p.globalDecl(m)
+			err = p.globalDecl(m, false)
+		case "thread_local":
+			p.scan.next()
+			if p.scan.peek().text != "global" {
+				return nil, p.errf("thread_local qualifies a global declaration")
+			}
+			err = p.globalDecl(m, true)
 		case "init":
 			err = p.initDecl(m)
 		case "export", "async", "fn":
@@ -630,7 +636,7 @@ func (p *parser) dataDecl(m *Module) error {
 	return p.endOfLine()
 }
 
-func (p *parser) globalDecl(m *Module) error {
+func (p *parser) globalDecl(m *Module, threadLocal bool) error {
 	p.scan.next() // global
 	name, err := p.global()
 	if err != nil {
@@ -643,7 +649,7 @@ func (p *parser) globalDecl(m *Module) error {
 	if err != nil {
 		return err
 	}
-	global := &Global{Name: name, Type: typ}
+	global := &Global{Name: name, Type: typ, ThreadLocal: threadLocal}
 	if p.atPunct("=") {
 		p.scan.next()
 		image := p.scan.next()

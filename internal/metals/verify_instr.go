@@ -817,9 +817,33 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return nil
 
-	case *Abort:
+	case *Abort, *ThreadExit:
 		state.unreachable = true
 		return nil
+
+	case *ThreadStart:
+		stackType, err := fv.use(state, i.Stack)
+		if err != nil {
+			return err
+		}
+		if !isOptAnyPtr(stackType) {
+			return fmt.Errorf("thread.start's stack is an opt<anyptr>, not %s", stackType)
+		}
+		sig, ok := fv.callables[i.Body]
+		if !ok {
+			return fmt.Errorf("unknown function @%s", i.Body)
+		}
+		if sig.Async || sig.Result != nil || len(sig.Params) != 1 || !TypesEqual(sig.Params[0], &AnyPtr{}) {
+			return fmt.Errorf("thread.start's body takes one anyptr and returns nothing, but @%s is %s", i.Body, sig)
+		}
+		dataType, err := fv.use(state, i.Data)
+		if err != nil {
+			return err
+		}
+		if _, ok := dataType.(*AnyPtr); !ok {
+			return fmt.Errorf("thread.start hands its body an anyptr, not %s", dataType)
+		}
+		return fv.def(state, i.Dst, TUsize)
 
 	case *If:
 		condType, err := fv.use(state, i.Cond)

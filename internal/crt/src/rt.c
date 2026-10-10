@@ -724,6 +724,27 @@ static void *gy_start_main(void *raw) {
     return NULL;
 }
 
+/* thread.start and thread.exit: the one place that knows how a thread
+ * begins and ends. The backend implements the METALS instructions with
+ * libc's threads for as long as the program links libc (#142). The stack
+ * the instruction offers is ignored: libc gives every thread its own. The
+ * body is called through a pointer to a function returning void *, which
+ * the generated code is ABI-compatible with; its return value is ignored. */
+uint64_t gy_thread_start(void (*body)(void *), void *data) {
+    pthread_t thread;
+    pthread_attr_t attrs;
+    pthread_attr_init(&attrs);
+    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
+    int status = pthread_create(&thread, &attrs, (void *(*)(void *))body, data);
+    pthread_attr_destroy(&attrs);
+    if (status != 0) {
+        gy_abort_c("could not start a thread");
+    }
+    return (uint64_t)thread;
+}
+
+_Noreturn void gy_thread_exit(void) { pthread_exit(NULL); }
+
 /* gy_start runs entry(data) on a detached thread. */
 void gy_start(void (*entry)(void *), void *data) {
     gy_start_arg *arg = calloc(1, sizeof(gy_start_arg));

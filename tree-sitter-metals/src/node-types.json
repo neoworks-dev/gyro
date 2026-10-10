@@ -1403,6 +1403,10 @@
     "named": false
   },
   {
+    "type": "thread_local",
+    "named": false
+  },
+  {
     "type": "type",
     "named": false
   },

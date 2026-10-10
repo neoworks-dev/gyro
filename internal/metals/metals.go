@@ -519,6 +519,15 @@ type Global struct {
 	Name string
 	Type Type
 
+	// ThreadLocal gives every thread a cell of its own, zeroed when the
+	// thread starts, and global.ptr answers the calling thread's. The
+	// module's init runs once, on the first thread, so it cannot set a
+	// thread-local for the rest, and a static image is refused for the
+	// same reason: there would be no image to give the threads that start
+	// later. A pointer to the cell is good on the thread that took it and
+	// no other.
+	ThreadLocal bool
+
 	// Bytes is the storage this global starts with, in place of the zeros
 	// it would otherwise hold. It is exactly Size(Type) bytes, in the
 	// target's own representation — the same image a data segment writes

@@ -53,11 +53,15 @@ func Print(m *Module) string {
 	}
 
 	for _, global := range m.Globals {
+		prefix := ""
+		if global.ThreadLocal {
+			prefix = "thread_local "
+		}
 		if global.Bytes != nil {
-			p.printf("global %s: %s = %s", at(global.Name), global.Type, quoteBytes(global.Bytes))
+			p.printf("%sglobal %s: %s = %s", prefix, at(global.Name), global.Type, quoteBytes(global.Bytes))
 			continue
 		}
-		p.printf("global %s: %s", at(global.Name), global.Type)
+		p.printf("%sglobal %s: %s", prefix, at(global.Name), global.Type)
 	}
 	if len(m.Globals) > 0 {
 		p.line("")
@@ -334,6 +338,10 @@ func (p *printer) instr(instr Instr) {
 		p.printf("return %s", reg(i.Val))
 	case *Abort:
 		p.printf("abort %s", strconv.Quote(i.Message))
+	case *ThreadStart:
+		p.printf("%s = thread.start %s, %s, %s", reg(i.Dst), reg(i.Stack), at(i.Body), reg(i.Data))
+	case *ThreadExit:
+		p.line("thread.exit")
 	case *If:
 		p.printf("if %s {", reg(i.Cond))
 		p.nested(i.Then)

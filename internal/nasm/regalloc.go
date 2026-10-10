@@ -464,8 +464,10 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{defs: []string{i.Dst}, uses: append([]string{i.Fn}, i.Args...)}
 	case *metals.Return:
 		return roles{uses: []string{i.Val}}
-	case *metals.Abort:
+	case *metals.Abort, *metals.ThreadExit:
 		return roles{}
+	case *metals.ThreadStart:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Data}}
 	case *metals.If:
 		return roles{uses: []string{i.Cond}}
 	case *metals.Block, *metals.Loop:
@@ -684,7 +686,7 @@ func (s *liveScan) instr(instr metals.Instr, live regSet) regSet {
 	case *metals.Return:
 		return s.transfer(roles{uses: []string{i.Val}}, regSet{})
 
-	case *metals.Abort:
+	case *metals.Abort, *metals.ThreadExit:
 		return regSet{}
 	}
 	return s.transfer(s.g.rolesOf(instr), live)

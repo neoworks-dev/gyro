@@ -1293,6 +1293,96 @@ func TestVerifierChecksAtomics(t *testing.T) {
 `, "atomic.cas of i64 on a cell of i32")
 }
 
+func TestVerifierChecksThreads(t *testing.T) {
+	roundTrip(t, header+`thread_local global @cell: i64
+
+global @plain: i64
+
+fn @body(%data: anyptr) {
+  %p = global.ptr @cell
+  %n = const.i64 1
+  store %p, %n
+  thread.exit
+}
+
+fn @main() {
+  %stack = const.null opt<anyptr>
+  %any = const.null opt<anyptr>
+  %cell = global.ptr @plain
+  %data = ptr.erase %cell
+  %tid = thread.start %stack, @body, %data
+  %zero = const.usize 0
+  %ok = ne %tid, %zero
+  return
+}
+`)
+
+	// Nothing follows thread.exit, as nothing follows abort.
+	roundTrip(t, header+`fn @f() -> i64 {
+  thread.exit
+}
+`)
+
+	verifyError(t, header+`fn @body(%d: anyptr) {
+  return
+}
+
+fn @f(%stack: anyptr, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's stack is an opt<anyptr>, not anyptr")
+
+	verifyError(t, header+`fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @missing, %data
+  return
+}
+`, "unknown function @missing")
+
+	// The body takes one anyptr and returns nothing.
+	verifyError(t, header+`fn @body(%d: anyptr, %e: i64) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing, but @body is")
+	verifyError(t, header+`fn @body(%d: anyptr) -> i64 {
+  %z = const.i64 0
+  return %z
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing")
+	verifyError(t, header+`fn @body(%d: ptr<i64>) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: anyptr) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start's body takes one anyptr and returns nothing")
+	verifyError(t, header+`fn @body(%d: anyptr) {
+  return
+}
+
+fn @f(%stack: opt<anyptr>, %data: ptr<i64>) {
+  %t = thread.start %stack, @body, %data
+  return
+}
+`, "thread.start hands its body an anyptr, not ptr<i64>")
+
+	// A thread that starts later has no image to start from.
+	verifyError(t, header+`thread_local global @cell: i64 = "\x01\x00\x00\x00\x00\x00\x00\x00"
+`, "thread_local and has a static image")
+}
+
 func TestVerifierChecksTruncAndBitcast(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: u8) {
   %r = trunc %x -> i64

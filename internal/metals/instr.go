@@ -352,6 +352,33 @@ type (
 	Return struct{ Val string } // "" for a void return
 	Abort  struct{ Message string }
 
+	// ThreadStart is `%tid = thread.start %stack, @body, %data`: a new
+	// thread that runs @body(%data) and ends when it returns. It says
+	// what happens and not how, so each backend does it its own
+	// operating system's way.
+	//
+	// @body takes one anyptr and returns nothing, and %data is what it
+	// is called with. The thread is detached: nothing waits for it, and
+	// the result is only its identity, a usize that is never zero.
+	// A thread that cannot be started aborts.
+	//
+	// %stack is an opt<anyptr>. A null leaves the stack to the backend. A
+	// non-null one is the address just past the top of a block of memory
+	// the caller owns, aligned to 16 bytes, for the thread to use as its
+	// stack until it ends; a backend whose system library owns thread
+	// stacks may ignore it, and a program that passes one cannot tell.
+	// What the caller may rely on either way is that it must not use the
+	// block until the thread has ended.
+	ThreadStart struct {
+		Dst, Stack, Body, Data string
+	}
+
+	// ThreadExit is `thread.exit`: the calling thread ends, as if @body
+	// had returned from wherever it was. On the main thread it ends the
+	// program's first thread only, and the process lives on while any
+	// other thread does.
+	ThreadExit struct{}
+
 	If struct {
 		Cond string
 		Then []Instr
@@ -486,6 +513,8 @@ func (*MakeClosure) isInstr()  {}
 func (*CallIndirect) isInstr() {}
 func (*Return) isInstr()       {}
 func (*Abort) isInstr()        {}
+func (*ThreadStart) isInstr()  {}
+func (*ThreadExit) isInstr()   {}
 func (*If) isInstr()           {}
 func (*Block) isInstr()        {}
 func (*Loop) isInstr()         {}

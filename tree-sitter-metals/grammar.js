@@ -156,9 +156,11 @@ module.exports = grammar({
     ),
 
     // Module storage, zero-initialized unless it carries the bytes it
-    // starts with. Those bytes are storage, not an initializer: an
+    // starts with. A thread_local one is a cell per thread and carries
+    // none. Those bytes are storage, not an initializer: an
     // expression would need an evaluation order, and this has none.
     global_declaration: $ => seq(
+      optional('thread_local'),
       'global',
       field('name', $.global_name),
       ':',

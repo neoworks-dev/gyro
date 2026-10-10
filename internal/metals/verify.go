@@ -123,6 +123,9 @@ func verifyModule(m *Module, collect bool) (map[string]map[string]Type, error) {
 		if _, dup := v.globals[global.Name]; dup {
 			return nil, fmt.Errorf("global @%s is declared twice", global.Name)
 		}
+		if global.ThreadLocal && global.Bytes != nil {
+			return nil, fmt.Errorf("global @%s is thread_local and has a static image; a thread that starts later would have none", global.Name)
+		}
 		v.globals[global.Name] = global.Type
 	}
 	if err := checkGlobalImages(m); err != nil {
@@ -800,6 +803,15 @@ func isSyscallWord(t Type) bool {
 		}
 	}
 	return false
+}
+
+func isOptAnyPtr(t Type) bool {
+	opt, ok := t.(*Opt)
+	if !ok {
+		return false
+	}
+	_, ok = opt.Elem.(*AnyPtr)
+	return ok
 }
 
 func isUsize(t Type) bool {

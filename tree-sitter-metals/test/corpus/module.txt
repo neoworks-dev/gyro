@@ -26,6 +26,7 @@ global @counter: i32
 global @greeting: array<u8, 3> = "hi\x00"
 global @dispatch: opt<code(i32) -> i32>
 global @userdata: opt<anyptr>
+thread_local global @scratch: i64
 
 init @setup
 
@@ -144,6 +145,9 @@ export fn @add(%a: i32, %b: i32) -> i32 {
     (generic_type
       (type_constructor)
       (primitive_type)))
+  (global_declaration
+    (global_name)
+    (primitive_type))
   (init_declaration
     (global_name))
   (function_declaration

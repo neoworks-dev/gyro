@@ -3768,6 +3768,48 @@ and the verifier could not check the cell's type. **Rejected: a separate
 atomic type in METALS.** A `ptr<T>` to an ordinary `T` is what the C front
 end and a struct field already are.
 
+### A thread starts with an instruction, and a thread has its own globals *(new)*
+
+**Status: done for the `pthread_create` path** (#142). `%tid = thread.start
+%stack, @body, %data` starts a detached thread running `@body(%data)`,
+`thread.exit` ends the calling one, and `thread_local global @x: T` gives
+every thread a zeroed cell of its own, which `global.ptr` addresses. The
+instruction says what happens and not how: the C runtime's `pthread_create`
+today, a `clone` sequence once Gyro has its own allocator (#139) and a
+thread no longer needs libc's per-thread state to call `malloc`. As an
+instruction the verifier checks that the body takes one `anyptr`, and no
+producer can get a thread's start-up sequence wrong, which a stub function
+the backend wrote beside the program would have left to each producer.
+
+**The stack operand is advisory.** It is an `opt<anyptr>`: null leaves the
+stack to the backend, and a non-null one is the top of a block the caller
+owns. `pthread_create` cannot be handed a top without a size, so the
+`pthread` path ignores it and the format says a program cannot tell. The
+operand exists now so that adding `clone`, which has to be given a stack,
+changes no instruction. **Rejected: omitting it until `clone` arrives**,
+because the format would change under every producer the day it does.
+**Rejected: making it required and honouring it with
+`pthread_attr_setstack`**, which needs a size the instruction does not have
+and would put an allocation in every `spawn` that libc then ignores the
+use of.
+
+**`thread.exit` is an instruction too.** A panic on a spawned thread
+must end that thread and nothing else, and what ends a thread is as much the
+backend's business as what starts one: `pthread_exit` today, the `exit`
+system call later. **Rejected: a `syscall` of `exit` from Gyro**, which
+works only without libc and skips the library's bookkeeping for the thread
+while it is linked.
+
+**A `thread_local` global takes no image and no initializer.** A module's
+`init` runs once, on the first thread, so it would set one thread's cell and
+leave the rest zero, and a static image would have to be copied into every
+thread that starts. Zero is the one start value every thread can have.
+**Rejected: a per-thread initializer**, which is a function the backend
+would have to run at every thread's start and the format has no place for.
+On x86-64 a cell is addressed through `fs`, from `.tbss`; NASM offers only
+the initial-exec form of that for ELF64, and the linker relaxes it to an
+immediate in an executable.
+
 ### A code pointer is its own type, and `&f` is how you get one *(new)*
 
 **Status: decided.** `code(A, B): C` is the address of a function with no

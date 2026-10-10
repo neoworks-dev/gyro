@@ -158,6 +158,8 @@ func Link(modules []*Module) (*Module, error) {
 				Name:  l.symbol(global.Name),
 				Type:  l.rewrite(global.Type),
 				Bytes: global.Bytes,
+
+				ThreadLocal: global.ThreadLocal,
 			})
 		}
 		for _, fn := range m.Funcs {
@@ -627,6 +629,8 @@ func (l *linker) instr(instr Instr) Instr {
 		return &FnRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
 	case *CodeRef:
 		return &CodeRef{Dst: i.Dst, Callee: l.callee(i.Callee)}
+	case *ThreadStart:
+		return &ThreadStart{Dst: i.Dst, Stack: i.Stack, Body: l.callee(i.Body), Data: i.Data}
 	case *MakeClosure:
 		return &MakeClosure{Dst: i.Dst, Callee: l.callee(i.Callee), Env: i.Env}
 

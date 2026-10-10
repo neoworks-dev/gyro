@@ -212,6 +212,17 @@ Two things sit beside the allocation:
   no instruction does, so they are a `lock cmpxchg` loop that retries on
   the value the failed compare left in `rax`. The operand is the cell's
   width, and the old value is widened again by the cell type's signedness.
+- **Threads.** `thread.start` is a call to `gy_thread_start` in the C
+  runtime, which is `pthread_create` of a detached thread: the program still
+  links libc, and a thread started with a bare `clone` would crash on its
+  first `malloc` for want of libc's per-thread state. The stack operand is
+  ignored, since libc gives every thread one. `thread.exit` is
+  `pthread_exit`. The `clone` path comes when Gyro has its own allocator.
+- **Thread-local storage.** A `thread_local` global lives in `.tbss`, and
+  `global.ptr` of one is `[fs:0]` plus the variable's offset from the
+  thread pointer. NASM only offers the initial-exec form of that (`wrt
+  ..gottpoff`), which the linker relaxes to an immediate in an executable,
+  so the access is a `mov` of a constant and an `add` of `fs:0`.
 - **Module storage.** A global with no byte image is zeroed storage in
   `.bss`, which is zero for free. One that carries an image is real bytes
   in `.data`.
