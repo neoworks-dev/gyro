@@ -250,7 +250,7 @@ func (c *checker) checkImplAssoc(d *ast.ImplDecl, impl *types.Impl, owner types.
 		}
 		for _, bound := range declared.Bounds {
 			wanted := c.substRef(bound, s)
-			if flexible(given) || c.implementsRef(given, wanted) {
+			if types.IsUnknown(given) || hasUnknown(given) || c.implementsRef(given, wanted) {
 				continue
 			}
 			c.errorHintf(offset, c.implHelp(given, wanted),

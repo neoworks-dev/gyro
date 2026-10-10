@@ -128,6 +128,9 @@ impl Labelled<Item = i32> for Plain {   //~ E0534 an impl names its trait withou
   }
 }
 
+fn concrete(x: Good::Item) {   //~ E0404 Good::Item cannot be reached into further
+}
+
 struct Flag {
   on: bool
 }
@@ -140,7 +143,39 @@ impl Container for Flag {
   }
 }
 
+// The bound a generic owner's parameter needs for the associated type goes
+// on the type, as for every impl.
+struct Loose<T> {
+  v: T
+}
+
+impl Container for Loose<T> {
+  type Item = T                    //~ E0528 the associated type Item of impl Container for Loose is T, which does not implement Print
+
+  fn first(self): T {
+    return self.v
+  }
+}
+
+struct Tight<T: Print> {
+  v: T
+}
+
+impl Container for Tight<T> {
+  type Item = T
+
+  fn first(self): T {
+    return self.v
+  }
+}
+
+struct OnlyInts<C: Container<Item = i32>> {
+  inner: C
+}
+
 fn main() {
+  var ok = OnlyInts<Tight<i32>>{ Tight<i32>{ 1 } }
+  var no = OnlyInts<Tight<bool>>{ Tight<bool>{ true } }   //~ E0535 the associated type Item of Tight<bool> is bool
   pinned(Good{ n: 1 })
   pinned(Flag{ on: true })         //~ E0535 the associated type Item of Flag is bool, but Container<Item = i32> needs it to be i32
   var shown: dyn Container          //~ E0530 Container cannot be used as dyn
