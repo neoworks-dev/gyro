@@ -858,3 +858,57 @@ func TestReferencesInFilesThatAreNotOpen(t *testing.T) {
 		t.Errorf("a local: got %v, want %v", got, want)
 	}
 }
+
+func (c *client) formatting(uri string) []textEdit {
+	c.t.Helper()
+	result := c.call("textDocument/formatting", fmt.Sprintf(
+		`{"textDocument":{"uri":%q},"options":{"tabSize":2,"insertSpaces":true}}`, uri))
+	var edits []textEdit
+	if err := json.Unmarshal(result, &edits); err != nil {
+		c.t.Fatalf("bad edits %s: %v", result, err)
+	}
+	return edits
+}
+
+func TestFormatting(t *testing.T) {
+	c := newClient(t)
+	capabilities := string(c.call("initialize", `{"rootUri":null}`))
+	if !strings.Contains(capabilities, `"documentFormattingProvider":true`) {
+		t.Fatalf("formatting is not advertised: %s", capabilities)
+	}
+	c.notify("initialized", `{}`)
+
+	const messy = "fn main() {\n  var x = 1+2   // sum\n}\n"
+	const tidy = "fn main() {\n    var x = 1 + 2 // sum\n}\n"
+
+	uri, _ := tempURI(t, "main.gyro", messy)
+	c.open(uri, messy)
+	c.waitDiagnostics(uri)
+
+	edits := c.formatting(uri)
+	if len(edits) != 1 {
+		t.Fatalf("want one edit, got %+v", edits)
+	}
+	if edits[0].NewText != tidy {
+		t.Fatalf("formatted to %q, want %q", edits[0].NewText, tidy)
+	}
+	wantRange := Range{Start: Position{0, 0}, End: Position{3, 0}}
+	if edits[0].Range != wantRange {
+		t.Fatalf("edit covers %+v, want the whole document %+v", edits[0].Range, wantRange)
+	}
+
+	// Already formatted: nothing to do.
+	c.change(uri, tidy)
+	c.waitDiagnostics(uri)
+	if edits := c.formatting(uri); len(edits) != 0 {
+		t.Fatalf("formatted text got edits: %+v", edits)
+	}
+
+	// A buffer that does not parse is left alone.
+	broken := "fn main( {\n  var x =\n"
+	c.change(uri, broken)
+	c.waitDiagnostics(uri)
+	if edits := c.formatting(uri); len(edits) != 0 {
+		t.Fatalf("broken text got edits: %+v", edits)
+	}
+}

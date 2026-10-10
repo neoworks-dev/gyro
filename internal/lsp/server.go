@@ -99,6 +99,8 @@ func (s *Server) dispatch(req *request) error {
 		return s.handleCompletion(req)
 	case "textDocument/inlayHint":
 		return s.handleInlayHint(req)
+	case "textDocument/formatting":
+		return s.handleFormatting(req)
 	}
 
 	if req.isNotification() {
@@ -133,6 +135,7 @@ func (s *Server) handleInitialize(req *request) error {
 			ReferencesProvider:     true,
 			DocumentSymbolProvider: true,
 			InlayHintProvider:      true,
+			FormattingProvider:     true,
 			CompletionProvider: &completionOptions{
 				TriggerCharacters: []string{".", ":"},
 			},

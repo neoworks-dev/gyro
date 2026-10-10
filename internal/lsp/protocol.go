@@ -53,6 +53,7 @@ type serverCapabilities struct {
 	ReferencesProvider     bool                    `json:"referencesProvider"`
 	DocumentSymbolProvider bool                    `json:"documentSymbolProvider"`
 	InlayHintProvider      bool                    `json:"inlayHintProvider"`
+	FormattingProvider     bool                    `json:"documentFormattingProvider"`
 	CompletionProvider     *completionOptions      `json:"completionProvider,omitempty"`
 }
 
