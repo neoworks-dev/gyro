@@ -4072,6 +4072,43 @@ motivation and may become one later, but it is not why this exists, and
 designing for it now would have meant giving up the byte-identical
 layout that keeps `rt.c` shared.
 
+### The assembler is part of the compiler, and it is nasm's *(new)*
+
+**Status: decided.** `internal/x86` assembles the text `internal/nasm`
+writes into the ELF64 object that `cc` links, with the DWARF line table
+the debugger reads, so `gyro build` needs nothing from the system but a C
+compiler. The backend still writes NASM text: it stays the readable form
+`gyro nasm` prints, and the assembler reads only the subset the backend
+emits, rejecting anything else rather than guessing at it.
+
+The object is byte for byte the one nasm makes of the same text — section
+contents, relocations, symbols — and that is the test: where nasm is
+installed, every corpus, example and benchmark program is assembled both
+ways and compared. Matching nasm's bytes means matching its choices, so
+`movsxd rax, eax` is `cdqe`, a 64-bit constant that zero-extends is a
+32-bit move, and jumps are sized by replaying nasm's passes rather than by
+the smallest consistent sizing, which differs from nasm's in 20 of the
+221 programs compared. The line table is the one deliberate difference: nasm starts a row
+only when the line number changes, and so credits code to the wrong file
+when one file's line N follows another's; `internal/x86` starts the row,
+and the comparison skips exactly those rows.
+
+Rejected: **keeping nasm.** It was the only tool besides `cc` a build
+needed, it cost seconds on the largest programs (md4c's build went from
+3.4s to 0.8s), and the backend already carries a workaround for one of its
+line-table bugs. Rejected: **emitting structured instructions from the
+backend and dropping the text.** It would save parsing, but the text is
+how a person reads what the backend did, and with it the encoder can be
+checked against an independent assembler on identical input; generating
+the object from one representation and showing the user another would
+leave the shown one unchecked. Rejected: **always-long jumps, or the
+smallest sizing.** Either is simpler, but either makes the comparison
+against nasm unequal by construction, and then a real encoding difference
+has nowhere to show up. Rejected: **reproducing nasm's empty debug
+sections and its placeholder subprogram entry.** A debugger reads the
+unit, its address range and the line table; the rest is nasm's, not
+DWARF's.
+
 ## Editor tooling
 
 ### Grammars and language server live in this repository *(new)*

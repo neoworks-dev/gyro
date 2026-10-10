@@ -4,18 +4,19 @@ This appendix is the specification of the native backend and of the data
 layout it shares with C. [Chapter 17.2](ch17-02-the-pipeline.md) is the
 shorter account.
 
-The backend compiles a verified METALS module to x86-64 NASM assembly,
-assembles it, and links it with a small C runtime into a Linux
-executable:
+The backend compiles a verified METALS module to x86-64 assembly in
+NASM's syntax, assembles it with its own assembler, and links it with a
+small C runtime into a Linux executable:
 
 ```sh
 gyro build examples/hello.gyro -o hello
 ./hello
 ```
 
-The Go code lives in `internal/nasm`; the runtime is
-`internal/crt/src/rt.c`, embedded into the compiler and handed to `cc` at
-link time. Correctness is defined by the corpus: for every case, the
+The Go code lives in `internal/nasm`, and the assembler in
+`internal/x86`; the runtime is `internal/crt/src/rt.c`, embedded into the
+compiler and handed to `cc` at link time. `cc` is the only tool `gyro
+build` needs from the system. Correctness is defined by the corpus: for every case, the
 binary's stdout, stderr and exit code must match the golden the case
 declares, and the golden is written by hand before the program is run
 ([chapter 17.1](ch17-01-the-backend.md)).
@@ -361,9 +362,12 @@ functions:
 
 Lowering puts a `loc` instruction (appendix D) before every statement and
 at the top of every function. The backend writes each one as NASM's
-`%line N+0 "path"`, skipping a repeat of the position already in force, and
-assembles with `-g -F dwarf`; the linked binary carries the rows because
-nothing strips them. The file is the module's absolute path, so the
+`%line N+0 "path"`, skipping a repeat of the position already in force,
+and the assembler turns them into the DWARF line table; the linked binary
+carries the rows because nothing strips them. Code no `%line` covers is
+credited to the assembly's own lines, in a file named after the
+executable with `.asm` added — what `gyro nasm` prints, saved under that
+name, is the file the debugger then shows. The file is the module's absolute path, so the
 debugger finds the source from any directory; a bundled module such as the
 standard library has no file and shows as `gyro:stdlib`.
 
@@ -374,7 +378,50 @@ function would be cut at its first `.L1`, and the frames above it lost.
 And the text ends in a one-byte `int3` under a `%line` of its own, which
 works around NASM 3.02 mis-encoding the line table's final advance when the
 last row is 128 to 255 bytes from the end of the section; the table is
-silently truncated there, and every row after it is lost.
+silently truncated there, and every row after it is lost. `internal/x86`
+does not have the bug, but nasm is still what it is compared against, so
+the byte stays while the comparison does.
+
+## The assembler
+
+`internal/x86` reads the text the backend writes — its instructions,
+`section`, `global` and `extern`, `db`, `dq`, `resb` and `align`, labels,
+and `%line` — and writes an ELF64 relocatable object for `cc` to link. It
+accepts that subset and nothing more: an instruction form it does not
+know, or an operand the processor cannot encode, is an error rather than
+a guess. The text stays the backend's output, so `gyro nasm` shows exactly
+what is assembled.
+
+The bytes are nasm's. Where an instruction has several encodings the
+assembler picks the one nasm picks: the shortest immediate, the
+accumulator's own opcode, `cdqe` for `movsxd rax, eax`, a 32-bit move for
+a 64-bit constant that zero-extends. Jumps to labels are sized by
+replaying nasm's passes — a label behind a jump is known in the current
+pass, one ahead only from the previous pass, and nothing ahead in the
+first, which counts as short — until no label moves. That is not always
+the smallest choice: a jump whose target is 128 bytes away only because
+the jump itself is long stays long, in nasm and here. A direct `call` is
+always `rel32`.
+
+A pc-relative reference within its own section is resolved in place. Any
+other reference becomes a relocation — `R_X86_64_PC32` for a rip-relative
+operand or a call, `R_X86_64_64` for a `dq` — against the section of a
+symbol defined here, with the symbol's offset in the addend, and against
+the symbol itself for an extern. Every label is a local symbol, which is
+how a disassembler and a debugger name addresses; a `global` with
+`:function (end - start)` is a sized function symbol.
+
+The debug sections hold one compilation unit covering `.text`, its
+address range, and the line table, written as DWARF 3. A row starts
+wherever an instruction's file or line differs from the previous row's.
+nasm compares only the line number, so it keeps crediting the previous
+file when the next one's first line has the same number; that is the one
+place the two line tables differ.
+
+`TestAssemblerMatchesNasm` in `tests/` is the check: where nasm is
+installed, every corpus case, example and benchmark program is assembled
+by both, and the section bytes, relocations, symbols and line rows must
+agree, except for the rows above.
 
 Variable locations are not emitted: a value lives in a register or a stack
 slot the backend knows, but no location expression describes it yet.
