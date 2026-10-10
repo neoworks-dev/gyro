@@ -688,6 +688,48 @@ func TestSliceFromRoundTripsAndVerifies(t *testing.T) {
 `, "slice.from length is usize")
 }
 
+func TestSyscallRoundTripsAndVerifies(t *testing.T) {
+	roundTrip(t, header+`fn @write(%n: usize, %fd: i32, %p: ptr<u8>, %len: u8, %maybe: opt<anyptr>) -> i64 {
+  %r = syscall %n(%fd, %p, %len, %maybe)
+  return %r
+}
+`)
+	roundTrip(t, header+`fn @getpid(%n: usize) -> i64 {
+  %r = syscall %n()
+  return %r
+}
+`)
+
+	verifyError(t, header+`fn @f(%n: i64) {
+  %r = syscall %n()
+  return
+}
+`, "syscall number is usize")
+
+	// The kernel reads each argument from one register.
+	verifyError(t, header+`fn @f(%n: usize, %x: f64) {
+  %r = syscall %n(%x)
+  return
+}
+`, "a syscall argument is one word")
+	verifyError(t, header+`fn @f(%n: usize, %s: slice<u8>) {
+  %r = syscall %n(%s)
+  return
+}
+`, "a syscall argument is one word")
+	verifyError(t, header+`fn @f(%n: usize, %x: opt<i64>) {
+  %r = syscall %n(%x)
+  return
+}
+`, "a syscall argument is one word")
+
+	verifyError(t, header+`fn @f(%n: usize, %a: i64) {
+  %r = syscall %n(%a, %a, %a, %a, %a, %a, %a)
+  return
+}
+`, "syscall takes at most six arguments")
+}
+
 func TestLocRoundTripsAndVerifies(t *testing.T) {
 	roundTrip(t, header+`fn @f() {
   loc "/src/a b.gyro" 12

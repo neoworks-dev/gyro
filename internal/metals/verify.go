@@ -771,6 +771,26 @@ func isBool(t Type) bool {
 	return ok && prim.Kind == Bool
 }
 
+// isSyscallWord is a type the kernel can read from one register: an
+// integer, a bool, or a pointer whose null, when it has one, is zero.
+func isSyscallWord(t Type) bool {
+	switch t := t.(type) {
+	case *Prim:
+		switch t.Kind {
+		case I8, I16, I32, I64, U8, U16, U32, U64, Usize, Bool:
+			return true
+		}
+	case *Ptr, *AnyPtr:
+		return true
+	case *Opt:
+		switch t.Elem.(type) {
+		case *Ptr, *AnyPtr:
+			return true
+		}
+	}
+	return false
+}
+
 func isUsize(t Type) bool {
 	prim, ok := t.(*Prim)
 	return ok && prim.Kind == Usize

@@ -414,6 +414,14 @@ func (p *parser) dstInstr() (Instr, error) {
 		args, err := p.regList()
 		return p.line(&CallIndirect{Dst: dst, Fn: fn, Args: args}, err)
 
+	case "syscall":
+		number, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		args, err := p.regList()
+		return p.line(&Syscall{Dst: dst, Number: number, Args: args}, err)
+
 	case "fn.ref":
 		callee, err := p.global()
 		return p.line(&FnRef{Dst: dst, Callee: callee}, err)

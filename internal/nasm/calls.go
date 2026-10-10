@@ -74,6 +74,9 @@ func (g *generator) loadArg(register string, arg callArg) {
 // Direct calls
 // ---------------------------------------------------------------------------
 
+// syscallRegs are where a Linux system call reads its arguments, in order.
+var syscallRegs = []string{"rdi", "rsi", "rdx", "r10", "r8", "r9"}
+
 func (f *frame) emitCall(i *metals.Call) {
 	g := f.g
 	if callee := g.funcs[i.Callee]; callee != nil {
