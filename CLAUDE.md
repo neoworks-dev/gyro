@@ -42,6 +42,7 @@ internal/metals/     METALS IR format, parser/printer, verifier, linker
 internal/lower/      Gyro -> METALS lowering; METALS' first producer
 internal/cc/         C -> METALS; the second producer, and what a .c import goes through
 internal/nasm/       METALS -> x86-64 NASM, the one consumer
+internal/x86/        x86-64 assembler: the backend's text to ELF objects with DWARF lines
 internal/crt/        the C runtime the backend links
 internal/format/     gyro fmt, the formatter
 internal/lsp/        language server

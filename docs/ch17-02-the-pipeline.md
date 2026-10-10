@@ -98,11 +98,11 @@ check to relax.
 ## The back end
 
 ```sh
-gyro build app.gyro -o app    # nasm, then the system linker
+gyro build app.gyro -o app    # assemble, then link with cc
 ```
 
-`internal/nasm` emits x86-64 assembly and links it against
-`internal/crt`, one file of C holding what has to exist at runtime:
+`internal/nasm` emits x86-64 assembly, `internal/x86` assembles it into an
+object, and `cc` links that against `internal/crt`, one file of C holding what has to exist at runtime:
 formatting, strings, the allocator floor and the start of a thread behind
 a plain C ABI. The runtime is C rather than assembly because none of it is
 codegen, and reading it should not require reading assembly.

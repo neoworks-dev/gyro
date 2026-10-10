@@ -60,8 +60,9 @@ source
   → internal/sema       name + type checking, all the safety analyses
   → internal/lower      Gyro → METALS IR
   → internal/metals     IR format, printer, parser, verifier
-  → internal/nasm       METALS → x86-64 NASM
-                        linked against internal/crt, the C runtime
+  → internal/nasm       METALS → x86-64 assembly, in NASM's syntax
+  → internal/x86        that assembly → an ELF64 object with a line table
+                        linked by cc against internal/crt, the C runtime
 ```
 
 Everything the compiler can read becomes METALS, and everything that
@@ -78,6 +79,7 @@ Counted without `_test.go`:
 | `metals` | 6.2k  | IR types, text format, verifier, linker                       |
 | `lower`  | 5.8k  | Gyro → METALS, including monomorphization and closure lifting |
 | `nasm`   | 5.0k  | x86-64 code generation                                        |
+| `x86`    | 2.3k  | the assembler: encoder, ELF object writer, DWARF line table   |
 | `lsp`    | 2.5k  | language server, hand-rolled, zero dependencies               |
 | `parser` | 2.3k  |                                                               |
 | `ast`    | 1.7k  | tree + dumper                                                 |
