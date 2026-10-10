@@ -420,34 +420,6 @@ static int gy_encode_rune(int64_t r, char *out) {
     return 4;
 }
 
-/* gy_quote is Go's %q for the ASCII range: the escapes strconv.Quote
- * would produce, non-ASCII bytes passed through. */
-static gy_str *gy_quote(const gy_str *s) {
-    char *buf = malloc((size_t)s->len * 4 + 3);
-    char *w = buf;
-    *w++ = '"';
-    for (int64_t i = 0; i < s->len; i++) {
-        unsigned char c = (unsigned char)s->bytes[i];
-        switch (c) {
-        case '"': *w++ = '\\'; *w++ = '"'; break;
-        case '\\': *w++ = '\\'; *w++ = '\\'; break;
-        case '\n': *w++ = '\\'; *w++ = 'n'; break;
-        case '\r': *w++ = '\\'; *w++ = 'r'; break;
-        case '\t': *w++ = '\\'; *w++ = 't'; break;
-        default:
-            if (c < 0x20 || c == 0x7f) {
-                w += sprintf(w, "\\x%02x", c);
-            } else {
-                *w++ = (char)c;
-            }
-        }
-    }
-    *w++ = '"';
-    gy_str *out = gy_str_from(buf, (size_t)(w - buf));
-    free(buf);
-    return out;
-}
-
 /* ------------------------------------------------------------------ */
 /* The print family and str<T>.                                       */
 /* ------------------------------------------------------------------ */
@@ -494,11 +466,6 @@ static void gy_print_dispatch(FILE *stream, int newline, const char *bytes, size
         char buf[64];                                                          \
         gy_render_##suffix(v, buf, sizeof buf);                                \
         gy_print_dispatch(stderr, 1, buf, strlen(buf));                        \
-    }                                                                          \
-    gy_str *gy_str_##suffix(type v) {                                          \
-        char buf[64];                                                          \
-        gy_render_##suffix(v, buf, sizeof buf);                                \
-        return gy_str_c(buf);                                                  \
     }
 
 GY_PRINT_FAMILY(int, int64_t, snprintf(buf, cap, "%" PRId64, v))
@@ -511,10 +478,6 @@ void gy_print_str(const gy_str *s) { gy_print_dispatch(stdout, 0, s->bytes, (siz
 void gy_println_str(const gy_str *s) { gy_print_dispatch(stdout, 1, s->bytes, (size_t)s->len); }
 void gy_eprint_str(const gy_str *s) { gy_print_dispatch(stderr, 0, s->bytes, (size_t)s->len); }
 void gy_eprintln_str(const gy_str *s) { gy_print_dispatch(stderr, 1, s->bytes, (size_t)s->len); }
-
-/* A string prints raw but renders quoted: str<string> is only ever
-   reached from inside a composite's representation. */
-gy_str *gy_str_str(const gy_str *s) { return gy_quote(s); }
 
 /* ------------------------------------------------------------------ */
 /* String operations.                                                 */
@@ -590,29 +553,6 @@ static gy_str *gy_concat3(const char *before, const gy_str *middle, const char *
     memcpy(out->bytes + beforeLen, quoted->bytes, (size_t)quoted->len);
     memcpy(out->bytes + beforeLen + quoted->len, after, afterLen);
     return out;
-}
-
-/* out: tuple<f64, opt<error>> */
-void gy_to_f64(int64_t *out, const gy_str *s) {
-    gy_str *trimmed = gy_trim_space(s);
-    char buf[128];
-    double parsed = 0;
-    int ok = trimmed->len > 0 && trimmed->len < 127;
-    if (ok) {
-        memcpy(buf, trimmed->bytes, (size_t)trimmed->len);
-        buf[trimmed->len] = 0;
-        char *end = NULL;
-        errno = 0;
-        parsed = strtod(buf, &end);
-        ok = end == buf + trimmed->len && errno == 0;
-    }
-    if (!ok) {
-        out[0] = 0;
-        gy_write_error(out + 1, gy_concat3("", gy_quote(s), " is not an f64"));
-        return;
-    }
-    memcpy(out, &parsed, 8);
-    out[1] = 0;
 }
 
 /* ------------------------------------------------------------------ */

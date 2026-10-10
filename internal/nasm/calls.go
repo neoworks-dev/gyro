@@ -471,12 +471,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 			g.fail("@%s: printing a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
 		}
 		return nativePlan{symbol: "gy_" + method + "_" + suffix, args: values(0)}
-	case "str":
-		suffix, ok := printSuffix(sig.Params[0])
-		if !ok {
-			g.fail("@%s: formatting a %s natively needs a synthesized repr function (still open)", name, sig.Params[0])
-		}
-		return nativePlan{symbol: "gy_str_" + suffix, args: values(0)}
 	case "start_thread":
 		return nativePlan{symbol: "gy_start", args: values(0, 1)}
 	case "text_bytes":
@@ -507,8 +501,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "unlock_output":
 		return nativePlan{symbol: "gy_unlock_output"}
 
-	case "to_f64":
-		return nativePlan{symbol: "gy_to_f64", sret: true, args: values(0)}
 	case "get":
 		return nativePlan{symbol: "gy_get", sret: true, args: values(0)}
 	case "now":

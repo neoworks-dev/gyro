@@ -1,0 +1,89 @@
+// A float prints as the shortest digits that read back as the same number,
+// and to_f64 rounds text once, to nearest with ties to even, however long
+// the text is. The values are the awkward ones: the ends of the range, the
+// halfway points between neighbours, and the decade boundaries where the
+// plain and exponent forms meet.
+
+import { println } from "stdlib"
+import { to_f64 } from "convert"
+
+fn read(text: string) {
+    var value, err = to_f64(text)
+    if err != null {
+        println(err.message())
+        return
+    }
+    println(value)
+}
+
+fn main() {
+    // Printing.
+    println(0.1)
+    println(0.1 + 0.2)
+    println(4.35 * 100.0)
+    println(1.0 / 3.0)
+    println(2.0 / 3.0)
+    println(123456789.12345679)
+    println(1e21)
+    println(1e22)
+    println(1e23)
+    println(1e-7)
+    println(0.000123)
+    println(0.0001)
+    println(0.00001)
+    println(123456.0)
+    println(1234567.0)
+    println(2.5e-5)
+    println(9007199254740993.0)
+    println(18014398509481984.0)
+    println(0.0 - 1.5e-10)
+
+    // The ends of the range: the smallest subnormal, the largest
+    // subnormal, the smallest normal, and the largest double.
+    println(5e-324)
+    println(2.225073858507201e-308)
+    println(2.2250738585072014e-308)
+    println(1.7976931348623157e308)
+
+    // Reading, where the text is exact and where it is not.
+    read("0.1")
+    read("0.30000000000000004")
+    read("1e23")
+    read("  -2.5e3 ")
+    read("+.5")
+    read("5.")
+    read("123456789012345678901234567890")
+    read("0.000000000000000000000000000000000000000000001")
+
+    // Halfway between two neighbours: the even one wins, and a digit
+    // beyond the halfway point tips it.
+    read("9007199254740993")
+    read("9007199254740995")
+    read("1.00000000000000011102230246251565404236316680908203125")
+    read("1.00000000000000011102230246251565404236316680908203126")
+    read("1.00000000000000033306690738754696212708950042724609375")
+
+    // Names, and the largest and smallest numbers that still fit.
+    read("inf")
+    read("-Infinity")
+    read("nan")
+    read("1.7976931348623157e308")
+    read("2.2250738585072014e-308")
+
+    // Out of range is an error, and so is a subnormal that loses digits.
+    read("1e400")
+    read("-1e400")
+    read("1e-400")
+    read("5e-324")
+    read("2.2250738585072011e-308")
+
+    // Not numbers.
+    read("")
+    read("abc")
+    read("1e")
+    read(".")
+    read("1.2.3")
+    read("0x10")
+    read("1_0")
+    read("1e+")
+}

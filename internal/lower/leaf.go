@@ -3,7 +3,9 @@ package lower
 import (
 	"strings"
 
+	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -35,7 +37,7 @@ func (l *lowerer) ensureLeaf(name string, sig *metals.FnType) bool {
 	}
 	l.lowered[name] = true
 
-	callee := l.ensureFunc(l.stdlibDecl(plan.callee), nil)
+	callee := l.ensureFunc(l.memDecl(plan.callee), nil)
 	fn := &metals.Func{Name: name, Result: sig.Result}
 	for index, param := range sig.Params {
 		fn.Params = append(fn.Params, metals.Param{Name: argName(index), Type: param})
@@ -109,7 +111,7 @@ func scalarLeaf(prefix string, sig *metals.FnType, hashing bool) (leaf, bool) {
 		if hashing {
 			return leaf{callee: "hash_float", widen: metals.TF64}, true
 		}
-		return leaf{}, false
+		return leaf{callee: prefix + "float", widen: metals.TF64}, true
 	case metals.Bool:
 		if hashing {
 			return leaf{}, false
@@ -133,4 +135,21 @@ func (l *lowerer) warmLeaf(t types.Type) {
 		return
 	}
 	l.ensureImport("str<"+t.String()+">", &metals.FnType{Params: []metals.Type{prim}, Result: metals.TStr})
+}
+
+// memDecl finds a function mem declares, by name: the leaves live there
+// because mem is loaded whenever anything is shown.
+func (l *lowerer) memDecl(name string) *ast.FuncDecl {
+	for _, module := range l.prog.Modules {
+		if module.Path != stdlib.Path("mem") {
+			continue
+		}
+		for _, decl := range module.Tree.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Owner == "" && fn.Name == name {
+				return fn
+			}
+		}
+	}
+	l.fail("mem declares no %s", name)
+	return nil
 }

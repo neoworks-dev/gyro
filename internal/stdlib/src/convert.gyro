@@ -11,8 +11,9 @@
 // Every failure allocates, because it carries a message, and the one
 // thing it builds that on is the heap.
 
-import { heap, format, panic } from "mem"
-import { quote, starts_with } from "stdlib"
+import { heap, format, panic, quote } from "mem"
+import { starts_with } from "stdlib"
+import { parse, READ_RANGE, READ_SYNTAX } from "float"
 import { text_bytes } from "unsafe"
 
 // ParseError is what a conversion reports: the text that was refused and
@@ -27,7 +28,7 @@ export fn ParseError::message(self): string !{ &self } {
 
 fn refuse(input: string, kind: string): ParseError !{} {
     var article = "a"
-    if kind.starts_with("i") {
+    if kind.starts_with("i") || kind.starts_with("f") {
         article = "an"
     }
     return ParseError{ text: format(heap(), "#{quote(heap(), input)} is not #{article} #{kind}") }
@@ -249,6 +250,19 @@ export fn to_usize(text: string, radix: u32 = 10): (usize, error?) !{} {
     return value as usize, null
 }
 
-// Both allocate: the failure carries a message, and building it is the
-// one thing either of them puts on the heap.
-export fn to_f64(text: string): (f64, error?) !{}
+// to_f64 reads a decimal number: a sign, digits with an optional point, an
+// optional exponent, or inf, infinity and nan in either case, with white
+// space around it ignored. The result is the double nearest the text, ties
+// to even, however many digits it has. A value too large for a double, or
+// too small to keep all its precision as one, is an error rather than an
+// infinity or a rounded zero.
+export fn to_f64(text: string): (f64, error?) !{} {
+    var value, status = parse(text)
+    if status == READ_SYNTAX {
+        return 0.0, refuse(text, "f64")
+    }
+    if status == READ_RANGE {
+        return 0.0, overflow(text, "f64")
+    }
+    return value, null
+}
