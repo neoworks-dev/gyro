@@ -232,8 +232,7 @@ Open questions in the format itself ([appendix D](appendix-d-metals.md)):
 - Channels and locks written in Gyro cost what the backend's code costs: an
   uncontended send and receive is about twice the C they replaced, and a
   channel five threads fight over is several times slower (`make bench`:
-  `chan-buffered`), which the mutex-and-condvar C hid by being faster per
-  operation. A `select` still polls where it could sleep on the channels'
+  `chan-buffered`). A `select` still polls where it could sleep on the channels'
   words.
 - Register allocation exists but leaves work on the table; `make bench` is
   what measures it, against the C each case was ported from
