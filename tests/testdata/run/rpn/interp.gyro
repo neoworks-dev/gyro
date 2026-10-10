@@ -233,7 +233,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
   if is_compare(word) {
     return compare(calc, word)
   }
-  if word.starts_with(heap(), ">") && word.len() > 1 {
+  if word.starts_with(">") && word.len() > 1 {
     var value, err = calc.pop(word)
     if err != null {
       return err

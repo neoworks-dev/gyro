@@ -14,7 +14,7 @@ fn main(args: string[]) {
 
   var flags = 0
   for arg in args {
-    if arg.starts_with(heap(), "--") {
+    if arg.starts_with("--") {
       flags += 1
     }
   }

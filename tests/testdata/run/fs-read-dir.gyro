@@ -16,7 +16,7 @@ fn main() {
     return
   }
   for name in names.slice() {
-    if name.starts_with(heap(), "gyro-fs-listing-") {
+    if name.starts_with("gyro-fs-listing-") {
       println(name)
     }
   }

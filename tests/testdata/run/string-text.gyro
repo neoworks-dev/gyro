@@ -10,20 +10,20 @@ import { heap } from "mem"
 fn main() {
   println("[#{"  padded\t\n".trim(heap())}]")
   println("[#{"".trim(heap())}]")
-  println("hello".starts_with(heap(), "he"))
-  println("he".starts_with(heap(), "hello"))
-  println("hello".ends_with(heap(), "lo"))
-  println("hello".contains(heap(), "ell"))
-  println("hello".contains(heap(), "xyz"))
+  println("hello".starts_with("he"))
+  println("he".starts_with("hello"))
+  println("hello".ends_with("lo"))
+  println("hello".contains("ell"))
+  println("hello".contains("xyz"))
   println("hello".substring(heap(), 1, 4))
   println("ab".repeat(heap(), 3))
   println("[#{"ab".repeat(heap(), 0)}]")
 
-  var at = "hello".index_of(heap(), "ll")
+  var at = "hello".index_of("ll")
   if at != null {
     println(at)
   }
-  println("hello".index_of(heap(), "zz") == null)
+  println("hello".index_of("zz") == null)
 
   // An empty field between two separators is a field.
   var parts = "a,b,,c".split(heap(), ",")
