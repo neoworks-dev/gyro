@@ -3878,12 +3878,12 @@ makes its own `write` calls. Rejected: the same functions repeated inside
 `fs`, `os` and `time`.
 
 **Benchmark suite, before and after (`make bench REPEAT=5`, hot region,
-milliseconds):** `arith-checked` 32.7 and 31.9, `call-fib` 28.3 and 25.1,
-`cjson` 101.1 and 90.9, `jsmn` 199.1 and 234.4, `loop-index` 101.8 and 78.4,
-`md4c` 402.1 and 261.3, `perft` 157.7 and 149.5, `regex` 491.1 and 398.1,
-`sha256` 232.4 and 225.6, `string-concat` 148.1 and 168.4, `struct-array`
-87.2 and 117.9. The two output cases, which print 300,000 integers and
-200,000 interpolated lines, went from 145.5 and 665.0 to 13.5 and 46.9,
+milliseconds):** `arith-checked` 32.7 and 31.8, `call-fib` 28.3 and 24.9,
+`cjson` 101.1 and 89.5, `jsmn` 199.1 and 238.7, `loop-index` 101.8 and 77.8,
+`md4c` 402.1 and 261.9, `perft` 157.7 and 151.1, `regex` 491.1 and 397.0,
+`sha256` 232.4 and 226.0, `string-concat` 148.1 and 170.5, `struct-array`
+87.2 and 121.0. The two output cases, which print 300,000 integers and
+200,000 interpolated lines, went from 145.5 and 665.0 to 13.4 and 47.6,
 because standard output is no longer a system call a print.
 
 ### The runtime is C on libc *(new)*
