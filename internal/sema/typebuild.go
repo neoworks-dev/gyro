@@ -34,6 +34,11 @@ func (c *checker) buildTypes(tree *ast.File) {
 	}
 	for _, decl := range tree.Decls {
 		if d, ok := decl.(*ast.TraitDecl); ok {
+			c.buildTraitAssoc(d)
+		}
+	}
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.TraitDecl); ok {
 			c.buildTraitMethods(d)
 		}
 	}
@@ -402,6 +407,9 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 		if sym.typ == nil {
 			return types.Unknown
 		}
+		if len(t.Path.Segments) > 1 {
+			return c.resolveAssocPath(t.Path, sym.typ)
+		}
 		return sym.typ
 	case symNamespace:
 		return c.resolveNamespaceType(t.Path, sym)
@@ -413,6 +421,12 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 	}
 
 	c.recordRef(t.Path, sym.decl)
+	if len(t.Path.Segments) > 1 {
+		c.errorHintf(t.Path.Segments[1].Offset, []string{
+			"an associated type is reached through Self in an impl, or through a type parameter bounded by its trait",
+		}, "%s::%s cannot be reached into further", head.Name, t.Path.Segments[1].Name)
+		return types.Unknown
+	}
 	return c.applyTypeArgs(sym.typ, head.Offset, c.resolveTypeArgs(head.Args))
 }
 

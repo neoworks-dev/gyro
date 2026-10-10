@@ -688,6 +688,21 @@ func TestSliceFromRoundTripsAndVerifies(t *testing.T) {
 `, "slice.from length is usize")
 }
 
+func TestIsizeIsASignedPointerWidthInteger(t *testing.T) {
+	roundTrip(t, header+`fn @back(%a: isize, %b: isize) -> bool {
+  %d = isub %a, %b
+  %zero = const.isize 0
+  %r = lt %d, %zero
+  return %r
+}
+`)
+	verifyError(t, header+`fn @f(%a: isize, %b: i64) {
+  %d = isub %a, %b
+  return
+}
+`, "isub wants matching operands, got isize and i64")
+}
+
 func TestSyscallRoundTripsAndVerifies(t *testing.T) {
 	roundTrip(t, header+`fn @write(%n: usize, %fd: i32, %p: ptr<u8>, %len: u8, %maybe: opt<anyptr>) -> i64 {
   %r = syscall %n(%fd, %p, %len, %maybe)

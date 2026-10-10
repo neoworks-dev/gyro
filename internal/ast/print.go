@@ -161,6 +161,9 @@ func (p *printer) node(node Node) {
 		p.line("Trait %s%s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams), supers)
 		p.indent++
 		p.decorators(n.Decorators)
+		for _, assoc := range n.Assoc {
+			p.assoc(assoc)
+		}
 		for _, method := range n.Methods {
 			p.node(method)
 		}
@@ -175,6 +178,9 @@ func (p *printer) node(node Node) {
 		p.indent++
 		p.child("Trait", n.Trait)
 		p.child("For", n.For)
+		for _, assoc := range n.Assoc {
+			p.assoc(assoc)
+		}
 		for _, method := range n.Methods {
 			p.node(method)
 		}
@@ -486,6 +492,9 @@ func (p *printer) node(node Node) {
 			for _, arg := range segment.Args {
 				p.node(arg)
 			}
+			for _, pin := range segment.Pins {
+				p.child("Pin "+pin.Name, pin.Type)
+			}
 		}
 		p.indent--
 
@@ -648,6 +657,15 @@ func (p *printer) decorators(decorators []*Decorator) {
 	}
 }
 
+func (p *printer) assoc(a *AssocDecl) {
+	p.group("Assoc "+a.Name, func() {
+		for _, bound := range a.Bounds {
+			p.child("Bound", bound)
+		}
+		p.child("Type", a.Type)
+	})
+}
+
 func (p *printer) args(args []Arg) {
 	for _, arg := range args {
 		label := "Arg"
@@ -695,8 +713,15 @@ func pathString(path *Path) string {
 	rendered := make([]string, len(path.Segments))
 	for i, segment := range path.Segments {
 		rendered[i] = segment.Name
-		if len(segment.Args) > 0 {
-			rendered[i] += "<" + strings.Repeat("_, ", len(segment.Args)-1) + "_>"
+		if len(segment.Args)+len(segment.Pins) > 0 {
+			parts := make([]string, 0, len(segment.Args)+len(segment.Pins))
+			for range segment.Args {
+				parts = append(parts, "_")
+			}
+			for _, pin := range segment.Pins {
+				parts = append(parts, pin.Name+" = _")
+			}
+			rendered[i] += "<" + strings.Join(parts, ", ") + ">"
 		}
 	}
 	return strings.Join(rendered, "::")

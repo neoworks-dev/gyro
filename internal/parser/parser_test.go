@@ -690,6 +690,28 @@ func TestTraitsAndImpls(t *testing.T) {
 				"Func Pair<T>::compare Recv: self Param other: Type: NamedType Pair<_> NamedType T Result: NamedType i32 Body: Block",
 		},
 		{
+			name: "a trait declares associated types",
+			src:  "trait Container {\n  type Item\n  type Iter: Iterator<Self::Item> & Named\n  fn first(self): Self::Item\n}\n",
+			want: "File test.gyro Trait Container Assoc Item: Assoc Iter: Bound: NamedType Iterator<_> NamedType Self::Item " +
+				"Bound: NamedType Named Func first Recv: self Result: NamedType Self::Item",
+		},
+		{
+			name: "an impl gives associated types",
+			src:  "impl Container for Box<T> {\n  type Item = T\n}\n",
+			want: "File test.gyro Impl Trait: NamedType Container For: NamedType Box<_> NamedType T Assoc Item: Type: NamedType T",
+		},
+		{
+			name: "a bound pins an associated type",
+			src:  "fn f<C: Pair<i32, Item = string>>(c: C) {\n}\n",
+			want: "File test.gyro Func f<C: Pair<_, Item = _>> Param c: Type: NamedType C Body: Block",
+		},
+		{
+			name: "type stays an identifier",
+			src:  "fn f(e: Event): i32 {\n  var type = e.type\n  return type\n}\n",
+			want: "File test.gyro Func f Param e: Type: NamedType Event Result: NamedType i32 Body: Block " +
+				"Var type Value: Selector .type Ident e Return Ident type",
+		},
+		{
 			name: "dyn is a type",
 			src:  "var xs: dyn Element\n",
 			want: "File test.gyro Var xs Type: DynType NamedType Element",
@@ -726,11 +748,16 @@ func TestImplMisuse(t *testing.T) {
 		want string
 	}{
 		{"an owner inside the block", "impl Eq for P {\n  fn P::eq(self) {\n  }\n}\n", "without an owner"},
-		{"only methods", "impl Eq for P {\n  var x = 1\n}\n", "expected a method in the impl"},
+		{"only methods", "impl Eq for P {\n  var x = 1\n}\n", "expected a method or an associated type in the impl"},
 		{"a pointer is not a declared type", "impl Eq for *P\n", "declared in this module"},
 		{"arguments are parameter names", "impl Eq for Pair<*T>\n", "type's own parameters"},
 		{"an exported impl", "export impl Eq for P\n", "not exported"},
 		{"trait owner", "trait T {\n  fn T::f(self)\n}\n", "without an owner"},
+		{"a trait gives no type", "trait T {\n  type Item = i32\n}\n", "declares an associated type without giving it"},
+		{"an impl states no bounds", "impl T for P {\n  type Item: Eq = i32\n}\n", "its bounds are the trait's"},
+		{"an impl gives a type", "impl T for P {\n  type Item\n}\n", "expected ="},
+		{"no argument after a pin", "fn f<C: T<Item = i32, i32>>(c: C) {\n}\n", "cannot follow a pinned associated type"},
+		{"a pin is for bounds", "var x: Box<Item = i32>\n", "expected >"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1016,6 +1043,7 @@ func TestParserAlwaysTerminates(t *testing.T) {
 		"trait", "trait T {", "trait T: {", "trait T<", "trait T { fn", "trait T { var }",
 		"trait T { fn f(self) {", "impl", "impl T", "impl T for", "impl T for S {",
 		"impl T for S { fn", "impl T for S { var }", "impl T for *S {", "impl T for S<",
+		"trait T { type", "trait T { type X: }", "impl T for S { type", "impl T for S { type X =", "fn f<T: A<X =", "fn f<T: A<X = >>(",
 		"fn f<T:", "fn f<T: A &", "fn f<T: >", "var x: dyn", "var x: dyn T<", "x as dyn",
 	}
 

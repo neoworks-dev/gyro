@@ -69,6 +69,30 @@ impl Iterator<i32> for Countdown {
   }
 }
 
+// A trait can leave a type for each impl to fill in. A generic names it
+// C::Item, and it is whatever the argument's impl gave.
+trait Container {
+  type Item
+
+  fn first(self): Self::Item
+}
+
+struct Crate<T> {
+  inside: T
+}
+
+impl Container for Crate<T> {
+  type Item = T
+
+  fn first(self): T {
+    return self.inside
+  }
+}
+
+fn open<C: Container>(c: C): C::Item {
+  return c.first()
+}
+
 fn main() {
   var button = Button{ label: "ok" }
   var label = Label{ text: "hello", size: 12 }
@@ -92,4 +116,6 @@ fn main() {
   for tick in ticks {
     println(tick)
   }
+
+  println(open(Crate<i32>{ 42 }))
 }

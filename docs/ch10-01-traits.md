@@ -84,6 +84,79 @@ An impl names the arguments, `impl Iterator<i32> for Countdown`, and a bound
 does, `I: Iterator<i32>`. A default body is only allowed in a trait with
 none.
 
+## Associated types
+
+A trait can leave a type for each impl to fill in. It declares the type with
+`type`, and an impl gives it with `type Name = T`:
+
+```gyro
+trait Container {
+  type Item
+
+  fn first(self): Self::Item
+  fn count(self): usize
+}
+
+struct Box<T> {
+  value: T
+}
+
+impl Container for Box<T> {
+  type Item = T
+
+  fn first(self): T {
+    return self.value
+  }
+  fn count(self): usize {
+    return 1
+  }
+}
+```
+
+Inside the trait and inside its impls the type is written `Self::Item`. On a
+type parameter bounded by the trait it is `C::Item`, and it stands for
+whatever the argument's impl gave:
+
+```gyro
+fn head<C: Container>(c: C): C::Item {
+  return c.first()
+}
+
+head(Box<i32>{ value: 7 })    // an i32
+```
+
+An associated type may be bounded, with the bounds joined by `&` as
+everywhere: `type Iter: Iterator<Self::Item>`. A body that has a `C` can then
+use what the bounds give `C::Iter`, and an impl has to give a type that
+satisfies them.
+
+An impl defines every associated type its trait declares, and no others, and
+the type it gives satisfies the declared bounds. `C::Item` is an error when no
+bound of `C` declares an `Item`, and when two of them do, since nothing says
+which is meant. The bounds of the traits a trait requires count: a bound
+`C: Widget` reaches the associated types of `Element` in `trait Widget: Element`.
+
+A bound can pin an associated type inside the trait's argument list, after
+any positional arguments:
+
+```gyro
+fn total<C: Container<Item = i32>>(c: C): i32 {
+  return c.first()          // C::Item is i32 here
+}
+
+fn tag<P: Pair<i32, Item = string>>(p: P): string
+```
+
+The pin has to name an associated type the trait declares, and an argument
+satisfies the bound only when its impl gave exactly that type. In the body,
+`C::Item` is the pinned type.
+
+`type` is contextual: it begins an associated type only at the start of a
+member in a trait or an impl, and is an ordinary name everywhere else, so a
+field called `type` still works. A trait with associated types cannot be a
+trait value yet ([chapter 10.2](ch10-02-trait-values.md)): the type behind a
+`dyn Container` is unknown, and so is its `Item`.
+
 ## The capability traits
 
 Equality, hashing, printing, ordering, the operators and iteration are

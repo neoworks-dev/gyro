@@ -316,6 +316,7 @@ func init() {
 	intBounds[types.U32] = bound(32, false)
 	intBounds[types.U64] = bound(64, false)
 	intBounds[types.Usize] = bound(64, false)
+	intBounds[types.Isize] = bound(64, true)
 }
 
 func intFits(value *big.Int, kind types.BasicKind) bool {
@@ -456,7 +457,7 @@ func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
 		// A type parameter negates through its Neg bound, and a declared
 		// type through the Neg it implements; either way the result is
 		// the same type.
-		if _, ok := operand.(*types.TypeParam); ok || c.userNamed(operand) {
+		if opaque(operand) || c.userNamed(operand) {
 			if c.requireCapability(e.Offset, operand, "Neg", "the operator - needs") {
 				return operand
 			}
@@ -559,10 +560,7 @@ func (c *checker) arithmetic(e *ast.BinaryExpr) types.Type {
 
 	// A type parameter has the operators its bounds give it, and nothing
 	// else: + - * / % through Add, Sub, Mul, Div and Rem.
-	if _, ok := left.(*types.TypeParam); ok {
-		return c.parameterArithmetic(e, left, right)
-	}
-	if _, ok := right.(*types.TypeParam); ok {
+	if opaque(left) || opaque(right) {
 		return c.parameterArithmetic(e, left, right)
 	}
 
@@ -702,7 +700,7 @@ func (c *checker) shift(e *ast.BinaryExpr) types.Type {
 	if !flexible(right) && !types.IsInteger(right) {
 		c.errorf(e.Y.Pos(), "a shift count is an integer, not %s", describeType(right))
 	}
-	if _, ok := left.(*types.TypeParam); ok {
+	if opaque(left) {
 		c.errorf(e.Offset, "operator %s shifts integers, not %s", e.Op, describeType(left))
 		return types.Unknown
 	}
@@ -1040,12 +1038,12 @@ func (c *checker) indexExpr(e *ast.IndexExpr) types.Type {
 		if elem := c.indexElem(base); elem != nil {
 			return elem
 		}
-	case *types.TypeParam:
+	case *types.TypeParam, *types.Assoc:
 		if elem := c.indexElem(base); elem != nil {
 			return elem
 		}
 		c.errorHintf(e.Offset, []string{
-			"bound the parameter by Index: " + base.Name + ": Index<T>",
+			"bound the parameter by Index: " + base.String() + ": Index<T>",
 		}, "%s cannot be indexed", base)
 		return types.Unknown
 	case *types.Optional:
@@ -1189,7 +1187,7 @@ func (c *checker) selectField(offset int, base types.Type, name string, bareMeth
 	}
 	// A type parameter has no fields, and a trait value only methods.
 	switch t.(type) {
-	case *types.TypeParam, *types.Dyn:
+	case *types.TypeParam, *types.Assoc, *types.Dyn:
 		c.errorHintf(offset, nil, "%s has no field or method %s", t, name)
 		return types.Unknown
 	}
@@ -1515,7 +1513,7 @@ func anyPayload(t types.Type) bool {
 		// does not record which member it holds — so what came out would
 		// be storage rather than a value.
 		return false
-	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Dyn:
+	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Assoc, *types.Dyn:
 		return false
 	case *types.Pointer:
 		return anyPayload(t.Elem)

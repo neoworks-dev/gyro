@@ -49,7 +49,7 @@ attached — a skip is a program that will fail the day the gap closes
 - **No impl for a built-in type.** A trait of the program's own cannot be
   implemented for `i32` or `string`, and the capability traits are answered by
   the compiler for them.
-- **A trait takes no associated types and no defaults for its parameters.**
+- **A trait takes no defaults for its parameters or for its associated types.**
   The operator traits are `Self -> Self -> Self`, so a vector cannot be
   multiplied by a scalar with `*`.
 - **Default bodies need a trait without parameters,** and a trait with
@@ -59,9 +59,11 @@ attached — a skip is a program that will fail the day the gap closes
   `as dyn Trait`.
 - **No `T::new()` through a bound.** A bound provides methods with a receiver.
 - **`error` is not a trait yet,** and keeps its shape-based rule.
-- **No `iter()`.** `for..in` takes an `Iterator`; a collection that hands out
-  an iterator is not iterable itself, since there are no associated types to
-  name what `iter` returns.
+- **A trait with associated types is not a trait value.** `dyn Container`
+  does not exist: the type behind the value is unknown, so its `Item` is too.
+- **No `iter()`.** `for..in` takes an `Iterator<T>`; a collection that hands
+  out an iterator is not iterable itself, because no trait names what `iter`
+  returns. Associated types can say it; the trait is not written.
 
 ## Language features that are typed but not finished
 

@@ -649,7 +649,7 @@ func (g *generator) hashSuffix(name string, t metals.Type) string {
 	prim, ok := t.(*metals.Prim)
 	if ok {
 		switch prim.Kind {
-		case metals.I8, metals.I16, metals.I32, metals.I64, metals.Rune:
+		case metals.I8, metals.I16, metals.I32, metals.I64, metals.Isize, metals.Rune:
 			return "int"
 		case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
 			return "uint"
@@ -669,7 +669,7 @@ func printSuffix(t metals.Type) (string, bool) {
 		return "", false
 	}
 	switch prim.Kind {
-	case metals.I8, metals.I16, metals.I32, metals.I64:
+	case metals.I8, metals.I16, metals.I32, metals.I64, metals.Isize:
 		return "int", true
 	case metals.U8, metals.U16, metals.U32, metals.U64, metals.Usize:
 		return "uint", true

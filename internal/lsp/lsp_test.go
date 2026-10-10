@@ -304,6 +304,60 @@ func TestDefinition(t *testing.T) {
 	}
 }
 
+func TestDefinitionInAssociatedTypes(t *testing.T) {
+	src := `trait Marker {
+  fn mark(self): i32
+}
+
+trait Container {
+  type Item: Marker
+  fn first(self): Self::Item
+}
+
+struct Id {
+  n: i32
+}
+
+impl Marker for Id {
+  fn mark(self): i32 {
+    return self.n
+  }
+}
+
+struct Bag {
+  n: i32
+}
+
+impl Container for Bag {
+  type Item = Id
+  fn first(self): Id {
+    return Id{ n: self.n }
+  }
+}
+`
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", src)
+	c.open(uri, src)
+	c.waitDiagnostics(uri)
+
+	for probe, target := range map[string]string{
+		"Id\n  fn first(self): Id {": "Id {",
+		"Marker\n  fn first(self)":   "Marker {",
+	} {
+		want := positionFor(src, strings.Index(src, target))
+		result := c.call("textDocument/definition", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, src, probe)))
+		var location Location
+		if err := json.Unmarshal(result, &location); err != nil {
+			t.Fatalf("bad location %s: %v", result, err)
+		}
+		if location.Range.Start != want {
+			t.Errorf("definition of %q at %+v, want %+v", probe, location.Range.Start, want)
+		}
+	}
+}
+
 func TestDefinitionAcrossFiles(t *testing.T) {
 	c := newClient(t)
 	c.initialize()

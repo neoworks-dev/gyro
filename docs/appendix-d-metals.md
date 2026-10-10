@@ -171,7 +171,7 @@ export fn @add(%a: i32, %b: i32) -> i32 {
 
 | form | meaning |
 | --- | --- |
-| `i8 i16 i32 i64 u8 u16 u32 u64 usize` | integers |
+| `i8 i16 i32 i64 u8 u16 u32 u64 usize isize` | integers; `usize` and `isize` are pointer-width |
 | `f32 f64` | floats |
 | `bool rune str` | other primitives; `str` is an immutable string value |
 | `ptr<T>` | pointer, never null, never crosses a boundary |

@@ -59,20 +59,26 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 		return c.substEnum(t, s)
 	case *types.Dyn:
 		return &types.Dyn{Ref: c.substRef(t.Ref, s)}
+	case *types.Assoc:
+		return c.substAssoc(t, s)
 	}
 	return t
 }
 
 // substRef rewrites the arguments of a trait reference.
 func (c *checker) substRef(ref *types.TraitRef, s subst) *types.TraitRef {
-	if len(s) == 0 || len(ref.Args) == 0 {
+	if len(s) == 0 || len(ref.Args)+len(ref.Pins) == 0 {
 		return ref
 	}
 	args := make([]types.Type, len(ref.Args))
 	for i, arg := range ref.Args {
 		args[i] = c.substType(arg, s)
 	}
-	return &types.TraitRef{Trait: ref.Trait, Args: args}
+	var pins []types.AssocPin
+	for _, pin := range ref.Pins {
+		pins = append(pins, types.AssocPin{Name: pin.Name, Type: c.substType(pin.Type, s)})
+	}
+	return &types.TraitRef{Trait: ref.Trait, Args: args, Pins: pins}
 }
 
 func (c *checker) substStruct(t *types.Struct, s subst) types.Type {
@@ -256,6 +262,8 @@ func cacheString(t types.Type) string {
 		return "fn(" + strings.Join(parts, ", ") + "): " + cacheString(t.Result)
 	case *types.Dyn:
 		return "dyn " + t.Ref.Trait.Name + "<" + instanceCacheKey(t.Ref.Args) + ">"
+	case *types.Assoc:
+		return cacheString(t.Base) + "::" + t.Ref.Trait.Name + "<" + instanceCacheKey(t.Ref.Args) + ">::" + t.Name
 	case *types.Struct:
 		if len(t.Args) > 0 {
 			return t.Name + "<" + instanceCacheKey(t.Args) + ">"
@@ -365,6 +373,11 @@ func unify(pattern, actual types.Type, s subst) bool {
 			}
 		}
 		return unify(p.Result, a.Result, s)
+	case *types.Assoc:
+		// Which type stands behind a projection is for its impl to say, so
+		// there is nothing to bind here; the argument is compared once the
+		// base is known.
+		return true
 	case *types.Dyn:
 		a, ok := actual.(*types.Dyn)
 		if !ok || a.Ref.Trait != p.Ref.Trait || len(a.Ref.Args) != len(p.Ref.Args) {
@@ -406,7 +419,7 @@ func unify(pattern, actual types.Type, s subst) bool {
 // parameter, meaning it is not concrete yet.
 func containsTypeParam(t types.Type) bool {
 	switch t := t.(type) {
-	case *types.TypeParam:
+	case *types.TypeParam, *types.Assoc:
 		return true
 	case *types.Pointer:
 		return containsTypeParam(t.Elem)

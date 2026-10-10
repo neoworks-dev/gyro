@@ -94,12 +94,18 @@ func (p *Parser) parseBaseType() ast.Type {
 // unambiguous: there is no comparison operator to confuse them with, so no
 // speculation is needed.
 func (p *Parser) parseTypePathInType() *ast.Path {
+	return p.parseTypePathWith(false)
+}
+
+// parseTypePathWith parses a type's path. pins allows `Name = Type` entries
+// after the arguments of a segment, which only a bound has.
+func (p *Parser) parseTypePathWith(pins bool) *ast.Path {
 	path := &ast.Path{Offset: p.offset()}
 
 	for {
 		segment := ast.PathSegment{Offset: p.offset()}
 		segment.Name, _ = p.expectIdent()
-		segment.Args = p.parseTypeArgs()
+		segment.Args, segment.Pins = p.parseArgList(pins)
 		path.Segments = append(path.Segments, segment)
 
 		if !p.accept(token.ColonColon) {
@@ -110,20 +116,37 @@ func (p *Parser) parseTypePathInType() *ast.Path {
 
 // parseTypeArgs parses an optional `<A, B>` argument list on a named type.
 func (p *Parser) parseTypeArgs() []ast.Type {
+	args, _ := p.parseArgList(false)
+	return args
+}
+
+// parseArgList is parseTypeArgs, and with pins also the `Name = Type`
+// entries a bound may end its list with.
+func (p *Parser) parseArgList(pins bool) ([]ast.Type, []ast.AssocPin) {
 	if !p.at(token.Lt) {
-		return nil
+		return nil, nil
 	}
 	p.next()
 
 	var args []ast.Type
+	var fixed []ast.AssocPin
 	for !p.at(token.Gt) && !p.atEOF() {
-		args = append(args, p.parseType())
+		if pins && p.at(token.Ident) && p.peekAt(1).Kind == token.Assign {
+			name, offset := p.expectIdent()
+			p.next() // =
+			fixed = append(fixed, ast.AssocPin{Offset: offset, Name: name, Type: p.parseType()})
+		} else {
+			if len(fixed) > 0 {
+				p.errorf(p.offset(), "a type argument cannot follow a pinned associated type")
+			}
+			args = append(args, p.parseType())
+		}
 		if !p.accept(token.Comma) {
 			break
 		}
 	}
 	p.expect(token.Gt)
-	return args
+	return args, fixed
 }
 
 // parseParenType parses `(T)` as plain grouping and `(A, B)` as a tuple.

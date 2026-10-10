@@ -1,0 +1,11 @@
+// A negative isize has no usize to become, so the conversion panics
+// instead of wrapping around to a huge length.
+//
+//gyro:panic conversion loses the value
+
+import { println } from "stdlib"
+
+fn main() {
+  var offset: isize = -1
+  println(offset as usize)
+}

@@ -10,7 +10,7 @@
 ((type_identifier) @type.builtin
   (#any-of? @type.builtin
     "i8" "i16" "i32" "i64"
-    "u8" "u16" "u32" "u64" "usize"
+    "u8" "u16" "u32" "u64" "usize" "isize"
     "f32" "f64"
     "rune" "bool" "string" "void" "error" "any" "anyptr"))
 
@@ -151,6 +151,10 @@
 "defer" @keyword
 
 "chan" @keyword.type
+
+; `type` is contextual: it is a keyword only as the first word of an
+; associated type in a trait or an impl.
+(associated_type "type" @keyword.type)
 
 ; `code` is contextual: this only fires inside a code pointer type, so a
 ; variable called code is still a variable.

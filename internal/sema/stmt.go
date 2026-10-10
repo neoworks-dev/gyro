@@ -796,12 +796,12 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		c.errorf(e.Pos(), "this value is %s and may be null; check it against null before iterating", t)
 		return types.Unknown
 	}
-	if param, ok := t.(*types.TypeParam); ok {
-		if elem := c.iteratorElem(param); elem != nil {
+	if opaque(t) {
+		if elem := c.iteratorElem(t); elem != nil {
 			return elem
 		}
 		c.errorHintf(e.Pos(), []string{
-			"bound the parameter by Iterator: " + param.Name + ": Iterator<T>",
+			"bound the parameter by Iterator: " + t.String() + ": Iterator<T>",
 		}, "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator", t)
 		return types.Unknown
 	}

@@ -16,6 +16,9 @@ fn mustFit() {
   var b: i8 = -129               //~ does not fit i8
   var c: u8[] = [104, 300]       //~ does not fit u8
   var d: i32 = 1.5               //~ a float literal cannot become i32
+  var e: isize = -9223372036854775808
+  var f: isize = 9223372036854775808  //~ does not fit isize
+  var g: usize = -1              //~ does not fit usize
 }
 
 fn constantsFold() {
