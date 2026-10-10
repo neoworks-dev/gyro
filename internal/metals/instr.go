@@ -243,9 +243,9 @@ type (
 	// live there, which is why a producer reaches it only from code that
 	// vouches for the memory.
 	SliceFrom struct{ Dst, Ptr, Len string }
-	IndexGet struct{ Dst, X, Index string }
-	IndexSet struct{ X, Index, Val string }
-	Len      struct{ Dst, X string }
+	IndexGet  struct{ Dst, X, Index string }
+	IndexSet  struct{ X, Index, Val string }
+	Len       struct{ Dst, X string }
 
 	// IndexPtr is `%q = index.ptr %p, %i`: ptr<array<T, N>> to the ptr<T>
 	// of element i, bounds-checked against N and aborting out of range
