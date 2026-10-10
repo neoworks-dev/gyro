@@ -189,6 +189,16 @@ type FuncDecl struct {
 	// functions.
 	Recv   *Receiver
 	Params []Param
+	// Impl is the impl block a method was written in, nil for a method
+	// written free-standing. The method is also an ordinary entry in
+	// the file's declarations, with Owner and OwnerParams filled from
+	// the block's type, so everything that handles methods handles it.
+	Impl *ImplDecl
+	// Trait is the trait a method was declared in. Such a method is not
+	// in the file's declarations: it is a signature, or a default body
+	// that every implementing type shares. Its OwnerParams name Self
+	// and then the trait's own parameters.
+	Trait *TraitDecl
 	// Results is the return type list. A single type is the common case;
 	// multiple types are the `(T, error?)` tuple form used for error
 	// returns. An empty list means the function returns nothing.
@@ -221,12 +231,14 @@ type Param struct {
 	Variadic bool
 }
 
-// TypeParam is one generic parameter. It carries no bounds: Gyro generics
-// are duck-typed, so the body's usage is the requirement and it is checked
-// at instantiation.
+// TypeParam is one generic parameter. Bounds are the traits a type
+// argument has to implement, written `T: Eq & Hash`; the body may use only
+// what they provide. A parameter with no bounds stands for a type the body
+// can store and pass on and do nothing else with.
 type TypeParam struct {
 	Offset int
 	Name   string
+	Bounds []Type
 }
 
 // StructDecl declares an aggregate type. Structs hold data only; methods are
@@ -283,6 +295,44 @@ type EnumDecl struct {
 
 func (e *EnumDecl) Pos() int  { return e.Offset }
 func (e *EnumDecl) declNode() {}
+
+// TraitDecl declares a trait: a list of method signatures a type promises
+// to provide, some of them with a default body. A trait may require other
+// traits, `trait Widget: Element`, and may take type parameters, as in
+// `trait Iterator<T>`. Within it `Self` names the implementing type.
+type TraitDecl struct {
+	Offset     int
+	Decorators []*Decorator
+	Exported   bool
+	Name       string
+	TypeParams []TypeParam
+	// Supers are the traits every implementer also has to implement.
+	Supers  []Type
+	Methods []*FuncDecl
+}
+
+func (t *TraitDecl) Pos() int  { return t.Offset }
+func (t *TraitDecl) declNode() {}
+
+// ImplDecl is `impl Trait for Type { ... }`: the declaration that a type
+// implements a trait, with the methods that make it so. A block with no
+// methods and no braces, `impl Eq for Point`, asks for the implementation
+// the compiler derives. The block does not declare a type's own methods;
+// those stay free-standing.
+type ImplDecl struct {
+	Offset int
+	// Trait is the trait implemented, with its arguments.
+	Trait Type
+	// For is the implementing type: a declared type, applied to its own
+	// parameter names when it is generic.
+	For Type
+	// Body marks a block, as opposed to the bare form that derives.
+	Body    bool
+	Methods []*FuncDecl
+}
+
+func (i *ImplDecl) Pos() int  { return i.Offset }
+func (i *ImplDecl) declNode() {}
 
 // EnumVariant is one case of an enum.
 type EnumVariant struct {
@@ -959,3 +1009,15 @@ type ChanType struct {
 
 func (c *ChanType) Pos() int  { return c.Offset }
 func (c *ChanType) typeNode() {}
+
+// DynType is `dyn Trait`: a value of some type implementing the trait,
+// known only by its methods. It is two words, a pointer to the value and
+// the table of the type's methods, and it borrows the value the way a
+// slice borrows its array.
+type DynType struct {
+	Offset int
+	Trait  Type
+}
+
+func (d *DynType) Pos() int  { return d.Offset }
+func (d *DynType) typeNode() {}

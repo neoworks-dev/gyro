@@ -29,7 +29,7 @@ const (
 	EExpectedPattern  Code = "E0205"
 	EUnterminatedStmt Code = "E0206"
 	EImportForm       Code = "E0208"
-	EGenericBounds    Code = "E0209"
+	EBoundPlacement   Code = "E0209"
 	ECaptureForm      Code = "E0210"
 	EBindingNeedsType Code = "E0211"
 	EMatchArmForm     Code = "E0212"
@@ -39,6 +39,7 @@ const (
 	EAssignmentForm   Code = "E0216"
 	ERangeForm        Code = "E0217"
 	EFuncModifier     Code = "E0218"
+	ETraitForm        Code = "E0219"
 
 	// Modules and imports
 	EModuleNotFound   Code = "E0301"
@@ -157,8 +158,10 @@ var explanations = map[Code]explanation{
 		"An import is `import { name } from \"path\"` or `import * as name from\n\"path\"`, with `safe` after `import` to vouch for the names (see E0619).\nGyro has no default exports, so there is no default import."},
 	EFuncModifier: {"a function is unsafe or safe, not both",
 		"`unsafe fn` is unsafe to call; `safe fn` may do unchecked things and is\nsafe to call. A function is one or the other, or neither."},
-	EGenericBounds: {"generic parameters take no bounds",
-		"Generics are duck-typed: a body is checked against every instantiation,\nso a bound would restate what the body already requires."},
+	EBoundPlacement: {"bound in the wrong place",
+		"A bound is written where a type parameter is introduced: on a generic\nfunction, `fn max<T: Ord>`, or on a type, `struct Map<K: Eq & Hash, V>`.\nA method of a generic type inherits the bounds of the type, so it does\nnot restate them, and a trait's own parameters are bound by whatever\nimplements it."},
+	ETraitForm: {"malformed trait or impl",
+		"A trait holds method signatures, some with a default body. An impl is\n`impl Trait for Type { ... }`, with methods written without an owner, or\n`impl Trait for Type` alone to take the derived implementation. It is for\na type declared in the same module, named by its own name and, when the\ntype is generic, its own parameters. An impl is not exported: it belongs\nto the type."},
 	ECaptureForm: {"malformed capture list",
 		"A capture list holds `move name` entries. Copies are implicit, so\n`copy name` is only needed to force a copy of a moved name."},
 	EBindingNeedsType: {"binding needs a type or a value",

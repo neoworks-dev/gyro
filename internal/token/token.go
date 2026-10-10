@@ -83,6 +83,8 @@ const (
 	Fn
 	Struct
 	Enum
+	Trait
+	Impl
 	Return
 	If
 	Elif
@@ -177,6 +179,8 @@ var kindNames = map[Kind]string{
 	Fn:         "fn",
 	Struct:     "struct",
 	Enum:       "enum",
+	Trait:      "trait",
+	Impl:       "impl",
 	Return:     "return",
 	If:         "if",
 	Elif:       "elif",
@@ -219,6 +223,8 @@ var keywords = map[string]Kind{
 	"fn":       Fn,
 	"struct":   Struct,
 	"enum":     Enum,
+	"trait":    Trait,
+	"impl":     Impl,
 	"return":   Return,
 	"if":       If,
 	"elif":     Elif,

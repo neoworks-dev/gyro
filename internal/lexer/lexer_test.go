@@ -285,7 +285,7 @@ func TestNestedBlockComment(t *testing.T) {
 }
 
 func TestKeywords(t *testing.T) {
-	src := "var const fn struct enum return if elif else while for in " +
+	src := "var const fn struct enum trait impl return if elif else while for in " +
 		"match break continue defer async await chan select import " +
 		"as export self true false null _"
 
@@ -299,9 +299,9 @@ func TestKeywords(t *testing.T) {
 
 // TestNonKeywords guards the names that deliberately stay ordinary
 // identifiers: `spawn` is a stdlib function, `move`, `copy` and `from`
-// are contextual, and `impl` and `trait` left the language entirely.
+// are contextual, and so are `dyn`, `unsafe` and `safe`.
 func TestNonKeywords(t *testing.T) {
-	for _, name := range []string{"spawn", "move", "copy", "from", "println", "len", "impl", "trait"} {
+	for _, name := range []string{"spawn", "move", "copy", "from", "println", "len", "dyn", "unsafe", "safe"} {
 		kinds, _ := scan(t, name)
 		if kinds[0] != token.Ident {
 			t.Errorf("%q lexed as %s, want an identifier", name, kinds[0])

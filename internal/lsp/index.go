@@ -114,6 +114,9 @@ func (idx *index) indexDeclSites(module *loader.Module) {
 		case *ast.EnumDecl:
 			start, end := findName(src, d.Offset, d.Name)
 			idx.declSites[d] = site{module, start, end}
+		case *ast.TraitDecl:
+			start, end := findName(src, d.Offset, d.Name)
+			idx.declSites[d] = site{module, start, end}
 		case *ast.VarDecl:
 			if len(d.Names) > 0 {
 				name := d.Names[0]

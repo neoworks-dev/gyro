@@ -60,6 +60,8 @@ func indexModule(specifier string, tree *ast.File) {
 			addExport(specifier, d.Name, d.Exported)
 		case *ast.EnumDecl:
 			addExport(specifier, d.Name, d.Exported)
+		case *ast.TraitDecl:
+			addExport(specifier, d.Name, d.Exported)
 		case *ast.VarDecl:
 			for _, binding := range d.Names {
 				addExport(specifier, binding.Name, d.Exported)

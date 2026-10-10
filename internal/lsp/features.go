@@ -122,6 +122,8 @@ func describeDecl(a *analysis, hit *anchor) string {
 		return "struct " + decl.Name
 	case *ast.EnumDecl:
 		return "enum " + decl.Name
+	case *ast.TraitDecl:
+		return "trait " + decl.Name
 	case *ast.Import:
 		return fmt.Sprintf("import from %q", decl.Path)
 	}

@@ -14,7 +14,7 @@ import (
 // whole reason completion is being asked for — rarely parses.
 
 var keywordCompletions = []string{
-	"var", "const", "fn", "struct", "enum", "return", "if", "elif", "else",
+	"var", "const", "fn", "struct", "enum", "trait", "impl", "return", "if", "elif", "else",
 	"while", "for", "in", "match", "break", "continue", "defer", "async",
 	"await", "chan", "select", "import", "from", "as", "export", "self",
 	"true", "false", "null",

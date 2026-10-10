@@ -21,6 +21,14 @@ func (p *Parser) parseFile() *ast.File {
 		decl := p.parseDecl()
 		if decl != nil {
 			file.Decls = append(file.Decls, decl)
+			// An impl block's methods are also declarations of their own,
+			// with the block's type as owner, so that everything that
+			// handles a method handles these.
+			if impl, ok := decl.(*ast.ImplDecl); ok {
+				for _, method := range impl.Methods {
+					file.Decls = append(file.Decls, method)
+				}
+			}
 		}
 		p.skipTerminators()
 
@@ -188,6 +196,20 @@ func (p *Parser) parseDecl() ast.Decl {
 		decl := p.parseEnumDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
+	case token.Trait:
+		decl := p.parseTraitDecl()
+		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		return decl
+	case token.Impl:
+		decl := p.parseImplDecl()
+		decl.Offset = offset
+		if exported {
+			p.errorf(offset, "an impl is not exported; it belongs to the type it is for")
+		}
+		if len(decorators) > 0 {
+			p.errorf(offset, "decorators cannot be attached to an impl")
+		}
+		return decl
 	case token.Var, token.Const:
 		decl := p.parseVarDecl()
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
@@ -265,6 +287,11 @@ func (p *Parser) parseFuncDecl() *ast.FuncDecl {
 	// function's own name follows.
 	if p.accept(token.ColonColon) {
 		fn.Owner, fn.OwnerParams = name, params
+		for _, param := range params {
+			if len(param.Bounds) > 0 {
+				p.errorf(param.Offset, "an owner's bounds are declared on the type, not on its methods")
+			}
+		}
 		fn.Name, _ = p.expectIdent()
 		fn.TypeParams = p.parseTypeParams()
 	} else {
@@ -285,7 +312,8 @@ func (p *Parser) parseFuncDecl() *ast.FuncDecl {
 	return fn
 }
 
-// parseTypeParams parses an optional `<T, U>` list after a declaration name.
+// parseTypeParams parses an optional `<T, U: Eq & Hash>` list after a
+// declaration name.
 func (p *Parser) parseTypeParams() []ast.TypeParam {
 	if !p.at(token.Lt) {
 		return nil
@@ -295,17 +323,15 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	var params []ast.TypeParam
 	for !p.at(token.Gt) && !p.atEOF() {
 		name, offset := p.expectIdent()
+		param := ast.TypeParam{Offset: offset, Name: name}
 
-		// Bounds do not exist: generics are duck-typed, so the body's usage
-		// is the requirement. Consume a stray bound to keep parsing.
 		if p.accept(token.Colon) {
-			p.errorf(offset, "generic parameters take no bounds; Gyro generics are duck-typed")
-			p.parseType()
+			param.Bounds = append(param.Bounds, p.parseBound())
 			for p.accept(token.Amp) {
-				p.parseType()
+				param.Bounds = append(param.Bounds, p.parseBound())
 			}
 		}
-		params = append(params, ast.TypeParam{Offset: offset, Name: name})
+		params = append(params, param)
 
 		if !p.accept(token.Comma) {
 			break
@@ -313,6 +339,139 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	}
 	p.expect(token.Gt)
 	return params
+}
+
+// parseBound parses one trait in a bound: a path with its arguments.
+func (p *Parser) parseBound() ast.Type {
+	offset := p.offset()
+	if !p.at(token.Ident) {
+		p.errorf(offset, "expected a trait name, found %s", describe(p.tok()))
+		return &ast.NamedType{
+			Offset: offset,
+			Path: &ast.Path{
+				Offset:   offset,
+				Segments: []ast.PathSegment{{Offset: offset, Name: "<error>"}},
+			},
+		}
+	}
+	return &ast.NamedType{Offset: offset, Path: p.parseTypePathInType()}
+}
+
+// parseTraitDecl parses `trait Name<T>: Super & Super { fn method(self) ... }`.
+// A method with a body is a default every implementing type shares.
+func (p *Parser) parseTraitDecl() *ast.TraitDecl {
+	decl := &ast.TraitDecl{Offset: p.offset()}
+	p.expect(token.Trait)
+	decl.Name, _ = p.expectIdent()
+	decl.TypeParams = p.parseTypeParams()
+	for _, param := range decl.TypeParams {
+		if len(param.Bounds) > 0 {
+			p.errorf(param.Offset, "a trait's parameter takes no bounds")
+		}
+	}
+
+	if p.accept(token.Colon) {
+		decl.Supers = append(decl.Supers, p.parseBound())
+		for p.accept(token.Amp) {
+			decl.Supers = append(decl.Supers, p.parseBound())
+		}
+	}
+
+	p.expect(token.LBrace)
+	p.skipTerminators()
+
+	// Inside the trait, Self is the implementing type and the trait's own
+	// parameters follow it, so a default body is a function generic over
+	// all of them.
+	owner := []ast.TypeParam{{Offset: decl.Offset, Name: "Self"}}
+	owner = append(owner, decl.TypeParams...)
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		before := p.index
+		if p.at(token.Fn) || p.at(token.Async) || p.atFuncModifier() {
+			method := p.parseFuncDecl()
+			method.Trait = decl
+			if method.Owner != "" {
+				p.errorf(method.Offset, "a trait's method is written without an owner: fn %s(...)", method.Name)
+			}
+			method.OwnerParams = owner
+			decl.Methods = append(decl.Methods, method)
+		} else {
+			p.errorf(p.offset(), "expected a method in the trait, found %s", describe(p.tok()))
+			p.syncStatement()
+		}
+		p.skipTerminators()
+		if p.index == before {
+			p.next()
+		}
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// parseImplDecl parses `impl Trait for Type { ... }`, and the bare
+// `impl Trait for Type` that asks for the derived implementation.
+func (p *Parser) parseImplDecl() *ast.ImplDecl {
+	decl := &ast.ImplDecl{Offset: p.offset()}
+	p.expect(token.Impl)
+	decl.Trait = p.parseBound()
+	p.expect(token.For)
+	decl.For = p.parseType()
+
+	owner, ownerParams := p.implOwner(decl.For)
+
+	if !p.at(token.LBrace) {
+		p.expectTerminator()
+		return decl
+	}
+	decl.Body = true
+	p.next()
+	p.skipTerminators()
+
+	for !p.at(token.RBrace) && !p.atEOF() {
+		before := p.index
+		if p.at(token.Fn) || p.at(token.Async) || p.atFuncModifier() {
+			method := p.parseFuncDecl()
+			if method.Owner != "" {
+				p.errorf(method.Offset, "a method in an impl is written without an owner: fn %s(...)", method.Name)
+			}
+			method.Impl = decl
+			method.Owner, method.OwnerParams = owner, ownerParams
+			decl.Methods = append(decl.Methods, method)
+		} else {
+			p.errorf(p.offset(), "expected a method in the impl, found %s", describe(p.tok()))
+			p.syncStatement()
+		}
+		p.skipTerminators()
+		if p.index == before {
+			p.next()
+		}
+	}
+
+	p.expect(token.RBrace)
+	return decl
+}
+
+// implOwner reads the type an impl is for as the owner its methods are
+// attached to: the type's name, and the parameter names it is applied to.
+func (p *Parser) implOwner(t ast.Type) (string, []ast.TypeParam) {
+	named, ok := t.(*ast.NamedType)
+	if !ok || len(named.Path.Segments) != 1 {
+		p.errorf(t.Pos(), "an impl is for a type declared in this module, written by its name")
+		return "<error>", nil
+	}
+	segment := named.Path.Segments[0]
+	var params []ast.TypeParam
+	for _, arg := range segment.Args {
+		argNamed, ok := arg.(*ast.NamedType)
+		if !ok || len(argNamed.Path.Segments) != 1 || len(argNamed.Path.Segments[0].Args) > 0 {
+			p.errorf(arg.Pos(), "an impl names the type's own parameters, as in impl Eq for Pair<T>")
+			continue
+		}
+		params = append(params, ast.TypeParam{Offset: arg.Pos(), Name: argNamed.Path.Segments[0].Name})
+	}
+	return segment.Name, params
 }
 
 // parseParams parses a parenthesized parameter list. A leading `self` or
