@@ -77,7 +77,7 @@ Rejected C-style `if (x) { ... };`. Consequence: a struct literal cannot
 start at the top level of a condition, since the brace opens the body. Same
 resolution as Rust.
 
-### Primitives carry explicit widths; `usize` and `rune` exist *(revised)*
+### Primitives carry explicit widths; `usize`, `isize` and `rune` exist *(revised)*
 
 **Status: done (the names resolve), planned (their semantics).** `i8`–`i64`, `u8`–`u64`, `f32`, `f64`,
 `bool`, `string`, `void`, `error` — plus, from the review:
@@ -86,6 +86,11 @@ resolution as Rust.
   it, `T[N]` sizes are it. The classic unsigned-underflow footgun is blunted
   because arithmetic panics on overflow: `xs.len() - 1` on an empty slice
   panics loudly instead of wrapping.
+- **`isize`**: pointer-width signed, added with system calls (#103), whose
+  answer is pointer-width and negative on failure. It is its own type rather
+  than a name for `i64`, so a 32-bit target would make it 32 bits without a
+  program changing. Rejected returning `i64` from system calls: it is right
+  on x86-64 only by coincidence of width.
 - **`rune`**: a 32-bit Unicode code point; the type of `'c'` literals and of
   `runes()` iteration. Rejected `u8` char literals ('é' would not fit) and
   removing char literals (byte-level code gets ugly).

@@ -187,6 +187,7 @@ fn as_unsigned(value: any): (u64, bool) {
     i16(n): (widen(n as i64) & 65535, true)
     i32(n): (widen(n as i64) & 4294967295, true)
     i64(n): (widen(n), true)
+    isize(n): (widen(n as i64), true)
     rune(n): ((n as u32) as u64, true)
     _: (0, false)
   }

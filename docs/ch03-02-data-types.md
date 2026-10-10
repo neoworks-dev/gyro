@@ -8,6 +8,7 @@ later; this is the map.
 | `i8 i16 i32 i64` | signed integers |
 | `u8 u16 u32 u64` | unsigned integers |
 | `usize` | pointer-width unsigned; lengths, indexes, `T[N]` sizes |
+| `isize` | pointer-width signed; differences, offsets, a system call's answer |
 | `f32 f64` | floats |
 | `rune` | a Unicode code point (32-bit) |
 | `bool string void error` | other primitives |
@@ -27,8 +28,10 @@ later; this is the map.
 
 Integers carry their width in the name, deliberately: there is no `int`
 whose size depends on the target. `usize` exists because a length and an
-index are pointer-width by nature, and `rune` exists because a code point is
-not a byte.
+index are pointer-width by nature, and `isize` because some pointer-width
+values are negative: the distance between two indexes, an offset backwards,
+and the kernel's answer to a system call, which is an error number when it
+is below zero. `rune` exists because a code point is not a byte.
 
 ## Literals
 

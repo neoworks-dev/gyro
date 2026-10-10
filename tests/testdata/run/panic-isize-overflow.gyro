@@ -1,0 +1,11 @@
+// isize arithmetic is checked like every other integer's: past the
+// largest value it panics instead of wrapping to the smallest.
+//
+//gyro:panic integer overflow
+
+import { println } from "stdlib"
+
+fn main() {
+  var largest: isize = 9223372036854775807
+  println(largest + 1)
+}

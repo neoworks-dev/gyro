@@ -46,7 +46,7 @@ a `u32`, and the corpus would then be measuring which one guessed.
 | `i8`, `u8`, `bool` | 1 | 1 | `bool` is 0 or 1 |
 | `i16`, `u16` | 2 | 2 | |
 | `i32`, `u32`, `rune` | 4 | 4 | |
-| `i64`, `u64`, `usize` | 8 | 8 | |
+| `i64`, `u64`, `usize`, `isize` | 8 | 8 | |
 | `f32` | 4 | 4 | IEEE single; the register holds the double it widens to |
 | `f64` | 8 | 8 | IEEE double |
 | `str` | 8 | 8 | pointer to an immutable heap/static header `{ i64 len; char bytes[len] }` |

@@ -37,6 +37,7 @@ const (
 	U32
 	U64
 	Usize
+	Isize
 	F32
 	F64
 	RuneKind
@@ -83,6 +84,7 @@ var (
 	Uint32  = &Basic{U32, "u32"}
 	Uint64  = &Basic{U64, "u64"}
 	USize   = &Basic{Usize, "usize"}
+	ISize   = &Basic{Isize, "isize"}
 	Float32 = &Basic{F32, "f32"}
 	Float64 = &Basic{F64, "f64"}
 	Rune    = &Basic{RuneKind, "rune"}
@@ -102,7 +104,7 @@ var (
 var Builtin = map[string]*Basic{
 	"i8": Int8, "i16": Int16, "i32": Int32, "i64": Int64,
 	"u8": Uint8, "u16": Uint16, "u32": Uint32, "u64": Uint64,
-	"usize": USize, "f32": Float32, "f64": Float64,
+	"usize": USize, "isize": ISize, "f32": Float32, "f64": Float64,
 	"rune": Rune, "bool": Bool, "string": String, "void": Void,
 	"error": Error, "any": Any, "anyptr": AnyPtr,
 }
@@ -404,7 +406,7 @@ func IsInteger(t Type) bool {
 		return false
 	}
 	switch basic.Kind {
-	case I8, I16, I32, I64, U8, U16, U32, U64, Usize, UntypedInt:
+	case I8, I16, I32, I64, U8, U16, U32, U64, Usize, Isize, UntypedInt:
 		return true
 	}
 	return false
