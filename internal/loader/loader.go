@@ -33,6 +33,13 @@ type Module struct {
 	// generated body-less declarations the checker sees instead of
 	// source the user wrote.
 	Foreign *metals.Module
+	// Header is set on a module read from C headers. Problems maps each
+	// name an importer asked for that the headers declare and no import
+	// can bring in, or do not declare at all, to why; the checker reports
+	// it where the name is imported, since that is where it means
+	// something.
+	Header   bool
+	Problems map[string]string
 }
 
 // Program is a root module plus everything it transitively imports.
@@ -145,7 +152,7 @@ func (s *loadState) dependency(from *Module, specifier string, offset int, names
 	// A header is asked once for everything its importers name, so each
 	// import of it adds to the request even when the module exists.
 	if isHeaderSpecifier(specifier) {
-		s.headerDependency(from, specifier, offset, names, wildcard)
+		s.headerDependency(from, specifier, offset, names)
 		return
 	}
 	if from.Deps[specifier] != nil {

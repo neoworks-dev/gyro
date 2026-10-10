@@ -12,6 +12,9 @@ var codes = map[string]diag.Code{
 	"cannot move %s: no such name in scope": diag.EMoveUnknownName,
 	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent, @distributed and @extern": diag.EUnknownDecorator,
 
+	"%s cannot be imported from a C header: it %s": diag.EHeaderName,
+	"%s declares more than a program wants; name what is imported from a header": diag.EHeaderName,
+
 	// Foreign functions. The declaration errors say what @extern may sit
 	// on; the signature errors say what may cross to C.
 	"@extern %s has a body; a foreign function is declared, not written":                         diag.EExternDeclaration,

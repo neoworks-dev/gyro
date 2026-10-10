@@ -1,0 +1,28 @@
+// A header import names what it brings in. What a name can be is narrower
+// than what a header declares, and each way a name fails to cross has its
+// own message at the name.
+
+import safe { sqrt } from "<math.h>"
+import { cos } from "<math.h>"
+import safe { not_a_function } from "<math.h>"        //~ E0307 not_a_function cannot be imported from a C header: it is not declared by this header
+import safe { printf } from "<stdio.h>"               //~ E0307 printf cannot be imported from a C header: it is variadic
+import safe { strtold } from "<stdlib.h>"             //~ E0307 strtold cannot be imported from a C header: it has a long double in it
+import safe { size_t } from "<stddef.h>"              //~ E0307 size_t cannot be imported from a C header: it is a typedef for unsigned long
+import safe { stdin } from "<stdio.h>"                //~ E0307 stdin cannot be imported from a C header: it is a variable the library owns
+import safe { M_PI } from "<math.h>"                  //~ E0307 M_PI cannot be imported from a C header: it is a macro that is not an integer constant
+import safe * as math from "<math.h>"                 //~ E0307 <math.h> declares more than a program wants
+import safe { div_t } from "<stdlib.h>"
+
+// A header's functions are unsafe to call until the import vouches for
+// them, which is the rule for a C file's too.
+fn vouched(): f64 {
+  return sqrt(4.0)
+}
+
+fn unvouched(): f64 {
+  return cos(0.0)                 //~ E0618 cos is unsafe to call; this function is a plain fn
+}
+
+safe fn contained(): f64 {
+  return cos(0.0)
+}

@@ -3,7 +3,6 @@ package loader
 import (
 	"fmt"
 	"os/exec"
-	"sort"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -59,10 +58,7 @@ type headerImport struct {
 	includes []string
 	names    []string
 	sites  map[string][]site
-	// wildcard is where an import took the whole header, which no import
-	// of one may.
-	wildcard *site
-	first    site
+	first site
 }
 
 type site struct {
@@ -79,7 +75,7 @@ func (h *headerImport) add(name string, at site) {
 
 // headerDependency files an import of a header, creating its module the
 // first time any module names it.
-func (s *loadState) headerDependency(from *Module, spec string, offset int, names []ast.ImportName, wildcard bool) {
+func (s *loadState) headerDependency(from *Module, spec string, offset int, names []ast.ImportName) {
 	here := site{from: from, offset: offset}
 	library, include, err := splitHeader(spec)
 	if err != nil {
@@ -107,9 +103,6 @@ func (s *loadState) headerDependency(from *Module, spec string, offset int, name
 	if !known {
 		imp.includes = append(imp.includes, include)
 	}
-	if wildcard && imp.wildcard == nil {
-		imp.wildcard = &here
-	}
 	for _, name := range names {
 		imp.add(name.Name, site{from: from, offset: name.Offset})
 	}
@@ -127,6 +120,7 @@ func (s *loadState) finishHeaders() {
 func (s *loadState) readHeader(imp *headerImport) {
 	imp.module.File = diag.NewFile(imp.library, "")
 	imp.module.Tree = &ast.File{Name: imp.library}
+	imp.module.Header = true
 	s.bag.Track(imp.module.File)
 
 	report := func(at site, code diag.Code, format string, args ...any) {
@@ -136,12 +130,6 @@ func (s *loadState) readHeader(imp *headerImport) {
 			Pos:      at.from.File.Position(at.offset),
 			Message:  fmt.Sprintf(format, args...),
 		})
-	}
-
-	if imp.wildcard != nil {
-		report(*imp.wildcard, diag.EHeaderName,
-			"a header declares more than a program wants; name what is imported from it: import { name } from \"<header>\"")
-		return
 	}
 
 	request, err := headerRequest(imp.library, imp.includes, imp.names)
@@ -166,21 +154,12 @@ func (s *loadState) readHeader(imp *headerImport) {
 			problems[name] = why
 		}
 	}
-	names := make([]string, 0, len(problems))
-	for name := range problems {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		for _, at := range imp.sites[name] {
-			report(at, diag.EHeaderName, "%s %s", name, problems[name])
-		}
-	}
-
 	module := imp.module
 	module.File = diag.NewFile(imp.library, text)
 	s.bag.Track(module.File)
 	module.Foreign = header.Module
+	module.Header = true
+	module.Problems = problems
 	module.Tree = parser.ParseForeign(module.File, s.bag)
 }
 

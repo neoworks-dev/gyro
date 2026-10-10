@@ -258,6 +258,10 @@ type checker struct {
 	// another language produced, which is the only kind `import safe`
 	// has anything to vouch for.
 	foreign map[string]bool
+	// headers holds the specifiers that resolved to C headers, and
+	// headerProblems what each says about the names that cannot cross.
+	headers        map[string]bool
+	headerProblems map[string]map[string]string
 
 	// unionWrites holds the selectors that store into a union member, which
 	// is safe where reading one is not.
@@ -304,6 +308,8 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		guarded:         map[*symbol][]*symbol{},
 		importPaths:     map[string]string{},
 		foreign:         map[string]bool{},
+		headers:         map[string]bool{},
+		headerProblems:  map[string]map[string]string{},
 		unionWrites:     map[*ast.SelectorExpr]int{},
 		reportedLeaks:   map[*symbol]bool{},
 		closureCaptures: map[*ast.ClosureExpr][]*symbol{},
@@ -325,7 +331,11 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 		imports := map[string]*Exports{}
 		paths := map[string]string{}
 		foreign := map[string]bool{}
+		headers := map[string]bool{}
+		problems := map[string]map[string]string{}
 		for specifier, dependency := range module.Deps {
+			headers[specifier] = dependency.Header
+			problems[specifier] = dependency.Problems
 			imports[specifier] = computed[dependency]
 			paths[specifier] = dependency.Path
 			foreign[specifier] = dependency.Foreign != nil
@@ -333,6 +343,8 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 		c := newChecker(p, module.File, module.Path, imports)
 		c.importPaths = paths
 		c.foreign = foreign
+		c.headers = headers
+		c.headerProblems = problems
 		computed[module] = c.run(module.Tree)
 		checkers[i] = c
 	}
@@ -504,6 +516,10 @@ func (c *checker) collectImport(imp *ast.Import) {
 		}, "import safe vouches for a C file's functions; %q is a Gyro module", imp.Path)
 	}
 
+	if imp.Wildcard != "" && c.headers[imp.Path] {
+		c.errorf(imp.Offset, "%s declares more than a program wants; name what is imported from a header", imp.Path)
+	}
+
 	if imp.Wildcard != "" {
 		c.declareSymbol(imp.Wildcard, &symbol{
 			kind:    symNamespace,
@@ -525,8 +541,12 @@ func (c *checker) collectImport(imp *ast.Import) {
 		if exports != nil {
 			entry, ok := exports.names[name.Name]
 			if !ok {
-				c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(exports)),
-					"%q does not export %s", imp.Path, name.Name)
+				if why, problem := c.headerProblems[imp.Path][name.Name]; problem {
+					c.errorf(name.Offset, "%s cannot be imported from a C header: it %s", name.Name, why)
+				} else {
+					c.errorHintf(name.Offset, didYouMean(name.Name, exportedNames(exports)),
+						"%q does not export %s", imp.Path, name.Name)
+				}
 			} else {
 				local.kind = entry.kind
 				local.decl = entry.decl

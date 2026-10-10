@@ -196,6 +196,16 @@ func (r *headerReader) function(name string, fn *funcDecl) {
 		r.problem(name, "is declared under the assembler label %q, which a call by this name would not reach", fn.label)
 		return
 	}
+	for _, p := range fn.params {
+		if why := r.unrepresentable(p.typ); why != "" {
+			r.problem(name, "%s", why)
+			return
+		}
+	}
+	if why := r.unrepresentable(fn.result); why != "" {
+		r.problem(name, "%s", why)
+		return
+	}
 	sig, err := nativeSignature(fn)
 	if err != nil {
 		r.problem(name, "%s", err)
