@@ -163,6 +163,8 @@ func (f *funcLowerer) lowerCast(e *ast.CastExpr) string {
 	value := f.lowerExpr(e.X, nil)
 
 	switch {
+	case isDynType(to):
+		return f.lowerDynCast(value, from, to.(*types.Dyn))
 	case isAnyType(to):
 		return f.wrapAny(value, from)
 	case isAnyType(from):
@@ -495,6 +497,9 @@ func (f *funcLowerer) evalUnary(e *ast.UnaryExpr) string {
 	switch e.Op {
 	case token.Minus:
 		value := f.lowerExpr(e.X, nil)
+		if operand := f.typeOf(e.X); isDeclared(operand) {
+			return f.callMethod(operand, "neg", []string{value}, operand)
+		}
 		out := f.newReg("neg")
 		f.emit(&metals.Un{Dst: out, Op: "neg", X: value})
 		return out
@@ -547,6 +552,9 @@ func (f *funcLowerer) evalBinary(e *ast.BinaryExpr) string {
 	case token.Eq, token.NotEq:
 		return f.equality(e)
 	case token.Lt, token.LtEq, token.Gt, token.GtEq:
+		if own := types.Default(f.typeOf(e.X)); !primitiveOrdered(own) {
+			return f.orderingByCompare(e, own)
+		}
 		left := f.lowerExpr(e.X, orderedContext(f.typeOf(e.X), f.typeOf(e.Y)))
 		right := f.lowerExpr(e.Y, orderedContext(f.typeOf(e.Y), f.typeOf(e.X)))
 		out := f.newReg("cmp")
@@ -555,6 +563,9 @@ func (f *funcLowerer) evalBinary(e *ast.BinaryExpr) string {
 	}
 
 	resultType := f.typeOf(e)
+	if isDeclared(resultType) {
+		return f.declaredBinary(e, resultType)
+	}
 	left := f.lowerExpr(e.X, resultType)
 	right := f.lowerExpr(e.Y, resultType)
 	// A shift count keeps its own integer type in Gyro; METALS wants
@@ -668,6 +679,22 @@ func (f *funcLowerer) equality(e *ast.BinaryExpr) string {
 	left := f.lowerExpr(e.X, orderedContext(leftType, rightType))
 	right := f.lowerExpr(e.Y, orderedContext(rightType, leftType))
 	left, right = f.balanceForCompare(left, types.Default(leftType), right, types.Default(rightType))
+
+	if e.Op == token.Eq || e.Op == token.NotEq {
+		own := types.Default(leftType)
+		if _, optional := types.Default(rightType).(*types.Optional); optional {
+			own = types.Default(rightType)
+		}
+		if f.l.customEq(own) {
+			same := f.equalValues(left, right, own)
+			if e.Op == token.Eq {
+				return same
+			}
+			out := f.newReg("ne")
+			f.emit(&metals.Un{Dst: out, Op: "not", X: same})
+			return out
+		}
+	}
 
 	out := f.newReg("eq")
 	op := "eq"
@@ -938,6 +965,10 @@ func (f *funcLowerer) callToString(e ast.Expr, t types.Type, method *types.Metho
 // concrete instance, for methods reached without a recorded call (display,
 // iteration).
 func ownerBindings(decl *ast.FuncDecl, t types.Type) map[string]types.Type {
+	// A default body is the trait's: it is generic over Self alone.
+	if decl.Trait != nil {
+		return map[string]types.Type{"Self": t}
+	}
 	var args []types.Type
 	switch t := t.(type) {
 	case *types.Struct:

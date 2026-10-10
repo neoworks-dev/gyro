@@ -27,7 +27,7 @@
 //     scan both walk to -1, and Gyro's arithmetic panics on underflow
 //     rather than wrapping.
 
-import { Array } from "stdlib"
+import { Array, Eq } from "stdlib"
 
 export enum Kind {
   Undefined,
@@ -36,6 +36,8 @@ export enum Kind {
   String,
   Primitive,
 }
+
+impl Eq for Kind
 
 // The negative returns of jsmn_parse. C shares one int between the token
 // count and these, and so does this.

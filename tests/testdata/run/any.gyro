@@ -1,4 +1,4 @@
-import { println } from "stdlib"
+import { println, Print } from "stdlib"
 import { format, heap } from "mem"
 
 struct Point {
@@ -10,6 +10,8 @@ enum Shape {
   Circle(f64)
   Square(f64)
 }
+
+impl Print for Shape
 
 fn describe(v: any): string {
   return match v {

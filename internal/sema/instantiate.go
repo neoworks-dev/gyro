@@ -57,8 +57,22 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 		return c.substStruct(t, s)
 	case *types.Enum:
 		return c.substEnum(t, s)
+	case *types.Dyn:
+		return &types.Dyn{Ref: c.substRef(t.Ref, s)}
 	}
 	return t
+}
+
+// substRef rewrites the arguments of a trait reference.
+func (c *checker) substRef(ref *types.TraitRef, s subst) *types.TraitRef {
+	if len(s) == 0 || len(ref.Args) == 0 {
+		return ref
+	}
+	args := make([]types.Type, len(ref.Args))
+	for i, arg := range ref.Args {
+		args[i] = c.substType(arg, s)
+	}
+	return &types.TraitRef{Trait: ref.Trait, Args: args}
 }
 
 func (c *checker) substStruct(t *types.Struct, s subst) types.Type {
@@ -238,6 +252,8 @@ func cacheString(t types.Type) string {
 			parts[i] = cacheString(param)
 		}
 		return "fn(" + strings.Join(parts, ", ") + "): " + cacheString(t.Result)
+	case *types.Dyn:
+		return "dyn " + t.Ref.Trait.Name + "<" + instanceCacheKey(t.Ref.Args) + ">"
 	case *types.Struct:
 		if len(t.Args) > 0 {
 			return t.Name + "<" + instanceCacheKey(t.Args) + ">"
@@ -347,6 +363,17 @@ func unify(pattern, actual types.Type, s subst) bool {
 			}
 		}
 		return unify(p.Result, a.Result, s)
+	case *types.Dyn:
+		a, ok := actual.(*types.Dyn)
+		if !ok || a.Ref.Trait != p.Ref.Trait || len(a.Ref.Args) != len(p.Ref.Args) {
+			return false
+		}
+		for i := range p.Ref.Args {
+			if !unify(p.Ref.Args[i], a.Ref.Args[i], s) {
+				return false
+			}
+		}
+		return true
 	case *types.Struct:
 		a, ok := actual.(*types.Struct)
 		if !ok || a.Origin == nil || p.Origin == nil || a.Origin != p.Origin {
@@ -411,6 +438,12 @@ func containsTypeParam(t types.Type) bool {
 			}
 		}
 		return containsTypeParam(t.Result)
+	case *types.Dyn:
+		for _, arg := range t.Ref.Args {
+			if containsTypeParam(arg) {
+				return true
+			}
+		}
 	case *types.Struct:
 		for _, arg := range t.Args {
 			if containsTypeParam(arg) {

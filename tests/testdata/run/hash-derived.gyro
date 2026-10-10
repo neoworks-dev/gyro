@@ -3,23 +3,32 @@
 // hash displaces the derived one, the way to_string displaces derived
 // printing.
 
-import { println } from "stdlib"
+import { println, Hash, Eq } from "stdlib"
 
 struct Point {
   x: i32
   y: i32
 }
 
+impl Eq for Point
+impl Hash for Point
+
 struct Named {
   label: string
   at: Point
 }
+
+impl Eq for Named
+impl Hash for Named
 
 enum Shape {
   Circle(f64),
   Rect(f64, f64),
   Dot,
 }
+
+impl Eq for Shape
+impl Hash for Shape
 
 struct Version {
   major: i32
@@ -29,8 +38,10 @@ struct Version {
 // Only the major number identifies a version here, so both == and hash
 // would disagree with each other if hash were left derived. Declaring one
 // is how a type says so.
-fn Version::hash(self): u64 {
-  return self.major.hash()
+impl Hash for Version {
+  fn hash(self): u64 {
+    return self.major.hash()
+  }
 }
 
 fn main() {

@@ -38,6 +38,7 @@ type Info struct {
 	Structs map[*ast.StructDecl]*types.Struct
 	Unions  map[*ast.UnionDecl]*types.Union
 	Enums   map[*ast.EnumDecl]*types.Enum
+	Traits  map[*ast.TraitDecl]*types.Trait
 	// Instances lists every concrete instantiation of each generic
 	// function, keyed by InstanceKey.
 	Instances map[*ast.FuncDecl]map[string]*FuncInstance
@@ -64,6 +65,10 @@ type CallInfo struct {
 	// of the fields above.
 	Enum    *types.Enum
 	Variant int
+	// Dyn is set for a call on a trait value, which goes through the
+	// value's method table: it names the trait value's type. Method is
+	// the trait's declaration of the method, and has no body to call.
+	Dyn *types.Dyn
 }
 
 // FuncInstance is one concrete instantiation of a generic function: the
@@ -108,6 +113,7 @@ func newInfo() *Info {
 		Structs:   map[*ast.StructDecl]*types.Struct{},
 		Unions:    map[*ast.UnionDecl]*types.Union{},
 		Enums:     map[*ast.EnumDecl]*types.Enum{},
+		Traits:    map[*ast.TraitDecl]*types.Trait{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
 		Externs:   map[*ast.FuncDecl]types.Extern{},
 	}

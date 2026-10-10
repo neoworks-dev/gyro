@@ -27,6 +27,11 @@ type callee struct {
 	// vouched is set when the import that bound the callee vouches for it.
 	vouched bool
 
+	// dyn marks a method called on a trait value: it dispatches through
+	// the value's method table, so there is no body to check against the
+	// arguments' types.
+	dyn bool
+
 	bad bool
 }
 
@@ -93,6 +98,9 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 	}
 
 	switch sym.kind {
+	case symTrait:
+		c.errorf(fun.Offset, "%s is a trait, not a function", fun.Name)
+		return callee{bad: true}
 	case symType:
 		c.errorf(fun.Offset, "%s is a type; a literal is written %s{ ... } and an associated function %s::name(...)",
 			fun.Name, fun.Name, fun.Name)
@@ -152,7 +160,15 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 		c.errorf(fun.Offset, "this value is %s and may be null; check it against null before using it", optional)
 		return callee{bad: true}
 	}
-	if flexible(recv) {
+	// A method on a type parameter comes from its bounds, and on a trait
+	// value from the trait's method table.
+	if param, ok := recv.(*types.TypeParam); ok {
+		return c.boundCallee(fun, param)
+	}
+	if d, ok := recv.(*types.Dyn); ok {
+		return c.dynCallee(fun, d)
+	}
+	if types.IsUnknown(recv) {
 		return callee{bad: true}
 	}
 
@@ -421,11 +437,18 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 
 	result := c.substType(sig.Result, s)
 
+	// What the arguments must implement is checked wherever they are known,
+	// inside a generic body included: there a type parameter satisfies a
+	// bound only by being bounded by it too.
+	if !poisoned && !c.checkCallBounds(call, target, method, s) {
+		poisoned = true
+	}
+
 	// Inside a generic body the type parameters are still opaque, and a
 	// poisoned argument already carries its own error; the inference
-	// errors and the duck check belong to clean, concrete calls.
+	// errors and the instantiation check belong to clean, concrete calls.
 	var bindings map[string]types.Type
-	if !c.lenient && !poisoned {
+	if !c.lenient && !poisoned && !target.dyn {
 		bindings = c.collectBindings(call, method, target, s)
 		if bindings != nil {
 			c.instantiate(method.Decl, bindings, instantiationLabel(target.name, method, bindings), call.Offset)
@@ -433,7 +456,11 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 	}
 
 	substituted, _ := c.substType(sig, s).(*types.Func)
-	c.recordCall(call, &CallInfo{Method: method, Sig: substituted, Bindings: bindings})
+	info := &CallInfo{Method: method, Sig: substituted, Bindings: bindings}
+	if target.dyn {
+		info.Dyn, _ = target.ownerArgs[0].(*types.Dyn)
+	}
+	c.recordCall(call, info)
 
 	if sig.Async {
 		return &types.Future{Result: result}
@@ -458,7 +485,7 @@ func (c *checker) checkCallArg(call *ast.CallExpr, target callee, sig *types.Fun
 	}
 
 	argType := c.defaultExpr(arg.Value, c.expr(arg.Value))
-	if flexible(argType) {
+	if types.IsUnknown(argType) || (flexible(argType) && !c.lenient) {
 		return false
 	}
 	if !unify(pattern, argType, s) {
@@ -519,7 +546,7 @@ func (c *checker) applyExplicitTypeArgs(call *ast.CallExpr, method *types.Method
 // returns nil when there is nothing generic to check.
 func (c *checker) collectBindings(call *ast.CallExpr, method *types.Method, target callee, s subst) map[string]types.Type {
 	decl := method.Decl
-	if decl == nil || (len(method.TypeParams) == 0 && len(target.ownerParams) == 0) {
+	if decl == nil || (len(method.TypeParams) == 0 && len(target.ownerParams) == 0 && method.Impl == nil) {
 		return nil
 	}
 
@@ -535,9 +562,21 @@ func (c *checker) collectBindings(call *ast.CallExpr, method *types.Method, targ
 		bindings[name] = bound
 	}
 
-	for i, param := range decl.OwnerParams {
-		if i < len(target.ownerParams) {
-			assign(param.Name, target.ownerParams[i])
+	if impl := method.Impl; impl != nil {
+		// A default body installed on a type is the trait's, written over
+		// Self and the trait's parameters: the impl says what they are
+		// for this type.
+		bindings["Self"] = c.substType(impl.Owner, s)
+		for i, param := range decl.OwnerParams[1:] {
+			if i < len(impl.Args) {
+				bindings[param.Name] = c.substType(impl.Args[i], s)
+			}
+		}
+	} else {
+		for i, param := range decl.OwnerParams {
+			if i < len(target.ownerParams) {
+				assign(param.Name, target.ownerParams[i])
+			}
 		}
 	}
 	for i, param := range decl.TypeParams {
@@ -641,7 +680,7 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 
 	// The compiler's own surface wins: len and compare are part of the type,
 	// and an extension may not shadow them.
-	if method := builtinMethod(t, name); method != nil {
+	if method := c.builtinMethod(t, name); method != nil {
 		return method, nil, nil
 	}
 	if method := c.extensionMethod(t, name); method != nil {
@@ -651,10 +690,12 @@ func (c *checker) lookupMethodFull(t types.Type, name string) (*types.Method, []
 }
 
 // builtinMethod is the method surface of the built-in types, which needs no
-// import: close on channels, len on the sliceable types,
-// compare on the ordered primitives, hash on the hashable ones, message on
-// error.
-func builtinMethod(t types.Type, name string) *types.Method {
+// import: close on channels, len on the sliceable types, compare on the
+// ordered primitives, and the methods of the capability traits wherever a
+// type has the capability without writing it — eq, hash, and the
+// operators as add, sub, mul, div, rem and neg on the numbers. message is
+// error's.
+func (c *checker) builtinMethod(t types.Type, name string) *types.Method {
 	valueMethod := func(sig *types.Func) *types.Method {
 		return &types.Method{Name: name, Recv: types.ValueRecv, Sig: sig}
 	}
@@ -663,10 +704,30 @@ func builtinMethod(t types.Type, name string) *types.Method {
 	// in every other position: 8.hash() is i32's.
 	t = types.Default(t)
 
-	// hash is derived wherever == is: a type that compares field-wise
-	// hashes field-wise, so the two can never disagree.
-	if name == "hash" && types.IsHashable(t) {
-		return valueMethod(&types.Func{Result: types.Uint64})
+	capability := func(kind string) bool {
+		return c.hasCapability(t, kind, map[string]bool{})
+	}
+
+	switch name {
+	case "hash":
+		// hash is derived wherever == is, for a type that asks for it: a
+		// type that compares field-wise hashes field-wise, so the two can
+		// never disagree.
+		if capability("Hash") {
+			return valueMethod(&types.Func{Result: types.Uint64})
+		}
+	case "eq":
+		if capability("Eq") {
+			return valueMethod(&types.Func{Params: []types.Type{t}, Required: 1, Result: types.Bool})
+		}
+	case "add", "sub", "mul", "div", "rem":
+		if _, isParam := t.(*types.TypeParam); !isParam && !c.userNamed(t) && capability(operatorKind[name]) {
+			return valueMethod(&types.Func{Params: []types.Type{t}, Required: 1, Result: t})
+		}
+	case "neg":
+		if _, isParam := t.(*types.TypeParam); !isParam && !c.userNamed(t) && capability("Neg") {
+			return valueMethod(&types.Func{Result: t})
+		}
 	}
 
 	switch t := t.(type) {
@@ -699,6 +760,11 @@ func builtinMethod(t types.Type, name string) *types.Method {
 		}
 	}
 	return nil
+}
+
+// operatorKind maps an operator method to the capability that carries it.
+var operatorKind = map[string]string{
+	"add": "Add", "sub": "Sub", "mul": "Mul", "div": "Div", "rem": "Rem",
 }
 
 // ---------------------------------------------------------------------------

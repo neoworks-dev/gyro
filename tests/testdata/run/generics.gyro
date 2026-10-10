@@ -1,4 +1,4 @@
-import { println } from "stdlib"
+import { println, Ord } from "stdlib"
 
 struct Pair<T> {
   first: T
@@ -11,7 +11,7 @@ fn Pair<T>::swap(*self) {
   self.second = tmp
 }
 
-fn max<T>(a: T, b: T): T {
+fn max<T: Ord>(a: T, b: T): T {
   if a.compare(b) > 0 {
     return a
   }

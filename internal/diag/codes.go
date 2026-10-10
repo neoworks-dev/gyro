@@ -86,6 +86,11 @@ const (
 	EVariadicParam       Code = "E0524"
 	EBadSpread           Code = "E0525"
 	ENoAddress           Code = "E0526"
+	ETraitNotImplemented Code = "E0527"
+	EImplMismatch        Code = "E0528"
+	EImplConflict        Code = "E0529"
+	ENotObjectSafe       Code = "E0530"
+	EDynConversion       Code = "E0531"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -256,6 +261,16 @@ var explanations = map[Code]explanation{
 		"A trailing `...` on an argument forwards an existing slice as a whole\nvariadic pack. It needs a variadic parameter to spread into, and since\nit supplies the entire pack, nothing may follow it."},
 	ENoAddress: {"this function has no single address",
 		"`&f` on a declared function is a `code(...)`: the function's address\nand nothing beside it. An async function is run by this program's\nscheduler rather than by whoever holds the address, and a variadic one\ncarries an argument pack a bare address cannot."},
+	ETraitNotImplemented: {"type does not implement the trait",
+		"A bound, an operator or a printer asked for a trait the type does not\nimplement. The built-in types implement the capability traits Eq, Hash, Print,\nOrd, Add, Sub, Mul, Div, Rem and Neg on their own. A type a program declares\nimplements one only by saying so: `impl Eq for Point` takes the\nimplementation built from the fields, and `impl Ord for Point { ... }`\nsupplies the methods. Inside a generic, a parameter has the traits it is\nbounded by and no others."},
+	EImplMismatch: {"impl does not match its trait",
+		"An impl provides every method the trait declares without a body, no\nmethod the trait does not declare, and each with the trait's signature, Self\nread as the type the impl is for. It also needs the impls of the traits the\ntrait requires."},
+	EImplConflict: {"impl cannot be written",
+		"A type implements a trait once. An impl is for a struct, enum or union\nthis module declares, and a bare `impl Trait for Type` asks the compiler to\nderive the implementation, which it can do for Eq, Hash and Print when every\nfield has the capability itself."},
+	ENotObjectSafe: {"trait cannot be used as dyn",
+		"A trait value is a pointer and a table with one entry per method, so\nevery method has to be callable without knowing the type behind it: it\ntakes a receiver, has no type parameters of its own, and mentions Self\nnowhere but the receiver. The capability traits the compiler answers\nstatically are not trait values either."},
+	EDynConversion: {"value cannot become a trait value",
+		"`pointer as dyn Trait` makes a trait value of a pointer to a type that\nimplements the trait. The trait value borrows what the pointer points at."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",
@@ -278,7 +293,7 @@ var explanations = map[Code]explanation{
 	ERangeMisuse: {"range in the wrong place",
 		"`..` builds the range of a for..in loop and is not a value."},
 	EIterationMisuse: {"value does not iterate",
-		"for..in walks arrays, slices, ranges and channels. A string iterates\nthrough .runes(a), which decodes it into a block from the allocator a."},
+		"for..in walks arrays, slices, ranges, channels and any type that implements\nIterator. A string iterates\nthrough .runes(a), which decodes it into a block from the allocator a."},
 	EPrivateField: {"field is private to its module",
 		"Field visibility is explicit; construct the value with an associated\nfunction instead."},
 	EBadBorrowSource: {"borrow does not name a view parameter",

@@ -70,6 +70,35 @@ var codes = map[string]diag.Code{
 	"%s is not a struct; only structs have literals":                                        diag.EWrongKind,
 	"%s is generic; it must be called so its type parameters can be inferred":               diag.EWrongKind,
 
+	// Traits. A bound, an operator or a printer asks for a trait; an impl
+	// is held to the one it names; a trait value needs a trait it fits.
+	"%s does not implement %s, which %s":                                               diag.ETraitNotImplemented,
+	"%s is a trait, not a function":                                                    diag.EWrongKind,
+	"%s is a trait, not a type":                                                        diag.EWrongKind,
+	"%s is not a trait":                                                                diag.EWrongKind,
+	"the trait %s already has a method %s":                                             diag.EMethodConflict,
+	"a trait's method takes a receiver; write fn %s(self, ...)":                        diag.ETraitForm,
+	"a default body needs a trait without type parameters; %s takes some":              diag.ETraitForm,
+	"%s already implements %s":                                                         diag.EImplConflict,
+	"an impl is for a type this module declares; %s is built in":                       diag.EImplConflict,
+	"an impl is for a type this module declares; %s is not one":                        diag.EImplConflict,
+	"%s has %d type parameters, the impl names %d":                                     diag.EImplConflict,
+	"an impl names the type's own parameters, as in impl Eq for Pair<T>; %s is a type": diag.EImplConflict,
+	"%s cannot be derived":                                                             diag.EImplConflict,
+	"%s cannot be derived for a union":                                                 diag.EImplConflict,
+	"%s cannot be derived: %s %s is %s, which does not implement it":                   diag.EImplConflict,
+	"%s already has a method %s, which the trait %s would also give it":                diag.EMethodConflict,
+	"%s requires %s, which %s does not implement":                                      diag.EImplMismatch,
+	"%s is not a method of %s":                                                         diag.EImplMismatch,
+	"impl %s for %s is missing %s":                                                     diag.EImplMismatch,
+	"%s takes %s, but the trait declares it taking %s":                                 diag.EImplMismatch,
+	"%s has %d type parameters, the trait declares %d":                                 diag.EImplMismatch,
+	"%s does not match the trait: expected %s, found %s":                               diag.EImplMismatch,
+	"%s cannot be used as dyn: %s":                                                     diag.ENotObjectSafe,
+	"%s as %s needs a pointer to the value, not %s":                                    diag.EDynConversion,
+	"operator %s orders two values of one type, not %s and %s":                         diag.EBadOperands,
+	"operator %s does not apply to %s":                                                 diag.EBadOperands,
+
 	// Members
 	"%s has no field or method %s":                 diag.ENoSuchMember,
 	"%s has no field %s":                           diag.ENoSuchMember,
@@ -237,8 +266,8 @@ var codes = map[string]diag.Code{
 	"a receive binding needs no annotation; it is (element, open)": diag.EChannelMisuse,
 
 	// Iteration
-	"a range is not a value; `..` only appears in for..in":                                                      diag.ERangeMisuse,
-	"a range needs matching integer endpoints, got %s and %s":                                                   diag.ERangeMisuse,
-	"a string does not iterate directly; use .runes(a) for code points":                                         diag.EIterationMisuse,
-	"%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type with next(*self): (T, bool)": diag.EIterationMisuse,
+	"a range is not a value; `..` only appears in for..in":                                                diag.ERangeMisuse,
+	"a range needs matching integer endpoints, got %s and %s":                                             diag.ERangeMisuse,
+	"a string does not iterate directly; use .runes(a) for code points":                                   diag.EIterationMisuse,
+	"%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator": diag.EIterationMisuse,
 }

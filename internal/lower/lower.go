@@ -44,6 +44,8 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		lowered:       map[string]bool{},
 		errVariant:    map[*types.Struct]int{},
 		anyVariant:    map[string]int{},
+		vtables:       map[string]*vtable{},
+		eqs:           map[string]bool{},
 	}
 	defer func() {
 		switch failure := recover().(type) {
@@ -143,6 +145,10 @@ type lowerer struct {
 	// same reason.
 	hashes map[string]bool
 
+	// eqs records the synthesized comparisons, for types whose derived ==
+	// has to call an eq a part of them defines.
+	eqs map[string]bool
+
 	// globals is every module-level var, in declaration order; globalOf
 	// indexes back from the declaration that introduced them.
 	globals  []moduleGlobal
@@ -175,6 +181,11 @@ type lowerer struct {
 	// stdlib is the bundled stdlib module, where Format is declared and the
 	// streaming printers a format value is handed to live.
 	stdlib *loader.Module
+
+	// vtables are the method tables trait values need, by type and trait,
+	// and vtableOrder the same in the order they were asked for.
+	vtables     map[string]*vtable
+	vtableOrder []*vtable
 
 	synthetic int
 }
@@ -350,6 +361,8 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 		return l.metalsUnion(t)
 	case *types.Enum:
 		return l.metalsEnum(t)
+	case *types.Dyn:
+		return l.metalsDyn(t)
 	}
 	l.fail("cannot lower the type %s", t)
 	return nil

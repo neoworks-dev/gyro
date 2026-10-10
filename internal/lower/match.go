@@ -396,29 +396,12 @@ func (f *funcLowerer) chanLoop(s *ast.ForInStmt, elemType types.Type) {
 	}, nil)
 }
 
-// iteratorLoop drives the duck-typed contract: next(*self): (T, bool),
-// reached directly or through iter().
-func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, strct *types.Struct, elemType types.Type) {
-	target := strct
+// iteratorLoop drives a type implementing Iterator: next(*self): (T, bool)
+// until it says there is no more.
+func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, target *types.Struct, elemType types.Type) {
 	value := f.lowerExpr(s.Iterable, nil)
 
 	next := methodOn(target, "next")
-	if next == nil {
-		iter := methodOn(target, "iter")
-		if iter == nil || iter.Decl == nil {
-			f.l.fail("@%s: %s has no next or iter method", f.fn.Name, strct)
-		}
-		iterName := f.l.ensureFunc(iter.Decl, ownerBindings(iter.Decl, target))
-		out := f.newReg("iter")
-		f.emit(&metals.Call{Dst: out, Callee: iterName, Args: []string{value}})
-		value = out
-		iterated, ok := iter.Sig.Result.(*types.Struct)
-		if !ok {
-			f.l.fail("@%s: iter() must return a struct iterator", f.fn.Name)
-		}
-		target = iterated
-		next = methodOn(target, "next")
-	}
 	if next == nil || next.Decl == nil {
 		f.l.fail("@%s: %s has no next method", f.fn.Name, target)
 	}

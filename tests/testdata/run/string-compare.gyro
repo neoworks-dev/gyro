@@ -2,10 +2,10 @@
 // order its code points are in. It is part of the type, so a generic body
 // that calls compare works at T = string as it does at T = i32.
 
-import { println, Array } from "stdlib"
+import { println, Array, Ord } from "stdlib"
 import { heap } from "mem"
 
-fn max<T>(a: T, b: T): T !{ &a, &b } {
+fn max<T: Ord>(a: T, b: T): T !{ &a, &b } {
   if a.compare(b) > 0 {
     return a
   }

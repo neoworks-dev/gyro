@@ -2,12 +2,14 @@
 // struct, a slice of them, a nullable field, a pointer. A string is raw
 // at the top level and quoted anywhere inside.
 
-import { println } from "stdlib"
+import { println, Print } from "stdlib"
 
 struct Inner {
   label: string
   count: i32
 }
+
+impl Print for Inner
 
 struct Outer {
   inner: Inner
@@ -16,11 +18,15 @@ struct Outer {
   present: i32?
 }
 
+impl Print for Outer
+
 enum Wrapped {
   One(Inner),
   Pair(i32, string),
   None,
 }
+
+impl Print for Wrapped
 
 fn main() {
   var inner = Inner{ label: "a\"b", count: 2 }

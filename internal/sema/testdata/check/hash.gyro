@@ -1,19 +1,36 @@
 // hash() is derived wherever == is derived, and refused everywhere else.
 
-import { println, Array } from "stdlib"
+import { println, Array, Eq, Hash } from "stdlib"
 
 struct Point {
   x: i32
   y: i32
 }
 
+impl Eq for Point
+impl Hash for Point
+
 struct Held {
   at: *Point
 }
 
+// Asking for the derived Hash is refused where a field has none.
+impl Hash for Held               //~ E0529 Hash cannot be derived
+
 enum Shape {
   Circle(f64),
   Dot,
+}
+
+impl Hash for Shape
+
+// Without the impl a type is not Hash, however hashable its fields are.
+struct Silent {
+  n: i32
+}
+
+fn silent(s: Silent): u64 {
+  return s.hash()                //~ E0405 Silent has no method hash
 }
 
 fn derived(p: Point, s: Shape, pair: (i32, string), text: string, n: i32, flag: bool): u64 {

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/token"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -229,6 +230,21 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 
 	case *ast.CallExpr:
 		return c.callOrigin(e)
+
+	case *ast.CastExpr:
+		// A trait value borrows what the pointer it was made from points
+		// at, so the cast keeps the pointer's origin.
+		return c.originOf(e.X)
+
+	case *ast.UnaryExpr:
+		// The address of a name is storage in this frame; the address of a
+		// field roots at whatever holds it.
+		if e.Op == token.Amp {
+			if _, named := e.X.(*ast.Ident); named {
+				return borrowOrigin{local: true}
+			}
+			return c.originOf(e.X)
+		}
 	}
 	return borrowOrigin{}
 }
@@ -329,6 +345,9 @@ func viewType(t types.Type) bool {
 		return t.Kind == types.StringKind
 	case *types.Func:
 		// A closure borrows the frame its environment is stored in.
+		return true
+	case *types.Dyn:
+		// A trait value borrows the value it was made from.
 		return true
 	case *types.Optional:
 		return viewType(t.Elem)

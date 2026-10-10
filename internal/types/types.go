@@ -166,8 +166,13 @@ type Code struct {
 // Future is the value of an un-awaited async call; await unwraps it.
 type Future struct{ Result Type }
 
-// TypeParam is one generic parameter. Identity is the pointer.
-type TypeParam struct{ Name string }
+// TypeParam is one generic parameter. Identity is the pointer. Bounds are
+// the traits a type argument has to implement, and all a generic body may
+// rely on.
+type TypeParam struct {
+	Name   string
+	Bounds []*TraitRef
+}
 
 func (p *Pointer) String() string   { return "*" + p.Elem.String() }
 func (o *Optional) String() string  { return o.Elem.String() + "?" }
@@ -252,8 +257,15 @@ type Method struct {
 	// non-empty list means calls infer or take explicit arguments, and the
 	// body is checked per instantiation.
 	TypeParams []*TypeParam
-	// Decl carries the body for duck-typed instantiation checking.
+	// Decl carries the body, which is checked again at every instantiation.
 	Decl *ast.FuncDecl
+	// Trait is the trait that declares the method, set for a method
+	// listed in a trait. Its signature is written over the trait's Self.
+	Trait *Trait
+	// Impl is set on a default body installed on an implementing type:
+	// the method is the trait's, shared by every implementer, and the
+	// impl says what Self and the trait's arguments are for this one.
+	Impl *Impl
 }
 
 // Field is one struct field.
@@ -272,6 +284,8 @@ type Struct struct {
 	TypeParams []*TypeParam
 	Fields     []Field
 	Methods    map[string]*Method
+	// Impls are the traits the type implements, in the order written.
+	Impls []*Impl
 	// Origin is the generic declaration this instance came from, nil for
 	// non-instances.
 	Origin *Struct
@@ -302,6 +316,7 @@ type Union struct {
 	Module  string
 	Members []Field
 	Methods map[string]*Method
+	Impls   []*Impl
 }
 
 func (u *Union) String() string { return u.Name }
@@ -338,6 +353,7 @@ type Enum struct {
 	TypeParams []*TypeParam
 	Variants   []Variant
 	Methods    map[string]*Method
+	Impls      []*Impl
 	Origin     *Enum
 	Args       []Type
 }
@@ -581,8 +597,25 @@ func Identical(a, b Type) bool {
 	case *Future:
 		y, ok := b.(*Future)
 		return ok && Identical(x.Result, y.Result)
+	case *Dyn:
+		y, ok := b.(*Dyn)
+		return ok && IdenticalRefs(x.Ref, y.Ref)
 	}
 	return false
+}
+
+// IdenticalRefs reports whether two trait references name the same trait
+// applied to identical arguments.
+func IdenticalRefs(a, b *TraitRef) bool {
+	if a.Trait != b.Trait || len(a.Args) != len(b.Args) {
+		return false
+	}
+	for i := range a.Args {
+		if !Identical(a.Args[i], b.Args[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // Key renders a stable cache key for a type list.
@@ -592,4 +625,103 @@ func Key(args []Type) string {
 		parts[i] = arg.String()
 	}
 	return strings.Join(parts, ",")
+}
+
+// ---------------------------------------------------------------------------
+// Traits
+// ---------------------------------------------------------------------------
+
+// Trait is a declared list of methods a type promises to provide. A trait
+// is not a type: a value never has one, only `dyn Trait`, which is.
+type Trait struct {
+	Name   string
+	Module string
+	// Params are the trait's own type parameters, as in Iterator<T>.
+	Params []*TypeParam
+	// Self stands for the implementing type inside the trait. It is bound
+	// by the trait itself, so a default body may call any method the trait
+	// lists.
+	Self *TypeParam
+	// Supers are the traits every implementer also has to implement,
+	// written over Self and Params.
+	Supers []*TraitRef
+	// Methods are the ones this trait declares, in order. Their
+	// signatures are written over Self and Params.
+	Methods []*Method
+	Decl    *ast.TraitDecl
+	// Kind names the capability the compiler knows the trait as — "Eq",
+	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg" or
+	// "Iterator" — and is empty for every other trait. Such a trait is
+	// declared in the bundled standard library like any other; the
+	// compiler recognizes it by where it is declared.
+	Kind string
+}
+
+func (t *Trait) String() string { return t.Name }
+
+// MethodNamed returns the method this trait itself declares, or nil.
+func (t *Trait) MethodNamed(name string) *Method {
+	for _, method := range t.Methods {
+		if method.Name == name {
+			return method
+		}
+	}
+	return nil
+}
+
+// TraitRef is a trait applied to its arguments: Iterator<i32>.
+type TraitRef struct {
+	Trait *Trait
+	Args  []Type
+}
+
+func (r *TraitRef) String() string { return namedString(r.Trait.Name, r.Args) }
+
+// Impl records that a type implements a trait.
+type Impl struct {
+	Trait *Trait
+	// Args are the trait's arguments, written over the implementing
+	// type's own parameters.
+	Args []Type
+	// Derived marks `impl Eq for Point` with no block: the compiler's
+	// implementation, built from the type's fields.
+	Derived bool
+	Decl    *ast.ImplDecl
+	// Owner is the declared type the impl is for.
+	Owner Type
+}
+
+// Dyn is `dyn Trait`: a value of an unknown type known by the methods of
+// the trait. It is two words, a pointer to the value and the table of its
+// type's methods, and it borrows the value.
+type Dyn struct{ Ref *TraitRef }
+
+func (d *Dyn) String() string { return "dyn " + d.Ref.String() }
+
+// Methods lists every method callable through the trait: those of the
+// traits it requires, then its own. It is the order of a method table.
+func (r *TraitRef) AllMethods() []*TraitMethod {
+	var list []*TraitMethod
+	seen := map[*Trait]bool{}
+	var walk func(trait *Trait)
+	walk = func(trait *Trait) {
+		if seen[trait] {
+			return
+		}
+		seen[trait] = true
+		for _, super := range trait.Supers {
+			walk(super.Trait)
+		}
+		for _, method := range trait.Methods {
+			list = append(list, &TraitMethod{Trait: trait, Method: method})
+		}
+	}
+	walk(r.Trait)
+	return list
+}
+
+// TraitMethod is a method together with the trait that declares it.
+type TraitMethod struct {
+	Trait  *Trait
+	Method *Method
 }

@@ -3,8 +3,9 @@
 // The checker resolves every name under lexical scoping and types every
 // expression. There is no universe scope, so an unknown name is a typo or a
 // missing import; literals are context-typed with i32/f64 defaults; there
-// are no implicit conversions between typed values; generics are duck-typed,
-// so a generic body is checked again at every distinct instantiation; a
+// are no implicit conversions between typed values; a generic states its
+// bounds and its body may use only what they provide, and is checked again
+// at every distinct instantiation; a
 // nullable value must be checked against null before it is used, and the
 // check narrows it.
 //
@@ -47,6 +48,9 @@ const (
 	symImport
 	// symNamespace names a wildcard import: `import * as ast`.
 	symNamespace
+	// symTrait names a trait. It is not a type: a value is never "a
+	// Printable", only a `dyn Printable`.
+	symTrait
 )
 
 type symbol struct {
@@ -144,6 +148,13 @@ type program struct {
 	// depth guards against infinitely growing instantiations such as a
 	// generic function calling itself with Pair<T>.
 	depth int
+	// caps holds the capability traits of the bundled stdlib, by name,
+	// once that module has been checked. The compiler answers for == and
+	// printing and the rest by asking whether a type implements them.
+	caps map[string]*types.Trait
+	// foreign holds the paths of the modules another language produced,
+	// whose types are layouts rather than something to write an impl for.
+	foreign map[string]bool
 	// format is stdlib's Format, the type of a string literal with a
 	// #{} in it. Nil until the stdlib module has been checked, and for a
 	// program that never loads it.
@@ -159,6 +170,8 @@ func newProgram(bag *diag.Bag) *program {
 		enumInstances:   map[*types.Enum]map[string]*types.Enum{},
 		instantiated:    map[string]bool{},
 		inferredEffects: map[*ast.FuncDecl]effectFacts{},
+		caps:            map[string]*types.Trait{},
+		foreign:         map[string]bool{},
 	}
 }
 
@@ -207,7 +220,18 @@ type checker struct {
 	structTypes map[*ast.StructDecl]*types.Struct
 	unionTypes  map[*ast.UnionDecl]*types.Union
 	enumTypes   map[*ast.EnumDecl]*types.Enum
+	traitTypes  map[*ast.TraitDecl]*types.Trait
 	funcSigs    map[*ast.FuncDecl]*types.Method
+
+	// implOf and implTypes map each impl block of this module to what it
+	// registered: the impl, and the type it is for.
+	implOf    map[*ast.ImplDecl]*types.Impl
+	implTypes map[*ast.ImplDecl]types.Type
+
+	// pendingBounds holds the bound checks of type applications written
+	// before every impl of the module was known; they run once all are.
+	pendingBounds []func()
+	boundsReady   bool
 
 	// consts records the values of untyped integer expressions, so a
 	// literal can be checked to fit the type its context requires. It is
@@ -296,6 +320,9 @@ func newChecker(p *program, file *diag.File, modulePath string, imports map[stri
 		structTypes:     map[*ast.StructDecl]*types.Struct{},
 		unionTypes:      map[*ast.UnionDecl]*types.Union{},
 		enumTypes:       map[*ast.EnumDecl]*types.Enum{},
+		traitTypes:      map[*ast.TraitDecl]*types.Trait{},
+		implOf:          map[*ast.ImplDecl]*types.Impl{},
+		implTypes:       map[*ast.ImplDecl]types.Type{},
 		funcSigs:        map[*ast.FuncDecl]*types.Method{},
 		consts:          p.info.Consts,
 		rec:             &recorder{types: p.info.Types, calls: p.info.Calls, locals: p.info.Locals},
@@ -321,6 +348,11 @@ func CheckProgram(prog *loader.Program, bag *diag.Bag) *Info {
 	p := newProgram(bag)
 	computed := map[*loader.Module]*Exports{}
 	checkers := make([]*checker, len(prog.Modules))
+	for _, module := range prog.Modules {
+		if module.Foreign != nil {
+			p.foreign[module.Path] = true
+		}
+	}
 	for i, module := range prog.Modules {
 		imports := map[string]*Exports{}
 		paths := map[string]string{}
@@ -463,6 +495,8 @@ func (c *checker) collectModule(tree *ast.File) {
 			c.enumTypes[d] = shell
 			c.program.info.Enums[d] = shell
 			c.declare(d.Name, d.Offset, symType, d).typ = shell
+		case *ast.TraitDecl:
+			c.collectTrait(d)
 		case *ast.VarDecl:
 			for _, binding := range d.Names {
 				c.declare(binding.Name, binding.Offset, symValue, d)
@@ -569,6 +603,10 @@ func (c *checker) collectExports(tree *ast.File) *Exports {
 			if d.Exported {
 				c.exportLocal(exports, d.Name)
 			}
+		case *ast.TraitDecl:
+			if d.Exported {
+				c.exportLocal(exports, d.Name)
+			}
 		case *ast.VarDecl:
 			if d.Exported {
 				for _, binding := range d.Names {
@@ -654,6 +692,8 @@ func (c *checker) checkDecls(tree *ast.File) {
 			c.checkDecorators(d.Decorators)
 		case *ast.EnumDecl:
 			c.checkDecorators(d.Decorators)
+		case *ast.TraitDecl:
+			c.checkTraitDecl(d)
 		case *ast.VarDecl:
 			// Module-level values were typed by buildTypes; only the
 			// decorators remain.
