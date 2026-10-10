@@ -85,6 +85,13 @@ type symbol struct {
 	// origin is where a slice-typed value's storage lives, which is what
 	// borrow checking follows back from a return.
 	origin borrowOrigin
+	// loopDepth is how many loops deep the symbol was declared, and param
+	// marks a parameter or a receiver. Together they say whether storing a
+	// frame-local view into the symbol outlives the storage: a parameter
+	// always does, and a name declared outside the loop that wrote the view
+	// does for every iteration after the first.
+	loopDepth int
+	param     bool
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -228,6 +235,15 @@ type checker struct {
 
 	// flow is the definite-assignment state on this control-flow path.
 	flow flow
+
+	// tick orders the events the arena analysis compares: an allocation and
+	// a free each take the next number, so a value is stale when a free of
+	// its arena carries a larger one.
+	tick int
+
+	// deferDepth is non-zero while a deferred call is being checked, which
+	// runs at exit rather than where it is written.
+	deferDepth int
 
 	// loops is the stack of enclosing loops, which collect the states that
 	// leave through `break`.
@@ -380,6 +396,7 @@ func (c *checker) declareValue(name string, offset int, decl ast.Node, typ types
 func (c *checker) declareSymbol(name string, sym *symbol) {
 	sym.name = name
 	sym.closureDepth = c.closureDepth
+	sym.loopDepth = len(c.loops)
 	if name == "" || name == "_" {
 		return
 	}

@@ -3,13 +3,14 @@
 import { Allocator } from "mem"
 
 // env returns the variable's value, or null when it is unset. The result
-// is a copy made from `a` and owns its bytes, so it carries no borrow row.
-// read_stdin and readline build their text from an allocator the same way.
-export fn env(a: Allocator, name: string): string? !{ io }
+// is a copy made from `a` and owns its bytes; the only thing it borrows is
+// the allocator, which is what `&a` says. read_stdin and readline build
+// their text from an allocator the same way.
+export fn env(a: Allocator, name: string): string? !{ io, &a }
 
 // read_stdin reads standard input to end of file, one shot: a second
 // call finds the stream drained and returns "".
-export fn read_stdin(a: Allocator): string !{ io }
+export fn read_stdin(a: Allocator): string !{ io, &a }
 
 // readline reads the next line of standard input, without its
 // terminator, and answers null at end of file. An empty line is "", the
@@ -17,7 +18,7 @@ export fn read_stdin(a: Allocator): string !{ io }
 //
 // It reads the same stream read_stdin does, so a program may take a line
 // and then drain what is left.
-export fn readline(a: Allocator): string? !{ io }
+export fn readline(a: Allocator): string? !{ io, &a }
 
 // exit ends the process with the given code after flushing stdout and
 // stderr. Deferred calls do not run; exit is immediate, like a panic.

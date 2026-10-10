@@ -35,7 +35,7 @@ export fn panic(message: string) !{}
 
 // alloc answers one zero-filled T from a, and panics with the size when a
 // cannot supply it.
-export safe fn alloc<T>(a: Allocator): *T !{} {
+export safe fn alloc<T>(a: Allocator): *T !{ &a } {
   var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
   if block == null {
     panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
@@ -97,7 +97,7 @@ export struct Arena {
 // back to the same allocator. An arena inside an arena is an ordinary
 // thing to build. Sixteen is the largest alignment a block of any type
 // needs, so every block carved out of the buffer can be aligned within it.
-export fn Arena::new(a: Allocator, capacity: usize): Arena !{} {
+export fn Arena::new(a: Allocator, capacity: usize): Arena !{ &a } {
   var block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
   if block == null {
     panic(format(heap(), "allocation of #{capacity} bytes failed"))
@@ -165,7 +165,7 @@ safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: an
 // allocator is the value to hand to whatever should allocate from the
 // arena. It points at the arena, so
 // the arena has to stay where it is while the value is in use.
-export fn Arena::allocator(*self): Allocator !{} {
+export fn Arena::allocator(*self): Allocator !{ &self } {
   return Allocator{ proc: &arena_proc, data: &self as anyptr }
 }
 
@@ -197,7 +197,7 @@ export fn Format::len(self): usize !{} {
 }
 
 // piece is the value a hole held, or a literal segment as a string.
-export fn Format::piece(self, index: usize): any !{} {
+export fn Format::piece(self, index: usize): any !{ &self } {
   return self.pieces[index]
 }
 
@@ -242,7 +242,7 @@ fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
 // format shows each piece of a Format the way println would and joins them
 // into a string whose bytes come from `a`. The block doubles as the text
 // grows, since the length is not known until the last piece is shown.
-export fn format(a: Allocator, value: Format): string !{} {
+export fn format(a: Allocator, value: Format): string !{ &a } {
   var capacity: usize = 64
   var block = block_for(a, null, 0, capacity)
   var used: usize = 0
@@ -274,7 +274,7 @@ export fn format(a: Allocator, value: Format): string !{} {
 // keep copies a closure's environment out of the frame into a, for a
 // closure that has to live longer than the function that wrote it. A closure
 // with no environment is returned as it is, and nothing is allocated.
-export safe fn keep<F>(a: Allocator, f: F): F !{} {
+export safe fn keep<F>(a: Allocator, f: F): F !{ &a } {
   var env = env_of(f)
   if env == null {
     // Rebuilt rather than returned as it is: returning the parameter

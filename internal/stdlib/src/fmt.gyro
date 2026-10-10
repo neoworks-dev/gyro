@@ -24,7 +24,7 @@ import { Allocator, heap, format } from "mem"
 // `%-4d`, `%02x` and `%8s` all mean what they do in C.
 //
 // The text is built in blocks from `a`, and the result is a block from it.
-export fn sprintf(a: Allocator, format: string, args: ...any): string !{} {
+export fn sprintf(a: Allocator, format: string, args: ...any): string !{ &a } {
   var out = Array<u8>::new(a)
   var body = format.bytes(a)
   var next: usize = 0

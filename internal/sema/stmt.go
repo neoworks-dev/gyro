@@ -87,7 +87,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 		// The parser already guarantees this is a call, and checking it
 		// settles the allocations it is handed: a deferred call runs at
 		// block exit, which is exactly where the leak analysis looks.
+		c.deferDepth++
 		c.expr(s.Call)
+		c.deferDepth--
 
 	case *ast.SendStmt:
 		c.sendStmt(s)
@@ -336,6 +338,7 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 		return
 	}
 	c.assignExpr(s.Rhs, target, "assignment")
+	c.noteAssign(s.Lhs[0], s.Rhs)
 	c.killFactsFor(s.Lhs[0])
 	c.markAssignedTarget(s.Lhs[0])
 }
@@ -497,8 +500,8 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 	defer func() {
 		// After the results are typed: following a call back to what it
 		// views needs the call resolution, which typing is what records.
-		for _, result := range s.Results {
-			c.checkReturnedBorrow(result, result.Pos())
+		for i, result := range s.Results {
+			c.checkReturnedBorrow(result, result.Pos(), c.resultAt(i, len(s.Results)))
 		}
 		c.checkLeaksAtExit()
 		c.flow.reachable = false
@@ -541,6 +544,21 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 			c.assignExpr(result, tuple.Elems[i], "return")
 		}
 	}
+}
+
+// resultAt is the type the function declared for the i-th of n returned
+// values: the whole result for one, an element of the tuple for several.
+func (c *checker) resultAt(i, n int) types.Type {
+	if c.fn == nil {
+		return nil
+	}
+	if n == 1 {
+		return c.fn.result
+	}
+	if tuple, ok := c.fn.result.(*types.Tuple); ok && i < len(tuple.Elems) {
+		return tuple.Elems[i]
+	}
+	return nil
 }
 
 func (c *checker) sendStmt(s *ast.SendStmt) {

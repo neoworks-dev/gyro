@@ -55,8 +55,8 @@ fn stream_eprintln(message: Format) !{ io } {
 // allocator, so an array cannot be freed to one it did not come from.
 export struct Array<T> {}
 
-export fn Array<T>::new(a: Allocator): Array<T> !{}
-export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{}
+export fn Array<T>::new(a: Allocator): Array<T> !{ &a }
+export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a }
 export fn Array<T>::push(*self, value: T) !{}
 export fn Array<T>::pop(*self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
@@ -81,9 +81,9 @@ export fn Array<T>::is_empty(self): bool !{} {
 // each result owns what it holds, which is why neither carries a borrow
 // row. runes decodes into code points, which are wider than the bytes
 // they come from.
-export fn from_utf8(a: Allocator, bytes: u8[]): string !{}
-export fn string::bytes(self, a: Allocator): u8[] !{}
-export fn string::runes(self, a: Allocator): rune[] !{}
+export fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a }
+export fn string::bytes(self, a: Allocator): u8[] !{ &a }
+export fn string::runes(self, a: Allocator): rune[] !{ &a }
 
 // String owns its bytes, in contrast to the borrowed view `string`. It is
 // the builder: append to it, then read it back with `text()`.
@@ -100,15 +100,15 @@ export struct String {
   alloc: Allocator
 }
 
-export fn String::new(a: Allocator): String !{} {
+export fn String::new(a: Allocator): String !{ &a } {
   return String{ bytes: Array<u8>::new(a), alloc: a }
 }
 
-export fn String::with_capacity(a: Allocator, capacity: usize): String !{} {
+export fn String::with_capacity(a: Allocator, capacity: usize): String !{ &a } {
   return String{ bytes: Array<u8>::with_capacity(a, capacity), alloc: a }
 }
 
-export fn String::of(a: Allocator, text: string): String !{} {
+export fn String::of(a: Allocator, text: string): String !{ &a } {
   var out = String::new(a)
   out.push(text)
   return out
@@ -154,7 +154,7 @@ export fn String::len(self): usize !{} {
   return self.bytes.len()
 }
 
-export fn String::text(self, a: Allocator): string !{} {
+export fn String::text(self, a: Allocator): string !{ &a } {
   return from_utf8(a, self.bytes.slice())
 }
 
@@ -227,7 +227,7 @@ export fn string::contains(self, a: Allocator, needle: string): bool !{} {
 
 // substring takes the half-open byte range [from, to). It does not
 // validate that the ends fall on rune boundaries.
-export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{} {
+export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{ &a } {
   var body = self.bytes(a)
   var out = String::new(a)
   var stop = to
@@ -246,7 +246,7 @@ fn is_space(byte: u8): bool {
   return byte == 32 || byte == 9 || byte == 10 || byte == 13
 }
 
-export fn string::trim(self, a: Allocator): string !{} {
+export fn string::trim(self, a: Allocator): string !{ &a } {
   var body = self.bytes(a)
   var start: usize = 0
   while start < body.len() && is_space(body[start]) {
@@ -261,10 +261,10 @@ export fn string::trim(self, a: Allocator): string !{} {
 
 // split cuts on every occurrence of sep. An empty sep would not advance,
 // so it yields the whole text unsplit.
-export fn string::split(self, a: Allocator, sep: string): Array<string> !{} {
+export fn string::split(self, a: Allocator, sep: string): Array<string> !{ &a } {
   var parts = Array<string>::new(a)
   if sep.len() == 0 {
-    parts.push(self)
+    parts.push(self.substring(a, 0, self.len()))
     return parts
   }
 
@@ -287,7 +287,7 @@ export fn string::split(self, a: Allocator, sep: string): Array<string> !{} {
 
 // join stays a function: its receiver would be the slice, not a string,
 // and `string[]` is not a type an extension can name.
-export fn join(a: Allocator, parts: string[], sep: string): string !{} {
+export fn join(a: Allocator, parts: string[], sep: string): string !{ &a } {
   var out = String::new(a)
   var first = true
   for part in parts {
@@ -302,7 +302,7 @@ export fn join(a: Allocator, parts: string[], sep: string): string !{} {
   return result
 }
 
-export fn string::repeat(self, a: Allocator, times: i32): string !{} {
+export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
   var out = String::new(a)
   for i in 0..times {
     out.push(self)
@@ -349,7 +349,7 @@ fn empty_buckets<K, V>(a: Allocator, count: usize): Array<Array<(K, V)>> {
   return buckets
 }
 
-export fn Map<K, V>::new(a: Allocator): Map<K, V> !{} {
+export fn Map<K, V>::new(a: Allocator): Map<K, V> !{ &a } {
   return Map<K, V>{ buckets: empty_buckets<K, V>(a, 8), count: 0, alloc: a }
 }
 

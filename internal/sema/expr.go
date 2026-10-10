@@ -126,6 +126,7 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 		return types.Unknown
 	}
 	c.checkAssigned(sym, e.Offset, e.Name)
+	c.checkArenaLive(sym, e.Offset)
 	c.noteCapture(sym)
 	if sym.kind == symValue && sym.closureDepth < c.closureDepth && c.isFormat(sym.typ) {
 		c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")

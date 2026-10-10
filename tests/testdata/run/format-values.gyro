@@ -95,7 +95,9 @@ fn main() {
   println(length(long))
   println(long)
 
-  // An arena's free_all takes the text back: the next one is built over it.
+  // An arena's free_all takes the text back, and the next one is built over
+  // it. The first text is not read again: that is what the borrow analysis
+  // refuses.
   var arena = Arena::new(heap(), 512)
   defer arena.free()
   var a = arena.allocator()
@@ -104,5 +106,4 @@ fn main() {
   arena.free_all()
   var second = format(a, "other #{n + 1}")
   println(second)
-  println(first)
 }
