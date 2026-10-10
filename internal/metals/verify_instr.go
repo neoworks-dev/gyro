@@ -316,6 +316,41 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fmt.Errorf("ptr.erase wants a ptr<T> or an opt<ptr<T>>, not %s", typ)
 
+	case *PtrAddr:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if _, ok := typ.(*AnyPtr); ok {
+			return fv.def(state, i.Dst, TUsize)
+		}
+		if opt, ok := typ.(*Opt); ok {
+			if _, ok := opt.Elem.(*AnyPtr); ok {
+				return fv.def(state, i.Dst, TUsize)
+			}
+		}
+		return fmt.Errorf("ptr.addr wants an anyptr or an opt<anyptr>, not %s; ptr.erase a typed pointer first", typ)
+
+	case *PtrFrom:
+		typ, err := fv.use(state, i.X)
+		if err != nil {
+			return err
+		}
+		if !isUsize(typ) {
+			return fmt.Errorf("ptr.from wants a usize, not %s", typ)
+		}
+		switch to := i.To.(type) {
+		case *AnyPtr:
+			fv.claimsAddress = true
+			return fv.def(state, i.Dst, to)
+		case *Opt:
+			if _, ok := to.Elem.(*AnyPtr); ok {
+				fv.claimsAddress = true
+				return fv.def(state, i.Dst, to)
+			}
+		}
+		return fmt.Errorf("ptr.from makes an anyptr or an opt<anyptr>, not %s; ptr.cast puts a type on it", i.To)
+
 	case *PtrCast:
 		typ, err := fv.use(state, i.X)
 		if err != nil {

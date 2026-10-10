@@ -157,6 +157,23 @@ type (
 		To     Type
 	}
 
+	// PtrAddr is `%n = ptr.addr %a` -> usize: the address an erased
+	// pointer holds, as a number. Like ptr.erase it cannot fail, and an
+	// `opt<anyptr>` gives 0 for a null.
+	PtrAddr struct{ Dst, X string }
+
+	// PtrFrom is `%a = ptr.from %n -> anyptr`: a number taken as an
+	// address. It is the producer's claim that something lives there,
+	// the way ptr.cast is the claim about what, and nothing checks it.
+	// The operand is a usize and never a linear memory's u32, and a
+	// function that reaches a memory may not use it: a linear address is
+	// an offset into its memory, not a place in the process (appendix D).
+	// `-> opt<anyptr>` makes 0 a null, for C's `(T *)n`.
+	PtrFrom struct {
+		Dst, X string
+		To     Type
+	}
+
 	// MemLoad is `%v = mem.load.<T> @mem, %addr`. The suffix names both
 	// the result type and the width read, so mem.load.u8 reads one byte
 	// and mem.load.f64 reads eight. Addresses are u32 and the access is
@@ -396,6 +413,8 @@ func (*PtrOffset) isInstr()    {}
 func (*PtrDiff) isInstr()      {}
 func (*PtrErase) isInstr()     {}
 func (*PtrCast) isInstr()      {}
+func (*PtrAddr) isInstr()      {}
+func (*PtrFrom) isInstr()      {}
 func (*MemLoad) isInstr()      {}
 func (*MemStore) isInstr()     {}
 func (*MemSize) isInstr()      {}

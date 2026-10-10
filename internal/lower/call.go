@@ -478,6 +478,27 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 			f.emit(&metals.PtrErase{Dst: out, X: moved})
 			return out
 		}
+	case "ptr_to_int":
+		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
+		return func() string {
+			out := f.newReg("addr")
+			f.emit(&metals.PtrAddr{Dst: out, X: address})
+			return out
+		}
+	case "ptr_from_int":
+		bound := resolved.Bindings["T"]
+		if bound == nil {
+			f.l.fail("@%s: ptr_from_int without a bound T", f.fn.Name)
+		}
+		target := f.l.metalsType(&types.Pointer{Elem: bound})
+		number := f.lowerExpr(call.Args[0].Value, types.USize)
+		return func() string {
+			address := f.newReg("claimed")
+			f.emit(&metals.PtrFrom{Dst: address, X: number, To: &metals.AnyPtr{}})
+			out := f.newReg("restored")
+			f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
+			return out
+		}
 	case "cast":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

@@ -693,16 +693,21 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("add rax, rcx")
 		f.storeWork(f.slot(i.Dst), "rax")
 
-	case *metals.PtrErase, *metals.PtrCast:
-		// Both are moves. Erasing a type and putting one back change
-		// what the format will let the next instruction do with the
-		// address, and nothing about the address.
+	case *metals.PtrErase, *metals.PtrCast, *metals.PtrAddr, *metals.PtrFrom:
+		// All four are moves. Erasing a type, putting one back, and
+		// reading an address as a number or a number as an address change
+		// what the format will let the next instruction do with the word,
+		// and nothing about the word.
 		var dst, src string
-		if erase, ok := instr.(*metals.PtrErase); ok {
-			dst, src = erase.Dst, erase.X
-		} else {
-			cast := instr.(*metals.PtrCast)
-			dst, src = cast.Dst, cast.X
+		switch i := instr.(type) {
+		case *metals.PtrErase:
+			dst, src = i.Dst, i.X
+		case *metals.PtrCast:
+			dst, src = i.Dst, i.X
+		case *metals.PtrAddr:
+			dst, src = i.Dst, i.X
+		case *metals.PtrFrom:
+			dst, src = i.Dst, i.X
 		}
 		f.copyMem(f.slot(dst), f.slot(src), wordSize)
 

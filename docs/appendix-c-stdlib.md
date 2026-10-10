@@ -417,14 +417,14 @@ export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, 
 export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }
 ```
 
-`cast`, `offset`, `slice_from_raw`, `env_of`/`with_env` and the `syscall`
-functions are answered by lowering; each `syscall` is the METALS `syscall`
+`cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `slice_from_raw`,
+`env_of`/`with_env` and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
 instruction, and its arguments must be integers, `bool`s or pointers.
 `offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
 Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
-`ptr_from_int` is Gyro over `cast` and a private intrinsic, `ptr_to_int`,
-`text_seal`, `text_bytes` and the rest are runtime functions: METALS has no
-instruction that makes a pointer of an integer or a string of an address.
+`ptr_to_int` is a `ptr.addr`, and `ptr_from_int` is a `ptr.from` then a
+`ptr.cast`. `text_seal`, `text_bytes` and the rest are runtime functions:
+METALS has no instruction that makes a string of an address.
 
 ### `cstring`
 
@@ -478,9 +478,9 @@ export async fn get(url: string): (string, error?) !{ io }
 Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private
 `start_thread` under `spawn`, `Mutex<T>`/`MutexGuard<T>`, `mem`'s `size`,
 `align` and `panic`, `Format`'s `show`, the `unsafe` module's `raw_alloc`,
-`raw_free`, `raw_resize`, `copy_bytes`, `offset`, `ptr_to_int`, `text_seal`
-and `text_bytes` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
-`syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
+`raw_free`, `raw_resize`, `copy_bytes`, `text_seal` and `text_bytes`
+(`cast`, `offset`, `ptr_from_int`, `ptr_to_int`, `slice_from_raw`,
+`env_of`, `with_env` and the `syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
 and `net::get`. The `math` functions are METALS instructions, and so are
 the float conversions: the backend emits them in line.
 

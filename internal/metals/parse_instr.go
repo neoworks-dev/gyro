@@ -180,7 +180,7 @@ func (p *parser) dstInstr() (Instr, error) {
 		}
 		return p.line(single[op.text], nil)
 
-	case "conv", "trunc", "bitcast", "ptr.cast", "any.unwrap", "any.is":
+	case "conv", "trunc", "bitcast", "ptr.cast", "ptr.from", "any.unwrap", "any.is":
 		x, err := p.reg()
 		if err != nil {
 			return nil, err
@@ -201,6 +201,8 @@ func (p *parser) dstInstr() (Instr, error) {
 			return p.line(&Bitcast{Dst: dst, X: x, To: to}, nil)
 		case "ptr.cast":
 			return p.line(&PtrCast{Dst: dst, X: x, To: to}, nil)
+		case "ptr.from":
+			return p.line(&PtrFrom{Dst: dst, X: x, To: to}, nil)
 		case "any.is":
 			return p.line(&AnyIs{Dst: dst, X: x, To: to}, nil)
 		}
@@ -248,6 +250,10 @@ func (p *parser) dstInstr() (Instr, error) {
 	case "ptr.erase":
 		x, err := p.reg()
 		return p.line(&PtrErase{Dst: dst, X: x}, err)
+
+	case "ptr.addr":
+		x, err := p.reg()
+		return p.line(&PtrAddr{Dst: dst, X: x}, err)
 
 	case "ptr.offset", "ptr.diff":
 		a, err := p.reg()

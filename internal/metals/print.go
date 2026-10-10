@@ -240,6 +240,10 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = ptr.erase %s", reg(i.Dst), reg(i.X))
 	case *PtrCast:
 		p.printf("%s = ptr.cast %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *PtrAddr:
+		p.printf("%s = ptr.addr %s", reg(i.Dst), reg(i.X))
+	case *PtrFrom:
+		p.printf("%s = ptr.from %s -> %s", reg(i.Dst), reg(i.X), i.To)
 	case *MemLoad:
 		p.printf("%s = mem.load.%s %s, %s", reg(i.Dst), i.Type, at(i.Memory), reg(i.Addr))
 	case *MemStore:
