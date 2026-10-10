@@ -182,29 +182,14 @@ func (f *frame) indirectArgs(sig *metals.FnType, i *metals.CallIndirect) (sret, 
 
 // nativePlan says how a monomorphized gyro:rt import maps onto its C
 // implementation: which symbol, whether the result goes through an out
-// pointer, which arguments pass by pointer, and trailing element sizes.
+// pointer, and which arguments it takes, by position.
 type nativePlan struct {
-	symbol   string
-	sret     bool
-	args     []planArg
-	extras   []int64
-	noResult bool // result ignored even though the signature has one
+	symbol string
+	sret   bool
+	args   []int
 }
 
-type planArg struct {
-	index   int
-	pointer bool
-}
-
-func values(indexes ...int) []planArg {
-	out := make([]planArg, len(indexes))
-	for i, index := range indexes {
-		out[i] = planArg{index: index}
-	}
-	return out
-}
-
-func pointerTo(index int) planArg { return planArg{index: index, pointer: true} }
+func values(indexes ...int) []int { return indexes }
 
 // splitNativeName separates Array<i32>::push into (Array, push) and
 // println<i32> into ("", println), the way the evaluator dispatches.
@@ -314,77 +299,27 @@ func printSuffix(t metals.Type) (string, bool) {
 
 // emitNativeCall invokes a runtime import from a frame: sources are
 // register slots, the destination is the dst register's slot.
-//
-// What the runtime holds it holds in storage representation — an Array's
-// elements are the bytes a slice of it borrows — so an argument it reads
-// through a pointer, and a result it writes through one, go through the
-// frame's staging cell when the type's storage is not what a register
-// carries.
 func (f *frame) emitNativeCall(name string, sig *metals.FnType, argRegs []string, dst string) {
 	g := f.g
 	plan := g.nativePlanFor(name, sig)
 
-	byPointer := map[int]bool{}
-	for _, pa := range plan.args {
-		byPointer[pa.index] = pa.pointer
-	}
 	sources := make([]callArg, len(argRegs))
-	staged := 0
 	for index, reg := range argRegs {
-		source := callArg{loc: f.slot(reg), class: g.classOf(sig.Params[index])}
-		if byPointer[index] && metals.Narrow(sig.Params[index]) {
-			staged++
-			if staged > 1 {
-				// One cell, so two would overwrite each other. No runtime
-				// signature takes two, and a new one that did would land
-				// here rather than in a wrong answer.
-				g.fail("@%s: @%s stages more than one narrow argument", f.fn.Name, name)
-			}
-			source.loc = memAt(f.elementOut(reg))
-		}
-		sources[index] = source
+		sources[index] = callArg{loc: f.slot(reg), class: g.classOf(sig.Params[index])}
 	}
 
 	var out *callArg
-	staging := false
 	if plan.sret {
 		if dst == "" {
 			g.fail("@%s: @%s needs a destination register", f.fn.Name, name)
 		}
-		staging = metals.Narrow(sig.Result)
 		cell := f.slot(dst)
-		if staging {
-			cell = f.stage()
-		}
 		f.zeroMem(cell, g.sizeOf(sig.Result))
 		out = &callArg{loc: cell, class: classMem}
 	}
 	g.emitNativeInvoke(plan, sig, sources, out)
-	switch {
-	case staging:
-		f.elementBack(dst)
-	case !plan.sret:
+	if !plan.sret {
 		f.storeCallResult(sig.Result, dst)
-	}
-}
-
-// stageThunkArgs narrows the arguments a plan passes by pointer, since
-// the argument buffer a thunk reads holds register representation and
-// the runtime reads storage. The thunk's own third word is the cell,
-// which is why no plan may pass two of them by pointer.
-func (g *generator) stageThunkArgs(plan nativePlan, sig *metals.FnType, args []callArg) {
-	cell := memLoc{"rbp", -24}
-	staged := false
-	for _, pa := range plan.args {
-		if !pa.pointer || !metals.Narrow(sig.Params[pa.index]) {
-			continue
-		}
-		if staged {
-			g.fail("@%s stages more than one narrow argument", plan.symbol)
-		}
-		staged = true
-		g.storeMember(memAt(cell), args[pa.index].loc, sig.Params[pa.index])
-		args[pa.index].loc = memAt(cell)
 	}
 }
 
@@ -399,15 +334,8 @@ func (g *generator) emitNativeInvoke(plan nativePlan, sig *metals.FnType, source
 		}
 		args = append(args, *out)
 	}
-	for _, pa := range plan.args {
-		source := sources[pa.index]
-		if pa.pointer {
-			source.class = classMem
-		}
-		args = append(args, source)
-	}
-	for _, extra := range plan.extras {
-		args = append(args, callArg{imm: extra, isImm: true})
+	for _, index := range plan.args {
+		args = append(args, sources[index])
 	}
 	g.emitSysVCall(g.extern(plan.symbol), args)
 }

@@ -46,9 +46,16 @@ represents work in flight cannot be discarded silently
 ## What `await` actually does today
 
 Async is **eager**. Calling an async function starts the work immediately —
-a thread on the native tiers — and returns a future; `await` joins it. An
+on a thread of its own — and returns a future; `await` joins it. An
 async `main` is simply run synchronously by the entry point, which is what
-eager-start-plus-immediate-await reduces to.
+eager-start-plus-immediate-await reduces to. Awaiting a call that returns
+nothing waits for it just the same, and awaiting one whose thread panicked
+does not wait for ever: the panic fulfils the future with a zeroed result.
+
+A future is not a type METALS knows either. The call packs its arguments
+into a record on the heap and starts a thread running a function lowering
+wrote for that callee; the thread stores the result in a cell `mem` keeps
+and wakes whoever sleeps on it ([appendix D](appendix-d-metals.md)).
 
 That is a real implementation with real thread costs, not a scheduler: there
 are no green threads yet, and `async` is not currently cheaper than `spawn`

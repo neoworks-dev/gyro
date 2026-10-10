@@ -1,7 +1,8 @@
 /* gyro:rt — what the generated code still asks the C runtime for. Compiled
  * and linked by `gyro build`. The standard library is Gyro now: this is the
- * floor under it that no METALS instruction reaches, and the threads,
- * channels and mutexes that wait on libc's pthreads. */
+ * floor under it that no METALS instruction reaches, and the one place that
+ * starts a thread, with libc's pthreads. Spawning, channels, mutexes and
+ * futures are Gyro over the thread instructions, the atomics and futex. */
 
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -41,8 +42,8 @@ static gy_str *gy_str_c(const char *text) { return gy_str_from(text, strlen(text
 
 /* ------------------------------------------------------------------ */
 /* Aborts. A panic on the main thread ends the process with status 1; */
-/* on a spawned thread only that thread dies, like the evaluator's    */
-/* goroutine recovery.                                                */
+/* on a spawned thread only that thread dies, which the abort hook    */
+/* Gyro registers sees to.                                            */
 /* ------------------------------------------------------------------ */
 
 /* The Gyro output layer buffers standard output and registers what writes
@@ -472,186 +473,6 @@ int64_t gy_read_byte(void) {
     int c = fgetc(stdin);
     return c == EOF ? -1 : (int64_t)c;
 }
-
-/* ------------------------------------------------------------------ */
-/* Channels: a mutex/condvar ring buffer; capacity 0 is a true        */
-/* rendezvous — the sender blocks until a receiver takes the element. */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    pthread_mutex_t mutex;
-    pthread_cond_t senders;
-    pthread_cond_t receivers;
-    char *buffer;
-    int64_t elemSize;
-    int64_t capacity;
-    int64_t count;
-    int64_t head;
-    int closed;
-    int handoffFull; /* rendezvous slot state */
-    int receiversWaiting;
-    int64_t placedSeq; /* rendezvous tickets: which handoff was taken */
-    int64_t takenSeq;
-} gy_chan;
-
-void *gy_chan_new(int64_t capacity, int64_t elemSize) {
-    gy_chan *ch = calloc(1, sizeof(gy_chan));
-    pthread_mutex_init(&ch->mutex, NULL);
-    pthread_cond_init(&ch->senders, NULL);
-    pthread_cond_init(&ch->receivers, NULL);
-    ch->elemSize = elemSize;
-    ch->capacity = capacity;
-    ch->buffer = malloc((size_t)((capacity > 0 ? capacity : 1) * elemSize));
-    return ch;
-}
-
-void gy_chan_send(gy_chan *ch, const void *elem) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        while (ch->count == ch->capacity && !ch->closed) {
-            pthread_cond_wait(&ch->senders, &ch->mutex);
-        }
-        if (ch->closed) {
-            pthread_mutex_unlock(&ch->mutex);
-            gy_abort_c("send on a closed channel");
-        }
-        int64_t at = (ch->head + ch->count) % ch->capacity;
-        memcpy(ch->buffer + at * ch->elemSize, elem, (size_t)ch->elemSize);
-        ch->count++;
-        pthread_cond_signal(&ch->receivers);
-        pthread_mutex_unlock(&ch->mutex);
-        return;
-    }
-
-    while (ch->handoffFull && !ch->closed) {
-        pthread_cond_wait(&ch->senders, &ch->mutex);
-    }
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    memcpy(ch->buffer, elem, (size_t)ch->elemSize);
-    ch->handoffFull = 1;
-    int64_t ticket = ++ch->placedSeq;
-    pthread_cond_broadcast(&ch->receivers);
-    while (ch->takenSeq < ticket && !ch->closed) {
-        pthread_cond_wait(&ch->senders, &ch->mutex);
-    }
-    if (ch->takenSeq < ticket) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    pthread_mutex_unlock(&ch->mutex);
-}
-
-/* Returns the open flag: 1 with the element written, 0 when the
- * channel is closed and drained (the caller pre-zeroed the cell). */
-int64_t gy_chan_recv(gy_chan *ch, void *out) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        while (ch->count == 0 && !ch->closed) {
-            pthread_cond_wait(&ch->receivers, &ch->mutex);
-        }
-        if (ch->count == 0) {
-            pthread_mutex_unlock(&ch->mutex);
-            return 0;
-        }
-        memcpy(out, ch->buffer + ch->head * ch->elemSize, (size_t)ch->elemSize);
-        ch->head = (ch->head + 1) % ch->capacity;
-        ch->count--;
-        pthread_cond_signal(&ch->senders);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-
-    ch->receiversWaiting++;
-    while (!ch->handoffFull && !ch->closed) {
-        pthread_cond_wait(&ch->receivers, &ch->mutex);
-    }
-    ch->receiversWaiting--;
-    if (!ch->handoffFull) {
-        pthread_mutex_unlock(&ch->mutex);
-        return 0;
-    }
-    memcpy(out, ch->buffer, (size_t)ch->elemSize);
-    ch->handoffFull = 0;
-    ch->takenSeq++;
-    pthread_cond_broadcast(&ch->senders);
-    pthread_mutex_unlock(&ch->mutex);
-    return 1;
-}
-
-void gy_chan_close(gy_chan *ch) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("close of a closed channel");
-    }
-    ch->closed = 1;
-    pthread_cond_broadcast(&ch->senders);
-    pthread_cond_broadcast(&ch->receivers);
-    pthread_mutex_unlock(&ch->mutex);
-}
-
-int64_t gy_chan_try_send(gy_chan *ch, const void *elem) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->closed) {
-        pthread_mutex_unlock(&ch->mutex);
-        gy_abort_c("send on a closed channel");
-    }
-    if (ch->capacity > 0) {
-        if (ch->count == ch->capacity) {
-            pthread_mutex_unlock(&ch->mutex);
-            return 0;
-        }
-        int64_t at = (ch->head + ch->count) % ch->capacity;
-        memcpy(ch->buffer + at * ch->elemSize, elem, (size_t)ch->elemSize);
-        ch->count++;
-        pthread_cond_signal(&ch->receivers);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-    if (ch->receiversWaiting == 0 || ch->handoffFull) {
-        pthread_mutex_unlock(&ch->mutex);
-        return 0;
-    }
-    memcpy(ch->buffer, elem, (size_t)ch->elemSize);
-    ch->handoffFull = 1;
-    ch->placedSeq++;
-    pthread_cond_broadcast(&ch->receivers);
-    pthread_mutex_unlock(&ch->mutex);
-    return 1;
-}
-
-int64_t gy_chan_try_recv(gy_chan *ch, void *out) {
-    pthread_mutex_lock(&ch->mutex);
-    if (ch->capacity > 0) {
-        if (ch->count > 0) {
-            memcpy(out, ch->buffer + ch->head * ch->elemSize, (size_t)ch->elemSize);
-            ch->head = (ch->head + 1) % ch->capacity;
-            ch->count--;
-            pthread_cond_signal(&ch->senders);
-            pthread_mutex_unlock(&ch->mutex);
-            return 1;
-        }
-        int64_t fired = ch->closed;
-        pthread_mutex_unlock(&ch->mutex);
-        return fired;
-    }
-    if (ch->handoffFull) {
-        memcpy(out, ch->buffer, (size_t)ch->elemSize);
-        ch->handoffFull = 0;
-        ch->takenSeq++;
-        pthread_cond_broadcast(&ch->senders);
-        pthread_mutex_unlock(&ch->mutex);
-        return 1;
-    }
-    int64_t fired = ch->closed;
-    pthread_mutex_unlock(&ch->mutex);
-    return fired;
-}
-
-void gy_select_pause(void) { usleep(200); }
 
 /* ------------------------------------------------------------------ */
 /* Threads: the one place that knows how one begins and ends.         */

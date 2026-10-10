@@ -447,23 +447,17 @@ concurrency
 
 module "m"
 
-async fn @f(%ch: chan<i32>, %fut: future<i32>) {
-  %c = chan.new<i32> %cap
-  send %ch, %v
-  %t = recv %ch
-  chan.close %ch
-  %r = await %fut
-  select {
-    recv %v = %ch {
-      return
-    }
-    send %ch, %x {
-      return
-    }
-    default {
-      return
-    }
-  }
+fn @body(%data: anyptr) {
+  %p = ptr.cast %data -> ptr<i64>
+  %one = const.i64 1
+  %old = atomic.add %p, %one
+  atomic.fence
+  thread.exit
+}
+
+fn @start(%stack: opt<anyptr>, %data: anyptr) {
+  %tid = thread.start %stack, @body, %data
+  return
 }
 
 ---
@@ -475,48 +469,44 @@ async fn @f(%ch: chan<i32>, %fut: future<i32>) {
     (global_name)
     (parameter
       (register)
-      (generic_type
-        (type_constructor)
-        (primitive_type)))
+      (primitive_type))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (identifier)
+      (identifier))
+    (instruction
+      (register)
+      (mnemonic)
+      (number))
+    (instruction
+      (register)
+      (mnemonic)
+      (register)
+      (register))
+    (instruction
+      (mnemonic))
+    (instruction
+      (mnemonic)))
+  (function_declaration
+    (global_name)
     (parameter
       (register)
       (generic_type
         (type_constructor)
         (primitive_type)))
+    (parameter
+      (register)
+      (primitive_type))
     (instruction
       (register)
       (mnemonic)
-      (identifier)
-      (register))
-    (instruction
-      (mnemonic)
       (register)
+      (global_name)
       (register))
     (instruction
-      (register)
-      (mnemonic)
-      (register))
-    (instruction
-      (mnemonic)
-      (register))
-    (instruction
-      (register)
-      (mnemonic)
-      (register))
-    (select_instruction
-      (select_receive_arm
-        (register)
-        (register)
-        (instruction
-          (mnemonic)))
-      (select_send_arm
-        (register)
-        (register)
-        (instruction
-          (mnemonic)))
-      (select_default_arm
-        (instruction
-          (mnemonic))))))
+      (mnemonic))))
 
 ==================
 calls and closures

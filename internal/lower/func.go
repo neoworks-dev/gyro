@@ -685,14 +685,6 @@ func (f *funcLowerer) destructuringVar(decl *ast.VarDecl) {
 	}
 }
 
-// recvPair lowers a receive into its (element, open) tuple register.
-func (f *funcLowerer) recvPair(recv *ast.RecvExpr) string {
-	ch := f.lowerExpr(recv.Chan, nil)
-	pair := f.newReg("recv")
-	f.emit(&metals.Recv{Dst: pair, Ch: ch})
-	return pair
-}
-
 func (f *funcLowerer) assign(s *ast.AssignStmt) {
 	if s.Op != token.Assign {
 		f.compoundAssign(s)
@@ -894,101 +886,6 @@ func (f *funcLowerer) deferStmt(s *ast.DeferStmt) {
 
 	top := f.scopes[len(f.scopes)-1]
 	top.defers = append(top.defers, func() { run() })
-}
-
-func (f *funcLowerer) sendStmt(s *ast.SendStmt) {
-	chanType, ok := f.typeOf(s.Chan).(*types.Chan)
-	if !ok {
-		f.l.fail("@%s: send on a non-channel", f.fn.Name)
-	}
-	ch := f.lowerExpr(s.Chan, nil)
-	value := f.lowerExpr(s.Value, chanType.Elem)
-	f.emit(&metals.Send{Ch: ch, Val: value})
-}
-
-func (f *funcLowerer) selectStmt(s *ast.SelectStmt) {
-	out := &metals.Select{}
-	for _, arm := range s.Arms {
-		out.Arms = append(out.Arms, f.selectArm(arm))
-	}
-	if s.Else != nil {
-		out.Default = f.nested(func() {
-			f.pushScope()
-			f.stmt(s.Else)
-			f.popScope()
-		})
-		if len(out.Default) == 0 {
-			// An empty default still means "do not block".
-			out.Default = []metals.Instr{&metals.MakeTuple{Dst: f.newReg("nop"), Args: nil}}
-		}
-	}
-	f.emit(out)
-}
-
-func (f *funcLowerer) selectArm(arm ast.SelectArm) metals.SelectArm {
-	switch comm := arm.Comm.(type) {
-	case *ast.SendStmt:
-		chanType := f.typeOf(comm.Chan).(*types.Chan)
-		ch := f.lowerExpr(comm.Chan, nil)
-		value := f.lowerExpr(comm.Value, chanType.Elem)
-		body := f.nested(func() {
-			f.pushScope()
-			f.stmt(arm.Body)
-			f.popScope()
-		})
-		return metals.SelectArm{Send: true, Ch: ch, Val: value, Body: body}
-
-	case *ast.VarDecl:
-		recv, ok := comm.Value.(*ast.RecvExpr)
-		if !ok || len(comm.Names) != 1 {
-			f.l.fail("@%s: a select binding is one name receiving", f.fn.Name)
-		}
-		ch := f.lowerExpr(recv.Chan, nil)
-		declared := f.localType(comm, comm.Names[0].Name)
-		dst := f.newReg(comm.Names[0].Name)
-		body := f.nested(func() {
-			f.pushScope()
-			if declared != nil {
-				f.bind(comm.Names[0].Name, &local{reg: dst, typ: declared, env: -1})
-			}
-			f.stmt(arm.Body)
-			f.popScope()
-		})
-		return metals.SelectArm{Dst: dst, Ch: ch, Body: body}
-
-	case *ast.AssignStmt:
-		recv, ok := comm.Rhs.(*ast.RecvExpr)
-		if !ok || len(comm.Lhs) != 1 {
-			f.l.fail("@%s: a select assignment is one target receiving", f.fn.Name)
-		}
-		ch := f.lowerExpr(recv.Chan, nil)
-		dst := f.newReg("got")
-		body := f.nested(func() {
-			f.pushScope()
-			if target := f.placeOf(comm.Lhs[0]); target != nil {
-				target.store(dst)
-			}
-			f.stmt(arm.Body)
-			f.popScope()
-		})
-		return metals.SelectArm{Dst: dst, Ch: ch, Body: body}
-
-	case *ast.ExprStmt:
-		recv, ok := comm.X.(*ast.RecvExpr)
-		if !ok {
-			f.l.fail("@%s: a select arm waits on a channel operation", f.fn.Name)
-		}
-		ch := f.lowerExpr(recv.Chan, nil)
-		dst := f.newReg("got")
-		body := f.nested(func() {
-			f.pushScope()
-			f.stmt(arm.Body)
-			f.popScope()
-		})
-		return metals.SelectArm{Dst: dst, Ch: ch, Body: body}
-	}
-	f.l.fail("@%s: cannot lower this select arm", f.fn.Name)
-	return metals.SelectArm{}
 }
 
 // ---------------------------------------------------------------------------

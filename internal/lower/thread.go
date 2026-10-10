@@ -118,19 +118,18 @@ func (f *funcLowerer) packAsync(thunk *asyncThunk, fn string, args []string, res
 	record := f.newReg("async.args")
 	f.emit(&metals.New{Dst: record, Type: &metals.Named{Name: thunk.record}})
 
-	// The result's size is filled in once every type is declared: the
-	// error and any types are written after the functions that use them.
-	size := &metals.Const{Dst: f.newReg("async.size"), Type: metals.TUsize, Value: "0"}
-	f.emit(size)
-	if !isVoid(result) {
-		f.l.asyncSizes = append(f.l.asyncSizes, asyncSize{where: size, result: f.l.metalsType(result), in: f.fn.Name})
+	size := ""
+	if isVoid(result) {
+		size = f.sizeConst(nil)
+	} else {
+		size = f.sizeConst(f.l.metalsType(result))
 	}
 	// The functions the thunk calls are lowered with the rest.
 	for _, name := range []string{"future_enter", "future_result", "future_leave"} {
 		f.l.ensureFunc(f.l.leafDecl(name), nil)
 	}
 	future := f.newReg("future")
-	f.emit(&metals.Call{Dst: future, Callee: newFuture, Args: []string{size.Dst}})
+	f.emit(&metals.Call{Dst: future, Callee: newFuture, Args: []string{size}})
 
 	fields := []string{future}
 	if thunk.fn != nil {
@@ -174,25 +173,35 @@ func (f *funcLowerer) await(e *ast.AwaitExpr) string {
 	return out
 }
 
-// asyncSize is a result's size, to be written into the constant a call site
-// left for it.
-type asyncSize struct {
-	where  *metals.Const
-	result metals.Type
-	in     string
+// sizeConst is a register holding the size of a type in bytes. The size is
+// written in once every type is declared, in finishAsync: the error and any
+// types are declared after the functions that use them, and a size cannot
+// be laid out without them. A nil type is zero bytes.
+func (f *funcLowerer) sizeConst(t metals.Type) string {
+	size := &metals.Const{Dst: f.newReg("size"), Type: metals.TUsize, Value: "0"}
+	f.emit(size)
+	if t != nil {
+		f.l.sizeFixups = append(f.l.sizeFixups, sizeFixup{where: size, typ: t, in: f.fn.Name})
+	}
+	return size.Dst
 }
 
-// finishAsync writes the result sizes and builds the thunks the program
-// asked for. It runs once everything else is lowered, because both need
-// every type declared and every callee's parameters known; the functions
-// a thunk calls were asked for at the call sites, so building one lowers
-// nothing.
+type sizeFixup struct {
+	where *metals.Const
+	typ   metals.Type
+	in    string
+}
+
+// finishAsync writes the sizes and builds the thunks the program asked
+// for. It runs once everything else is lowered, because both need every
+// type declared and every callee's parameters known; the functions a thunk
+// calls were asked for at the call sites, so building one lowers nothing.
 func (l *lowerer) finishAsync() {
 	layout := metals.NewLayout(l.module, func(format string, args ...any) {
-		l.fail("an async result: "+format, args...)
+		l.fail("a size: "+format, args...)
 	})
-	for _, size := range l.asyncSizes {
-		size.where.Value = strconv.Itoa(layout.Size(size.result))
+	for _, fixup := range l.sizeFixups {
+		fixup.where.Value = strconv.Itoa(layout.Size(fixup.typ))
 	}
 	for _, thunk := range l.asyncOrder {
 		l.buildAsyncThunk(thunk)

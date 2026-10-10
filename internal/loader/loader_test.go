@@ -170,3 +170,38 @@ func TestStdlibModulesAreClean(t *testing.T) {
 		t.Errorf("%s", item)
 	}
 }
+
+// A channel, a select, an async function and an await are syntax whose
+// operations stdlib implements, so a program that writes one has stdlib
+// loaded whether or not it imports from it. The root stays last, and
+// nothing is bound in the root's scope by the extra module.
+func TestRuntimeIsLoadedForConcurrentSyntax(t *testing.T) {
+	for name, source := range map[string]string{
+		"chan":   "fn main() {\n    var ch = chan<i32>(1)\n}\n",
+		"send":   "fn f(ch: chan<i32>) {\n    ch <- 1\n}\n",
+		"async":  "async fn f() {}\n",
+		"select": "fn f(ch: chan<i32>) {\n    select {\n        var v = <-ch: f(ch)\n    }\n}\n",
+	} {
+		program, _ := load(t, map[string]string{"main.gyro": source}, "main.gyro")
+		found := false
+		for _, module := range program.Modules {
+			if module.Path == stdlib.Path("stdlib") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: stdlib is not loaded", name)
+		}
+		if last := program.Modules[len(program.Modules)-1]; last != program.Root {
+			t.Errorf("%s: the root is not last: %s", name, last.Path)
+		}
+	}
+
+	// A program with none of them does not pay for it.
+	program, _ := load(t, map[string]string{"main.gyro": "fn main() {\n    var x = 1\n}\n"}, "main.gyro")
+	for _, module := range program.Modules {
+		if stdlib.IsBundled(module.Path) {
+			t.Errorf("%s is loaded for a program that imports nothing and writes no concurrent syntax", module.Path)
+		}
+	}
+}

@@ -1,0 +1,41 @@
+// Elements of every storage shape cross a channel intact: a narrow
+// integer, a float, a struct, a string and a tuple holding an error. A
+// channel moves the bytes of its element, so what is under test is that a
+// narrow scalar goes in and comes out at its own width.
+
+import { println } from "stdlib"
+
+struct Point {
+    x: i16
+    y: u8
+}
+
+fn main() {
+    var bytes = chan<u8>(2)
+    bytes <- 200
+    bytes <- 7
+    println(<-bytes)
+    println(<-bytes)
+
+    var floats = chan<f32>(1)
+    floats <- 1.5
+    println(<-floats)
+
+    var points = chan<Point>(1)
+    points <- Point{ x: -3, y: 250 }
+    var p = <-points
+    println(p.x)
+    println(p.y)
+
+    var texts = chan<(string, error?)>(1)
+    texts <- ("hello", null)
+    var pair, ready = <-texts
+    if ready {
+        println(pair.0)
+        println(pair.1 == null)
+    }
+
+    var signed = chan<i32>(1)
+    signed <- -1
+    println(<-signed)
+}

@@ -1,0 +1,38 @@
+// An unbuffered channel is a rendezvous: a send does not finish until a
+// receiver has taken the element. The sender records, before each send and
+// after it, how many the receiver has taken, and the receiver counts as it
+// takes. A send that returned early would see a count one short.
+
+import { println, Atomic } from "stdlib"
+import { heap, alloc, free, spawn } from "mem"
+
+fn main() {
+    var taken = alloc<Atomic<i64>>(heap())
+    defer free(heap(), taken)
+    taken.store(0)
+    var values = chan<i64>()
+    var done = chan<bool>()
+
+    spawn(heap(), fn() {
+        var behind: i64 = 0
+        for i in 1..6 {
+            values <- (i as i64)
+            // The receiver bumps the count after it has the value, so by the
+            // time the send returns it may not have yet; it has begun,
+            // though, which is what a rendezvous promises.
+            if taken.load() + 1 < (i as i64) {
+                behind += 1
+            }
+        }
+        values.close()
+        done <- behind == 0
+    })
+
+    var sum: i64 = 0
+    for v in values {
+        sum += v
+        var _ = taken.fetch_add(1)
+    }
+    println(sum)
+    println(<-done)
+}

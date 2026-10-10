@@ -114,7 +114,21 @@ func ParseFile(file *diag.File, bag *diag.Bag) *ast.File {
 		bag:    bag,
 		tokens: lexer.Tokens(file, bag),
 	}
-	return parser.parseFile()
+	return parser.parseFileMarked()
+}
+
+// parseFileMarked is parseFile with the file's Concurrent flag set from its
+// tokens: reading them is one pass over what the lexer already made.
+func (p *Parser) parseFileMarked() *ast.File {
+	file := p.parseFile()
+	for _, tok := range p.tokens {
+		switch tok.Kind {
+		case token.Chan, token.Select, token.Await, token.Async, token.LeftArrow:
+			file.Concurrent = true
+			return file
+		}
+	}
+	return file
 }
 
 // ParseForeign parses the Gyro text generated from a foreign module's

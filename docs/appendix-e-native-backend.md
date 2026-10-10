@@ -50,7 +50,7 @@ a `u32`, and the corpus would then be measuring which one guessed.
 | `f32` | 4 | 4 | IEEE single; the register holds the double it widens to |
 | `f64` | 8 | 8 | IEEE double |
 | `str` | 8 | 8 | pointer to an immutable heap/static header `{ i64 len; char bytes[len] }` |
-| `ptr<T>`, `chan<T>`, `future<T>`, `handle` | 8 | 8 | pointer to a runtime object |
+| `ptr<T>`, `handle` | 8 | 8 | pointer to a runtime object |
 | `anyptr` | 8 | 8 | the same address a `ptr<T>` is, with the format no longer recording what is at it; what C's `void *` is |
 | `fn(..)` | 16 | 8 | `{ code, env }`; `env` is 0 for a bare `fn.ref` |
 | `code(..)` | 8 | 8 | the address of a function, no environment beside it; what C's function pointer is |
@@ -72,7 +72,7 @@ payload at a fixed offset and lets a frame hand out word-aligned cells.
 Aggregates live inline: in a register's stack slot, in a record's field,
 in an enum's payload. A `copy` is a `memcpy` of the static size, which is
 the whole of Gyro's value semantics, because everything a value shares
-intentionally (slice backings, channels, handles, pointers, string bytes)
+intentionally (slice backings, handles, pointers, string bytes)
 sits behind a pointer and everything it owns sits inline.
 
 `slice.of` borrows the array register's stack slot. A slice that
@@ -89,20 +89,19 @@ narrows it. That conversion is every `load`, `store`, `field.get`,
 backend rather than a case per instruction. In C it is C's own implicit
 conversion, because a member is declared with its real type.
 
-**What the runtime holds, it holds in storage representation** — a
-channel's elements, an `Array`'s, a mutex's value, a future's result, an
-`any`'s payload. That is forced rather than chosen: `Array<T>::slice`
+**What the runtime holds, it holds in storage representation** — an
+`Array`'s elements, an `any`'s payload, and the elements a channel or the
+result of a future holds, which `stdlib` and `mem` keep as bytes. That is forced rather than chosen: `Array<T>::slice`
 hands out a slice that borrows the Array's own elements, so the two must
 agree on stride, and after that the only coherent rule is that everything
 the runtime stores looks the way memory looks.
 
 A narrow scalar therefore cannot be handed to the runtime as the address
 of its register: the register is wider, and an `f32`'s register is a
-double. It goes through a **staging cell** — one word per frame in the
-assembler, a typed temporary in C — which narrows on the way out and
-widens on the way back. The internal argument buffer an async call packs
-is the one exception: nothing outside a backend sees it, so it holds
-registers.
+double. It goes through a cell in storage representation, which is what a
+`slot` of its type is: lowering stores the value into one and passes the
+cell's address, so `store` narrows it on the way out and `load` widens it
+on the way back.
 
 ## Frames and the ABI
 
@@ -150,9 +149,8 @@ A METALS register is a candidate when its type is one integer-class
 word — an aggregate lives inline in memory by the layout table above,
 and SysV has no callee-saved `xmm` register — and when no emitter needs
 its address. The address-taken cases are an explicit table in
-`rolesOf`: a channel send's element, an `await`'s destination, a select
-arm's element, and every runtime import whose plan passes an argument or
-a result by pointer. `frame.addr` fails the build if a register with a
+`rolesOf`: a slice's array, and every runtime import whose plan passes a
+result by pointer. `frame.addr` fails the build if a register with a
 home ever reaches it, so a missing entry is a build error rather than
 wrong code.
 
@@ -237,7 +235,8 @@ and read, printing, `fs`, `os`, `time` and `net` are ordinary functions over
 the `unsafe` module and the system calls of `sys`, and the backend emits
 the float intrinsics and the float conversions in line. What `rt.c` still
 holds is the string layout's `text_seal` and `text_bytes`, `gy_alloc` and
-`gy_free`, the aborts, threads, channels, mutexes, futures and `any`, the
+`gy_free`, the aborts, the instructions `thread.start` and `thread.exit`
+(libc's `pthread_create` and `pthread_exit`) and `any`, the
 linear-memory instructions, the pointer and integer conversions, `copy_bytes`,
 the output lock, the byte floor `write_byte` and `read_byte`, and the printing
 half of `gyro:rt` that a producer which is not Gyro reaches through
@@ -259,19 +258,21 @@ Obligations beyond the obvious:
   FNV-1a over a string's bytes, `-0.0` folded into `0.0`. The scalars are
   Gyro functions in `mem`, and the composites are synthesized by lowering,
   one function per type, calling them.
-- **Channels.** Mutex + condvar ring buffer; capacity 0 is a true
+- **Channels** are Gyro (`stdlib`): a ring buffer under a futex lock,
+  with the two conditions as futex words; capacity 0 is a true
   rendezvous (the sender blocks until a receiver takes the element).
-  `recv` fills a `(element, open)` tuple; a closed channel yields
+  A receive yields an `(element, open)` tuple; a closed channel yields
   zeroed memory with `open` false. `send` on a closed channel aborts.
 - **`select` polls.** Each arm gets a try-operation; no arm ready and
-  no default means sleep briefly and retry. In-order polling is
-  deterministic and legal, because the language does not say which ready
-  arm runs — it can also starve an arm behind a busy one, which is
-  recorded as open.
-- **Async is eager.** Calling an async function starts a pthread
-  running a codegen-emitted thunk (unpack argument buffer, call, store
-  result) and returns a future — a one-shot mutex/condvar cell.
-  `await` joins it. An async `main` is simply run synchronously by the
+  no default means sleep a couple of hundred microseconds and retry.
+  In-order polling is deterministic and legal, because the language
+  does not say which ready arm runs — it can also starve an arm behind
+  a busy one, which is recorded as open.
+- **Async is eager.** Calling an async function starts a thread
+  running a thunk lowering synthesized (unpack the arguments from their
+  heap record, call, store the result) and returns a future, a cell in
+  `mem` with a futex word that says the result is there. `await` waits
+  on the word. An async `main` is simply run synchronously by the
   entry point, which is what eager-start-plus-immediate-await reduces
   to.
 - **Memory.** `new` is a zero-filled allocation behind a header whose

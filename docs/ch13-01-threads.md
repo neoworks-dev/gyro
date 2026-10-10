@@ -32,9 +32,10 @@ can be used from another thread.
 `@concurrent(threads = N)` configures a parallel region as a decorator on a
 function.
 
-A spawned thread is a real OS thread on the native tiers and a goroutine
-under the evaluator. A panic on a spawned thread kills that thread only; on
-the main thread it ends the process.
+A spawned thread is a real OS thread, started with the METALS instruction
+`thread.start` ([appendix D](appendix-d-metals.md)): `spawn` is Gyro, in
+`mem`, and the backend alone knows how a thread begins. A panic on a spawned
+thread kills that thread only; on the main thread it ends the process.
 
 ## Mutexes
 

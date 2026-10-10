@@ -772,9 +772,6 @@ func (p *parser) typeExpr() (Type, error) {
 	case "slice":
 		elem, err := p.angled()
 		return &SliceOf{Elem: elem}, err
-	case "chan":
-		elem, err := p.angled()
-		return &ChanOf{Elem: elem}, err
 	case "array":
 		if err := p.punct("<"); err != nil {
 			return nil, err

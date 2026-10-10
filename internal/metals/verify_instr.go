@@ -953,55 +953,6 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		state.defined = joined.defined
 		return nil
 
-	case *ChanNew:
-		if i.Cap != "" {
-			capType, err := fv.use(state, i.Cap)
-			if err != nil {
-				return err
-			}
-			if !isUsize(capType) {
-				return fmt.Errorf("a channel capacity is usize, not %s", capType)
-			}
-		}
-		return fv.def(state, i.Dst, &ChanOf{Elem: i.Elem})
-
-	case *Send:
-		return fv.checkSend(state, i.Ch, i.Val)
-
-	case *Recv:
-		elem, err := fv.chanElem(state, i.Ch)
-		if err != nil {
-			return err
-		}
-		return fv.def(state, i.Dst, &TupleOf{Elems: []Type{elem, TBool}})
-
-	case *ChanClose:
-		_, err := fv.chanElem(state, i.Ch)
-		return err
-
-	case *Select:
-		for _, arm := range i.Arms {
-			armState := state.clone()
-			if arm.Send {
-				if err := fv.checkSend(armState, arm.Ch, arm.Val); err != nil {
-					return err
-				}
-			} else {
-				elem, err := fv.chanElem(armState, arm.Ch)
-				if err != nil {
-					return err
-				}
-				if err := fv.def(armState, arm.Dst, elem); err != nil {
-					return err
-				}
-			}
-			if err := fv.checkBody(arm.Body, armState); err != nil {
-				return err
-			}
-		}
-		defaultState := state.clone()
-		return fv.checkBody(i.Default, defaultState)
-
 	case *OptWrap:
 		typ, err := fv.use(state, i.X)
 		if err != nil {
@@ -1115,9 +1066,6 @@ func (fv *funcVerifier) checkBin(i *Bin, state *regState) error {
 		}
 		return fv.def(state, i.Dst, TBool)
 	default: // eq, ne
-		if _, isChan := left.(*ChanOf); isChan {
-			return fmt.Errorf("channels do not compare")
-		}
 		// Comparing two unions would have to compare storage, and
 		// nothing records which member is live in either of them — C
 		// does not define this and neither does the format. A record
@@ -1146,33 +1094,6 @@ func (fv *funcVerifier) checkIndex(state *regState, base, index string) (Type, e
 		return nil, fmt.Errorf("indexes are usize, not %s", indexType)
 	}
 	return elem, nil
-}
-
-func (fv *funcVerifier) chanElem(state *regState, name string) (Type, error) {
-	typ, err := fv.use(state, name)
-	if err != nil {
-		return nil, err
-	}
-	channel, ok := typ.(*ChanOf)
-	if !ok {
-		return nil, fmt.Errorf("a channel operation wants chan<...>, not %s", typ)
-	}
-	return channel.Elem, nil
-}
-
-func (fv *funcVerifier) checkSend(state *regState, ch, val string) error {
-	elem, err := fv.chanElem(state, ch)
-	if err != nil {
-		return err
-	}
-	valType, err := fv.use(state, val)
-	if err != nil {
-		return err
-	}
-	if !TypesEqual(valType, elem) {
-		return fmt.Errorf("send of %s on chan<%s>", valType, elem)
-	}
-	return nil
 }
 
 func (fv *funcVerifier) useAny(state *regState, name, what string) error {

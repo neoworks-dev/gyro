@@ -1,0 +1,23 @@
+// A send arm is taken when the channel has room and left alone when it does
+// not. The first select finds room and sends. The second finds the channel
+// full and takes the else. After a receive makes room the third sends again.
+
+import { println } from "stdlib"
+
+fn main() {
+    var ch = chan<i32>(1)
+    select {
+        ch <- 1: println("sent 1")
+        else: println("full")
+    }
+    select {
+        ch <- 2: println("sent 2")
+        else: println("full")
+    }
+    println(<-ch)
+    select {
+        ch <- 3: println("sent 3")
+        else: println("full")
+    }
+    println(<-ch)
+}

@@ -1,7 +1,7 @@
 package metals
 
 // Instr is one METALS instruction. Simple instructions write at most one
-// register; the structured ones (If, Block, Loop, Switch, Select) nest.
+// register; the structured ones (If, Block, Loop, Switch) nest.
 //
 // Registers are referenced by name without the % sigil in these structs;
 // the printer and parser add and strip it.
@@ -400,19 +400,6 @@ type (
 		Default []Instr
 	}
 
-	ChanNew struct {
-		Dst  string
-		Elem Type
-		Cap  string // "" for unbuffered
-	}
-	Send      struct{ Ch, Val string }
-	Recv      struct{ Dst, Ch string } // -> tuple<T, bool>
-	ChanClose struct{ Ch string }
-	Select    struct {
-		Arms    []SelectArm
-		Default []Instr
-	}
-
 	// OptWrap is `%o = opt.wrap %v`: T -> opt<T>. Optionals do not nest.
 	OptWrap struct{ Dst, X string }
 	// OptUnwrap is `%v = opt.unwrap %o`: opt<T> -> T, aborts on null.
@@ -442,16 +429,6 @@ type (
 type SwitchCase struct {
 	Value int
 	Body  []Instr
-}
-
-// SelectArm is one arm of a select: a receive binding a register, or a
-// send. Exactly one of Recv/Send applies: Recv arms set Dst.
-type SelectArm struct {
-	Dst  string // receive arms: the bound register
-	Ch   string
-	Val  string // send arms: the sent value
-	Send bool
-	Body []Instr
 }
 
 func (*Const) isInstr()        {}
@@ -520,11 +497,6 @@ func (*Loop) isInstr()         {}
 func (*Br) isInstr()           {}
 func (*BrIf) isInstr()         {}
 func (*Switch) isInstr()       {}
-func (*ChanNew) isInstr()      {}
-func (*Send) isInstr()         {}
-func (*Recv) isInstr()         {}
-func (*ChanClose) isInstr()    {}
-func (*Select) isInstr()       {}
 func (*OptWrap) isInstr()      {}
 func (*OptUnwrap) isInstr()    {}
 func (*AnyWrap) isInstr()      {}

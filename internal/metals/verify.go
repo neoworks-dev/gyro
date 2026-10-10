@@ -220,7 +220,7 @@ func pointerInside(m *Module, t Type, seen map[string]bool) Type {
 			return t
 		}
 		return nil
-	case *Ptr, *AnyPtr, *ChanOf, *Handle, *CodeType, *FnType, *SliceOf, *Any:
+	case *Ptr, *AnyPtr, *Handle, *CodeType, *FnType, *SliceOf, *Any:
 		return t
 	case *Opt:
 		return pointerInside(m, t.Elem, seen)
@@ -415,8 +415,6 @@ func (v *verifier) checkType(t Type) error {
 		return v.checkType(t.Elem)
 	case *ArrayOf:
 		return v.checkType(t.Elem)
-	case *ChanOf:
-		return v.checkType(t.Elem)
 	case *TupleOf:
 		for _, elem := range t.Elems {
 			if err := v.checkType(elem); err != nil {
@@ -500,8 +498,6 @@ func boundaryOffender(t Type, types map[string]*TypeDecl, seen map[string]bool, 
 		if native {
 			return ""
 		}
-		return t.String()
-	case *ChanOf:
 		return t.String()
 	case *CodeType:
 		// An address of code means what a pointer means: something in

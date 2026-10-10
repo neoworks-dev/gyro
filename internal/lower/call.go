@@ -551,7 +551,7 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 	case "close":
 		ch := f.lowerExpr(recv, nil)
 		return func() string {
-			f.emit(&metals.ChanClose{Ch: ch})
+			f.closeChan(ch)
 			return ""
 		}
 

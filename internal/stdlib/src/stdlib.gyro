@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -1170,4 +1170,254 @@ export safe fn Atomic<T>::fetch_xor(*self, value: T): T !{} {
 // operation following it.
 export safe fn fence() !{} {
     atomic_fence()
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+
+// A chan<T> is an address of one of these, and its operations are the
+// functions below, which lowering calls for `<-`, `close`, `for..in` and
+// `select`. A channel holds the bytes of its elements and no more: the
+// element's size is all it knows of T, and lowering passes each element as
+// the address of a cell in the caller's frame.
+//
+// A buffered channel is a ring of `capacity` elements. Capacity 0 is a true
+// rendezvous: the sender puts its element in the one slot and waits until a
+// receiver has taken that very one, which the two tickets say.
+//
+// The lock is a futex word and the two conditions are counters threads
+// sleep on: a thread that must wait for the other side reads the counter
+// under the lock, lets go of the lock and sleeps until the counter has moved
+// from what it read, so a wake-up between the two is not lost.
+struct Chan {
+    lock: u32
+    // senders and receivers are the conditions: signalled when room is made
+    // and when an element arrives.
+    senders: u32
+    receivers: u32
+    buffer: anyptr
+    elem: usize
+    capacity: usize
+    count: usize
+    head: usize
+    closed: bool
+    // The rendezvous slot: whether it holds an element, how many receivers
+    // are asleep waiting for one, and the tickets of the last element put
+    // in and of the last one taken out.
+    full: bool
+    waiting: usize
+    placed: i64
+    taken: i64
+}
+
+safe fn cond_wait(condition: *u32, lock: *u32) !{} {
+    var seen = atomic_load(condition)
+    unlock_word(lock)
+    futex_wait(condition, seen)
+    lock_word(lock)
+}
+
+safe fn cond_signal(condition: *u32) !{} {
+    var _ = atomic_add(condition, 1)
+    futex_wake(condition, 1)
+}
+
+safe fn cond_broadcast(condition: *u32) !{} {
+    var _ = atomic_add(condition, 1)
+    futex_wake(condition, 2147483647)
+}
+
+// chan_new makes a channel of `capacity` elements of `elem` bytes each.
+safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
+    var block = raw_alloc(size<Chan>(), 16)
+    if block == null {
+        panic("allocation of a channel failed")
+    }
+    var ch = cast<Chan>(block)
+    ch.elem = elem
+    ch.capacity = capacity
+    var slots = capacity
+    if slots == 0 {
+        slots = 1
+    }
+    var buffer = raw_alloc(slots * elem, 16)
+    if buffer == null {
+        panic("allocation of a channel failed")
+    }
+    ch.buffer = buffer
+    return block
+}
+
+// chan_put and chan_take move an element between the caller's cell and the
+// ring, with the lock held.
+safe fn chan_put(ch: *Chan, value: anyptr) !{} {
+    var at = (ch.head + ch.count) % ch.capacity
+    copy_bytes(offset(ch.buffer, at * ch.elem), value, ch.elem)
+    ch.count += 1
+}
+
+safe fn chan_take(ch: *Chan, out: anyptr) !{} {
+    copy_bytes(out, offset(ch.buffer, ch.head * ch.elem), ch.elem)
+    ch.head = (ch.head + 1) % ch.capacity
+    ch.count -= 1
+}
+
+safe fn chan_send(raw: anyptr, value: anyptr) !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        while ch.count == ch.capacity && !ch.closed {
+            cond_wait(&ch.senders, &ch.lock)
+        }
+        if ch.closed {
+            unlock_word(&ch.lock)
+            panic("send on a closed channel")
+        }
+        chan_put(ch, value)
+        cond_signal(&ch.receivers)
+        unlock_word(&ch.lock)
+        return
+    }
+
+    while ch.full && !ch.closed {
+        cond_wait(&ch.senders, &ch.lock)
+    }
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    copy_bytes(ch.buffer, value, ch.elem)
+    ch.full = true
+    ch.placed += 1
+    var ticket = ch.placed
+    cond_broadcast(&ch.receivers)
+    while ch.taken < ticket && !ch.closed {
+        cond_wait(&ch.senders, &ch.lock)
+    }
+    if ch.taken < ticket {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    unlock_word(&ch.lock)
+}
+
+// chan_recv waits for an element and writes it to `out`, answering true.
+// When the channel is closed and drained it answers false and leaves `out`
+// as the caller zeroed it.
+safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        while ch.count == 0 && !ch.closed {
+            cond_wait(&ch.receivers, &ch.lock)
+        }
+        if ch.count == 0 {
+            unlock_word(&ch.lock)
+            return false
+        }
+        chan_take(ch, out)
+        cond_signal(&ch.senders)
+        unlock_word(&ch.lock)
+        return true
+    }
+
+    ch.waiting += 1
+    while !ch.full && !ch.closed {
+        cond_wait(&ch.receivers, &ch.lock)
+    }
+    ch.waiting -= 1
+    if !ch.full {
+        unlock_word(&ch.lock)
+        return false
+    }
+    copy_bytes(out, ch.buffer, ch.elem)
+    ch.full = false
+    ch.taken += 1
+    cond_broadcast(&ch.senders)
+    unlock_word(&ch.lock)
+    return true
+}
+
+safe fn chan_close(raw: anyptr) !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("close of a closed channel")
+    }
+    ch.closed = true
+    cond_broadcast(&ch.senders)
+    cond_broadcast(&ch.receivers)
+    unlock_word(&ch.lock)
+}
+
+// chan_try_send sends if it can without waiting, and answers whether it
+// did. An unbuffered channel can only be sent to while a receiver is
+// asleep waiting and the slot is free.
+safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.closed {
+        unlock_word(&ch.lock)
+        panic("send on a closed channel")
+    }
+    if ch.capacity > 0 {
+        if ch.count == ch.capacity {
+            unlock_word(&ch.lock)
+            return false
+        }
+        chan_put(ch, value)
+        cond_signal(&ch.receivers)
+        unlock_word(&ch.lock)
+        return true
+    }
+    if ch.waiting == 0 || ch.full {
+        unlock_word(&ch.lock)
+        return false
+    }
+    copy_bytes(ch.buffer, value, ch.elem)
+    ch.full = true
+    ch.placed += 1
+    cond_broadcast(&ch.receivers)
+    unlock_word(&ch.lock)
+    return true
+}
+
+// chan_try_recv receives if it can without waiting. It answers true when
+// it wrote an element, and also when the channel is closed and drained,
+// which a select takes as a receive that happens: the cell stays as the
+// caller zeroed it.
+safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
+    var ch = cast<Chan>(raw)
+    lock_word(&ch.lock)
+    if ch.capacity > 0 {
+        if ch.count > 0 {
+            chan_take(ch, out)
+            cond_signal(&ch.senders)
+            unlock_word(&ch.lock)
+            return true
+        }
+        var fired = ch.closed
+        unlock_word(&ch.lock)
+        return fired
+    }
+    if ch.full {
+        copy_bytes(out, ch.buffer, ch.elem)
+        ch.full = false
+        ch.taken += 1
+        cond_broadcast(&ch.senders)
+        unlock_word(&ch.lock)
+        return true
+    }
+    var fired = ch.closed
+    unlock_word(&ch.lock)
+    return fired
+}
+
+// select_pause is what a select with nothing ready does before it looks
+// again: it sleeps a moment.
+safe fn select_pause() !{ io } {
+    var span: i64[2] = [0, 200000]
+    var _ = syscall2(35, &span[0], 0)
 }

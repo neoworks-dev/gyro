@@ -198,7 +198,7 @@ type lowerer struct {
 	threadLocals map[string]bool
 	asyncThunks  map[string]*asyncThunk
 	asyncOrder   []*asyncThunk
-	asyncSizes   []asyncSize
+	sizeFixups   []sizeFixup
 
 	synthetic int
 }
@@ -359,7 +359,8 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 	case *types.Array:
 		return &metals.ArrayOf{Elem: l.metalsType(t.Elem), Len: t.Length}
 	case *types.Chan:
-		return &metals.ChanOf{Elem: l.metalsType(t.Elem)}
+		// A channel is an address of state stdlib keeps (chan.go).
+		return &metals.AnyPtr{}
 	case *types.Tuple:
 		elems := make([]metals.Type, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -758,8 +759,6 @@ func (l *lowerer) importNamed(foreign *metals.Module, t metals.Type) {
 	case *metals.SliceOf:
 		l.importNamed(foreign, t.Elem)
 	case *metals.ArrayOf:
-		l.importNamed(foreign, t.Elem)
-	case *metals.ChanOf:
 		l.importNamed(foreign, t.Elem)
 	case *metals.TupleOf:
 		for _, elem := range t.Elems {

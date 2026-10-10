@@ -466,26 +466,6 @@ func (f *funcLowerer) evalUnionLit(e *ast.StructLit, union *types.Union) string 
 	return out
 }
 
-func (f *funcLowerer) evalChanLit(e *ast.ChanLit) string {
-	chanType, ok := f.typeOf(e).(*types.Chan)
-	if !ok {
-		f.l.fail("@%s: a channel literal without a channel type", f.fn.Name)
-	}
-	out := f.newReg("ch")
-	made := &metals.ChanNew{Dst: out, Elem: f.l.metalsType(chanType.Elem)}
-	if e.Cap != nil {
-		capReg := f.lowerExpr(e.Cap, types.USize)
-		if !types.Identical(types.Default(f.typeOf(e.Cap)), types.USize) {
-			converted := f.newReg("cap")
-			f.emit(&metals.Conv{Dst: converted, X: capReg, To: metals.TUsize})
-			capReg = converted
-		}
-		made.Cap = capReg
-	}
-	f.emit(made)
-	return out
-}
-
 // ---------------------------------------------------------------------------
 // Operators
 // ---------------------------------------------------------------------------

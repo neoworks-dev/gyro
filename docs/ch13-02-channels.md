@@ -103,12 +103,19 @@ specified.
 
 ## Under the hood
 
-`chan<T>` is a METALS type and `send`/`recv`/`select` are verified
-instructions, while `spawn` and `Mutex` are runtime intrinsics — ordinary
-imported functions. The split is the same one the language draws
-([appendix D](appendix-d-metals.md)).
+A channel is not a type METALS knows. `chan<T>` lowers to an address of
+state the standard library keeps, and `<-`, `close`, `for..in` and `select`
+lower to calls of Gyro functions in `stdlib` that move the bytes of an
+element between the caller's frame and the channel ([appendix
+C](appendix-c-stdlib.md)); `spawn` and `Mutex` are ordinary Gyro too. What
+the format provides underneath is threads, atomics and the `futex` system
+call ([appendix D](appendix-d-metals.md)).
 
-The native runtime implements a channel as a mutex-and-condvar ring buffer,
-with capacity 0 as a true rendezvous. A closed channel yields zeroed memory
-with `open` false — which is exactly why the language makes reading that
-value a compile error.
+A channel is a ring buffer under a lock, with capacity 0 as a true
+rendezvous, and a thread that has to wait sleeps on a futex word rather than
+spinning. A closed channel yields zeroed memory with `open` false — which is
+exactly why the language makes reading that value a compile error.
+
+A program that uses a channel, a `select`, an `async` function or an `await`
+gets `stdlib` loaded whether or not it imports anything from it, since the
+library is what implements them; nothing is brought into scope by that.

@@ -128,7 +128,6 @@ type (
 		Len  int64
 	}
 	TupleOf struct{ Elems []Type }
-	ChanOf  struct{ Elem Type }
 	// FnType is fn(A, B) -> R. Result nil means the function returns
 	// nothing.
 	FnType struct {
@@ -168,7 +167,6 @@ type (
 func (t *Ptr) String() string     { return "ptr<" + t.Elem.String() + ">" }
 func (t *Opt) String() string     { return "opt<" + t.Elem.String() + ">" }
 func (t *SliceOf) String() string { return "slice<" + t.Elem.String() + ">" }
-func (t *ChanOf) String() string  { return "chan<" + t.Elem.String() + ">" }
 func (t *Named) String() string   { return "%" + QuoteName(t.Name) }
 func (t *Any) String() string     { return "any" }
 func (t *AnyPtr) String() string  { return "anyptr" }
@@ -240,9 +238,6 @@ func TypesEqual(a, b Type) bool {
 			}
 		}
 		return true
-	case *ChanOf:
-		b, ok := b.(*ChanOf)
-		return ok && TypesEqual(a.Elem, b.Elem)
 	case *FnType:
 		b, ok := b.(*FnType)
 		if !ok || len(a.Params) != len(b.Params) {

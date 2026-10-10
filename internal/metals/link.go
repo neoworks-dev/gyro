@@ -309,8 +309,6 @@ func (l *linker) strayName(importer, exporter *Module, t Type) string {
 		return l.strayName(importer, exporter, t.Elem)
 	case *ArrayOf:
 		return l.strayName(importer, exporter, t.Elem)
-	case *ChanOf:
-		return l.strayName(importer, exporter, t.Elem)
 	case *TupleOf:
 		for _, elem := range t.Elems {
 			if bad := l.strayName(importer, exporter, elem); bad != "" {
@@ -540,8 +538,6 @@ func (l *linker) rewrite(t Type) Type {
 		return &SliceOf{Elem: l.rewrite(t.Elem)}
 	case *ArrayOf:
 		return &ArrayOf{Elem: l.rewrite(t.Elem), Len: t.Len}
-	case *ChanOf:
-		return &ChanOf{Elem: l.rewrite(t.Elem)}
 	case *TupleOf:
 		elems := make([]Type, len(t.Elems))
 		for i, elem := range t.Elems {
@@ -596,8 +592,6 @@ func (l *linker) instr(instr Instr) Instr {
 		return &Slot{Dst: i.Dst, Type: l.rewrite(i.Type)}
 	case *New:
 		return &New{Dst: i.Dst, Type: l.rewrite(i.Type)}
-	case *ChanNew:
-		return &ChanNew{Dst: i.Dst, Elem: l.rewrite(i.Elem), Cap: i.Cap}
 	case *MakeArray:
 		return &MakeArray{Dst: i.Dst, Elem: l.rewrite(i.Elem), Args: i.Args}
 	case *MakeRecord:
@@ -641,12 +635,6 @@ func (l *linker) instr(instr Instr) Instr {
 			cases[n] = SwitchCase{Value: c.Value, Body: l.body(c.Body)}
 		}
 		return &Switch{X: i.X, Cases: cases, Default: l.body(i.Default)}
-	case *Select:
-		arms := make([]SelectArm, len(i.Arms))
-		for n, arm := range i.Arms {
-			arms[n] = SelectArm{Dst: arm.Dst, Ch: arm.Ch, Val: arm.Val, Send: arm.Send, Body: l.body(arm.Body)}
-		}
-		return &Select{Arms: arms, Default: l.body(i.Default)}
 	}
 	return instr
 }

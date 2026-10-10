@@ -370,37 +370,6 @@ func (p *printer) instr(instr Instr) {
 		}
 		p.indent--
 		p.line("}")
-	case *ChanNew:
-		if i.Cap == "" {
-			p.printf("%s = chan.new<%s>", reg(i.Dst), i.Elem)
-			return
-		}
-		p.printf("%s = chan.new<%s> %s", reg(i.Dst), i.Elem, reg(i.Cap))
-	case *Send:
-		p.printf("send %s, %s", reg(i.Ch), reg(i.Val))
-	case *Recv:
-		p.printf("%s = recv %s", reg(i.Dst), reg(i.Ch))
-	case *ChanClose:
-		p.printf("chan.close %s", reg(i.Ch))
-	case *Select:
-		p.line("select {")
-		p.indent++
-		for _, arm := range i.Arms {
-			if arm.Send {
-				p.printf("send %s, %s {", reg(arm.Ch), reg(arm.Val))
-			} else {
-				p.printf("recv %s = %s {", reg(arm.Dst), reg(arm.Ch))
-			}
-			p.nested(arm.Body)
-			p.line("}")
-		}
-		if len(i.Default) > 0 {
-			p.line("default {")
-			p.nested(i.Default)
-			p.line("}")
-		}
-		p.indent--
-		p.line("}")
 	case *OptWrap:
 		p.printf("%s = opt.wrap %s", reg(i.Dst), reg(i.X))
 	case *OptUnwrap:

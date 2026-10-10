@@ -112,7 +112,6 @@ type frame struct {
 }
 
 const sretSlot = -8
-const scratchSlot = -16
 
 func (g *generator) genFunc(fn *metals.Func) {
 	f := &frame{
@@ -247,11 +246,6 @@ func walkInstrs(body []metals.Instr, visit func(metals.Instr)) {
 		case *metals.Switch:
 			for _, c := range i.Cases {
 				walkInstrs(c.Body, visit)
-			}
-			walkInstrs(i.Default, visit)
-		case *metals.Select:
-			for _, arm := range i.Arms {
-				walkInstrs(arm.Body, visit)
 			}
 			walkInstrs(i.Default, visit)
 		}
@@ -935,32 +929,6 @@ func (f *frame) instr(instr metals.Instr) {
 	case *metals.Switch:
 		f.emitSwitch(i)
 
-	case *metals.ChanNew:
-		if i.Cap == "" {
-			g.ins("xor edi, edi")
-		} else {
-			g.ins("mov rdi, %s", f.slot(i.Cap))
-		}
-		g.ins("mov rsi, %d", g.sizeOf(i.Elem))
-		g.ins("call %s", g.extern("gy_chan_new"))
-		g.ins("mov %s, rax", f.slot(i.Dst))
-
-	case *metals.Send:
-		element := f.elementOut(i.Val)
-		g.ins("mov rdi, %s", f.slot(i.Ch))
-		g.ins("lea rsi, %s", element)
-		g.ins("call %s", g.extern("gy_chan_send"))
-
-	case *metals.Recv:
-		f.emitRecv(i)
-
-	case *metals.ChanClose:
-		g.ins("mov rdi, %s", f.slot(i.Ch))
-		g.ins("call %s", g.extern("gy_chan_close"))
-
-	case *metals.Select:
-		f.emitSelect(i)
-
 	case *metals.OptWrap:
 		opt, ok := f.typeOf(i.Dst).(*metals.Opt)
 		if !ok {
@@ -1203,71 +1171,6 @@ func (f *frame) emitLen(i *metals.Len) {
 	default:
 		g.fail("@%s: len of a %s", f.fn.Name, t)
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Channels and select
-// ---------------------------------------------------------------------------
-
-// emitRecv fills the tuple<T, bool> a receive answers with. The element
-// lands in the tuple's own first field, which is already in storage
-// representation, so nothing is staged; the open flag is a bool and is
-// stored as the byte one is.
-func (f *frame) emitRecv(i *metals.Recv) {
-	g := f.g
-	tuple := f.tupleOf(i.Dst)
-	f.zeroMem(f.slot(i.Dst), g.sizeOf(tuple))
-	g.ins("mov rdi, %s", f.slot(i.Ch))
-	g.ins("lea rsi, %s", f.addr(i.Dst))
-	g.ins("call %s", g.extern("gy_chan_recv"))
-	f.storeMember(f.slot(i.Dst).plus(g.tupleOffset(tuple, 1)), regAt("rax"), tuple.Elems[1])
-}
-
-func (f *frame) emitSelect(i *metals.Select) {
-	g := f.g
-	top := g.newLabel()
-	end := g.newLabel()
-	g.label(top)
-
-	armLabels := make([]string, len(i.Arms))
-	for index, arm := range i.Arms {
-		armLabels[index] = g.newLabel()
-		if arm.Send {
-			element := f.elementOut(arm.Val)
-			g.ins("mov rdi, %s", f.slot(arm.Ch))
-			g.ins("lea rsi, %s", element)
-			g.ins("call %s", g.extern("gy_chan_try_send"))
-			g.ins("test rax, rax")
-			g.ins("jnz %s", armLabels[index])
-			continue
-		}
-		f.zeroMem(f.slot(arm.Dst), g.slotOf(f.typeOf(arm.Dst)))
-		g.ins("mov rdi, %s", f.slot(arm.Ch))
-		g.ins("lea rsi, %s", f.elementIn(arm.Dst))
-		g.ins("call %s", g.extern("gy_chan_try_recv"))
-		// The arm is taken only if the receive succeeded, so the value is
-		// read back out of staging on that path alone.
-		missed := g.newLabel()
-		g.ins("test rax, rax")
-		g.ins("jz %s", missed)
-		f.elementBack(arm.Dst)
-		g.ins("jmp %s", armLabels[index])
-		g.label(missed)
-	}
-	if len(i.Default) > 0 {
-		f.body(i.Default)
-		g.ins("jmp %s", end)
-	} else {
-		g.ins("call %s", g.extern("gy_select_pause"))
-		g.ins("jmp %s", top)
-	}
-
-	for index, arm := range i.Arms {
-		g.label(armLabels[index])
-		f.body(arm.Body)
-		g.ins("jmp %s", end)
-	}
-	g.label(end)
 }
 
 // ---------------------------------------------------------------------------

@@ -91,7 +91,43 @@ func LoadFromSource(resolver Resolver, rootPath string, source string, bag *diag
 	}
 	root := state.add(absolute, source)
 	state.finishHeaders()
+	state.bringRuntime(root)
 	return &Program{Root: root, Modules: state.order}, nil
+}
+
+// bringRuntime loads stdlib into a program that did not ask for it but
+// uses something stdlib implements. A channel operation, a select, an async
+// call and an await are syntax, and what they do is library code the
+// compiler calls; a program that writes one needs that code whether or not
+// it imported anything. Nothing is brought into scope: only the module is
+// loaded, so lowering has it. It goes in ahead of the root, which stays
+// last.
+func (s *loadState) bringRuntime(root *Module) {
+	runtime := stdlib.Path("stdlib")
+	if s.modules[runtime] != nil {
+		return
+	}
+	needed := false
+	for _, module := range s.order {
+		if module.Tree != nil && module.Tree.Concurrent {
+			needed = true
+		}
+	}
+	if !needed {
+		return
+	}
+	path, source, err := s.resolver.Resolve("", "stdlib")
+	if err != nil {
+		return
+	}
+	s.add(path, source)
+	kept := s.order[:0]
+	for _, module := range s.order {
+		if module != root {
+			kept = append(kept, module)
+		}
+	}
+	s.order = append(kept, root)
 }
 
 type loadState struct {

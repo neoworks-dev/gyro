@@ -123,7 +123,7 @@ A header import carries what C's types are: integers and floats at their
 real widths, structs and unions by value, addresses (`*T`, `anyptr`) and
 code pointers, so out-parameters and callbacks work through it
 ([chapter 15](ch15-00-c-interop.md)). It does not carry a Gyro runtime
-object — a channel, a future, a `fn` value, an `any` — at any depth.
+object — a `fn` value, an `any` — at any depth.
 
 **Nothing checks the library against its header.** The symbol is matched by
 name at link time and the signature is the header's, which is C's own

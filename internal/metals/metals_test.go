@@ -205,37 +205,6 @@ fn @build() -> i32 {
 `)
 }
 
-func TestConcurrencyModule(t *testing.T) {
-	roundTrip(t, `
-module "gyro:test/chans"
-
-import "gyro:rt" {
-  fn @spawn(fn())
-}
-
-fn @pump(%vals: chan<i32>, %quit: chan<bool>) {
-  %yes = const.bool true
-  select {
-    recv %v = %vals {
-      chan.close %quit
-      return
-    }
-    send %quit, %yes {
-      return
-    }
-    default {
-    }
-  }
-  %cap = const.usize 4
-  %fresh = chan.new<i32> %cap
-  %unbuffered = chan.new<bool>
-  chan.close %fresh
-  chan.close %unbuffered
-  return
-}
-`)
-}
-
 func TestInteropModule(t *testing.T) {
 	roundTrip(t, `
 module "gyro:test/interop"
@@ -435,13 +404,6 @@ func TestVerifierCatchesUnknownLabel(t *testing.T) {
 }
 
 func TestVerifierEnforcesBoundaryRules(t *testing.T) {
-	verifyError(t, `module "gyro:test/v"
-
-import "py:math" {
-  fn @share(chan<i32>)
-}
-`, "values copy at the boundary")
-
 	// A runtime with a heap of its own is what the rule is about, and a
 	// pointer is the whole of what it refuses.
 	verifyError(t, `module "gyro:test/v"
@@ -463,20 +425,11 @@ import "c:SDL2" {
 }
 `)
 
-	// What it does not carry either way is a Gyro runtime object, which
-	// C has no representation for at all.
-	verifyError(t, `module "gyro:test/v"
-
-import "c:SDL2" {
-  fn @SDL_FreeSurface(ptr<chan<i32>>)
-}
-`, "values copy at the boundary")
-
 	// The same signature is fine within one language.
 	roundTrip(t, `module "gyro:test/v"
 
 import "gyro:test/other" {
-  fn @share(chan<i32>)
+  fn @share(ptr<i32>)
 }
 `)
 
@@ -496,14 +449,6 @@ import "lisp:test/other" {
   return %p
 }
 `)
-}
-
-func TestVerifierChecksSends(t *testing.T) {
-	verifyError(t, header+`fn @f(%ch: chan<i32>, %s: str) {
-  send %ch, %s
-  return
-}
-`, "send of str on chan<i32>")
 }
 
 func TestVerifierChecksIndexType(t *testing.T) {
