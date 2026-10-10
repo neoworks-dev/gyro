@@ -1,0 +1,74 @@
+; An address read as a number, and a number taken as an address.
+;
+; `ptr.addr` is the number an erased pointer holds and cannot fail.
+; `ptr.from` is the producer's claim that a number is an address, the way
+; `ptr.cast` is the claim about what lives there, so a typed pointer made
+; from a number takes both: `ptr.from` for where, then `ptr.cast` for
+; what. That is what a kernel does with a device register's address, and
+; what Gyro's `ptr_from_int` lowers to.
+;
+; The properties under test are the ones a wrong answer would be silent
+; about: the number is the address and not a copy of what it points at,
+; arithmetic on it lands where C's would, and under `opt<anyptr>` the
+; number 0 and a null are one word.
+
+module "metals:ptr-addr"
+
+import "gyro:rt" {
+  fn @"println<i64>"(i64)
+  fn @"println<bool>"(bool)
+}
+
+type %Pair = record { first: i64, second: i64 }
+
+export fn @main() {
+  %pair = slot %Pair
+  %a = const.i64 11
+  %b = const.i64 22
+  %rec = record %Pair(%a, %b)
+  store %pair, %rec
+
+  ; The round trip: an address becomes a number and the number becomes
+  ; the same address again.
+  %erased = ptr.erase %pair
+  %n = ptr.addr %erased
+  %back = ptr.from %n -> anyptr
+  %same = eq %back, %erased
+  call @"println<bool>"(%same)               ; true
+  %typed = ptr.cast %back -> ptr<%Pair>
+  %loaded = load %typed
+  %first = field.get %loaded, 0
+  call @"println<i64>"(%first)               ; 11
+
+  ; Eight bytes on is the second field, because a %Pair is two i64s laid
+  ; out the way C lays them out.
+  %eight = const.usize 8
+  %on = iadd %n, %eight
+  %at = ptr.from %on -> anyptr
+  %second = ptr.cast %at -> ptr<i64>
+  %got = load %second
+  call @"println<i64>"(%got)                 ; 22
+
+  ; Writing through the claimed pointer writes the record.
+  %c = const.i64 33
+  store %second, %c
+  %again = load %pair
+  %now = field.get %again, 1
+  call @"println<i64>"(%now)                 ; 33
+
+  ; A null is the number 0, and 0 claimed as an opt<anyptr> is a null.
+  %none = const.null opt<anyptr>
+  %zero = ptr.addr %none
+  %zw = conv %zero -> i64
+  call @"println<i64>"(%zw)                  ; 0
+  %z = const.usize 0
+  %maybe = ptr.from %z -> opt<anyptr>
+  %isnull = eq %maybe, %none
+  call @"println<bool>"(%isnull)             ; true
+
+  ; A number that is an address claims a present opt<anyptr>.
+  %present = ptr.from %n -> opt<anyptr>
+  %there = ne %present, %none
+  call @"println<bool>"(%there)              ; true
+  return
+}

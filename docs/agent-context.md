@@ -606,7 +606,7 @@ header are unsafe unless imported with `import safe`.
 
 Runtime-backed (C in `rt.c`): `spawn`, `Mutex<T>`/`MutexGuard<T>`, the
 channel and future operations, `mem`'s `size`/`align`/`panic`, and
-`unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`, `copy_bytes`, `ptr_to_int`,
+`unsafe`'s `raw_alloc`/`raw_free`/`raw_resize`, `copy_bytes`,
 `text_seal`, `text_bytes`, with the output lock and the hook that writes
 standard output out when the program ends. Everything else the standard
 library declares is Gyro: see "What is runtime-backed and what is Gyro" in

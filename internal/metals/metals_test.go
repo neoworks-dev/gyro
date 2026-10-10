@@ -1152,6 +1152,73 @@ func TestVerifierChecksMemoryOperands(t *testing.T) {
 `, "counts bytes in u32")
 }
 
+func TestVerifierChecksPtrAddrAndPtrFrom(t *testing.T) {
+	// The accepted forms, round-tripped through the printer.
+	roundTrip(t, header+`fn @f(%p: ptr<i64>) -> opt<anyptr> {
+  %a = ptr.erase %p
+  %n = ptr.addr %a
+  %b = ptr.from %n -> anyptr
+  %c = ptr.cast %b -> ptr<i64>
+  %none = const.null opt<anyptr>
+  %z = ptr.addr %none
+  %o = ptr.from %z -> opt<anyptr>
+  return %o
+}
+`)
+
+	// A typed pointer is erased first, so the number never carries a type.
+	verifyError(t, header+`fn @f(%p: ptr<i64>) {
+  %n = ptr.addr %p
+  return
+}
+`, "ptr.addr wants an anyptr or an opt<anyptr>, not ptr<i64>")
+
+	// A linear memory's address is a u32, and it is not taken as one.
+	verifyError(t, header+`fn @f(%n: u32) {
+  %a = ptr.from %n -> anyptr
+  return
+}
+`, "ptr.from wants a usize, not u32")
+
+	// Where and what are two claims, and ptr.from makes only the first.
+	verifyError(t, header+`fn @f(%n: usize) {
+  %a = ptr.from %n -> ptr<i64>
+  return
+}
+`, "ptr.from makes an anyptr or an opt<anyptr>, not ptr<i64>")
+
+	// A function that reaches a memory may not claim an address, in either
+	// order, or an offset into the memory becomes a pointer through conv.
+	const mem = "module \"csrc:test/v\"\n\nmemory @heap 1\n\n"
+	verifyError(t, mem+`fn @f(%a: u32) {
+  %v = mem.load.u32 @heap, %a
+  %w = conv %v -> usize
+  %p = ptr.from %w -> anyptr
+  return
+}
+`, "ptr.from and a linear memory in one function")
+	verifyError(t, mem+`fn @f(%a: u32) {
+  %w = conv %a -> usize
+  %p = ptr.from %w -> anyptr
+  %v = mem.load.u32 @heap, %a
+  return
+}
+`, "ptr.from and a linear memory in one function")
+
+	// The rule is the function's, not the module's, so it survives
+	// linking: a module may have both, in two functions.
+	roundTrip(t, mem+`fn @g(%a: u32) -> u32 {
+  %v = mem.load.u32 @heap, %a
+  return %v
+}
+
+fn @h(%n: usize) -> anyptr {
+  %p = ptr.from %n -> anyptr
+  return %p
+}
+`)
+}
+
 func TestVerifierChecksTruncAndBitcast(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: u8) {
   %r = trunc %x -> i64

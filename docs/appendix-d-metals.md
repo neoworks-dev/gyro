@@ -377,6 +377,8 @@ store %p, %v
 %n = ptr.diff %a, %b   ; ptr<T>, ptr<T> -> i64, how many elements apart
 %a = ptr.erase %p      ; ptr<T> -> anyptr; opt<ptr<T>> -> opt<anyptr>
 %p = ptr.cast %a -> ptr<T> ; the type put back, as the producer's claim
+%n = ptr.addr %a       ; anyptr -> usize; opt<anyptr> -> usize, 0 for a null
+%a = ptr.from %n -> anyptr ; usize -> the address, as the producer's claim
 ```
 
 `new` and `free` are the runtime's heap, and they are what the runtime's
@@ -441,6 +443,25 @@ bounds-checked, `u32`-addressed region it was, and a `memory` and a
 `ptr<T>` still never meet. An `anyptr` is not one either: erasing a
 target's type is not the same as having no address space, so an `anyptr`
 cannot cross a runtime boundary any more than a `ptr<T>` can.
+
+`ptr.addr` and `ptr.from` are an erased pointer and a number, the two
+halves again for the reason erasing and casting are: reading the number
+an address is cannot fail, and taking a number as an address is the
+producer's claim that something lives there — a device register, a page
+table, an address the kernel handed back. Both take and make `anyptr`, so
+a typed pointer goes through `ptr.erase` first and comes back through
+`ptr.cast`, and "where" and "what" stay two claims. `-> opt<anyptr>`
+makes 0 a null, which is C's `(T *)n`. The backend moves a register.
+
+The operand of `ptr.from` is a `usize` and never a linear memory's `u32`,
+and **a function that names a linear memory may not use it**. A linear
+address is an offset into its memory, not a place in the process, and
+this is the one instruction that would otherwise make it one through a
+`conv`. The rule is per function rather than per module because linking
+keeps every module's memories in the one module it makes, and the linked
+program is verified again. It does not stop a function from handing a
+`u32` it loaded to another function that claims it, and nothing in the
+format can: a sandboxed producer is one that does not emit `ptr.from`.
 
 ### Linear memory
 

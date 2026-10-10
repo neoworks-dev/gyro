@@ -920,8 +920,8 @@ access (#99) and raw system calls (#103) add primitives to the module.
 
 **Added beyond the first list:** `ptr_to_int`, because a program has no
 other way to get an address to give `ptr_from_int`, and a test of the second
-needs the first. METALS has no instruction between an integer and a pointer,
-so both are runtime functions.
+needs the first. Both lower to METALS instructions, `ptr.addr` and
+`ptr.from` (see "An address and a number are two METALS instructions").
 
 **`slice_from_raw` (#110)** makes a `T[]` from an address and a length, for
 memory that comes from outside a Gyro value: a mapped buffer, an SDL surface.
@@ -3688,6 +3688,40 @@ is an unsafe call rather than a conversion.)
 **Printing it prints the word.** There is nothing at the far end this
 program may read, so `println(p)` writes `anyptr` — decided in lowering,
 so all three tiers say it, rather than left to a backend to refuse.
+
+### An address and a number are two METALS instructions *(new)*
+
+**Status: done.** `%n = ptr.addr %a` reads the number an `anyptr` holds and
+`%a = ptr.from %n -> anyptr` takes a `usize` as an address. `unsafe`'s
+`ptr_to_int` and `ptr_from_int` lower to them, and the C functions behind
+both are gone from `rt.c` (#150). Nothing had decided against an
+instruction: `ptr_from_int` became a runtime function only because the
+format had no word for it when `unsafe` was built. A kernel needs the
+conversion for device registers and page tables (#94), and a runtime with
+no C needs it without a call.
+
+They mirror `ptr.erase` and `ptr.cast`. Reading the number cannot fail,
+and taking a number as an address is the producer's claim, so a typed
+pointer from a number is `ptr.from` then `ptr.cast`: where, then what.
+`opt<anyptr>` on either side makes 0 and a null one word, which is what
+C's `(T *)n` needs once the C front end stops refusing it (#81).
+
+**A linear address is never a pointer.** `ptr.from` takes a `usize`, not
+the `u32` a memory is addressed with, and a function that names a memory
+may not use `ptr.from` at all. The rule is per function because linking
+keeps each module's memories in the one module it makes and the linked
+program is verified again, so "the module declares a memory" would refuse
+every program that links a sandboxed module beside Gyro's standard
+library. A function can still hand a loaded `u32` to another that claims
+it; a sandboxed producer is one that does not emit `ptr.from`, which the
+format states and cannot enforce.
+
+**Rejected: `ptr.from` making a `ptr<T>` directly.** One instruction would
+answer both where and what, which is the conflation `ptr.erase` and
+`ptr.cast` were split to avoid. **Rejected: a module-wide memory rule**,
+for the linking reason above. **Rejected: keeping the runtime functions.**
+A call to C to move a register is a call the backend cannot see through,
+and it keeps C in a runtime #136 is removing.
 
 ### A code pointer is its own type, and `&f` is how you get one *(new)*
 

@@ -617,6 +617,14 @@ type funcVerifier struct {
 	*verifier
 	fn     *Func
 	labels []string
+	// reachesMemory and claimsAddress are what the function did with
+	// linear memory and with ptr.from. One function may not do both:
+	// whichever comes first, the other would make an offset into a
+	// sandboxed memory a place in the process. The rule is per function
+	// rather than per module because linking merges modules and keeps
+	// each one's memories, so a module is gone by the time the linked
+	// program is verified again, and a function is not.
+	reachesMemory, claimsAddress bool
 }
 
 func (v *verifier) checkFunc(fn *Func) error {
@@ -628,6 +636,9 @@ func (v *verifier) checkFunc(fn *Func) error {
 	fv := &funcVerifier{verifier: v, fn: fn}
 	if err := fv.checkBody(fn.Body, state); err != nil {
 		return err
+	}
+	if fv.reachesMemory && fv.claimsAddress {
+		return fmt.Errorf("ptr.from and a linear memory in one function; a linear address is never a pointer")
 	}
 	if v.regTypes != nil {
 		v.regTypes[fn.Name] = state.types
@@ -814,6 +825,7 @@ func (fv *funcVerifier) memory(name string) error {
 	if fv.memories[name] == nil {
 		return fmt.Errorf("no memory @%s", name)
 	}
+	fv.reachesMemory = true
 	return nil
 }
 

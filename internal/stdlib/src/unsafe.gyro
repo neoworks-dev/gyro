@@ -19,14 +19,10 @@ export unsafe fn cast<T>(p: anyptr): *T !{}
 // did not get from an allocation: a device register, a page table. Nothing
 // the borrow analysis can see says where it points, so it is treated as
 // coming from outside the program, the way the result of a C function is.
-export unsafe fn ptr_from_int<T>(address: usize): *T !{} {
-    return cast<T>(address_to_pointer(address))
-}
+export unsafe fn ptr_from_int<T>(address: usize): *T !{}
 
 // ptr_to_int is the address a pointer holds, as an integer.
 export unsafe fn ptr_to_int(p: anyptr): usize !{}
-
-unsafe fn address_to_pointer(address: usize): anyptr !{}
 
 // offset is the address `bytes` past base, which is how an arena says where
 // each block it carves out of its buffer starts. Whether the result is

@@ -235,10 +235,6 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
     memmove(to, from, (size_t)bytes);
 }
 
-/* An integer as an address and back, which no METALS instruction does. */
-void *gy_ptr_from_int(int64_t address) { return (void *)(uintptr_t)address; }
-int64_t gy_ptr_to_int(const void *p) { return (int64_t)(uintptr_t)p; }
-
 /* A string is a { len, bytes } header followed by its bytes in one block,
  * and sealing a block as one is the one step Gyro cannot take itself: it
  * has no way to make a string of an address. */
