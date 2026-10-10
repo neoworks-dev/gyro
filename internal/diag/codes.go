@@ -92,6 +92,10 @@ const (
 	EImplConflict        Code = "E0529"
 	ENotObjectSafe       Code = "E0530"
 	EDynConversion       Code = "E0531"
+	EAssocNotFound       Code = "E0532"
+	EAssocAmbiguous      Code = "E0533"
+	EAssocPin            Code = "E0534"
+	EAssocMismatch       Code = "E0535"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -276,6 +280,14 @@ var explanations = map[Code]explanation{
 		"A trait value is a pointer and a table with one entry per method, so\nevery method has to be callable without knowing the type behind it: it\ntakes a receiver, has no type parameters of its own, and mentions Self\nnowhere but the receiver. The capability traits the compiler answers\nstatically are not trait values either."},
 	EDynConversion: {"value cannot become a trait value",
 		"`pointer as dyn Trait` makes a trait value of a pointer to a type that\nimplements the trait. The trait value borrows what the pointer points at."},
+	EAssocNotFound: {"no such associated type",
+		"`C::Item` names the associated type `Item` of a trait that bounds `C`.\nNo trait among the bounds of `C`, or the traits those require, declares\nan associated type of that name. Inside an impl, `Self::Item` is found\nthrough the traits the type implements."},
+	EAssocAmbiguous: {"associated type is ambiguous",
+		"Two traits that bound the type both declare an associated type of that\nname, and `C::Item` does not say which is meant. Bound the parameter by\nonly one of them."},
+	EAssocPin: {"associated type pinned wrongly",
+		"A bound pins an associated type inside the trait's argument list, after\nthe positional arguments: `C: Container<Item = i32>`. The trait has to\ndeclare the type, and each is pinned once. An impl names its trait plainly\nand gives the types in its block."},
+	EAssocMismatch: {"associated type is not the pinned one",
+		"A bound such as `Container<Item = i32>` is satisfied only by a type whose\nimpl gave `Item` as exactly `i32`."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",

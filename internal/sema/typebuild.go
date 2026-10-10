@@ -34,6 +34,11 @@ func (c *checker) buildTypes(tree *ast.File) {
 	}
 	for _, decl := range tree.Decls {
 		if d, ok := decl.(*ast.TraitDecl); ok {
+			c.buildTraitAssoc(d)
+		}
+	}
+	for _, decl := range tree.Decls {
+		if d, ok := decl.(*ast.TraitDecl); ok {
 			c.buildTraitMethods(d)
 		}
 	}
@@ -401,6 +406,9 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 		}
 		if sym.typ == nil {
 			return types.Unknown
+		}
+		if len(t.Path.Segments) > 1 {
+			return c.resolveAssocPath(t.Path, sym.typ)
 		}
 		return sym.typ
 	case symNamespace:

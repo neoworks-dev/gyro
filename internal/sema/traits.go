@@ -59,6 +59,13 @@ func (c *checker) collectTrait(d *ast.TraitDecl) {
 		Decl:   d,
 	}
 	shell.Self.Bounds = []*types.TraitRef{{Trait: shell, Args: typeParamsAsArgs(shell.Params)}}
+	for _, assoc := range d.Assoc {
+		if shell.AssocNamed(assoc.Name) != nil {
+			c.errorf(assoc.Offset, "the trait %s already declares an associated type %s", d.Name, assoc.Name)
+			continue
+		}
+		shell.Assoc = append(shell.Assoc, &types.AssocType{Name: assoc.Name, Decl: assoc})
+	}
 	if c.modulePath == stdlib.Path("stdlib") && capabilityNames[d.Name] {
 		shell.Kind = d.Name
 		c.program.caps[d.Name] = shell
@@ -76,6 +83,25 @@ func (c *checker) buildTraitSupers(d *ast.TraitDecl) {
 		for _, super := range d.Supers {
 			if ref := c.resolveTraitRef(super); ref != nil {
 				trait.Supers = append(trait.Supers, ref)
+			}
+		}
+	})
+}
+
+// buildTraitAssoc reads the bounds of a trait's associated types, which may
+// mention Self::Item and so need every trait's supers to be known.
+func (c *checker) buildTraitAssoc(d *ast.TraitDecl) {
+	trait := c.traitTypes[d]
+	if len(trait.Assoc) == 0 {
+		return
+	}
+	c.pushScope(func() {
+		c.bindTraitScope(trait)
+		for _, assoc := range trait.Assoc {
+			for _, bound := range assoc.Decl.Bounds {
+				if ref := c.resolveTraitRef(bound); ref != nil {
+					assoc.Bounds = append(assoc.Bounds, ref)
+				}
 			}
 		}
 	})
@@ -217,7 +243,19 @@ func (c *checker) resolveTraitRef(t ast.Type) *types.TraitRef {
 		c.typeArgArityError(segment.Offset, trait.Name, len(trait.Params), len(args))
 		return nil
 	}
-	return &types.TraitRef{Trait: trait, Args: args}
+	ref := &types.TraitRef{Trait: trait, Args: args}
+	for _, pin := range segment.Pins {
+		if trait.AssocNamed(pin.Name) == nil {
+			c.errorf(pin.Offset, "the trait %s declares no associated type %s to pin", trait.Name, pin.Name)
+			continue
+		}
+		if ref.PinNamed(pin.Name) != nil {
+			c.errorf(pin.Offset, "the associated type %s is pinned twice", pin.Name)
+			continue
+		}
+		ref.Pins = append(ref.Pins, types.AssocPin{Name: pin.Name, Type: c.noFormat(pin.Type.Pos(), c.resolveType(pin.Type))})
+	}
+	return ref
 }
 
 // superRefs lists the traits a reference requires, with Self and the
@@ -234,7 +272,7 @@ func (c *checker) superRefs(ref *types.TraitRef, self types.Type) []*types.Trait
 
 // boundClosure lists every trait a type parameter is known to implement:
 // what it is bounded by, and what those require, transitively.
-func (c *checker) boundClosure(param *types.TypeParam) []*types.TraitRef {
+func (c *checker) boundClosureOf(param types.Type) []*types.TraitRef {
 	var out []*types.TraitRef
 	seen := map[string]bool{}
 	var walk func(ref *types.TraitRef)
@@ -249,7 +287,7 @@ func (c *checker) boundClosure(param *types.TypeParam) []*types.TraitRef {
 			walk(super)
 		}
 	}
-	for _, bound := range param.Bounds {
+	for _, bound := range c.boundsOf(param) {
 		walk(bound)
 	}
 	return out
@@ -318,6 +356,10 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 	if ref == nil {
 		return
 	}
+	if len(ref.Pins) > 0 {
+		c.errorf(d.Trait.Pos(), "an impl names its trait without pinning associated types; it gives them in its block, as type %s = ...", ref.Pins[0].Name)
+		ref.Pins = nil
+	}
 
 	for _, existing := range *impls {
 		if existing.Trait == ref.Trait && argsIdentical(existing.Args, ref.Args) {
@@ -330,6 +372,13 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 	*impls = append(*impls, impl)
 	c.implOf[d] = impl
 	c.implTypes[d] = owner
+
+	c.pushScope(func() {
+		c.bindImplParams(d, params)
+		self := c.declare("Self", d.Offset, symTypeParam, nil)
+		self.typ = owner
+		c.registerImplAssoc(d, impl, owner)
+	})
 }
 
 // implOwnerOf finds the type an impl is for, which has to be declared in
@@ -451,6 +500,14 @@ func (c *checker) checkImpl(d *ast.ImplDecl) {
 		}
 	}
 
+	if d.Body {
+		before := len(c.bag.Items())
+		c.checkImplAssoc(d, impl, owner, s)
+		if len(c.bag.Items()) > before {
+			impl.Broken = true
+		}
+	}
+
 	if !d.Body {
 		if !derivable[trait.Kind] {
 			c.errorHintf(d.Offset, []string{
@@ -536,6 +593,11 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 		own[param] = have.TypeParams[i]
 	}
 	want, _ = c.substType(want, own).(*types.Func)
+	if hasUnknown(want) {
+		// The trait's signature mentions an associated type the impl did
+		// not give, which is reported once, where it is missing.
+		return
+	}
 	if !types.Identical(have.Sig, want) {
 		c.errorf(decl.Offset, "%s does not match the trait: expected %s, found %s", decl.Name, want, have.Sig)
 	}
@@ -667,9 +729,9 @@ func (c *checker) implementsRef(t types.Type, ref *types.TraitRef) bool {
 	t = types.Default(t)
 
 	switch t := t.(type) {
-	case *types.TypeParam:
-		for _, bound := range c.boundClosure(t) {
-			if types.IdenticalRefs(bound, ref) {
+	case *types.TypeParam, *types.Assoc:
+		for _, bound := range c.boundClosureOf(t) {
+			if types.IdenticalRefs(bound, ref) && c.pinsHold(t, ref) {
 				return true
 			}
 		}
@@ -700,7 +762,7 @@ func (c *checker) implementsRef(t types.Type, ref *types.TraitRef) bool {
 		if !argsIdentical(c.implArgsFor(t, impl), ref.Args) {
 			continue
 		}
-		return true
+		return c.pinsHold(t, ref)
 	}
 	return false
 }
@@ -757,8 +819,8 @@ func (c *checker) hasCapability(t types.Type, kind string, seen map[string]bool)
 	t = types.Default(t)
 
 	switch t := t.(type) {
-	case *types.TypeParam:
-		for _, bound := range c.boundClosure(t) {
+	case *types.TypeParam, *types.Assoc:
+		for _, bound := range c.boundClosureOf(t) {
 			if bound.Trait.Kind == kind {
 				return true
 			}
@@ -930,10 +992,16 @@ func (c *checker) bundledParts(t types.Type, kind string, seen map[string]bool) 
 // requireImpl reports a type that does not implement a trait where one
 // is needed. why finishes the sentence naming what asked for it.
 func (c *checker) requireImpl(offset int, t types.Type, ref *types.TraitRef, why string) bool {
-	if types.IsUnknown(t) || c.implementsRef(t, ref) {
+	if types.IsUnknown(t) {
 		return true
 	}
-	c.errorHintf(offset, c.implHelp(t, ref), "%s does not implement %s, which %s", describeType(t), ref, why)
+	// The trait first, then the associated types the bound pins, so a type
+	// that lacks the impl is not told about its associated types too.
+	bare := &types.TraitRef{Trait: ref.Trait, Args: ref.Args}
+	if c.implementsRef(t, bare) {
+		return c.requirePins(offset, t, ref)
+	}
+	c.errorHintf(offset, c.implHelp(t, bare), "%s does not implement %s, which %s", describeType(t), bare, why)
 	return false
 }
 
@@ -1053,8 +1121,8 @@ func (c *checker) declareSelf(decl *ast.FuncDecl) {
 // boundCallee resolves a method called on a value whose type is a type
 // parameter: it has to come from one of the parameter's bounds, and the
 // signature is the trait's with Self replaced by the parameter.
-func (c *checker) boundCallee(fun *ast.SelectorExpr, param *types.TypeParam) callee {
-	for _, ref := range c.boundClosure(param) {
+func (c *checker) boundCallee(fun *ast.SelectorExpr, param types.Type) callee {
+	for _, ref := range c.boundClosureOf(param) {
 		// Print is the hook that replaces the derived text, and a number's
 		// text is made by the runtime, so there is no to_string to call on
 		// an arbitrary Print.
@@ -1073,16 +1141,16 @@ func (c *checker) boundCallee(fun *ast.SelectorExpr, param *types.TypeParam) cal
 	}
 
 	var names []string
-	for _, ref := range c.boundClosure(param) {
+	for _, ref := range c.boundClosureOf(param) {
 		for _, method := range ref.Trait.Methods {
 			names = append(names, method.Name)
 		}
 	}
 	help := didYouMean(fun.Name, names)
-	if len(param.Bounds) == 0 {
-		help = append(help, "a type parameter with no bounds can be stored and passed on, and nothing else; bound it: "+param.Name+": SomeTrait")
+	if len(c.boundsOf(param)) == 0 {
+		help = append(help, "a type parameter with no bounds can be stored and passed on, and nothing else; bound it: "+param.String()+": SomeTrait")
 	} else {
-		help = append(help, "the bounds of "+param.Name+" do not provide it; bound it by a trait that declares "+fun.Name)
+		help = append(help, "the bounds of "+param.String()+" do not provide it; bound it by a trait that declares "+fun.Name)
 	}
 	c.errorHintf(fun.NameOffset, help, "%s has no method %s", param, fun.Name)
 	return callee{bad: true}
@@ -1166,6 +1234,9 @@ func (c *checker) objectSafetyProblem(trait *types.Trait, seen map[*types.Trait]
 	}
 	if len(trait.Params) > 0 {
 		return "it takes type parameters, and a method table holds one signature per method"
+	}
+	if len(trait.Assoc) > 0 {
+		return "it declares the associated type " + trait.Assoc[0].Name + ", and the type behind a trait value is not known to say what it is"
 	}
 	for _, decl := range trait.Decl.Methods {
 		switch {
@@ -1333,8 +1404,8 @@ func (c *checker) indexElem(t types.Type) types.Type { return c.singleArg(t, "In
 // singleArg is the T of the impl or bound of a one-parameter capability
 // trait such as Iterator<T>, or nil when t has none.
 func (c *checker) singleArg(t types.Type, kind string) types.Type {
-	if param, ok := t.(*types.TypeParam); ok {
-		for _, bound := range c.boundClosure(param) {
+	if opaque(t) {
+		for _, bound := range c.boundClosureOf(t) {
 			if bound.Trait.Kind == kind && len(bound.Args) == 1 {
 				return bound.Args[0]
 			}
@@ -1478,4 +1549,45 @@ func (c *checker) checkCallBounds(call *ast.CallExpr, target callee, method *typ
 		}
 	}
 	return ok
+}
+
+// hasUnknown reports whether a type mentions the placeholder an earlier error
+// left behind.
+func hasUnknown(t types.Type) bool {
+	switch t := t.(type) {
+	case nil:
+		return false
+	case *types.Pointer:
+		return hasUnknown(t.Elem)
+	case *types.Optional:
+		return hasUnknown(t.Elem)
+	case *types.Slice:
+		return hasUnknown(t.Elem)
+	case *types.Array:
+		return hasUnknown(t.Elem)
+	case *types.Chan:
+		return hasUnknown(t.Elem)
+	case *types.Future:
+		return hasUnknown(t.Result)
+	case *types.Tuple:
+		return anyUnknown(t.Elems)
+	case *types.Func:
+		return anyUnknown(t.Params) || hasUnknown(t.Result)
+	case *types.Code:
+		return anyUnknown(t.Params) || hasUnknown(t.Result)
+	case *types.Struct:
+		return anyUnknown(t.Args)
+	case *types.Enum:
+		return anyUnknown(t.Args)
+	}
+	return types.IsUnknown(t)
+}
+
+func anyUnknown(list []types.Type) bool {
+	for _, t := range list {
+		if hasUnknown(t) {
+			return true
+		}
+	}
+	return false
 }

@@ -753,6 +753,11 @@ func TestImplMisuse(t *testing.T) {
 		{"arguments are parameter names", "impl Eq for Pair<*T>\n", "type's own parameters"},
 		{"an exported impl", "export impl Eq for P\n", "not exported"},
 		{"trait owner", "trait T {\n  fn T::f(self)\n}\n", "without an owner"},
+		{"a trait gives no type", "trait T {\n  type Item = i32\n}\n", "declares an associated type without giving it"},
+		{"an impl states no bounds", "impl T for P {\n  type Item: Eq = i32\n}\n", "its bounds are the trait's"},
+		{"an impl gives a type", "impl T for P {\n  type Item\n}\n", "expected ="},
+		{"no argument after a pin", "fn f<C: T<Item = i32, i32>>(c: C) {\n}\n", "cannot follow a pinned associated type"},
+		{"a pin is for bounds", "var x: Box<Item = i32>\n", "expected >"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
