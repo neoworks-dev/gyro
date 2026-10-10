@@ -72,6 +72,12 @@ For `.gyro` files:
   the argument is written named, and when the callee has no declaration to
   read names from. Hints come from the current analysis only, never from the
   last good one: its offsets belong to text the editor has already changed.
+- **Formatting**: `textDocument/formatting` answers with one edit that
+  replaces the whole document with `gyro fmt`'s layout, and with no edits
+  when the buffer does not parse or is already formatted. The editor's tab
+  size and width settings are ignored; the layout has no options
+  ([chapter 16.1](ch16-01-the-gyro-command.md)). Format on save is the
+  editor's setting to turn on.
 - **Completion**: names in scope, struct fields and methods after `.`,
   variants and associated functions after `::`, exported names after a
   wildcard import's `namespace::`, keywords. Member completion resolves
