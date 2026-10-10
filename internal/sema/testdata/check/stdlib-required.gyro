@@ -25,7 +25,7 @@ fn drain(ch: chan<i32>) {
 }
 
 fn choose(ch: chan<i32>) {
-    select { //~ E0620 a select is implemented in stdlib; this program does not load stdlib
+    select {                       //~ E0620 a select is implemented in stdlib; this program does not load stdlib
         var v = <-ch: v.compare(0) //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
     }
 }
@@ -34,6 +34,6 @@ async fn work(): i32 { //~ E0620 an async function is implemented in stdlib; thi
     return 1
 }
 
-async fn wait(): i32 { //~ E0620 an async function is implemented in stdlib; this program does not load stdlib
+async fn wait(): i32 {  //~ E0620 an async function is implemented in stdlib; this program does not load stdlib
     return await work() //~ E0620 an await is implemented in stdlib; this program does not load stdlib
 }
