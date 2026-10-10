@@ -475,59 +475,6 @@ int64_t gy_read_byte(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mutex<T> and its guard.                                            */
-/* ------------------------------------------------------------------ */
-
-typedef struct {
-    pthread_mutex_t mutex;
-    char *value;
-    int64_t size;
-} gy_mutex;
-
-typedef struct {
-    gy_mutex *mutex;
-    int done;
-} gy_guard;
-
-void *gy_mutex_new(const void *init, int64_t size) {
-    gy_mutex *m = calloc(1, sizeof(gy_mutex));
-    pthread_mutex_init(&m->mutex, NULL);
-    m->size = size;
-    m->value = malloc((size_t)size);
-    memcpy(m->value, init, (size_t)size);
-    return m;
-}
-
-void *gy_mutex_lock(gy_mutex *m) {
-    pthread_mutex_lock(&m->mutex);
-    gy_guard *guard = calloc(1, sizeof(gy_guard));
-    guard->mutex = m;
-    return guard;
-}
-
-static void gy_guard_check(gy_guard *guard) {
-    if (guard->done) {
-        gy_abort_c("the guard was already unlocked");
-    }
-}
-
-void gy_guard_get(void *out, gy_guard *guard) {
-    gy_guard_check(guard);
-    memcpy(out, guard->mutex->value, (size_t)guard->mutex->size);
-}
-
-void gy_guard_set(gy_guard *guard, const void *value) {
-    gy_guard_check(guard);
-    memcpy(guard->mutex->value, value, (size_t)guard->mutex->size);
-}
-
-void gy_guard_unlock(gy_guard *guard) {
-    gy_guard_check(guard);
-    guard->done = 1;
-    pthread_mutex_unlock(&guard->mutex->mutex);
-}
-
-/* ------------------------------------------------------------------ */
 /* Channels: a mutex/condvar ring buffer; capacity 0 is a true        */
 /* rendezvous — the sender blocks until a receiver takes the element. */
 /* ------------------------------------------------------------------ */

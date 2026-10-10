@@ -114,6 +114,28 @@ export unsafe fn atomic_xor<T>(p: *T, value: T): T !{}
 export unsafe fn atomic_fence() !{}
 
 // ---------------------------------------------------------------------------
+// Waiting
+// ---------------------------------------------------------------------------
+
+// A thread that has nothing to do until another thread acts sleeps on a
+// word in memory, which is what the Linux futex system call is. These are
+// the two halves, over a u32 that every thread concerned reaches.
+//
+// futex_wait sleeps while the word holds `expected`, and returns when
+// another thread calls futex_wake on it, when the word did not hold
+// `expected` to begin with, or for no reason at all: the caller looks at
+// the word again, in a loop. Checking the word and going to sleep is one
+// step, which is what keeps a wake-up from being missed between them.
+//
+// They are system calls, answered by lowering, and they declare no effect:
+// a thread waiting for another is not input or output, and the locks
+// written over them are no more than a value in memory to their callers.
+export unsafe fn futex_wait(word: *u32, expected: u32) !{}
+
+// futex_wake wakes up to `count` threads asleep on the word.
+export unsafe fn futex_wake(word: *u32, count: u32) !{}
+
+// ---------------------------------------------------------------------------
 // System calls
 // ---------------------------------------------------------------------------
 

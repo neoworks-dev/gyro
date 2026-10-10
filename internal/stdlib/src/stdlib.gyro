@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -1019,21 +1019,93 @@ export fn Map<K, V>::free(*self) !{} {
     self.count = 0
 }
 
+// A lock over one u32: 0 is free, 1 is held, and 2 is held with a thread
+// asleep on it. Only the last unlock that finds a 2 pays for a system call,
+// so a lock nobody waits for is two atomic instructions.
+safe fn lock_word(word: *u32) !{} {
+    var seen = atomic_cas(word, 0, 1)
+    if seen == 0 {
+        return
+    }
+    if seen != 2 {
+        seen = atomic_swap(word, 2)
+    }
+    while seen != 0 {
+        futex_wait(word, 2)
+        seen = atomic_swap(word, 2)
+    }
+}
+
+safe fn unlock_word(word: *u32) !{} {
+    if atomic_sub(word, 1) != 1 {
+        atomic_store(word, 0)
+        futex_wake(word, 1)
+    }
+}
+
 // Mutex<T> owns the value it guards; lock() returns the guard directly.
 // There is no poisoning: a panic aborts the whole process, so no thread
 // ever observes a lock its holder abandoned.
-export struct Mutex<T> {}
+//
+// A Mutex is a handle, as an Array is: a pointer to the lock and the value,
+// so a copy is the same mutex, which is how a closure carries one to
+// another thread.
+//
+// The epoch counts acquisitions and releases, so it is odd while the lock
+// is held. A guard remembers the epoch its lock made, and is good for
+// exactly as long as the mutex still has it: after unlock the guard is
+// stale, and every use of it says so.
+struct MutexHead<T> {
+    word: u32
+    epoch: u64
+    value: T
+}
 
-export fn Mutex<T>::new(value: T): Mutex<T> !{}
-export fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+export struct Mutex<T> {
+    head: *MutexHead<T>
+}
 
-export struct MutexGuard<T> {}
+export safe fn Mutex<T>::new(value: T): Mutex<T> !{} {
+    var head = alloc<MutexHead<T>>(heap())
+    head.value = value
+    return Mutex<T>{ head: head }
+}
 
-export fn MutexGuard<T>::get(self): T !{}
-export fn MutexGuard<T>::set(*self, value: T) !{}
+export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{} {
+    var head = self.head
+    lock_word(&head.word)
+    head.epoch = head.epoch + 1
+    return MutexGuard<T>{ head: head, epoch: head.epoch }
+}
+
+export struct MutexGuard<T> {
+    head: *MutexHead<T>
+    epoch: u64
+}
+
+export safe fn MutexGuard<T>::get(self): T !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    return self.head.value
+}
+
+export safe fn MutexGuard<T>::set(*self, value: T) !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    self.head.value = value
+}
+
 // Release is explicit until a drop-based design is settled; pair lock()
 // with `defer guard.unlock()`.
-export fn MutexGuard<T>::unlock(*self) !{}
+export safe fn MutexGuard<T>::unlock(*self) !{} {
+    if self.head.epoch != self.epoch {
+        panic("the guard was already unlocked")
+    }
+    self.head.epoch = self.epoch + 1
+    unlock_word(&self.head.word)
+}
 
 // Atomic<T> is a cell that threads reach at the same moment without a lock.
 // T is an integer of 8 to 64 bits, a bool or a pointer. Every operation is

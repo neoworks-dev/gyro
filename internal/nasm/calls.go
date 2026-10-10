@@ -456,8 +456,6 @@ func (g *generator) nativePlanFor(name string, sig *metals.FnType) nativePlan {
 	switch owner {
 	case "":
 		return g.freePlan(name, method, sig)
-	case "Mutex", "MutexGuard":
-		return g.mutexPlan(name, method, sig)
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}
@@ -501,26 +499,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 		return nativePlan{symbol: "gy_write_byte", args: values(0, 1)}
 	case "read_byte":
 		return nativePlan{symbol: "gy_read_byte"}
-	}
-	g.fail("no native mapping for @%s", name)
-	return nativePlan{}
-}
-
-func (g *generator) mutexPlan(name, method string, sig *metals.FnType) nativePlan {
-	switch method {
-	case "new":
-		return nativePlan{
-			symbol: "gy_mutex_new", args: []planArg{pointerTo(0)},
-			extras: []int64{int64(g.sizeOf(sig.Params[0]))},
-		}
-	case "lock":
-		return nativePlan{symbol: "gy_mutex_lock", args: values(0)}
-	case "get":
-		return nativePlan{symbol: "gy_guard_get", sret: true, args: values(0)}
-	case "set":
-		return nativePlan{symbol: "gy_guard_set", args: []planArg{{index: 0}, pointerTo(1)}}
-	case "unlock":
-		return nativePlan{symbol: "gy_guard_unlock", args: values(0)}
 	}
 	g.fail("no native mapping for @%s", name)
 	return nativePlan{}

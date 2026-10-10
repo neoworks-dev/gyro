@@ -93,3 +93,30 @@ func atomicCellWanted(op string) string {
 	}
 	return "an integer, a bool or a pointer"
 }
+
+// prepareFutex lowers futex_wait and futex_wake to the futex system call,
+// private to this process, with the operation and the unused arguments as
+// constants.
+func (f *funcLowerer) prepareFutex(call *ast.CallExpr, resolved *sema.CallInfo, name string) func() string {
+	word := f.lowerExpr(call.Args[0].Value, resolved.Sig.Params[0])
+	argument := f.lowerExpr(call.Args[1].Value, resolved.Sig.Params[1])
+	return func() string {
+		constant := func(typ metals.Type, value string) string {
+			reg := f.newReg("futex")
+			f.emit(&metals.Const{Dst: reg, Type: typ, Value: value})
+			return reg
+		}
+		number := constant(metals.TUsize, "202")
+		var args []string
+		if name == "futex_wait" {
+			// FUTEX_WAIT_PRIVATE, the value the word must still hold, and
+			// no timeout.
+			args = []string{word, constant(metals.TInt64, "128"), argument, constant(metals.TInt64, "0")}
+		} else {
+			// FUTEX_WAKE_PRIVATE and how many to wake.
+			args = []string{word, constant(metals.TInt64, "129"), argument}
+		}
+		f.emit(&metals.Syscall{Dst: f.newReg("futex"), Number: number, Args: args})
+		return ""
+	}
+}
