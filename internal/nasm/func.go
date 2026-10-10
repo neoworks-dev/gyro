@@ -477,6 +477,7 @@ var narrowRegs = map[string][3]string{
 	"rbx": {"bl", "bx", "ebx"},
 	"rcx": {"cl", "cx", "ecx"},
 	"rdx": {"dl", "dx", "edx"},
+	"r8":  {"r8b", "r8w", "r8d"},
 	"r12": {"r12b", "r12w", "r12d"},
 	"r13": {"r13b", "r13w", "r13d"},
 	"r14": {"r14b", "r14w", "r14d"},
@@ -820,6 +821,9 @@ func (f *frame) instr(instr metals.Instr) {
 		g.ins("mov rax, %s", f.slot(i.Number))
 		g.ins("syscall")
 		g.ins("mov %s, rax", f.slot(i.Dst))
+
+	case *metals.AtomicLoad, *metals.AtomicStore, *metals.AtomicRMW, *metals.AtomicCas, *metals.Fence:
+		f.emitAtomic(instr)
 
 	case *metals.IndexGet:
 		element := f.indexedElement(i.X, i.Index)

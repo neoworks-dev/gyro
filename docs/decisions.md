@@ -3724,6 +3724,50 @@ for the linking reason above. **Rejected: keeping the runtime functions.**
 A call to C to move a register is a call the backend cannot see through,
 and it keeps C in a runtime #136 is removing.
 
+### Atomics have one ordering *(new)*
+
+**Status: done** (#82, built under #142). METALS has `atomic.load`,
+`atomic.store`, `atomic.swap`, `atomic.cas`, `atomic.add`, `atomic.sub`,
+`atomic.and`, `atomic.or`, `atomic.xor` and `atomic.fence`, with one
+ordering, sequentially consistent, as Go's `sync/atomic` has. Every
+operation blocks all reordering around it, so there is no ordering operand
+to get wrong. On x86-64 that costs almost nothing: loads are plain moves at
+every ordering, read-modify-write instructions are `lock`-prefixed, which is
+already sequentially consistent, and only a store pays, as an `xchg`. The
+weaker C11 orderings only run faster on weakly ordered CPUs, and with one
+x86 backend a too-weak ordering could never be caught by a test. Adding an
+ordering operand later is a plain extension, with this meaning as default.
+The C front end can accept every `memory_order` by strengthening it, which
+is always correct.
+
+**The result is the old value.** Every read-modify-write answers what the
+cell held before, as hardware does, and `atomic.cas` answers the old value
+too, so the exchange happened exactly when it equals the expected one.
+`Atomic<T>::compare_and_swap` builds its `bool` in Gyro from that. A
+`bool`-returning `cas` would have forced a second instruction for the
+failure value that a retry loop wants.
+
+**The cell is a `ptr<T>`, and `T` is a word.** Integers of 8 to 64 bits, a
+`bool`, a `ptr`, an `anyptr` and the one-word nullable pointer, since a
+lock-free stack's head is one. Arithmetic is for integers. A `memory`'s
+`u32` address never reaches an atomic, so linear memory stays a second
+model that no instruction mixes with the first.
+
+**`Atomic<T>` holds its value inline** and is shared by pointer, and the
+race warning leaves a pointer or a slice of it alone. An `Atomic` that was
+a handle, as `Mutex` and `Array` are, would put a heap allocation behind
+every flag and could not sit inside a struct a kernel lays out (#94).
+`fetch_add` and its siblings are spelled that way because `add` is the
+arithmetic trait's name.
+
+**Rejected: an ordering operand now.** Nothing could test a weak ordering,
+and a spelling picked before a weakly ordered backend exists is a guess.
+**Rejected: atomics as `unsafe` functions only, with no instruction.** A
+call to C or to an assembly stub is a call the backend cannot see through,
+and the verifier could not check the cell's type. **Rejected: a separate
+atomic type in METALS.** A `ptr<T>` to an ordinary `T` is what the C front
+end and a struct field already are.
+
 ### A code pointer is its own type, and `&f` is how you get one *(new)*
 
 **Status: decided.** `code(A, B): C` is the address of a function with no

@@ -156,6 +156,24 @@ export fn MutexGuard<T>::set(*self, value: T) !{}
 export fn MutexGuard<T>::unlock(*self) !{}
 ```
 
+Atomics ([chapter 13.1](ch13-01-threads.md)):
+
+```gyro
+export struct Atomic<T: Eq> { value: T }
+export fn Atomic<T>::new(value: T): Atomic<T> !{}
+export safe fn Atomic<T>::load(*self): T !{}
+export safe fn Atomic<T>::store(*self, value: T) !{}
+export safe fn Atomic<T>::swap(*self, value: T): T !{}
+export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{}
+export safe fn Atomic<T>::fetch_add(*self, value: T): T !{}   // also sub, and, or, xor
+export safe fn fence() !{}
+```
+
+`T` is an integer of 8 to 64 bits, a `bool` or a pointer (the arithmetic
+ones take integers). The operations are written in Gyro over `unsafe`'s
+`atomic_*` functions, each of which is one METALS atomic instruction
+([appendix D](appendix-d-metals.md)).
+
 ### `mem`
 
 The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
@@ -418,7 +436,7 @@ export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: 
 ```
 
 `cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `slice_from_raw`,
-`env_of`/`with_env` and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
+`env_of`/`with_env`, the `atomic_*` functions and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
 instruction, and its arguments must be integers, `bool`s or pointers.
 `offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
 Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
@@ -480,7 +498,7 @@ Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private
 `align` and `panic`, `Format`'s `show`, the `unsafe` module's `raw_alloc`,
 `raw_free`, `raw_resize`, `copy_bytes`, `text_seal` and `text_bytes`
 (`cast`, `offset`, `ptr_from_int`, `ptr_to_int`, `slice_from_raw`,
-`env_of`, `with_env` and the `syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
+`env_of`, `with_env`, the `atomic_*` functions and the `syscall` functions are lowering's), `to_f64`, the `os` and `time` surfaces
 and `net::get`. The `math` functions are METALS instructions, and so are
 the float conversions: the backend emits them in line.
 

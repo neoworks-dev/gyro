@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { cast, copy_bytes, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, offset, raw_alloc, slice_from_raw, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -1034,3 +1034,68 @@ export fn MutexGuard<T>::set(*self, value: T) !{}
 // Release is explicit until a drop-based design is settled; pair lock()
 // with `defer guard.unlock()`.
 export fn MutexGuard<T>::unlock(*self) !{}
+
+// Atomic<T> is a cell that threads reach at the same moment without a lock.
+// T is an integer of 8 to 64 bits, a bool or a pointer. Every operation is
+// seen by every thread in one order and nothing moves across it, so there is
+// no ordering to choose.
+//
+// The cell is the value, stored where the Atomic is: a thread shares one the
+// way it shares any memory, by pointer, and the race warning
+// ([chapter 13.1](ch13-01-threads.md)) leaves a pointer to an Atomic alone.
+// Copying an Atomic copies the number it holds at that moment, not the
+// cell.
+export struct Atomic<T: Eq> {
+    value: T
+}
+
+export fn Atomic<T>::new(value: T): Atomic<T> !{} {
+    return Atomic<T>{ value: value }
+}
+
+export safe fn Atomic<T>::load(*self): T !{} {
+    return atomic_load(&self.value)
+}
+
+export safe fn Atomic<T>::store(*self, value: T) !{} {
+    atomic_store(&self.value, value)
+}
+
+// swap stores value and answers what the cell held.
+export safe fn Atomic<T>::swap(*self, value: T): T !{} {
+    return atomic_swap(&self.value, value)
+}
+
+// compare_and_swap stores desired when the cell holds expected, and answers
+// whether it did.
+export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{} {
+    return atomic_cas(&self.value, expected, desired) == expected
+}
+
+// The fetch operations store the result of the arithmetic and answer what the
+// cell held before. They wrap, and they are for integers.
+export safe fn Atomic<T>::fetch_add(*self, value: T): T !{} {
+    return atomic_add(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_sub(*self, value: T): T !{} {
+    return atomic_sub(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_and(*self, value: T): T !{} {
+    return atomic_and(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_or(*self, value: T): T !{} {
+    return atomic_or(&self.value, value)
+}
+
+export safe fn Atomic<T>::fetch_xor(*self, value: T): T !{} {
+    return atomic_xor(&self.value, value)
+}
+
+// fence keeps every atomic operation before it from being seen after any
+// operation following it.
+export safe fn fence() !{} {
+    atomic_fence()
+}

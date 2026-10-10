@@ -423,6 +423,16 @@ func (g *generator) rolesOf(instr metals.Instr) roles {
 		return roles{}
 	case *metals.SliceFrom:
 		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Len}}
+	case *metals.AtomicLoad:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr}}
+	case *metals.AtomicStore:
+		return roles{uses: []string{i.Ptr, i.Val}}
+	case *metals.AtomicRMW:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Val}}
+	case *metals.AtomicCas:
+		return roles{defs: []string{i.Dst}, uses: []string{i.Ptr, i.Expected, i.New}}
+	case *metals.Fence:
+		return roles{}
 	case *metals.Syscall:
 		return roles{defs: []string{i.Dst}, uses: append([]string{i.Number}, i.Args...)}
 	case *metals.SliceSub:

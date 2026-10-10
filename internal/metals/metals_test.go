@@ -1219,6 +1219,80 @@ fn @h(%n: usize) -> anyptr {
 `)
 }
 
+func TestVerifierChecksAtomics(t *testing.T) {
+	roundTrip(t, header+`fn @f(%p: ptr<u16>, %q: ptr<ptr<i64>>, %r: ptr<bool>, %s: ptr<anyptr>, %w: anyptr, %o: ptr<opt<ptr<i64>>>) {
+  %a = atomic.load %p
+  atomic.store %p, %a
+  %b = atomic.swap %p, %a
+  %c = atomic.add %p, %b
+  %d = atomic.sub %p, %c
+  %e = atomic.and %p, %d
+  %f = atomic.or %p, %e
+  %g = atomic.xor %p, %f
+  %h = atomic.cas %p, %g, %a
+  %i = atomic.load %q
+  %j = atomic.swap %q, %i
+  %k = atomic.cas %q, %i, %j
+  %l = atomic.load %r
+  %m = atomic.cas %r, %l, %l
+  %n = atomic.swap %s, %w
+  %z = atomic.load %o
+  %y = atomic.cas %o, %z, %z
+  atomic.fence
+  return
+}
+`)
+
+	verifyError(t, header+`fn @f(%a: usize) {
+  %v = atomic.load %a
+  return
+}
+`, "atomic.load wants a ptr<T>, not usize")
+
+	// An atomic acts on a word the hardware updates in one step.
+	verifyError(t, header+`fn @f(%p: ptr<f64>) {
+  %v = atomic.load %p
+  return
+}
+`, "atomic.load works on an integer, a bool or a pointer, not f64")
+	verifyError(t, header+`fn @f(%p: ptr<str>, %s: str) {
+  atomic.store %p, %s
+  return
+}
+`, "atomic.store works on an integer, a bool or a pointer, not str")
+
+	// Only the optional that is one word qualifies.
+	verifyError(t, header+`fn @f(%p: ptr<opt<i64>>) {
+  %v = atomic.load %p
+  return
+}
+`, "atomic.load works on an integer, a bool or a pointer, not opt<i64>")
+
+	// Arithmetic is for integers; a pointer or a bool has no sum.
+	verifyError(t, header+`fn @f(%p: ptr<bool>, %b: bool) {
+  %v = atomic.add %p, %b
+  return
+}
+`, "atomic.add works on an integer, not bool")
+	verifyError(t, header+`fn @f(%p: ptr<anyptr>, %b: anyptr) {
+  %v = atomic.xor %p, %b
+  return
+}
+`, "atomic.xor works on an integer, not anyptr")
+
+	// The operand is the cell's type exactly: no widening, no narrowing.
+	verifyError(t, header+`fn @f(%p: ptr<u8>, %n: u32) {
+  atomic.store %p, %n
+  return
+}
+`, "atomic.store of u32 on a cell of u8")
+	verifyError(t, header+`fn @f(%p: ptr<i32>, %a: i32, %b: i64) {
+  %v = atomic.cas %p, %a, %b
+  return
+}
+`, "atomic.cas of i64 on a cell of i32")
+}
+
 func TestVerifierChecksTruncAndBitcast(t *testing.T) {
 	verifyError(t, header+`fn @f(%x: u8) {
   %r = trunc %x -> i64

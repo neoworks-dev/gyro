@@ -351,6 +351,47 @@ func (fv *funcVerifier) checkInstr(instr Instr, state *regState) error {
 		}
 		return fmt.Errorf("ptr.from makes an anyptr or an opt<anyptr>, not %s; ptr.cast puts a type on it", i.To)
 
+	case *AtomicLoad:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.load", false)
+		if err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *AtomicStore:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.store", false)
+		if err != nil {
+			return err
+		}
+		return fv.atomicOperand(state, i.Val, elem, "atomic.store")
+
+	case *AtomicRMW:
+		op := "atomic." + i.Op
+		elem, err := fv.atomicCell(state, i.Ptr, op, i.Op != "swap")
+		if err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.Val, elem, op); err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *AtomicCas:
+		elem, err := fv.atomicCell(state, i.Ptr, "atomic.cas", false)
+		if err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.Expected, elem, "atomic.cas"); err != nil {
+			return err
+		}
+		if err := fv.atomicOperand(state, i.New, elem, "atomic.cas"); err != nil {
+			return err
+		}
+		return fv.def(state, i.Dst, elem)
+
+	case *Fence:
+		return nil
+
 	case *PtrCast:
 		typ, err := fv.use(state, i.X)
 		if err != nil {
@@ -1134,6 +1175,54 @@ func (fv *funcVerifier) useAny(state *regState, name, what string) error {
 	}
 	if _, ok := typ.(*Any); !ok {
 		return fmt.Errorf("%s works on any values, not %s", what, typ)
+	}
+	return nil
+}
+
+// atomicCell checks the pointer an atomic operation goes through and
+// answers what it points at. The cell is a word the hardware can update in
+// one step: an integer of 8 to 64 bits, a bool, a ptr or an anyptr, or the
+// nullable form of either, which is the same word. The
+// arithmetic and bitwise operations are for integers alone, since adding to
+// a pointer or a bool means nothing an atomic can promise.
+func (fv *funcVerifier) atomicCell(state *regState, ptr, op string, integersOnly bool) (Type, error) {
+	typ, err := fv.use(state, ptr)
+	if err != nil {
+		return nil, err
+	}
+	pointer, ok := typ.(*Ptr)
+	if !ok {
+		return nil, fmt.Errorf("%s wants a ptr<T>, not %s", op, typ)
+	}
+	if integersOnly {
+		if !intKind(pointer.Elem) {
+			return nil, fmt.Errorf("%s works on an integer, not %s", op, pointer.Elem)
+		}
+		return pointer.Elem, nil
+	}
+	switch elem := pointer.Elem.(type) {
+	case *Ptr, *AnyPtr:
+		return elem, nil
+	case *Opt:
+		// A nullable pointer is one word, which is all an atomic asks.
+		if NicheOpt(elem) {
+			return elem, nil
+		}
+	}
+	if intKind(pointer.Elem) || isBool(pointer.Elem) {
+		return pointer.Elem, nil
+	}
+	return nil, fmt.Errorf("%s works on an integer, a bool or a pointer, not %s", op, pointer.Elem)
+}
+
+// atomicOperand checks that a value is the type the cell holds.
+func (fv *funcVerifier) atomicOperand(state *regState, reg string, elem Type, op string) error {
+	typ, err := fv.use(state, reg)
+	if err != nil {
+		return err
+	}
+	if !TypesEqual(typ, elem) {
+		return fmt.Errorf("%s of %s on a cell of %s", op, typ, elem)
 	}
 	return nil
 }

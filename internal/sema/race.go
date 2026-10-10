@@ -3,6 +3,7 @@ package sema
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/diag"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -11,7 +12,8 @@ import (
 // threads end up writing the same memory. Copying a `T[]` is the same story,
 // a slice being a pointer and a length over storage it does not own.
 //
-// A channel is exempt: handing work between threads is what it is for. A
+// A channel is exempt: handing work between threads is what it is for, and
+// so is a pointer to an Atomic, whose every access is atomic. A
 // `move` capture is exempt too, since the binding goes into the closure
 // rather than being shared with it.
 //
@@ -100,6 +102,9 @@ func (c *checker) warnRace(call *ast.CallExpr, name, shared string, typ types.Ty
 func sharedReference(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Pointer:
+		if isAtomic(t.Elem) {
+			return ""
+		}
 		return "memory"
 	case *types.Basic:
 		// An anyptr is an address that forgot what it addresses, which
@@ -108,11 +113,29 @@ func sharedReference(t types.Type) string {
 			return "memory"
 		}
 	case *types.Slice:
+		if isAtomic(t.Elem) {
+			return ""
+		}
 		return "elements"
 	case *types.Optional:
 		return sharedReference(t.Elem)
 	}
 	return ""
+}
+
+// isAtomic reports whether a type is stdlib's Atomic<T>. Every access to
+// one is an atomic instruction, so two threads reaching it by pointer is the
+// use it is for and not a race.
+func isAtomic(t types.Type) bool {
+	strct, ok := t.(*types.Struct)
+	if !ok {
+		return false
+	}
+	origin := strct
+	if strct.Origin != nil {
+		origin = strct.Origin
+	}
+	return origin.Name == "Atomic" && origin.Module == stdlib.Path("stdlib")
 }
 
 func movedNames(closure *ast.ClosureExpr) map[string]bool {

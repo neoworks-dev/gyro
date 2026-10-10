@@ -449,6 +449,9 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 			f.emit(&metals.Syscall{Dst: out, Number: number, Args: args})
 			return out
 		}
+	case "atomic_load", "atomic_store", "atomic_swap", "atomic_cas", "atomic_add", "atomic_sub",
+		"atomic_and", "atomic_or", "atomic_xor", "atomic_fence":
+		return f.prepareAtomicIntrinsic(call, resolved, decl.Name)
 	case "slice_from_raw":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

@@ -83,6 +83,37 @@ export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
 
 // ---------------------------------------------------------------------------
+// Atomics
+// ---------------------------------------------------------------------------
+
+// Operations on a cell other threads may use at the same moment, each one
+// METALS atomic instruction (appendix D). T is an integer of 8 to 64 bits, a
+// bool or a pointer, and p is aligned for it. There is one ordering, the
+// strongest: every operation is seen by every thread in one order, and
+// nothing moves across it. stdlib's Atomic<T> is written over these.
+//
+// All of them answer the value the cell held before, except the load, which
+// answers what it holds, and the store, which answers nothing. The
+// arithmetic ones wrap and take integers alone.
+export unsafe fn atomic_load<T>(p: *T): T !{}
+export unsafe fn atomic_store<T>(p: *T, value: T) !{}
+export unsafe fn atomic_swap<T>(p: *T, value: T): T !{}
+
+// atomic_cas stores `desired` when the cell holds `expected`. It answers
+// what the cell held, so the exchange happened exactly when that is
+// `expected`.
+export unsafe fn atomic_cas<T>(p: *T, expected: T, desired: T): T !{}
+export unsafe fn atomic_add<T>(p: *T, value: T): T !{}
+export unsafe fn atomic_sub<T>(p: *T, value: T): T !{}
+export unsafe fn atomic_and<T>(p: *T, value: T): T !{}
+export unsafe fn atomic_or<T>(p: *T, value: T): T !{}
+export unsafe fn atomic_xor<T>(p: *T, value: T): T !{}
+
+// atomic_fence keeps every operation before it from being seen after any
+// operation following it.
+export unsafe fn atomic_fence() !{}
+
+// ---------------------------------------------------------------------------
 // System calls
 // ---------------------------------------------------------------------------
 

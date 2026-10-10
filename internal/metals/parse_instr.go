@@ -255,6 +255,39 @@ func (p *parser) dstInstr() (Instr, error) {
 		x, err := p.reg()
 		return p.line(&PtrAddr{Dst: dst, X: x}, err)
 
+	case "atomic.load":
+		x, err := p.reg()
+		return p.line(&AtomicLoad{Dst: dst, Ptr: x}, err)
+
+	case "atomic.swap", "atomic.add", "atomic.sub", "atomic.and", "atomic.or", "atomic.xor":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		val, err := p.reg()
+		return p.line(&AtomicRMW{Dst: dst, Op: op.text[len("atomic."):], Ptr: ptr, Val: val}, err)
+
+	case "atomic.cas":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		expected, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		next, err := p.reg()
+		return p.line(&AtomicCas{Dst: dst, Ptr: ptr, Expected: expected, New: next}, err)
+
 	case "ptr.offset", "ptr.diff":
 		a, err := p.reg()
 		if err != nil {
@@ -563,6 +596,20 @@ func (p *parser) stmtInstr(op string) (Instr, error) {
 			return p.line(&Store{Ptr: a, Val: b}, nil)
 		}
 		return p.line(&Send{Ch: a, Val: b}, nil)
+
+	case "atomic.store":
+		ptr, err := p.reg()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.punct(","); err != nil {
+			return nil, err
+		}
+		val, err := p.reg()
+		return p.line(&AtomicStore{Ptr: ptr, Val: val}, err)
+
+	case "atomic.fence":
+		return p.line(&Fence{}, nil)
 
 	case "field.set":
 		x, err := p.reg()

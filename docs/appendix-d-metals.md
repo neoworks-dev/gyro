@@ -463,6 +463,40 @@ program is verified again. It does not stop a function from handing a
 `u32` it loaded to another function that claims it, and nothing in the
 format can: a sandboxed producer is one that does not emit `ptr.from`.
 
+### Atomics
+
+```metals
+%v = atomic.load %p            ; ptr<T> -> T
+atomic.store %p, %v
+%old = atomic.swap %p, %v      ; the cell becomes v; the result is what it held
+%old = atomic.cas %p, %expected, %new
+%old = atomic.add %p, %v       ; also sub, and, or, xor
+atomic.fence
+```
+
+An atomic operation acts on a `ptr<T>` where `T` is an integer of 8 to 64
+bits, a `bool`, a `ptr<U>`, an `anyptr`, or the one-word `opt` of either
+pointer, at an address aligned for `T`. `add`, `sub`, `and`, `or` and `xor`
+take integers alone: a pointer or a bool has no sum. The value operands are
+exactly `T`, with no widening, and every read-modify-write answers the
+value the cell held *before* it. `add` and `sub` wrap. `cas` stores `%new`
+only when the cell holds `%expected`, and the exchange happened exactly when
+its result equals `%expected`.
+
+**There is one ordering, sequentially consistent.** Every atomic operation
+and every fence blocks all reordering around it, and all threads see them
+in one order, so there is no ordering operand to choose wrongly. On x86-64
+the choice is nearly free: a load is a plain `mov`, each read-modify-write
+is `lock`-prefixed, and only a store pays, as an `xchg`. `fence` is
+`mfence`. A weaker ordering is an extension for the day a weakly ordered
+backend exists: an operand added to these instructions, with this meaning
+as its default.
+
+An atomic access does not mix with a plain one on the same cell: reading it
+with `load` while another thread uses `atomic.store` is the program's data
+race to avoid, as in C. A `memory`'s `u32` addresses never reach these
+instructions, which take a `ptr<T>` like any other.
+
 ### Linear memory
 
 ```metals

@@ -204,6 +204,14 @@ Two things sit beside the allocation:
 - **Bounds and null checks.** `index.get`/`index.set` abort with
   `index N out of range for length M`; `opt.unwrap` aborts with
   `unwrap of a null value`.
+- **Atomics.** One ordering, so one instruction each: `atomic.load` is a
+  plain `mov` (x86-64's loads are already acquire), `atomic.store` and
+  `atomic.swap` are `xchg`, which locks without being asked, `add` and
+  `sub` are `lock xadd` (`sub` negates first), `cas` is `lock cmpxchg`,
+  `fence` is `mfence`. `and`, `or` and `xor` answer the old value, which
+  no instruction does, so they are a `lock cmpxchg` loop that retries on
+  the value the failed compare left in `rax`. The operand is the cell's
+  width, and the old value is widened again by the cell type's signedness.
 - **Module storage.** A global with no byte image is zeroed storage in
   `.bss`, which is zero for free. One that carries an image is real bytes
   in `.data`.

@@ -174,6 +174,40 @@ type (
 		To     Type
 	}
 
+	// AtomicLoad is `%v = atomic.load %p`: the value a ptr<T> holds, read
+	// so that no other thread's write is seen half done and every thread
+	// sees the writes of every atomic operation in one order. T is an
+	// integer, a bool, a ptr or an anyptr, and the address is aligned for
+	// it. There is one ordering, sequentially consistent: every atomic
+	// operation and fence blocks all reordering around it, so there is no
+	// ordering operand to get wrong.
+	AtomicLoad struct{ Dst, Ptr string }
+
+	// AtomicStore is `atomic.store %p, %v`: the write that pairs with
+	// AtomicLoad.
+	AtomicStore struct{ Ptr, Val string }
+
+	// AtomicRMW is `%old = atomic.<op> %p, %v` for op swap, add, sub, and,
+	// or and xor: the value at p becomes v, or the sum, difference or
+	// bitwise combination of it and v, in one indivisible step, and the
+	// result is what it held before. add and sub wrap. swap takes the
+	// integers, bool and pointers; the arithmetic and bitwise ones take
+	// integers.
+	AtomicRMW struct {
+		Dst, Op, Ptr, Val string
+	}
+
+	// AtomicCas is `%old = atomic.cas %p, %expected, %new`: when the value
+	// at p equals expected it becomes new, in one indivisible step, and
+	// the result is what it held before. The exchange happened exactly
+	// when the result equals expected.
+	AtomicCas struct{ Dst, Ptr, Expected, New string }
+
+	// Fence is `atomic.fence`: nothing before it is reordered with
+	// anything after it, which a store followed by a load of another
+	// address needs and neither operation gives on its own.
+	Fence struct{}
+
 	// MemLoad is `%v = mem.load.<T> @mem, %addr`. The suffix names both
 	// the result type and the width read, so mem.load.u8 reads one byte
 	// and mem.load.f64 reads eight. Addresses are u32 and the access is
@@ -415,6 +449,11 @@ func (*PtrErase) isInstr()     {}
 func (*PtrCast) isInstr()      {}
 func (*PtrAddr) isInstr()      {}
 func (*PtrFrom) isInstr()      {}
+func (*AtomicLoad) isInstr()   {}
+func (*AtomicStore) isInstr()  {}
+func (*AtomicRMW) isInstr()    {}
+func (*AtomicCas) isInstr()    {}
+func (*Fence) isInstr()        {}
 func (*MemLoad) isInstr()      {}
 func (*MemStore) isInstr()     {}
 func (*MemSize) isInstr()      {}

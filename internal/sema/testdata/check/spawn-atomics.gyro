@@ -1,0 +1,36 @@
+// A pointer to an Atomic is shared on purpose: every access is atomic, so
+// handing it to a spawned closure is no race. Any other pointer still is.
+
+import { println, Atomic } from "stdlib"
+import { heap, spawn } from "mem"
+
+struct Node {
+    value: i32
+}
+
+fn sharedAtomic(counter: *Atomic<i64>) {
+    spawn(heap(), fn() {
+        var _ = counter.fetch_add(1)
+    })
+}
+
+fn sharedNullableAtomic(counter: *Atomic<bool>?) {
+    spawn(heap(), fn() {
+        if counter != null {
+            counter.store(true)
+        }
+    })
+}
+
+fn sharedAtomics(counters: Atomic<u8>[]) {
+    spawn(heap(), fn() {
+        println(counters.len())
+    })
+}
+
+// An Atomic inside a struct is not looked into, as no struct is.
+fn sharedNode(node: *Node) {
+    spawn(heap(), fn() { //~ W0801 captures node, so both threads reach the same memory
+        node.value = 1
+    })
+}

@@ -1,0 +1,46 @@
+// Eight threads each add to one counter a thousand times, and each sets
+// its own bit in a flag word. The totals are exact only if every update is
+// indivisible: with a plain load and store, threads overwrite each other
+// and the count comes up short. The interleaving is not deterministic;
+// the answers are.
+
+import { println, Atomic } from "stdlib"
+import { heap, alloc, free, spawn } from "mem"
+
+fn main() {
+    var total = alloc<Atomic<i64>>(heap())
+    defer free(heap(), total)
+    total.store(0)
+    var flags = alloc<Atomic<u32>>(heap())
+    defer free(heap(), flags)
+    flags.store(0)
+    var peak = alloc<Atomic<i64>>(heap())
+    defer free(heap(), peak)
+    peak.store(0)
+    var done = chan<bool>(8)
+
+    for worker in 0..8 {
+        spawn(heap(), fn() {
+            for i in 0..1000 {
+                var _ = total.fetch_add(1)
+            }
+            var _ = flags.fetch_or(1 << (worker as u32))
+            // A compare-and-swap loop: raise peak to this worker's number.
+            var seen = peak.load()
+            while seen < (worker as i64) && !peak.compare_and_swap(seen, worker as i64) {
+                seen = peak.load()
+            }
+            done <- true
+        })
+    }
+    for worker in 0..8 {
+        var _ = <-done
+    }
+
+    println(total.load())
+    println(flags.load())
+    println(peak.load())
+    println(total.swap(7))
+    println(total.fetch_sub(2))
+    println(total.load())
+}

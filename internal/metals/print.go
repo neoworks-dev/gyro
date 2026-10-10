@@ -244,6 +244,16 @@ func (p *printer) instr(instr Instr) {
 		p.printf("%s = ptr.addr %s", reg(i.Dst), reg(i.X))
 	case *PtrFrom:
 		p.printf("%s = ptr.from %s -> %s", reg(i.Dst), reg(i.X), i.To)
+	case *AtomicLoad:
+		p.printf("%s = atomic.load %s", reg(i.Dst), reg(i.Ptr))
+	case *AtomicStore:
+		p.printf("atomic.store %s, %s", reg(i.Ptr), reg(i.Val))
+	case *AtomicRMW:
+		p.printf("%s = atomic.%s %s, %s", reg(i.Dst), i.Op, reg(i.Ptr), reg(i.Val))
+	case *AtomicCas:
+		p.printf("%s = atomic.cas %s, %s, %s", reg(i.Dst), reg(i.Ptr), reg(i.Expected), reg(i.New))
+	case *Fence:
+		p.printf("atomic.fence")
 	case *MemLoad:
 		p.printf("%s = mem.load.%s %s, %s", reg(i.Dst), i.Type, at(i.Memory), reg(i.Addr))
 	case *MemStore:
