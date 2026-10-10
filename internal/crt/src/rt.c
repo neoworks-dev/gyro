@@ -284,6 +284,10 @@ void gy_copy_bytes(void *to, const void *from, int64_t bytes) {
  * into many names where each one starts. */
 void *gy_offset(void *base, int64_t bytes) { return (char *)base + bytes; }
 
+/* An integer as an address and back, which no METALS instruction does. */
+void *gy_ptr_from_int(int64_t address) { return (void *)(uintptr_t)address; }
+int64_t gy_ptr_to_int(const void *p) { return (int64_t)(uintptr_t)p; }
+
 /* A string is a { len, bytes } header followed by its bytes in one block.
  * Building one in an allocator's block is three steps: ask how big the
  * block must be, copy text in at an offset, and seal it with its length. */

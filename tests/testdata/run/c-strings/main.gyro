@@ -9,7 +9,7 @@
 // numbers say the storage arrived intact.
 
 import { println } from "stdlib"
-import {
+import safe {
   keyword_count, token_count, token_id, token_length, token_char,
   reverse_token, scratch_char, checksum, pointer_width,
 } from "./scan.c"

@@ -9,7 +9,7 @@
 // only works if those numbers are right.
 
 import { println } from "stdlib"
-import {
+import safe {
   entries, entry_size, callback_size, dispatch, sorted_at, call_or,
   identity_holds, stepped,
 } from "./table.c"

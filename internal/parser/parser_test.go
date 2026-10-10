@@ -462,6 +462,55 @@ func TestUnionIsDeclaredOnlyByForeignText(t *testing.T) {
 	}
 }
 
+// `unsafe` and `safe` mean something only in front of `fn`, and in front of
+// the names of an import. Everywhere else they are ordinary identifiers.
+func TestUnsafeAndSafeAreContextual(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{"unsafe fn f() {\n}\n", "File test.gyro Func unsafe f Body: Block"},
+		{"safe fn f() {\n}\n", "File test.gyro Func safe f Body: Block"},
+		{"export unsafe fn f() {\n}\n", "File test.gyro Func export unsafe f Body: Block"},
+		{"export safe fn f<T>(x: T): T {\n  return x\n}\n",
+			"File test.gyro Func export safe f<T> Param x: Type: NamedType T Result: NamedType T Body: Block Return Ident x"},
+		{"safe async fn f() {\n}\n", "File test.gyro Func safe async f Body: Block"},
+		{"unsafe fn Cell::peek(self): i32 !{}\n",
+			"File test.gyro Func unsafe Cell::peek Recv: self Result: NamedType i32 Effects: !{}"},
+		{"@extern(\"m\")\nsafe fn sqrt(x: f64): f64 !{}\n",
+			"File test.gyro Func safe sqrt Decorator @extern Arg: Lit string literal \"m\" Param x: Type: NamedType f64 Result: NamedType f64 Effects: !{}"},
+		{`import safe { a } from "m.c"` + "\n", `File test.gyro Import safe {a} from "m.c"`},
+		{`import safe * as m from "m.c"` + "\n", `File test.gyro Import safe * as m from "m.c"`},
+
+		// Names, wherever a name can be written.
+		{"fn t(unsafe: i32, safe: i32): i32 {\n  return unsafe + safe\n}\n",
+			"File test.gyro Func t Param unsafe: Type: NamedType i32 Param safe: Type: NamedType i32 Result: NamedType i32 Body: Block Return Binary + Ident unsafe Ident safe"},
+		{"fn t() {\n  var safe = 1\n  var unsafe = safe\n}\n",
+			"File test.gyro Func t Body: Block Var safe Value: Lit int literal 1 Var unsafe Value: Ident safe"},
+		{"fn safe() {\n}\n", "File test.gyro Func safe Body: Block"},
+		{"fn unsafe() {\n}\n", "File test.gyro Func unsafe Body: Block"},
+		{`import { safe, unsafe } from "m"` + "\n", `File test.gyro Import {safe, unsafe} from "m"`},
+	}
+
+	for _, test := range tests {
+		if got := dumpOf(t, test.src); got != test.want {
+			t.Errorf("parsing %q\n got: %s\nwant: %s", test.src, got, test.want)
+		}
+	}
+}
+
+func TestUnsafeAndSafeTogetherAreRejected(t *testing.T) {
+	var bag diag.Bag
+	file := Parse("test.gyro", "unsafe safe fn f() {\n}\n", &bag)
+
+	if bag.Len() != 1 || bag.Items()[0].Code != diag.EFuncModifier {
+		t.Fatalf("expected one E0218, got %v", bag.Items())
+	}
+	if len(file.Decls) != 1 {
+		t.Errorf("the function should still parse, got %d declarations", len(file.Decls))
+	}
+}
+
 func TestDefaultImportIsRejected(t *testing.T) {
 	// There are no default exports, so a bare name has nothing to bind to.
 	var bag diag.Bag

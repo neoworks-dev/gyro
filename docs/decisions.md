@@ -708,11 +708,14 @@ passed, so the analysis cannot say the block is lost. Tracking every call
 would have warned about the arena idiom, which was the reason `with`
 silenced it in the first design.
 
-**`offset` is private to `mem`.** An arena carves one block into many,
-and Gyro has no pointer arithmetic, so `mem` holds a bodyless `offset`
-intrinsic that answers the address `bytes` past a base. It is not
-exported: whether pointer arithmetic belongs on the language's surface is
-a separate question, and this decision does not answer it. The arena's buffer is a block from its parent allocator rather
+**`offset` is an `unsafe` primitive.** An arena carves one block into many,
+and Gyro has no pointer arithmetic on `*T`, so the arena is written over a
+bodyless `offset` intrinsic that answers the address `bytes` past a base. It
+started private to `mem`; it now lives in the `unsafe` module with the rest
+of the raw memory (see "Unsafe code is marked on functions, and its
+primitives are imported"), where `mem` imports it. Whether pointer
+arithmetic belongs on `*T` is a separate question, and this decision does
+not answer it. The arena's buffer is a block from its parent allocator rather
 than an `Array<u8>`, since the parent has to be the one that supplied it.
 
 **Rejected: the hidden parameter with `with`** (the design this replaces).
@@ -800,9 +803,11 @@ its size in bytes, so `keep(a, f)` in `mem` can copy it without knowing its
 static type: it allocates that many bytes from `a`, copies, and answers a
 value with the same code and the new record. `release(a, f)` gives the copy
 back, and both do nothing for a null environment. They are ordinary Gyro
-over two private `mem` intrinsics that read a `fn` value's environment word
-and rebuild one around another; neither is exported, because a public
-raw-memory surface is a separate design. `F` must be a function type, which
+over two intrinsics, `env_of` and `with_env`, that read a `fn` value's
+environment word and rebuild one around another. They began private to
+`mem`; they are exported from the `unsafe` module now, where the raw
+memory surface was designed ("Unsafe code is marked on functions, and its
+primitives are imported"), and `keep` and `release` are `safe fn`s over them. `F` must be a function type, which
 sema checks with a diagnostic. `spawn` takes an allocator, keeps the
 closure it is given, and the thread releases it when the closure returns;
 it moved to `mem` for the same import-cycle reason: `mem` already imports
@@ -828,6 +833,73 @@ syntax for allocating closures.** `spawn` receives a value, so a function
 that copies a closure is needed anyway, and a second way to say the same
 thing is worse than one. **Not here:** futures and channels keep using the
 process heap (#51).
+
+### Unsafe code is marked on functions, and its primitives are imported *(new)*
+
+**Status: decided, done.** A function is `unsafe fn`, `safe fn` or a plain
+`fn`. An `unsafe fn` is unsafe to call: it may only be called from another
+`unsafe fn` or from a `safe fn`, and its body may use unchecked operations.
+A `safe fn` may do the same in its body, and anyone may call it: the author
+vouches. A plain `fn` may do neither, and the error suggests `safe fn` (vouch)
+or `unsafe fn` (propagate). The unchecked operations are calls to unsafe
+functions and reading a union member. `unsafe` and `safe` are contextual
+words before `fn`, like `move` and `copy`, and stay ordinary identifiers.
+
+The primitives are `unsafe fn` exports of a bundled `unsafe` module: `cast`,
+`ptr_from_int`, `ptr_to_int`, `offset`, `copy_bytes`, the three `raw_`
+heap functions, and `env_of` and `with_env`. Gyro has no universe scope, so
+they had to come from some module, and naming it `unsafe` makes every file
+that uses them findable from its imports. `mem` imports them and its
+functions that use them are `safe fn`s, which keeps the import graph acyclic:
+`unsafe` imports nothing.
+
+`p as *T` on an `anyptr` is removed and `cast<T>(p)` replaces it. An
+`@extern` declaration is `unsafe fn` unless written `safe` (Rust 2024's rule
+for extern blocks), and a function imported from a `.c` file is unsafe to call
+unless the import is written `import safe { ... }`. Vouching is for C, so
+`import safe` of a Gyro module is an error. The vouch is a property of the
+symbol, so a name re-exported from a vouching import stays vouched.
+Types a C file declares need no vouching.
+
+**Closures and methods.** A method is marked like a function. A closure
+literal is part of the function it is written in and has that function's
+freedom, since the author of a `safe fn` vouches for its whole body; a
+closure is never unsafe to call, because a `fn` value carries no marker.
+`&f` of an unsafe function needs an unsafe context, or the pointer would be
+a way round the call.
+
+**Borrow provenance.** `ptr_from_int`'s result has no origin the analysis can
+see, which is how a call with no borrow in its row already reads, the same as
+an `@extern` result.
+
+**Rejected: Rust-style `unsafe { }` blocks.** A keyword-scoped second dialect
+inside a function, where a reader has to track which statements are inside.
+Function granularity was the choice: the step that needs vouching for is
+usually small enough to be a function of its own, and the function's name and
+signature are where its contract gets stated.
+
+**Rejected: an `unsafe` effect in rows.** An effect propagates to every caller
+and has no way to stop, so a safe wrapper around an unsafe primitive would be
+impossible, and the first useful one would give the language up.
+
+**Rejected: a module-only marker.** It marks a whole file and cannot tell
+"dangerous to call" from "uses danger inside", which are the two things a
+reader needs to know apart.
+
+**Rejected: one `unsafe fn` marker for both meanings.** Rust conflated them and
+spent years splitting them, with `unsafe_op_in_unsafe_fn` and `unsafe extern`.
+`unsafe fn` and `safe fn` are the two claims written separately from the
+start.
+
+**Not here.** Pointer arithmetic on a `*T` (#68) is open and would live in
+`unsafe`. Removing `union` declarations from Gyro is #107, and header imports
+replacing `@extern` are #108. Privileged instructions (#97), volatile
+access (#99) and raw system calls (#103) add primitives to the module.
+
+**Added beyond the first list:** `ptr_to_int`, because a program has no
+other way to get an address to give `ptr_from_int`, and a test of the second
+needs the first. METALS has no instruction between an integer and a pointer,
+so both are runtime functions.
 
 ### Storage is C's layout, and there is only one *(new)*
 
@@ -1059,8 +1131,16 @@ of it guarding a construct whose only user was the import.
 **What went with it.** The `@extern union`, empty union, duplicate member
 and "cannot be a union member" diagnostics, which only ever described a
 Gyro-written declaration. The members of an imported union are C's types
-and need no such check. Reading a member requiring an unsafe context is a
-separate decision.
+and need no such check.
+
+**Reading a member needs an unsafe context.** Nothing records which member
+is live, so a read is the program's claim that the bytes are this member's,
+which is the kind of claim `unsafe` marks ("Unsafe code is marked on
+functions, and its primitives are imported"). Writing a member does not: it
+says nothing about what the others now mean, and neither does a literal. A
+store through a member that is storage in the union (`v.bytes[3] = 1`,
+`outer.inner.i = 4`) is a write too; a compound assignment reads first, and
+a member holding a pointer is read to be written through.
 
 The fixed-size array member that now has a spelling in a generated header
 stays: `struct { char name[16]; }` crosses when the element spells as one
@@ -2591,6 +2671,10 @@ makes a `#if` in the includer govern what is inside the header, and a
 
 ### Pointer arithmetic is three instructions, and unchecked *(new)*
 
+(Pointer arithmetic on a Gyro `*T` is still open, #68. When it lands it is
+an `unsafe fn` in the `unsafe` module, the way `offset` on an `anyptr`
+is.)
+
 **Status: decided.** METALS grew `elem.ptr`, `ptr.offset` and `ptr.diff`.
 `ptr<T>` was a pointer to one object; C's is a cursor into a run of them,
 and no arrangement of the existing instructions expresses that.
@@ -3194,12 +3278,18 @@ one that moves, to `gyro::Point`.
 spelling Gyro already uses for a handle it may hold and not look inside —
 the same shape as `struct File {}` in the standard library.
 
-### `anyptr` is a Gyro type, and `as` is both directions *(new)*
+### `anyptr` is a Gyro type, and `as` forgets *(new)*
 
 **Status: decided.** `anyptr` is a primitive type spelled like `usize` and
-`rune`. `p as anyptr` forgets a pointer's target type; `p as *T` puts one
-back. Nothing else converts either way, it has no other operations, it
-cannot cross an `@extern` boundary and it cannot go into an `any`.
+`rune`. `p as anyptr` forgets a pointer's target type. It has no other
+operations and it cannot go into an `any`.
+
+**Amended:** the title said `as` was both directions, and `p as *T` put a
+type back. Remembering is a claim, and a claim belongs behind the unsafe
+boundary: `cast<T>(p)` from the `unsafe` module replaces it, and `p as *T`
+on an `anyptr` no longer exists. Forgetting cannot be wrong and stays an
+`as`. See "Unsafe code is marked on functions, and its primitives are
+imported".
 
 It exists because C's `void *` had no Gyro spelling, and a C library that
 holds what the caller gave it — every registry, callback table and
@@ -3219,7 +3309,9 @@ happens, because the address never stopped being an address.
 
 **Rejected: an integer conversion.** `n as anyptr` would make a pointer
 out of arithmetic, which is the thing this language does not have. The
-address has to have come from somewhere.
+address has to have come from somewhere. (`ptr_from_int` in `unsafe` is the
+one way, for an address the program did not get from an allocation, and it
+is an unsafe call rather than a conversion.)
 
 **Printing it prints the word.** There is nothing at the far end this
 program may read, so `println(p)` writes `anyptr` — decided in lowering,

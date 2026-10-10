@@ -13,7 +13,7 @@
 // aborts with a message instead of reading whatever the stack held.
 
 import { println, String } from "stdlib"
-import {
+import safe {
   render_mixed, render_signs, render_percent, render_nothing, rendered_at,
   sum_of_none, sum_of_two, sum_of_five,
   forwarded, walked_twice, promoted, through_a_pointer,

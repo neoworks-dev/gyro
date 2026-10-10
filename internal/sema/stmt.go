@@ -329,6 +329,7 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 		return
 	}
 
+	c.markUnionWrites(s.Lhs[0])
 	target := c.assignTarget(s.Lhs[0])
 	if target == nil {
 		c.expr(s.Rhs)
@@ -388,6 +389,7 @@ func (c *checker) assignTarget(lhs ast.Expr) types.Type {
 func (c *checker) destructuringAssign(s *ast.AssignStmt) {
 	targets := make([]types.Type, len(s.Lhs))
 	for i, lhs := range s.Lhs {
+		c.markUnionWrites(lhs)
 		targets[i] = c.assignTarget(lhs)
 	}
 

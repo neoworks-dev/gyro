@@ -15,7 +15,7 @@
 // own statement list or an enclosing one.
 
 import { println } from "stdlib"
-import {
+import safe {
   acquire_and_release, releases, sum_by_backward_goto,
   first_pair_multiplying_to, retry_until, skip_a_stage, locals_survive,
 } from "./resource.c"

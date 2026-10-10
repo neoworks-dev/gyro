@@ -96,6 +96,7 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		// whether T is a view; the instantiation can, and does.
 		borrowChecked: !c.lenient,
 		generic:       generic,
+		trusted:       decl.Unsafe || decl.Safe,
 	}
 	if decl.Recv != nil && selfType != nil {
 		c.fn.selfSymbol = &symbol{kind: symValue, name: "self", offset: decl.Offset, decl: decl, typ: selfType}

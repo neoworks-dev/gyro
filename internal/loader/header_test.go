@@ -52,7 +52,7 @@ export fn @flip(%p: %Point) -> %Point {
 		"export struct Point {",
 		"  export x: i32",
 		"  export y: i32",
-		"export fn flip(a0: Point): Point",
+		"export unsafe fn flip(a0: Point): Point",
 	)
 }
 
@@ -86,7 +86,7 @@ export fn @open() -> opt<ptr<%Window>> {
   return %n
 }
 `)
-	wants(t, text, "export struct Window {}", "export fn open(): *Window?")
+	wants(t, text, "export struct Window {}", "export unsafe fn open(): *Window?")
 }
 
 // A type Gyro has no declaration for takes the exports that mention it
@@ -110,7 +110,7 @@ export fn @plain(%p: %Point) -> i32 {
   return %n
 }
 `)
-	wants(t, text, "export struct Point {", "export fn plain(a0: Point): i32")
+	wants(t, text, "export struct Point {", "export unsafe fn plain(a0: Point): i32")
 	if strings.Contains(text, "sum") || strings.Contains(text, "Tagged") {
 		t.Errorf("an enum reached the header:\n%s", text)
 	}
@@ -161,7 +161,7 @@ export fn @held(%h: %Holder) -> i32 {
 		"  export half: u16",
 		"export struct Holder {",
 		"  export bits: Bits",
-		"export fn punned(a0: Bits): i32",
+		"export unsafe fn punned(a0: Bits): i32",
 	)
 }
 

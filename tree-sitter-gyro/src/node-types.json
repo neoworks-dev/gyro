@@ -2827,6 +2827,10 @@
     "named": false
   },
   {
+    "type": "safe",
+    "named": false
+  },
+  {
     "type": "select",
     "named": false
   },
@@ -2853,6 +2857,10 @@
   {
     "type": "type_identifier",
     "named": true
+  },
+  {
+    "type": "unsafe",
+    "named": false
   },
   {
     "type": "var",

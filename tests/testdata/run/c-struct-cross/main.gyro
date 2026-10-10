@@ -14,7 +14,7 @@
 // for a handle it may keep and not look inside.
 
 import { println } from "stdlib"
-import {
+import safe {
   Point, Line, Arena,
   point_at, line_through, line_span, point_size, line_size,
   point_x, point_shift, line_ends,

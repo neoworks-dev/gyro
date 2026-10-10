@@ -9,7 +9,7 @@
 // linker puts the two together before any tier sees them.
 
 import { println } from "stdlib"
-import { reset, push, count, at, sort, find, median, checksum } from "./sortlib.c"
+import safe { reset, push, count, at, sort, find, median, checksum } from "./sortlib.c"
 
 // The C enum's constants are the C module's own; what crosses is the
 // int, which is what an enumeration is on this target.

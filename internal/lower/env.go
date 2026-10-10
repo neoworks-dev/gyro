@@ -34,7 +34,7 @@ func (f *funcLowerer) fnWords(fn string, fnType metals.Type) (slot, envPtr strin
 	return slot, envPtr
 }
 
-// prepareEnvIntrinsic lowers mem's env_of and with_env.
+// prepareEnvIntrinsic lowers unsafe's env_of and with_env.
 func (f *funcLowerer) prepareEnvIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, name string) func() string {
 	bound := resolved.Bindings["F"]
 	if bound == nil {

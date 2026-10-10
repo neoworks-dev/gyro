@@ -1,0 +1,60 @@
+// unsafe. The operations the compiler cannot check, each an `unsafe fn`:
+// calling one needs an unsafe fn or a safe fn around it (chapter 4.6).
+//
+// Gyro has no universe scope, so these had to come from some module, and
+// naming it `unsafe` makes every file that uses them findable by its
+// imports. A declaration with no body is a runtime or compiler intrinsic;
+// one with a body is ordinary Gyro written over them.
+
+// ---------------------------------------------------------------------------
+// Pointers
+// ---------------------------------------------------------------------------
+
+// cast puts a type back on an address that forgot it. It is the program's
+// claim that a T is what lives there, the same claim a C cast makes.
+// Forgetting a type is `p as anyptr` and needs no claim.
+export unsafe fn cast<T>(p: anyptr): *T !{}
+
+// ptr_from_int makes a pointer from an integer, for an address the program
+// did not get from an allocation: a device register, a page table. Nothing
+// the borrow analysis can see says where it points, so it is treated as
+// coming from outside the program, the way an @extern result is.
+export unsafe fn ptr_from_int<T>(address: usize): *T !{} {
+  return cast<T>(address_to_pointer(address))
+}
+
+// ptr_to_int is the address a pointer holds, as an integer.
+export unsafe fn ptr_to_int(p: anyptr): usize !{}
+
+unsafe fn address_to_pointer(address: usize): anyptr !{}
+
+// offset is the address `bytes` past base, which is how an arena says where
+// each block it carves out of its buffer starts. Whether the result is
+// still inside the object base pointed into is the caller's to know.
+export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
+
+// copy_bytes copies `bytes` from one address to another. The ranges may
+// overlap.
+export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
+
+// ---------------------------------------------------------------------------
+// The process heap
+// ---------------------------------------------------------------------------
+
+// The heap every allocator bottoms out in. These carry no row because they
+// are the floor rather than the allocator: mem's heap() wraps them into
+// one. A block is freed once, to the call that made it.
+export unsafe fn raw_alloc(size: usize, align: usize): anyptr? !{}
+export unsafe fn raw_free(pointer: anyptr) !{}
+export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align: usize): anyptr? !{}
+
+// ---------------------------------------------------------------------------
+// Closures
+// ---------------------------------------------------------------------------
+
+// A closure's environment is a record in the frame that wrote it, and its
+// first word is the record's size in bytes. env_of answers the address of a
+// fn value's environment, null when it has none; with_env answers the same
+// code over another. mem's keep and release are written over them.
+export unsafe fn env_of<F>(f: F): anyptr? !{}
+export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}

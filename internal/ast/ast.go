@@ -67,6 +67,10 @@ type Import struct {
 	// Wildcard is the local name for `import * as name`, or "" otherwise.
 	Wildcard string
 	Path     string
+	// Safe marks `import safe { ... }`, which vouches for every name the
+	// import binds. It matters for a module another language produced,
+	// whose functions are unsafe to call until an import says otherwise.
+	Safe bool
 }
 
 // ImportName is a single `name` or `name as alias` in a braced import.
@@ -167,6 +171,12 @@ type FuncDecl struct {
 	// Async marks an `async fn`, whose calls produce a value that must be
 	// awaited.
 	Async bool
+	// Unsafe marks `unsafe fn`: unsafe to call, and its body may do
+	// unchecked things. Safe marks `safe fn`: its body may do them too,
+	// and the author vouches for every caller. A plain fn is neither. At
+	// most one is set.
+	Unsafe bool
+	Safe   bool
 	// Owner is the type qualifier of a method — `Stack` in `fn Stack::push`.
 	// It is "" for a free function.
 	Owner string

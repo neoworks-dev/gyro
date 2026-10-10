@@ -12,7 +12,7 @@
 // this compiler invented.
 
 import { println } from "stdlib"
-import {
+import safe {
   size_of_head, size_of_wide, size_of_signs, size_of_mixed,
   head_version, head_ihl, head_tos, head_length,
   neighbours_survive, wide_round_trip,

@@ -7,7 +7,7 @@
 // counter inside `step` that outlives every call to it.
 
 import { println } from "stdlib"
-import { run, depth, at, digit_value, scan } from "./vm.c"
+import safe { run, depth, at, digit_value, scan } from "./vm.c"
 
 fn main() {
   // Instructions executed before the machine halted.

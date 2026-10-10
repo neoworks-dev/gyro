@@ -1,6 +1,9 @@
 // anyptr is an address whose target's type has been forgotten. It has
 // identity and `as`, and nothing else: there is nothing at the far end
-// of it that this program is allowed to name.
+// of it that this program is allowed to name. Putting the type back is
+// not a cast but a claim, and `cast` from the unsafe module makes it.
+
+import { cast } from "unsafe"
 
 struct Cell {
   export value: i32
@@ -10,8 +13,12 @@ fn forget(c: *Cell): anyptr {
   return c as anyptr
 }
 
-fn remember(p: anyptr): *Cell {
-  return p as *Cell
+safe fn remember(p: anyptr): *Cell {
+  return cast<Cell>(p)
+}
+
+fn noCastBack(p: anyptr): *Cell {
+  return p as *Cell              //~ E0509 as converts between numeric types and rune; anyptr as *Cell does not
 }
 
 // Forgetting twice is still forgetting.

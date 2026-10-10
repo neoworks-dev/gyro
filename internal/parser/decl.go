@@ -39,6 +39,14 @@ func (p *Parser) parseImport() *ast.Import {
 	node := &ast.Import{Offset: p.offset()}
 	p.expect(token.Import)
 
+	// `safe` is contextual: it vouches for the names only when a list or
+	// a wildcard follows, and is nothing else in this position.
+	if p.at(token.Ident) && p.tok().Text == "safe" &&
+		(p.peekAt(1).Kind == token.LBrace || p.peekAt(1).Kind == token.Star) {
+		p.next()
+		node.Safe = true
+	}
+
 	switch {
 	case p.at(token.String):
 		node.Path = lexer.Unescape(p.next().Text)
@@ -161,6 +169,11 @@ func (p *Parser) parseDecl() ast.Decl {
 		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
 		return decl
 	}
+	if p.atFuncModifier() {
+		fn := p.parseFuncDecl()
+		fn.Offset, fn.Decorators, fn.Exported = offset, decorators, exported
+		return fn
+	}
 
 	switch p.kind() {
 	case token.Fn, token.Async:
@@ -205,11 +218,42 @@ func (p *Parser) parseDecorators() []*ast.Decorator {
 	return decorators
 }
 
+// `unsafe` and `safe` are contextual, the way `move` and `copy` are: they
+// mean something only in front of `fn` (or `async fn`) and are ordinary
+// identifiers everywhere else.
+func (p *Parser) atFuncModifier() bool {
+	if !p.at(token.Ident) {
+		return false
+	}
+	if word := p.tok().Text; word != "unsafe" && word != "safe" {
+		return false
+	}
+	next := p.peekAt(1)
+	if next.Kind == token.Fn || next.Kind == token.Async {
+		return true
+	}
+	// A second modifier is still a function; it is reported once parsed.
+	return next.Kind == token.Ident && (next.Text == "unsafe" || next.Text == "safe") &&
+		(p.peekAt(2).Kind == token.Fn || p.peekAt(2).Kind == token.Async)
+}
+
 // parseFuncDecl parses `fn name<T>(params): results { body }` and the
 // method form `fn Type::name(self, ...)`. The caller fills in the offset,
 // decorators and export flag.
 func (p *Parser) parseFuncDecl() *ast.FuncDecl {
 	fn := &ast.FuncDecl{Offset: p.offset()}
+	for p.atFuncModifier() {
+		offset := p.offset()
+		if p.tok().Text == "unsafe" {
+			fn.Unsafe = true
+		} else {
+			fn.Safe = true
+		}
+		p.next()
+		if fn.Unsafe && fn.Safe {
+			p.errorf(offset, "a function is unsafe to call or vouched for, not both")
+		}
+	}
 	fn.Async = p.accept(token.Async)
 	p.expect(token.Fn)
 

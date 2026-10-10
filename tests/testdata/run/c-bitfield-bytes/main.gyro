@@ -10,7 +10,7 @@
 // was written down.
 
 import { println } from "stdlib"
-import {
+import safe {
   packed_byte, member_after_a_run, straddle_moves_to_the_next_unit,
   zero_width_opens_a_new_unit, writing_clears_only_its_own,
 } from "./layout.c"

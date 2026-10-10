@@ -5,11 +5,13 @@
 
 import { Value, Nested, Pair, make_value, make_nested, make_pair } from "./value.c"
 
-fn Value::as_int(self): i64 {
+safe fn Value::as_int(self): i64 {
   return self.i
 }
 
-fn shapes() {
+// Reading a member needs an unsafe context (see unsafe.gyro); writing one,
+// and writing a literal, do not.
+safe fn shapes() {
   var v = Value{ i: 1 }
   var read = v.i
   v.f = 2.5
@@ -55,4 +57,28 @@ fn inherited(a: Holder, b: Holder) {
 
 fn missing(v: Value) {
   var gone = v.nope             //~ E0405 Value has no field or method nope
+}
+
+// ---------------------------------------------------------------------
+// Reading a member is unsafe; writing one is not
+
+fn reads(w: Value, wrapped: Nested, p: *Value): i64 {
+  var a = w.i                    //~ E0618 reading the union member i is unsafe; this function is a plain fn
+  var b = wrapped.inner.i        //~ E0618 reading the union member inner is unsafe; this function is a plain fn
+                                 //~^ E0618 reading the union member i is unsafe; this function is a plain fn
+  var c = p.f                    //~ E0618 reading the union member f is unsafe; this function is a plain fn
+  return a
+}
+
+fn writes(w: *Value, wrapped: *Nested) {
+  var made = Value{ i: 1 }
+  w.f = 2.5
+  w.bytes[3] = 1
+  wrapped.inner.i = 4
+  wrapped.whole = 5
+  made.i = 6
+}
+
+fn updates(w: *Value) {
+  w.i += 1                       //~ E0618 reading the union member i is unsafe; this function is a plain fn
 }

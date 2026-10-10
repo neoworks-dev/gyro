@@ -12,7 +12,7 @@
 // written, and the caller keeps the one thing it was given: a type.
 
 import { println } from "stdlib"
-import {
+import safe {
   session_open, session_next, session_total, session_same,
   session_absent, session_handle_size, session_round_trip,
   ticket_issue, ticket_matches, session_open_count, session_close,

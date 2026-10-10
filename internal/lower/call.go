@@ -272,6 +272,11 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 			return prepared
 		}
 	}
+	if module != nil && module.Path == stdlib.Path("unsafe") {
+		if prepared := f.prepareUnsafeIntrinsic(call, resolved, decl); prepared != nil {
+			return prepared
+		}
+	}
 	if module != nil && module.Path == stdlib.Path("math") {
 		return f.prepareMathIntrinsic(call, decl)
 	}
@@ -400,13 +405,10 @@ func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDec
 }
 
 // prepareMemIntrinsic lowers the mem intrinsics the compiler answers
-// itself: the layout of a type. It returns nil
-// for the ones the runtime supplies — panic and the raw heap calls —
-// which lower as ordinary natives.
+// itself: the layout of a type. It returns nil for the ones the runtime
+// supplies, which lower as ordinary natives.
 func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	switch decl.Name {
-	case "env_of", "with_env":
-		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
 	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -423,6 +425,29 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 		return func() string {
 			out := f.newReg(decl.Name)
 			f.emit(&metals.Const{Dst: out, Type: metals.TUsize, Value: strconv.Itoa(answer)})
+			return out
+		}
+	}
+	return nil
+}
+
+// prepareUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
+// itself: putting a type back on an address, and a closure's environment.
+// The rest of the module lowers as ordinary natives.
+func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+	switch decl.Name {
+	case "env_of", "with_env":
+		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
+	case "cast":
+		bound := resolved.Bindings["T"]
+		if bound == nil {
+			f.l.fail("@%s: cast without a bound T", f.fn.Name)
+		}
+		target := f.l.metalsType(&types.Pointer{Elem: bound})
+		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
+		return func() string {
+			out := f.newReg("restored")
+			f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
 			return out
 		}
 	}

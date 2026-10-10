@@ -9,7 +9,7 @@
 // an answer.
 
 import { println } from "stdlib"
-import { too_few } from "./count.c"
+import safe { too_few } from "./count.c"
 
 fn main() {
   println(too_few())
