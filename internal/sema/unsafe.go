@@ -15,9 +15,9 @@ import (
 //     function.
 //
 // The unchecked operations are the calls to unsafe functions — the
-// primitives of the bundled `unsafe` module, an @extern declaration not
-// written `safe`, and a function imported from a C file by an import that
-// does not vouch — and reading a union member. Unsafe is not an effect and
+// primitives of the bundled `unsafe` module and a function imported from
+// C, from a file or a header, by an import that does not vouch — and
+// reading a union member. Unsafe is not an effect and
 // does not appear in a row: it propagates only through calls to an unsafe
 // fn, and a safe fn is where it stops.
 //
@@ -26,17 +26,9 @@ import (
 // closures inside it as for the rest of the body.
 
 // isUnsafeDecl reports whether calling the declaration needs an unsafe
-// context. A foreign function is unsafe by default, since nothing the
-// compiler can see says what the C behind it does, and `safe` on the
-// declaration is the author saying it does nothing a caller can misuse.
+// context.
 func isUnsafeDecl(decl *ast.FuncDecl) bool {
-	if decl == nil {
-		return false
-	}
-	if decl.Unsafe {
-		return true
-	}
-	return ast.FindDecorator(decl.Decorators, "extern") != nil && !decl.Safe
+	return decl != nil && decl.Unsafe
 }
 
 // trusted reports whether the function being checked may do unchecked

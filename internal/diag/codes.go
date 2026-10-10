@@ -105,10 +105,6 @@ const (
 	EUnnamedEffect Code = "E0611"
 	EUnknownEffect Code = "E0612"
 
-	// Foreign functions
-	EExternDeclaration Code = "E0613"
-	EExternSignature   Code = "E0614"
-
 	// Format values
 	EFormatEscapes Code = "E0616"
 
@@ -289,16 +285,12 @@ var explanations = map[Code]explanation{
 		"A declared effect row is a complete statement of what the function\ndoes: a row without io promises no io. This body performs a concrete effect\nits row does not name. Name the effect — !{ io } — or drop the row; a\nfunction without one is unconstrained.\n\nA call contributes its callee's declared row. When the callee states no\nrow, its effects are inferred from its body, in whatever module that\nbody lives. An intrinsic has no body to infer from, so a rowless one is\nassumed to do everything.\n\nBecause inference reaches that far, the effect is often performed several\ncalls below the one reported, in another file. The frames under the error\nare the route to it: one per hop quoting the call it made, the last\nnaming what performs it."},
 	EUnknownEffect: {"row names something that is not an effect",
 		"The effect vocabulary is closed: io is the one concrete effect, and a\n&name entry names a borrow source. A row entry that is\nneither is a misspelling, and accepting it would let a row promise less\nthan it appears to."},
-	EExternDeclaration: {"@extern is on the wrong kind of declaration",
-		"@extern names something a C library provides, so it goes on a function\nwith no body or on a fieldless struct standing for an opaque pointer.\nA body, a receiver, type parameters or a struct with fields all describe\nsomething Gyro would have to compile, which is not what a library\nexports.\n\nThe library is the first argument and the symbol defaults to the\ndeclaration's name: @extern(\"SDL2\", symbol = \"SDL_Delay\")."},
 	EUnsafeOperation: {"unsafe operation in a plain fn",
-		"Some operations rely on something the compiler cannot check: calling an\nunsafe fn, calling a C function the import does not vouch for, calling an\n@extern function not written `safe`, and reading a union member, since\nnothing records which member was written last.\n\nOnly an unsafe fn or a safe fn may do them. Mark the function `safe fn`\nwhen it upholds what the operation needs, so that its callers need not\nknow; mark it `unsafe fn` to leave that to its callers. Unsafe is not an\neffect and does not appear in a row."},
+		"Some operations rely on something the compiler cannot check: calling an\nunsafe fn, calling a C function the import does not vouch for, and reading\na union member, since\nnothing records which member was written last.\n\nOnly an unsafe fn or a safe fn may do them. Mark the function `safe fn`\nwhen it upholds what the operation needs, so that its callers need not\nknow; mark it `unsafe fn` to leave that to its callers. Unsafe is not an\neffect and does not appear in a row."},
 	EVouchGyro: {"import safe of a Gyro module",
 		"`import safe { parse } from \"./lib.c\"` says that calling the C\nfunctions it binds is safe, which nothing in a C file can say for itself.\nA Gyro function already says whether it is unsafe to call, so vouching for\none from the importing side would let any file override its author."},
 	EKeepNotFunction: {"keep and release take a function value",
 		"A closure's environment lives in the frame that wrote it, and keep copies\nit into an allocator by reading the size every environment starts with.\nOnly a fn value has an environment; a code pointer, a struct or a number\ndoes not, so there is nothing to copy."},
-	EExternSignature: {"type cannot cross to C",
-		"Values copy at a foreign boundary. Primitives cross by value, a string\ncrosses as a NUL-terminated copy, a slice is repacked into C's element\nstride, and a fieldless @extern struct crosses as an opaque pointer.\n\nA pointer, channel, future, function value, tuple, any, or a struct with\nfields does not: either it is shared mutable state, which the boundary\ndoes not have, or it would have to agree with C on a layout Gyro does\nnot yet produce, since every scalar here occupies its own qword."},
 	EFormatEscapes: {"format value outlives its statement",
 		"A string literal with a #{} in it is a Format: a record of its pieces\nthat borrows what it names and allocates nothing. It lives in the frame of\nthe statement that wrote it, so it can only be passed on as an argument.\nBinding, returning, storing, sending or capturing it would keep the\nborrow past the statement.\n\nTo get text, call format(allocator, ...) from mem, which builds a string\nin the allocator it is given."},
 	EEscapingLocalView: {"view outlives the storage behind it",

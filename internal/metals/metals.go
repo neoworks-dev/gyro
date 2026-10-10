@@ -605,6 +605,8 @@ func SameRuntime(a, b string) bool {
 const externScheme = "c"
 
 // ExternModule names the module a C library's symbols are imported from.
+// The library is a pkg-config package, whose flags the build asks for, or
+// "c", which is the C library and the math library and needs none.
 func ExternModule(library string) string { return externScheme + ":" + library }
 
 // ExternLibrary is the inverse: the library an import names, or "" when

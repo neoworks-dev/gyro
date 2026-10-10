@@ -30,7 +30,6 @@ import (
 // could bind; an unknown name is an error rather than a lookup failure.
 var decorators = map[string]bool{
 	"comptime": true, "gpu": true, "concurrent": true, "distributed": true,
-	"extern": true,
 }
 
 type symbolKind int
@@ -669,7 +668,6 @@ func (c *checker) checkDecls(tree *ast.File) {
 			c.checkFuncDecl(d)
 		case *ast.StructDecl:
 			c.checkDecorators(d.Decorators)
-			c.checkExternStruct(d)
 		case *ast.UnionDecl:
 			c.checkDecorators(d.Decorators)
 		case *ast.EnumDecl:
@@ -699,13 +697,8 @@ func (c *checker) checkExport(decl *ast.ExportDecl) {
 func (c *checker) checkDecorators(list []*ast.Decorator) {
 	for _, decorator := range list {
 		if !decorator.Name.IsPlainName() || !decorators[decorator.Name.Segments[0].Name] {
-			c.errorf(decorator.Offset, "unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent, @distributed and @extern",
+			c.errorf(decorator.Offset, "unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed",
 				decoratorName(decorator))
-			continue
-		}
-		// @extern's arguments name a library and a symbol, which are not
-		// expressions to type; checkExternFunc reads them itself.
-		if decorator.Name.Segments[0].Name == "extern" {
 			continue
 		}
 		for _, arg := range decorator.Args {

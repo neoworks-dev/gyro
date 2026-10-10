@@ -5,15 +5,17 @@
 // draws anything — it opens a window, takes the finished frame as a
 // texture and puts it on the screen.
 //
-// The whole boundary is @extern. There is no binding library and no
-// generated glue: a declaration with no body, a decorator naming the
-// library it links from, and the compiler links -lSDL2 because the
-// program says so.
+// SDL is reached through its own header. The import names the pkg-config
+// package in its path, so the include directories and the library to link
+// come from `pkg-config sdl3`, and the signatures the program calls are
+// the ones SDL3 declares: there is no binding library, no generated glue
+// and nothing to keep in step with the header by hand.
 //
-// It reads events through an out-parameter. An SDL_Event is 56 bytes of
-// event structs that all begin with the same u32 tag, and
-// `SDL_PollEvent` fills one through a pointer — so the
-// window's close button ends the run, instead of a fixed time doing it.
+// It reads events through an out-parameter. An SDL_Event is a C union of
+// every event struct SDL has, and `SDL_PollEvent` fills one through a
+// pointer — so the window's close button ends the run, instead of a fixed
+// time doing it. Every one of them begins with the same u32 tag, which is
+// the only member read.
 //
 // It is the one example the suite does not run: it would open a window on
 // a machine that may have no display, and report a frame count that is
@@ -24,112 +26,49 @@
 
 import { println, eprintln, Array } from "stdlib"
 import { heap } from "mem"
+import { c_string, c_data, from_c } from "cstring"
+import safe { sin, cos } from "<math.h>"
+import safe {
+  SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
+  SDL_CreateRenderer, SDL_DestroyRenderer, SDL_CreateTexture, SDL_DestroyTexture,
+  SDL_UpdateTexture, SDL_RenderClear, SDL_RenderTexture, SDL_RenderPresent,
+  SDL_PollEvent, SDL_Delay, SDL_GetTicks, SDL_Event, SDL_Window, SDL_Renderer,
+  SDL_Texture, SDL_INIT_VIDEO, SDL_EVENT_QUIT, SDL_PIXELFORMAT_ARGB8888,
+  SDL_TEXTUREACCESS_STREAMING,
+} from "pkg:sdl3/SDL3/SDL.h"
 
 // ---------------------------------------------------------------------
-// SDL2
+// SDL
 
-@extern("SDL2")
-struct Window {}
-
-@extern("SDL2")
-struct Renderer {}
-
-@extern("SDL2")
-struct Texture {}
-
-// A rectangle argument this program only ever passes as null, meaning
-// "the whole thing" to every function that takes one.
-@extern("SDL2")
-struct Rect {}
-
-@extern("SDL2")
-safe fn SDL_Init(flags: u32): i32 !{ io }
-
-@extern("SDL2")
-safe fn SDL_Quit() !{ io }
-
-@extern("SDL2")
-safe fn SDL_GetError(): string !{}
-
-@extern("SDL2")
-safe fn SDL_CreateWindow(
-  title: string, x: i32, y: i32, width: i32, height: i32, flags: u32,
-): Window? !{ io }
-
-@extern("SDL2")
-safe fn SDL_DestroyWindow(window: Window) !{ io }
-
-@extern("SDL2")
-safe fn SDL_CreateRenderer(window: Window, index: i32, flags: u32): Renderer? !{ io }
-
-@extern("SDL2")
-safe fn SDL_DestroyRenderer(renderer: Renderer) !{ io }
-
-@extern("SDL2")
-safe fn SDL_CreateTexture(
-  renderer: Renderer, format: u32, access: i32, width: i32, height: i32,
-): Texture? !{ io }
-
-@extern("SDL2")
-safe fn SDL_DestroyTexture(texture: Texture) !{ io }
-
-// pixels crosses as a copy repacked to four bytes an element, because a
-// Gyro u32[] gives each one a whole qword.
-@extern("SDL2")
-safe fn SDL_UpdateTexture(texture: Texture, rect: Rect?, pixels: u32[], pitch: i32): i32 !{ io }
-
-@extern("SDL2")
-safe fn SDL_RenderClear(renderer: Renderer): i32 !{ io }
-
-@extern("SDL2")
-safe fn SDL_RenderCopy(renderer: Renderer, texture: Texture, source: Rect?, target: Rect?): i32 !{ io }
-
-@extern("SDL2")
-safe fn SDL_RenderPresent(renderer: Renderer) !{ io }
-
-// SDL_Event is a C union of every event struct SDL has, and they all begin
-// with the same u32 tag. Only the tag is read here, so the rest is
-// declared as the storage it is: 56 bytes at eight-byte alignment, which
-// is what `sizeof(SDL_Event)` and `_Alignof(SDL_Event)` say. Getting
-// either wrong would let SDL write past the end.
-struct Event {
-  kind: u32
-  reserved: u32
-  storage: u64[6]
+// SDL reports what went wrong as a C string it owns, and the next call
+// may overwrite it, so this copies it out.
+safe fn failure(): string {
+  return from_c(heap(), SDL_GetError())
 }
 
-const SDL_QUIT: u32 = 256
+// SDL takes a window title as a C string, which a Gyro string is not:
+// the bytes are copied with the NUL C wants after them, for as long as
+// the call needs them.
+safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
+  var bytes = c_string(heap(), title)
+  defer bytes.free()
+  return SDL_CreateWindow(c_data(bytes), width, height, 0)
+}
 
-// The out-parameter: SDL writes the event into storage this program
-// owns, and answers whether there was one.
-@extern("SDL2")
-safe fn SDL_PollEvent(event: *Event): i32 !{ io }
-
-@extern("SDL2")
-safe fn SDL_Delay(millis: u32) !{ io }
-
-@extern("SDL2")
-safe fn SDL_GetTicks(): u32 !{ io }
-
-const SDL_INIT_VIDEO: u32 = 32
-const SDL_WINDOWPOS_CENTERED: i32 = 805240832
-const SDL_WINDOW_SHOWN: u32 = 4
-const SDL_RENDERER_ACCELERATED: u32 = 2
-const SDL_PIXELFORMAT_ARGB8888: u32 = 372645892
-const SDL_TEXTUREACCESS_STREAMING: i32 = 1
-
-@extern("m")
-safe fn sin(radians: f64): f64 !{}
-
-@extern("m")
-safe fn cos(radians: f64): f64 !{}
+// A frame goes into the texture from the array's own storage: an Array<u32>
+// holds four bytes an element, which is the stride the texture's format
+// reads.
+safe fn upload(texture: *SDL_Texture, pixels: *Array<u32>, pitch: i32): bool {
+  var view = pixels.slice()
+  return SDL_UpdateTexture(texture, null, &view[0] as anyptr, pitch)
+}
 
 // ---------------------------------------------------------------------
 // The rasterizer
 
 const WIDTH: i32 = 800
 const HEIGHT: i32 = 600
-const DURATION: u32 = 6000
+const DURATION: u64 = 6000
 
 struct Vertex {
   x: f64
@@ -204,15 +143,15 @@ fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
 
 // Drains the queue and reports whether the window was asked to close.
 // The whole queue is drained every frame, not just the first event: SDL
-// stops responding otherwise, which is what SDL_PumpEvents used to be
-// here for.
+// stops responding otherwise.
 //
-// `event.kind` is read whatever event SDL filled in, because every one
-// begins with that same u32.
-fn quit_requested(event: *Event): bool {
+// `event.type` is read whatever event SDL filled in, because every one
+// begins with that same u32. Nothing records which member of the union is
+// live, so reading one is unsafe and this function vouches for it.
+safe fn quit_requested(event: *SDL_Event): bool {
   var quit = false
-  while SDL_PollEvent(event) != 0 {
-    if event.kind == SDL_QUIT {
+  while SDL_PollEvent(event) {
+    if event.type == SDL_EVENT_QUIT as u32 {
       quit = true
     }
   }
@@ -220,25 +159,23 @@ fn quit_requested(event: *Event): bool {
 }
 
 fn main() {
-  if SDL_Init(SDL_INIT_VIDEO) != 0 {
-    eprintln("SDL_Init: #{SDL_GetError()}")
+  if !SDL_Init(SDL_INIT_VIDEO) {
+    eprintln("SDL_Init: #{failure()}")
     return
   }
   defer SDL_Quit()
 
-  var window = SDL_CreateWindow(
-    "gyro — a triangle", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-    WIDTH, HEIGHT, SDL_WINDOW_SHOWN,
-  )
+  var window = open_window("gyro — a triangle", WIDTH, HEIGHT)
   if window == null {
-    eprintln("SDL_CreateWindow: #{SDL_GetError()}")
+    eprintln("SDL_CreateWindow: #{failure()}")
     return
   }
   defer SDL_DestroyWindow(window)
 
-  var renderer = SDL_CreateRenderer(window, 0 - 1, SDL_RENDERER_ACCELERATED)
+  // No driver name: SDL picks the best one it has.
+  var renderer = SDL_CreateRenderer(window, null)
   if renderer == null {
-    eprintln("SDL_CreateRenderer: #{SDL_GetError()}")
+    eprintln("SDL_CreateRenderer: #{failure()}")
     return
   }
   defer SDL_DestroyRenderer(renderer)
@@ -247,7 +184,7 @@ fn main() {
     renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
   )
   if texture == null {
-    eprintln("SDL_CreateTexture: #{SDL_GetError()}")
+    eprintln("SDL_CreateTexture: #{failure()}")
     return
   }
   defer SDL_DestroyTexture(texture)
@@ -266,7 +203,7 @@ fn main() {
   var frames = 0
 
   var started = SDL_GetTicks()
-  var event = Event{ kind: 0, reserved: 0, storage: [0, 0, 0, 0, 0, 0] }
+  var event = SDL_Event{ type: 0 }
 
   while SDL_GetTicks() - started < DURATION {
     var angle = (SDL_GetTicks() - started) as f64 / 900.0
@@ -277,10 +214,10 @@ fn main() {
       rotate(centre_x, centre_y, radius, angle + third + third, 0.30, 0.45, 0.95),
     )
 
-    var _ = SDL_UpdateTexture(texture, null, pixels.slice(), WIDTH * 4)
+    var _ = upload(texture, &pixels, WIDTH * 4)
     var _ = SDL_RenderClear(renderer)
-    var _ = SDL_RenderCopy(renderer, texture, null, null)
-    SDL_RenderPresent(renderer)
+    var _ = SDL_RenderTexture(renderer, texture, null, null)
+    var _ = SDL_RenderPresent(renderer)
 
     if quit_requested(&event) {
       break

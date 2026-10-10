@@ -525,20 +525,6 @@ func (g *generator) freePlan(name, method string, sig *metals.FnType) nativePlan
 	case "unlock_output":
 		return nativePlan{symbol: "gy_unlock_output"}
 
-	// The foreign boundary. Lowering emits these around every @extern
-	// call, so neither backend converts anything itself.
-	case "ffi.cstr":
-		return nativePlan{symbol: "gy_ffi_cstr", args: values(0)}
-	case "ffi.from_cstr":
-		return nativePlan{symbol: "gy_ffi_from_cstr", args: values(0)}
-	case "ffi.data":
-		return nativePlan{symbol: "gy_ffi_data", args: []planArg{pointerTo(0)}}
-	case "ffi.release":
-		return nativePlan{symbol: "gy_ffi_release", args: values(0)}
-	case "ffi.opt_handle":
-		return nativePlan{symbol: "gy_ffi_opt_handle", args: []planArg{pointerTo(0)}}
-	case "ffi.handle_opt":
-		return nativePlan{symbol: "gy_ffi_handle_opt", sret: true, args: values(0)}
 	case "to_i32":
 		return nativePlan{symbol: "gy_to_i32", sret: true, args: values(0)}
 	case "to_f64":

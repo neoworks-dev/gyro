@@ -57,8 +57,8 @@ type headerImport struct {
 	// includes are the headers imported, in the order they were first named.
 	includes []string
 	names    []string
-	sites  map[string][]site
-	first site
+	sites    map[string][]site
+	first    site
 }
 
 type site struct {

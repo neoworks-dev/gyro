@@ -8,16 +8,6 @@ struct Cell {
   value: i32
 }
 
-// An extern is unsafe to call unless the declaration says otherwise.
-@extern("m")
-fn cos(x: f64): f64 !{}
-
-@extern("m")
-safe fn sin(x: f64): f64 !{}
-
-@extern("m")
-unsafe fn tan(x: f64): f64 !{}
-
 // ---------------------------------------------------------------------
 // The three kinds
 
@@ -73,16 +63,6 @@ safe fn contained(p: anyptr, n: usize): i32 {
   var a = cast<Cell>(offset(p, n))
   var b = ptr_from_int<Cell>(n)
   return a.value + b.value
-}
-
-// ---------------------------------------------------------------------
-// @extern
-
-fn externs(x: f64): f64 {
-  var a = sin(x)
-  var b = cos(x)                 //~ E0618 cos is unsafe to call; this function is a plain fn
-  var c = tan(x)                 //~ E0618 tan is unsafe to call; this function is a plain fn
-  return a + b + c
 }
 
 // ---------------------------------------------------------------------

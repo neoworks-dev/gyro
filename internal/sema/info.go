@@ -41,9 +41,6 @@ type Info struct {
 	// Instances lists every concrete instantiation of each generic
 	// function, keyed by InstanceKey.
 	Instances map[*ast.FuncDecl]map[string]*FuncInstance
-	// Externs holds the library and symbol of every @extern function, so
-	// lowering can emit the import without re-reading the decorator.
-	Externs map[*ast.FuncDecl]types.Extern
 }
 
 // CallInfo is the resolution of one call expression.
@@ -109,7 +106,6 @@ func newInfo() *Info {
 		Unions:    map[*ast.UnionDecl]*types.Union{},
 		Enums:     map[*ast.EnumDecl]*types.Enum{},
 		Instances: map[*ast.FuncDecl]map[string]*FuncInstance{},
-		Externs:   map[*ast.FuncDecl]types.Extern{},
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 
 func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 	c.checkDecorators(decl.Decorators)
-	c.checkExternFunc(decl)
 	c.checkEntryPoint(decl)
 	c.checkFuncBody(decl, nil)
 }

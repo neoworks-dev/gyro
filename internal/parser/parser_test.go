@@ -477,8 +477,8 @@ func TestUnsafeAndSafeAreContextual(t *testing.T) {
 		{"safe async fn f() {\n}\n", "File test.gyro Func safe async f Body: Block"},
 		{"unsafe fn Cell::peek(self): i32 !{}\n",
 			"File test.gyro Func unsafe Cell::peek Recv: self Result: NamedType i32 Effects: !{}"},
-		{"@extern(\"m\")\nsafe fn sqrt(x: f64): f64 !{}\n",
-			"File test.gyro Func safe sqrt Decorator @extern Arg: Lit string literal \"m\" Param x: Type: NamedType f64 Result: NamedType f64 Effects: !{}"},
+		{"@gpu(\"m\")\nsafe fn sqrt(x: f64): f64 !{}\n",
+			"File test.gyro Func safe sqrt Decorator @gpu Arg: Lit string literal \"m\" Param x: Type: NamedType f64 Result: NamedType f64 Effects: !{}"},
 		{`import safe { a } from "m.c"` + "\n", `File test.gyro Import safe {a} from "m.c"`},
 		{`import safe * as m from "m.c"` + "\n", `File test.gyro Import safe * as m from "m.c"`},
 

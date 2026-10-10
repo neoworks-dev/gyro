@@ -55,9 +55,3 @@ fn notANumber(n: i64, p: anyptr) {
 fn notInAnAny(p: anyptr) {
   var boxed = p as any           //~ an any cannot hold anyptr
 }
-
-// It is still this program's address space, which is exactly what a
-// linked library shares — and `void *` is what half of C's interfaces
-// are written over, so it crosses.
-@extern("c")
-fn keep(p: anyptr) !{}

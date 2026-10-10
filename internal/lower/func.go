@@ -379,14 +379,13 @@ func isUserRecord(t types.Type) bool {
 // isOpaqueHandle reports whether a struct is a value the backend passes
 // around without ever looking inside: fieldless, so there is nothing to
 // lay out, and owned by something other than this program — the runtime,
-// for a bundled struct, or a C library for an `@extern` one. A struct
-// that declares fields is ordinary Gyro data and lowers to a record
-// either way.
+// for a bundled struct. A struct that declares fields is ordinary Gyro
+// data and lowers to a record either way.
 func isOpaqueHandle(t *types.Struct) bool {
 	if len(t.Fields) > 0 {
 		return false
 	}
-	return stdlib.IsBundled(t.Module) || t.Extern != ""
+	return stdlib.IsBundled(t.Module)
 }
 
 // newLocal declares a local holding an already-coerced value register.

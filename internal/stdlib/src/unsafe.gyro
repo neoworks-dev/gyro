@@ -18,7 +18,7 @@ export unsafe fn cast<T>(p: anyptr): *T !{}
 // ptr_from_int makes a pointer from an integer, for an address the program
 // did not get from an allocation: a device register, a page table. Nothing
 // the borrow analysis can see says where it points, so it is treated as
-// coming from outside the program, the way an @extern result is.
+// coming from outside the program, the way the result of a C function is.
 export unsafe fn ptr_from_int<T>(address: usize): *T !{} {
   return cast<T>(address_to_pointer(address))
 }

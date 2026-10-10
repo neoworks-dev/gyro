@@ -241,14 +241,6 @@ func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string
 func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
 	module := f.l.moduleOf[decl]
 
-	// An @extern declaration is a C symbol. It imports from the library's
-	// own module rather than from gyro:rt, which is what makes the
-	// verifier read the signature as boundary-crossing and what tells the
-	// backends which library to link.
-	if extern, ok := f.l.info.Externs[decl]; ok {
-		return f.prepareExtern(call, resolved, extern)
-	}
-
 	// A declaration in a module another language produced is a real
 	// cross-module call: the callee lives in its own METALS module and
 	// the linker resolves the name.
