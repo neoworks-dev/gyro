@@ -1,11 +1,12 @@
-// Package crt holds the C runtime that implements the gyro:rt import
-// surface: Go-compatible formatting, strings, arrays, hashing, channels,
-// mutexes and futures behind a plain C ABI.
+// Package crt holds what is left of the C runtime behind the gyro:rt import
+// surface: the aborts, the string layout's last step, threads, channels,
+// mutexes, futures and `any`, the linear-memory instructions, and the
+// printing functions that METALS from a producer other than Gyro calls.
+// The standard library itself is Gyro; docs/appendix-e-native-backend.md
+// lists what stays here and why.
 //
 // internal/nasm links against this one file rather than emitting the
-// runtime itself, so what a program does at runtime is written in C once
-// and read as C. Its contract (layouts, message texts, formatting rules)
-// is docs/appendix-e-native-backend.md.
+// runtime itself.
 package crt
 
 import _ "embed"
