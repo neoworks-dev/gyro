@@ -3684,9 +3684,34 @@ it did not have.
 
 Design in [appendix E](appendix-e-native-backend.md).
 
+### Gyro reaches Linux through system calls *(new)*
+
+**Status: decided.** The `unsafe` module has `syscall0` through `syscall6`,
+which lower to a METALS `syscall` instruction that the backend emits as the
+x86-64 `syscall` instruction. This reverses "The runtime is C on libc"
+below: the goal is a Gyro with no C anywhere, so the runtime is to be
+rewritten in Gyro over these functions, and only a program that imports a C
+header links the C library (#136). The months that entry estimated are the
+work #136 tracks, taken on deliberately.
+
+Each argument is generic and keeps its own type, and sema accepts an
+integer, a `bool` or a pointer of any kind. That is what lets a buffer go
+in as a pointer: the borrow analysis keeps seeing every address handed to
+the kernel, and no pointer becomes an integer in Gyro code.
+
+**Rejected: integer arguments, as Go's `Syscall(trap, a1, a2, a3 uintptr)`
+has.** Every pointer would go through `ptr_to_int` first, which is the
+one conversion the provenance analysis cannot follow. **Rejected: one
+variadic `syscall(number, args: ...any)`.** An `any` is two words with a
+descriptor, not the one word a register holds, so the call would have to
+unpack every argument at run time. **Rejected: inline assembly.** It would
+reach the same instruction, but it is a far larger unsafe surface than
+seven functions, and nothing else needs it yet.
+
 ### The runtime is C on libc *(new)*
 
-**Status: decided.** `gyro:rt` is implemented as a small C file compiled
+**Status: reversed — see "Gyro reaches Linux through system calls".**
+`gyro:rt` is implemented as a small C file compiled
 and linked alongside the generated assembly. libc supplies the
 allocator, formatted output and pthreads; the produced binary depends on
 libc the way Rust's and C's do by default. Rejected freestanding raw

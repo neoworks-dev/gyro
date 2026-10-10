@@ -356,9 +356,19 @@ export unsafe fn raw_resize(pointer: anyptr, old_size: usize, size: usize, align
 
 export unsafe fn env_of<F>(f: F): anyptr? !{}
 export unsafe fn with_env<F>(f: F, env: anyptr?): F !{}
+
+export unsafe fn syscall0(number: usize): isize !{ io }
+export unsafe fn syscall1<A>(number: usize, a: A): isize !{ io }
+export unsafe fn syscall2<A, B>(number: usize, a: A, b: B): isize !{ io }
+export unsafe fn syscall3<A, B, C>(number: usize, a: A, b: B, c: C): isize !{ io }
+export unsafe fn syscall4<A, B, C, D>(number: usize, a: A, b: B, c: C, d: D): isize !{ io }
+export unsafe fn syscall5<A, B, C, D, E>(number: usize, a: A, b: B, c: C, d: D, e: E): isize !{ io }
+export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: D, e: E, f: F): isize !{ io }
 ```
 
-`cast`, `slice_from_raw` and `env_of`/`with_env` are answered by lowering. `ptr_from_int` is
+`cast`, `slice_from_raw`, `env_of`/`with_env` and the `syscall` functions
+are answered by lowering; each `syscall` is the METALS `syscall`
+instruction, and its arguments must be integers, `bool`s or pointers. `ptr_from_int` is
 Gyro over `cast` and a private intrinsic, `ptr_to_int` and the rest are
 runtime functions: METALS has no instruction that makes a pointer of an
 integer.
@@ -391,8 +401,8 @@ export async fn get(url: string): (string, error?) !{ io }
 Runtime intrinsics: `print`/`println`/`eprint`/`eprintln`, a private `start_thread` under `spawn`, `Array<T>`,
 `Mutex<T>`/`MutexGuard<T>`, `from_utf8`, `mem`'s `allocator`, `size`,
 `align`, `panic`, and the `unsafe` module's `raw_alloc`/`raw_free`/`raw_resize`,
-`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `slice_from_raw`, `env_of` and `with_env` are
-lowering's),
+`copy_bytes`, `offset` and `ptr_to_int` (`cast`, `slice_from_raw`, `env_of`, `with_env` and the
+`syscall` functions are lowering's),
 `open`/`read_all`/`File::close` and the rest of `fs`, `to_i32`/`to_f64`,
 `net::get`, the `os` and `time` surfaces. The `math` functions are METALS
 instructions.

@@ -81,6 +81,7 @@ import { cast, offset, ptr_from_int, ptr_to_int, slice_from_raw } from "unsafe"
 | `copy_bytes(to, from: anyptr, bytes: usize)` | copies bytes; the ranges may overlap |
 | `raw_alloc`, `raw_free`, `raw_resize` | the process heap, which every allocator bottoms out in |
 | `env_of<F>(f: F): anyptr?`, `with_env<F>(f: F, env: anyptr?): F` | read and replace a `fn` value's environment |
+| `syscall0(number: usize): isize` … `syscall6` | makes a Linux system call with zero to six arguments |
 
 `cast` is the program's claim that a `T` lives at the address, the same
 claim C's cast makes. It replaces `p as *T`, which no longer exists:
@@ -115,6 +116,43 @@ operations `keep` and `release` are written over: a closure's environment is
 a record in the frame that wrote it, and its first word is the record's size
 in bytes. Pointer arithmetic on a `*T` is not here yet
 ([appendix G](appendix-g-known-gaps.md)); when it arrives it lives here.
+
+### System calls
+
+`syscall0` through `syscall6` ask the Linux kernel for something directly,
+with no C library in between. The number says how many arguments the call
+takes after the system call's own number:
+
+```gyro
+import { syscall3 } from "unsafe"
+
+const SYS_WRITE: usize = 1
+
+safe fn write(fd: i32, bytes: u8[]): isize {
+  if bytes.len() == 0 {
+    return 0
+  }
+  return syscall3(SYS_WRITE, fd, &bytes[0], bytes.len())
+}
+```
+
+Each argument is an integer, a `bool`, or a pointer of any kind, nullable
+ones included, and each keeps its own type: a buffer goes in as the
+pointer it is, never as a number, so the borrow analysis still sees every
+address the program hands the kernel. Anything else, such as a struct, a
+string, a slice or a float, is an error, because none of them fits in the
+one register the kernel reads an argument from.
+
+The result is the kernel's own answer as an `isize`: zero or more on
+success, and on failure an error number, negated. Nothing is retried and
+nothing is translated, which is what lets ordinary Gyro build `fs`, `os` and
+`time` on top of these seven functions.
+
+A system call can write anywhere the program can, so each of them is an
+`unsafe fn`, and each declares `!{ io }`. They exist on Linux only: Linux
+promises that its system call numbers and registers stay as they are,
+while macOS, the BSDs and Windows make no such promise and are reached
+through their C libraries instead.
 
 ## Containing it
 
