@@ -676,8 +676,8 @@ type Trait struct {
 	Assoc []*AssocType
 	Decl  *ast.TraitDecl
 	// Kind names the capability the compiler knows the trait as — "Eq",
-	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg" or
-	// "Iterator" — and is empty for every other trait. Such a trait is
+	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg",
+	// "Iterator", "Index" or "Destroy" — and is empty for every other trait. Such a trait is
 	// declared in the bundled standard library like any other; the
 	// compiler recognizes it by where it is declared.
 	Kind string

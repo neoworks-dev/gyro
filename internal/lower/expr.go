@@ -16,6 +16,7 @@ func (f *funcLowerer) lowerExpr(e ast.Expr, want types.Type) string {
 		return f.nullConst(want)
 	}
 	reg := f.eval(e, want)
+	f.keepTemporary(e, reg)
 	// A condition-shaped node is bool by construction, and sema's
 	// condition checker does not record the node itself.
 	if isCondShaped(e) {
@@ -173,6 +174,7 @@ func isAnyPtrType(t types.Type) bool {
 func (f *funcLowerer) evalIdent(e *ast.Ident) string {
 	if entry := f.lookup(e.Name); entry != nil {
 		value := f.localPlace(entry).load()
+		f.moveOut(e, entry)
 		// Only an optional local can need the narrowing unwrap; callee
 		// idents are never recorded, so ask for the use type lazily.
 		if _, optional := entry.typ.(*types.Optional); optional {

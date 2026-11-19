@@ -63,6 +63,7 @@ gyro explain           # the whole catalogue
 | E04xx | names |
 | E05xx | types |
 | E06xx | statements, borrows, effects, foreign functions |
+| E07xx | ownership: moves and destruction |
 | W07xx | memory (leaks) |
 | W08xx | concurrency (races) |
 
@@ -109,6 +110,10 @@ A sample, so the ranges have a shape:
 | E0635 | an `inout` argument that is a temporary rather than a variable |
 | E0636 | one value passed twice to a call when one pass is `inout` |
 | E0637 | an `inout` parameter with a default, in an async function, in a runtime intrinsic, or on a function used as a value |
+| E0701 | a variable used after its value moved out |
+| E0702 | a move out of a parameter, a field, an element, a pointer or a deferred call |
+| E0703 | an owning type where ownership is not followed yet |
+| E0704 | `destroy` called by name |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
 | E0620 | a channel, send, receive, select, async function or await in a program that does not load `stdlib` |

@@ -138,6 +138,11 @@ const (
 	EInoutPlace    Code = "E0635"
 	EInoutAlias    Code = "E0636"
 	EInoutParam    Code = "E0637"
+	// Ownership
+	EUseAfterMove      Code = "E0701"
+	ECannotMove        Code = "E0702"
+	EOwningUnsupported Code = "E0703"
+	EDestroyByName     Code = "E0704"
 
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
@@ -349,6 +354,14 @@ var explanations = map[Code]explanation{
 		"An `inout` parameter is exclusive for as long as the call runs. Passing\nthe same variable, or a part of it, as another argument or as the\nreceiver would let the callee change it through one name and read it\nthrough the other. A number passed plainly is a copy and is not counted.\nTwo elements of one array count as the same place, since which elements\nthey are is not known here."},
 	EInoutParam: {"inout parameter is used wrongly",
 		"An `inout` parameter is passed by address, so it takes no default, an\nasync function or one the runtime provides may not have one, and a\nfunction that has one is only called by name: a function value or a code pointer carries a signature that\nhas no way to say a parameter is inout. Wrap the call in a closure to pass\nit on."},
+	EUseAfterMove: {"value used after it was moved",
+		"An owning value has one owner. Putting it in a variable, a field, an\nelement or a return moves it, and the variable it came from holds nothing\nafterwards, exactly as if it had never been assigned. Assigning the\nvariable again makes it usable again.\n\nA loop body that moves a variable from outside the loop has to assign it\nagain before the next iteration, which would otherwise find it empty."},
+	ECannotMove: {"value cannot be moved out of where it is",
+		"Only a local variable can give its value away, because only a variable\ncan be left empty: a parameter is borrowed from the caller, a field or an\nelement would leave a hole in the value holding it, and a pointer does not\nown what it points at. A deferred call cannot move, since it runs after\nevery other use of the variable."},
+	EOwningUnsupported: {"owning value used where ownership is not followed yet",
+		"A type argument, a closure capture, a channel, a pattern binding and a\nfor loop variable would each copy an owning value without moving it, and\ndestroying both copies would destroy it twice. Until ownership is\nfollowed through them, an owning type is refused there."},
+	EDestroyByName: {"destroy called by name",
+		"A value is destroyed when its owner goes out of scope or is assigned\nover, and only then. Calling destroy by hand would destroy it a second\ntime when that happens."},
 	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",
 		"A channel, a send, a receive, closing or iterating a channel, a select, an\nasync function and an await are written in Gyro, and their code is in\nstdlib. The compiler never loads a module the program did not import, so a\nprogram that uses one has to load stdlib itself.\n\nImport something from it, such as println: import { println } from \"stdlib\""},
 	EFormatEscapes: {"format value outlives its statement",

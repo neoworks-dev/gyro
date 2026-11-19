@@ -316,7 +316,7 @@ func (f *funcLowerer) loopShell(test func(breakLabel string), body *ast.Block, b
 	loopBody := f.nested(func() {
 		test(breakLabel)
 		f.loops = append(f.loops, loopContext{
-			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes),
+			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes), temps: len(f.temps),
 		})
 		inner := f.nested(func() {
 			f.pushScope()

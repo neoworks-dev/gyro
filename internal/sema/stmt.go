@@ -76,6 +76,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 
 	case *ast.ForInStmt:
 		elem := c.iterableElem(s.Iterable)
+		if c.rejectOwning(s.Offset, elem, "a for loop variable") {
+			elem = types.Unknown
+		}
 		c.pushScope(func() {
 			c.declareValue(s.Name, s.Offset, s, elem)
 			c.pushLoop(false, func() {
@@ -103,7 +106,7 @@ func (c *checker) stmt(stmt ast.Stmt) {
 			return
 		}
 		// `continue` goes back to the loop head, so nothing below it runs.
-		c.flow.reachable = false
+		c.recordContinue()
 	}
 }
 
@@ -202,6 +205,7 @@ func (c *checker) localVar(decl *ast.VarDecl) {
 	c.varTypes(decl, func(binding ast.Binding, typ types.Type) {
 		sym := c.declareValue(binding.Name, binding.Offset, decl, typ)
 		c.noteOrigin(sym, decl.Value, typ)
+		c.owningLocal(sym, decl.Value != nil)
 		declared = append(declared, sym)
 	})
 
@@ -263,6 +267,8 @@ func (c *checker) varTypes(decl *ast.VarDecl, bind func(ast.Binding, types.Type)
 		} else {
 			t = c.defaultExpr(decl.Value, c.expr(decl.Value))
 		}
+		// Before the names are bound: `let x = x` moves the outer x.
+		c.consume(decl.Value)
 		for _, binding := range decl.Names {
 			bind(binding, t)
 		}
@@ -297,6 +303,7 @@ func (c *checker) destructure(decl *ast.VarDecl, annotation types.Type, bind fun
 		c.assignValue(decl.Value.Pos(), decl.Value, value, annotation, "the declaration")
 		value = annotation
 	}
+	c.consume(decl.Value)
 
 	tuple, ok := value.(*types.Tuple)
 	if !ok {
@@ -339,6 +346,7 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 		return
 	}
 	c.assignExpr(s.Rhs, target, "assignment")
+	c.consume(s.Rhs)
 	c.noteAssign(s.Lhs[0], s.Rhs)
 	c.killFactsFor(s.Lhs[0])
 	c.markAssignedTarget(s.Lhs[0])
@@ -413,6 +421,7 @@ func (c *checker) destructuringAssign(s *ast.AssignStmt) {
 	}
 
 	value := c.expr(s.Rhs)
+	c.consume(s.Rhs)
 	tuple, ok := value.(*types.Tuple)
 	if !ok {
 		if !flexible(value) {
@@ -538,6 +547,7 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 			return
 		}
 		c.assignExpr(s.Results[0], want, "return")
+		c.consume(s.Results[0])
 	default:
 		tuple, ok := want.(*types.Tuple)
 		if !ok || len(tuple.Elems) != len(s.Results) {
@@ -551,6 +561,7 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 		}
 		for i, result := range s.Results {
 			c.assignExpr(result, tuple.Elems[i], "return")
+			c.consume(result)
 		}
 	}
 }

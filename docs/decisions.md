@@ -1078,6 +1078,41 @@ with a `_Static_assert` on each type's size and each member's offset. A
 size assert alone would pass on two structs that pad differently and
 total the same.
 
+### A temporary is destroyed at the end of its statement *(new)*
+
+**Status: decided.** An owning value nothing takes, such as a call's
+result passed to a parameter that borrows it, is destroyed at the end of
+the statement that made it, or at the end of the branch it was made in
+when that comes first: the right side of `&&`, a match arm. A value an
+expression statement discards is destroyed right away.
+
+The branch rule is what keeps it to one path: a temporary made only when
+`&&`'s left side is true does not exist on the other path, so the end of
+the statement would have to ask a flag first. Ending it with its branch
+needs none, and nothing outside the branch can see it anyway.
+
+Rejected destroying a temporary right after the call that used it. A view
+the call returned into it, a field read through it, would outlive it
+within the same statement.
+
+### Moves are checked by definite assignment *(new)*
+
+**Status: decided.** A move takes the variable out of the assigned set,
+and a later read is the same error as a read before any write, worded for
+the move. A move on one branch leaves the variable unassigned after the
+merge, and a hidden flag decides at run time whether the end of the scope
+still destroys it.
+
+A loop body that moves a variable from outside the loop has to assign it
+again before the next iteration. That is checked at the back edge, so the
+analysis stays a single pass with no fixpoint: a body that hands every such
+variable back leaves the next iteration where the first one started.
+
+Until ownership is followed through them, an owning type is refused as a
+type argument, in a closure capture, a channel, a pattern binding, a `for`
+variable and an `any`. Each would copy the value without moving it, and
+refusing it keeps the rest sound while the next steps of #164 land.
+
 ### `defer` runs at block exit *(revised)*
 
 **Status: decided.** A defer fires when its enclosing `{ }` ends (Zig's

@@ -233,6 +233,12 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 		c.errorf(fun.NameOffset, "%s is an associated function; call it as %s::%s(...)", fun.Name, recv, fun.Name)
 		return callee{bad: true}
 	}
+	if fun.Name == "destroy" && types.Destroys(recv) {
+		c.errorHintf(fun.NameOffset, []string{
+			"a value is destroyed when its owner goes out of scope or is assigned over",
+		}, "destroy is never called by name")
+		return callee{bad: true}
+	}
 	if _, ok := recv.(*types.Chan); ok && fun.Name == "close" {
 		c.requireStdlib(fun.NameOffset, "closing a channel")
 	}
@@ -646,6 +652,7 @@ func (c *checker) constructVariant(call *ast.CallExpr, target callee) types.Type
 	for i, arg := range call.Args {
 		if i < len(variant.Payload) {
 			c.assignExpr(arg.Value, variant.Payload[i], "the payload of "+variant.Name)
+			c.consume(arg.Value)
 		} else {
 			c.expr(arg.Value)
 		}

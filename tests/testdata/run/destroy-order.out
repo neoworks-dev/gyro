@@ -1,0 +1,30 @@
+block body
+destroy b
+defer between
+destroy a
+destroy first
+destroy second
+destroy pair
+destroy left
+destroy right
+show temporary
+destroy temporary
+destroy discarded
+destroy dropped
+kept kept
+destroy old
+assigned
+took moved
+destroy loop 0
+destroy loop 1
+destroy maybe
+after the branch
+destroy inner
+destroy outer
+stayed
+destroy outer
+end of main
+destroy later
+destroy moved
+destroy new
+destroy kept

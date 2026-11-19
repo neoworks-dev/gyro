@@ -227,7 +227,16 @@ var codes = map[string]diag.Code{
 	"%s::%s carries %d value(s), the pattern binds %d":                                      diag.EPatternNeverMatches,
 	"this match leaves %s uncovered":                                                        diag.EMatchNotExhaustive,
 	"%s is read before it is assigned":                                                      diag.EUnassignedRead,
-	"%s holds a value only where %s is true":                                                diag.EUnassignedRead,
+
+	// Ownership
+	"%s is used after it was moved":                             diag.EUseAfterMove,
+	"%s is moved inside a loop":                                 diag.EUseAfterMove,
+	"cannot move %s":                                            diag.ECannotMove,
+	"a deferred call cannot move %s":                            diag.ECannotMove,
+	"a match arm cannot move an owning value out of a variable": diag.ECannotMove,
+	"%s is owning and cannot be used in %s":                     diag.EOwningUnsupported,
+	"destroy is never called by name":                           diag.EDestroyByName,
+	"%s holds a value only where %s is true":                    diag.EUnassignedRead,
 
 	// Borrows
 	"&%s names no parameter of this function":                       diag.EBadBorrowSource,

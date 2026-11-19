@@ -8,14 +8,31 @@ it also lives in the execution corpus as a `//gyro:skip` with its reason
 attached — a skip is a program that will fail the day the gap closes
 ([chapter 17.3](ch17-03-testing.md)).
 
-## Ownership is specified, not built
+## Ownership is half built
 
 [Chapter 4](ch04-01-ownership.md) describes ownership, destructors,
-borrowing and `Box`, and the compiler implements none of it yet (#164).
-Until it does, memory is still freed by hand with `free`, `alloc` hands out
-raw pointers in safe code, and none of the borrowing checks run. The rest
-of the book's examples still use the old spelling in places, `.free()`
-among them, and move over as the implementation lands.
+borrowing and `Box` (#164). What runs today is `Destroy`, destruction at
+scope exit interleaved with `defer`, destruction on assignment and of
+temporaries, and moves with their use-after-move check and drop flags.
+
+What does not:
+
+- **No standard-library type is owning yet.** `Array`, `String` and `Map`
+  are still freed by hand with `free`, and `alloc` hands out raw pointers
+  in safe code. Only a type that implements `Destroy`, or holds one that
+  does, is owning.
+- **`T!` parameters, views until their last use and `Box`** are
+  not built, so a value can only be moved into a variable, a field, an
+  element or a return, and none of the borrowing checks of chapter 4.4 run.
+- **An owning type is refused where ownership is not followed yet**: as a
+  type argument, in a closure capture, a channel, a pattern binding, a
+  `for` loop variable and an `any` (E0703). A match arm cannot move a
+  variable out either. Each would copy the value without moving it.
+- **A temporary used as a receiver is not destroyed.** `make().method()`
+  leaks the value `make` returned.
+
+The rest of the book's examples still use the old spelling in places,
+`.free()` among them, and move over as the implementation lands.
 
 ## Blocking real applications
 

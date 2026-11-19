@@ -364,7 +364,11 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		code.Result = c.resultType(t.Results)
 		return code
 	case *ast.ChanType:
-		return &types.Chan{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
+		elem := c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))
+		if c.rejectOwning(t.Elem.Pos(), elem, "a channel") {
+			elem = types.Unknown
+		}
+		return &types.Chan{Elem: elem}
 	case *ast.DynType:
 		return c.resolveDyn(t)
 	}

@@ -129,9 +129,14 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 	c.checkAssigned(sym, e.Offset, e.Name)
 	c.checkArenaLive(sym, e.Offset)
 	c.noteCapture(sym)
-	if sym.kind == symValue && sym.closureDepth < c.closureDepth && c.isFormat(sym.typ) {
-		c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")
-		return types.Unknown
+	if sym.kind == symValue && sym.closureDepth < c.closureDepth {
+		if c.isFormat(sym.typ) {
+			c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")
+			return types.Unknown
+		}
+		if c.rejectOwning(e.Offset, sym.typ, "a closure capture") {
+			return types.Unknown
+		}
 	}
 	return c.symbolValueType(sym, e.Offset, e.Name)
 }
@@ -941,6 +946,7 @@ func (c *checker) arrayLit(e *ast.ArrayLit, want types.Type) types.Type {
 		// Storing an allocation in a literal puts it beyond this block.
 		c.settleEscape(element)
 		t := c.exprWith(element, elemWant)
+		c.consume(element)
 		if elemWant != nil {
 			c.assignValue(element.Pos(), element, t, elemWant, "the array literal")
 			continue
@@ -977,6 +983,7 @@ func (c *checker) tupleLit(e *ast.TupleLit, want types.Type) types.Type {
 			elemWant = wantTuple.Elems[i]
 		}
 		t := c.exprWith(element, elemWant)
+		c.consume(element)
 		if elemWant != nil {
 			// Adapt rather than default: `-1` is a literal behind a
 			// negation, and only adapting carries the element's type
@@ -1378,6 +1385,7 @@ func (c *checker) positionalStructLit(e *ast.StructLit, strct *types.Struct) {
 	for i, field := range e.Fields {
 		if i < len(strct.Fields) {
 			c.assignExpr(field.Value, strct.Fields[i].Type, "the field "+strct.Fields[i].Name)
+			c.consume(field.Value)
 		} else {
 			c.expr(field.Value)
 		}
@@ -1401,6 +1409,7 @@ func (c *checker) namedStructLit(e *ast.StructLit, strct *types.Struct) {
 			continue
 		}
 		c.assignExpr(field.Value, declared.Type, "the field "+field.Name)
+		c.consume(field.Value)
 	}
 
 	for _, declared := range strct.Fields {
@@ -1513,6 +1522,10 @@ func isAnyPtrCastable(t types.Type) bool {
 // slice, an array and a pointer are tested by walking their shape, and
 // written in a match arm as `(i32, string)(pair)`.
 func anyPayload(t types.Type) bool {
+	if types.Owning(t) {
+		// An any is copied freely, and an owning value never is.
+		return false
+	}
 	switch t := t.(type) {
 	case *types.Basic:
 		switch t.Kind {
@@ -1614,6 +1627,14 @@ func (c *checker) matchExpr(e *ast.MatchExpr, want types.Type) types.Type {
 
 	if !firstArm {
 		c.flow = merged
+	}
+
+	// Every arm's value becomes the match's, whether or not anything
+	// takes the match's in turn.
+	if result != nil && types.Owning(result) {
+		for _, arm := range e.Arms {
+			c.consumeTail(arm.Body)
+		}
 	}
 
 	c.checkExhaustive(e, subject, covered, irrefutable)

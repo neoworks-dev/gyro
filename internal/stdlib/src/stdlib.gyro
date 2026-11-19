@@ -75,6 +75,13 @@ export trait Iterator<T> {
     fn next(inout self): (T, bool)
 }
 
+// Destroy is what happens when a value goes away: its owner went out of
+// scope, or it was assigned over. destroy runs before the value's fields
+// are destroyed, and is never called by name.
+export trait Destroy {
+    fn destroy(inout self)
+}
+
 // Index is `value[i]`. at hands back the address of element i, which is
 // what makes the index a place: `value[i] = x` writes through it and
 // `&value[i]` is the address itself, as on an Array.

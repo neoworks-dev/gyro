@@ -45,6 +45,11 @@ A value is destroyed when its owner goes away:
   is removed and not handed on
 - a variable that is assigned a new value, just before the assignment, so
   the old value does not linger
+- a value nothing takes, such as the result of a call passed straight to a
+  parameter that borrows it, at the end of the statement that made it. One
+  made on only one path, such as the right side of `&&`, is destroyed at
+  the end of that path, and one discarded by an expression statement right
+  away
 
 A value that was moved out is not destroyed by its old owner, because it is
 no longer there ([chapter 4.1](ch04-01-ownership.md)). A value returned from

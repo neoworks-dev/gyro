@@ -40,6 +40,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		importedFrom:  map[string]string{},
 		reprs:         map[string]string{},
 		hashes:        map[string]bool{},
+		destroys:      map[string]bool{},
 		globalOf:      map[*ast.VarDecl][]int{},
 		lowered:       map[string]bool{},
 		errVariant:    map[*types.Struct]int{},
@@ -149,6 +150,9 @@ type lowerer struct {
 	// hashes records which types already have a synthesized hash, for the
 	// same reason.
 	hashes map[string]bool
+
+	// destroys records which types already have a synthesized destroy.
+	destroys map[string]bool
 
 	// eqs records the synthesized comparisons, for types whose derived ==
 	// has to call an eq a part of them defines.

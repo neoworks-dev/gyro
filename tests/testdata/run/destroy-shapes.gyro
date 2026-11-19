@@ -1,0 +1,91 @@
+// Every shape that can hold an owning value destroys it: an enum's
+// payload, a tuple's elements, an optional when it is present, a fixed
+// array's elements in order. A value moved on only one path is destroyed
+// at the end of its scope only if it is still there, and a temporary made
+// on one branch is destroyed on that branch.
+
+import { println, Destroy } from "stdlib"
+
+struct Noisy {
+    name: string
+}
+
+impl Destroy for Noisy {
+    fn destroy(inout self) {
+        println("destroy #{self.name}")
+    }
+}
+
+fn make(name: string): Noisy !{ &name } {
+    return Noisy{ name: name }
+}
+
+fn named(n: Noisy, name: string): bool {
+    return n.name == name
+}
+
+enum Slot {
+    Empty
+    Full(Noisy)
+}
+
+fn pick(full: bool): Slot {
+    if full {
+        return Slot::Full(make("payload"))
+    }
+    return Slot::Empty
+}
+
+fn choose(first: bool): Noisy {
+    return match first {
+        true: make("chosen first")
+        false: make("chosen second")
+    }
+}
+
+fn main() {
+    {
+        let full = pick(true)
+        let empty = pick(false)
+    }
+
+    {
+        let pair = (make("one"), 2, make("three"))
+    }
+
+    {
+        let some: Noisy? = make("present")
+        let none: Noisy? = null
+    }
+
+    {
+        let row = [make("x"), make("y")]
+    }
+
+    for round in [true, false] {
+        let value = make("conditional")
+        if round {
+            let taken = value
+            println("moved it")
+        }
+        println("end of round")
+    }
+
+    let c = choose(false)
+    println("chose #{c.name}")
+
+    for flag in [false, true] {
+        if flag && named(make("probe"), "probe") {
+            println("probe matched")
+        }
+    }
+
+    let count = 0
+    while true {
+        count += 1
+        if named(make("leaving"), "leaving") && count == 2 {
+            break
+        }
+    }
+    println("done")
+}

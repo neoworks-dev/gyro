@@ -79,7 +79,11 @@ export trait Rem { fn rem(self, other: Self): Self }
 export trait Neg { fn neg(self): Self }
 export trait Iterator<T> { fn next(inout self): (T, bool) }
 export trait Index<T> { fn at(inout self, index: usize): *T }
+export trait Destroy { fn destroy(inout self) }
 ```
+
+`Destroy` runs when a value goes away and is never called by name
+([chapter 4.2](ch04-02-destroy-and-defer.md)).
 
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
 `Allocator` from `mem` and records it, and `push` and `free` go through

@@ -38,6 +38,9 @@ func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 		return coverage{}
 
 	case *ast.BindingPattern:
+		if c.rejectOwning(p.Offset, subject, "a pattern binding") {
+			subject = types.Unknown
+		}
 		c.declareValue(p.Name, p.Offset, p, subject)
 		return coverage{irrefutable: true}
 
