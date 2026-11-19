@@ -137,7 +137,9 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 			// What is allocated from a parameter is the caller's to free;
 			// the value borrows the allocator, not the frame.
 			sym.origin = borrowOrigin{arenas: []arenaRef{{sym: sym}}}
-		} else if sym != nil && !scalarType(paramType) {
+		} else if sym != nil && !scalarType(paramType) && !param.Take {
+			// A parameter that took its argument owns it, so handing it on
+			// is a move rather than a view of the caller's storage.
 			sym.origin = borrowOrigin{params: []*symbol{sym}}
 		}
 	}

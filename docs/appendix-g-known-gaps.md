@@ -20,15 +20,17 @@ What does not:
 - **No standard-library type is owning yet.** `Array`, `String` and `Map`
   are still freed by hand with `free`, and `alloc` hands out raw pointers
   in safe code. Only a type that implements `Destroy`, or holds one that
-  does, is owning.
+  does, is owning. A container of an owning type is refused where its
+  methods would copy an element, which is all of them today: `push` and
+  `get` are written over a borrowed `T`.
 - **Views until their last use and `Box`** are not built, so none of the
   view checks of chapter 4.4 run, and a value lives in a variable, a
   field, an element or a parameter that took it, never in a box.
 - **A function that takes a `T!` parameter cannot be a function value**,
   since a function type cannot say which of its parameters take (E0637).
-- **An owning type is refused where ownership is not followed yet**: as a
-  type argument, in a closure capture, a channel, a pattern binding, a
-  `for` loop variable and an `any` (E0703). A match arm cannot move a
+- **An owning type is refused where ownership is not followed yet**: in a
+  closure capture, a channel, a pattern binding, a `for` loop variable and
+  an `any` (E0703). A match arm cannot move a
   variable out either. Each would copy the value without moving it.
 - **A temporary used as a receiver is not destroyed.** `make().method()`
   leaks the value `make` returned.

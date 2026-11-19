@@ -4,8 +4,8 @@ package types
 // away: the type implements Destroy, or one of its fields, elements or
 // payloads is owning. Every other type is plain and copies.
 //
-// A type parameter is plain. An owning type cannot be a type argument
-// yet, so nothing a generic body copies can be owning.
+// A type parameter is plain. A generic body is checked again for each
+// instantiation, and there its type parameters are what they stand for.
 func Owning(t Type) bool {
 	return owning(t, map[Type]bool{})
 }

@@ -1108,9 +1108,27 @@ again before the next iteration. That is checked at the back edge, so the
 analysis stays a single pass with no fixpoint: a body that hands every such
 variable back leaves the next iteration where the first one started.
 
-Until ownership is followed through them, an owning type is refused as a
-type argument, in a closure capture, a channel, a pattern binding, a `for`
-variable and an `any`. Each would copy the value without moving it, and
+Until ownership is followed through them, an owning type is refused in a
+closure capture, a channel, a pattern binding, a `for` variable and an
+`any`.
+
+### A generic body is judged for moves per instantiation *(new)*
+
+**Status: decided.** A type parameter is plain while a generic body is
+checked on its own, and the body is checked again for every
+instantiation, which is where an owning type argument meets it. A body
+that copies a `T` it only borrowed, `return value` for a plain parameter,
+is refused there and only there: `copy_out<i32>` is fine, `copy_out<File>`
+is not.
+
+This is the check Gyro already makes of everything else a generic body
+does: a body may use only what its bounds provide, and the instantiation
+is what judges the rest.
+
+Rejected a `Copy` bound, Rust's answer. Whether a type copies is decided
+by what it is made of ([chapter 4.1](ch04-01-ownership.md)), and a bound
+saying so again would be one more thing to write on every generic that
+copies a number. Each would copy the value without moving it, and
 refusing it keeps the rest sound while the next steps of #164 land.
 
 ### `defer` runs at block exit *(revised)*

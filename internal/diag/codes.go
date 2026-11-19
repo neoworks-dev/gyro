@@ -359,7 +359,7 @@ var explanations = map[Code]explanation{
 	ECannotMove: {"value cannot be moved out of where it is",
 		"Only a local variable can give its value away, because only a variable\ncan be left empty: a parameter is borrowed from the caller, a field or an\nelement would leave a hole in the value holding it, and a pointer does not\nown what it points at. A deferred call cannot move, since it runs after\nevery other use of the variable."},
 	EOwningUnsupported: {"owning value used where ownership is not followed yet",
-		"A type argument, a closure capture, a channel, a pattern binding and a\nfor loop variable would each copy an owning value without moving it, and\ndestroying both copies would destroy it twice. Until ownership is\nfollowed through them, an owning type is refused there."},
+		"A closure capture, a channel, a pattern binding and a for loop\nvariable would each copy an owning value without moving it, and\ndestroying both copies would destroy it twice. Until ownership is\nfollowed through them, an owning type is refused there."},
 	EDestroyByName: {"destroy called by name",
 		"A value is destroyed when its owner goes out of scope or is assigned\nover, and only then. Calling destroy by hand would destroy it a second\ntime when that happens."},
 	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",

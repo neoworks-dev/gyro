@@ -97,10 +97,17 @@ fn notByName() {
     a.destroy() //~ E0704 destroy is never called by name
 }
 
-// Each of these would copy the value without moving it.
-fn typeArgument() {
-    let files = Array<File>::new() //~ E0703 File is owning and cannot be used in a type argument
+// A generic body is judged again for each instantiation, so one that
+// copies a T it only borrowed is refused where T owns.
+fn copyOut<T>(value: T): T {
+    return value //~ E0702 cannot move value
 }
+
+fn typeArgument() {
+    let f = copyOut(open(1)) //~ E0505 in the instantiation copyOut<File> required here
+}
+
+// Each of these would copy the value without moving it.
 
 fn capture() {
     let a = open(1)

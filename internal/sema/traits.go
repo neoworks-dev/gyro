@@ -1077,14 +1077,7 @@ func (c *checker) checkBounds(offset int, label string, params []*types.TypePara
 	ok := true
 	for _, param := range params {
 		arg, bound := s[param]
-		if !bound {
-			continue
-		}
-		if c.rejectOwning(offset, arg, "a type argument") {
-			ok = false
-			continue
-		}
-		if len(param.Bounds) == 0 {
+		if !bound || len(param.Bounds) == 0 {
 			continue
 		}
 		for _, bound := range param.Bounds {
@@ -1101,7 +1094,13 @@ func (c *checker) checkBounds(offset int, label string, params []*types.TypePara
 // application is written before the impls of the module are known, as a
 // field type may be, the check waits for them.
 func (c *checker) boundsOnApply(offset int, name string, params []*types.TypeParam, args []types.Type) bool {
-	if len(params) == 0 {
+	bounded := false
+	for _, param := range params {
+		if len(param.Bounds) > 0 {
+			bounded = true
+		}
+	}
+	if !bounded {
 		return true
 	}
 	s := bindParams(params, args)
