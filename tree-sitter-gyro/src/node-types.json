@@ -2980,6 +2980,10 @@
     "named": true
   },
   {
+    "type": "private",
+    "named": false
+  },
+  {
     "type": "return",
     "named": false
   },

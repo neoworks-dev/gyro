@@ -12,10 +12,10 @@
 export const BLOCK_SIZE: usize = 16
 
 export struct Ctx {
-    export data: u8[64]
-    export datalen: usize
-    export bitlen: u64
-    export state: u32[4]
+    data: u8[64]
+    datalen: usize
+    bitlen: u64
+    state: u32[4]
 }
 
 // ---------------------------------------------------------------------------

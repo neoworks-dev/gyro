@@ -277,7 +277,8 @@ type Method struct {
 	Impl *Impl
 }
 
-// Field is one struct field.
+// Field is one struct field. Exported reports that it is visible outside its
+// module: its type is exported and the field is not written `private`.
 type Field struct {
 	Name     string
 	Type     Type

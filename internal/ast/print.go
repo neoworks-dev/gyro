@@ -111,7 +111,7 @@ func (p *printer) node(node Node) {
 		p.line("Struct %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		for _, field := range n.Fields {
-			p.group("Field "+exportMark(field.Exported)+field.Name, func() {
+			p.group("Field "+privateMark(field.Private)+field.Name, func() {
 				p.node(field.Type)
 			})
 		}
@@ -121,7 +121,7 @@ func (p *printer) node(node Node) {
 		p.line("Union %s%s", exportMark(n.Exported), n.Name)
 		p.indent++
 		for _, member := range n.Members {
-			p.group("Member "+exportMark(member.Exported)+member.Name, func() {
+			p.group("Member "+privateMark(member.Private)+member.Name, func() {
 				p.node(member.Type)
 			})
 		}
@@ -775,4 +775,11 @@ func quoteIfString(lit *BasicLit) string {
 		return fmt.Sprintf("%q", lit.Value)
 	}
 	return lit.Value
+}
+
+func privateMark(private bool) string {
+	if private {
+		return "private "
+	}
+	return ""
 }

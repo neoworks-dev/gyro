@@ -101,9 +101,9 @@ impl Eq for TextKind
 // null `text` pointer, and every place it does so also has size 0, so the
 // two spellings agree.
 export struct Attribute {
-    export text: Array<u8>
-    export types: Array<TextKind>
-    export offsets: Array<i64>
+    text: Array<u8>
+    types: Array<TextKind>
+    offsets: Array<i64>
 }
 
 var NO_TEXT: Array<u8> = Array<u8>::new(heap())
@@ -126,16 +126,16 @@ export fn Attribute::size(self): i64 {
 // struct is enough here because Gyro has no unions and the renderer reads
 // only the fields belonging to the kind it was handed.
 export struct Detail {
-    export level: i64        // H
-    export start: i64        // Ol
-    export is_tight: bool    // Ul, Ol
-    export mark: u8          // Ul bullet, Ol delimiter
-    export fence_char: u8    // Code
-    export info: Attribute   // Code
-    export lang: Attribute   // Code
-    export href: Attribute   // A, Img
-    export title: Attribute  // A, Img
-    export is_autolink: bool // A
+    level: i64        // H
+    start: i64        // Ol
+    is_tight: bool    // Ul, Ol
+    mark: u8          // Ul bullet, Ol delimiter
+    fence_char: u8    // Code
+    info: Attribute   // Code
+    lang: Attribute   // Code
+    href: Attribute   // A, Img
+    title: Attribute  // A, Img
+    is_autolink: bool // A
 }
 
 export fn Detail::none(): Detail {
@@ -157,11 +157,11 @@ export fn Detail::none(): Detail {
 // callback takes the source it should read plus a half-open range, since
 // there are no interior pointers to hand over.
 export struct Parser {
-    export enter_block: fn(BlockKind, Detail)
-    export leave_block: fn(BlockKind, Detail)
-    export enter_span: fn(SpanKind, Detail)
-    export leave_span: fn(SpanKind, Detail)
-    export text: fn(TextKind, u8[], i64, i64)
+    enter_block: fn(BlockKind, Detail)
+    leave_block: fn(BlockKind, Detail)
+    enter_span: fn(SpanKind, Detail)
+    leave_span: fn(SpanKind, Detail)
+    text: fn(TextKind, u8[], i64, i64)
 }
 
 // ---------------------------------------------------------------------------

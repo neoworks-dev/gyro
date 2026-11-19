@@ -249,12 +249,13 @@ type UnionDecl struct {
 func (u *UnionDecl) Pos() int  { return u.Offset }
 func (u *UnionDecl) declNode() {}
 
-// Field is one struct field, or one union member.
+// Field is one struct field, or one union member. It is visible wherever its
+// type is, unless it is written `private`, which keeps it to its module.
 type Field struct {
-	Offset   int
-	Exported bool
-	Name     string
-	Type     Type
+	Offset  int
+	Private bool
+	Name    string
+	Type    Type
 }
 
 // EnumDecl declares a sum type. Variants may carry positional payloads, as in

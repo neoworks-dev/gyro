@@ -11,7 +11,7 @@ export fn double(n: i32): i32 {
 }
 
 export struct Counter {
-    export n: i32
+    n: i32
 }
 
 export fn Counter::bump(*self): i32 {

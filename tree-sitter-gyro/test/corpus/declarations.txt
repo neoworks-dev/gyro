@@ -64,8 +64,8 @@ methods and associated functions
 ==================
 
 export struct Stack {
-  export capacity: i32
-  top: i32
+  capacity: i32
+  private top: i32
 }
 
 export fn Stack::new(capacity: i32): Stack {
@@ -1186,3 +1186,27 @@ fn paint(items: Array<dyn Element>, one: *dyn Widget<i32>) {
           (dyn_type
             (named_type
               (type_identifier))))))))
+
+==================
+private is a contextual word
+==================
+
+struct Flags {
+  private: bool
+  private hidden: i32
+}
+
+---
+
+(source_file
+  (struct_declaration
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier))))))

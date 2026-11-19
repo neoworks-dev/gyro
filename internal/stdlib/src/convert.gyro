@@ -19,7 +19,7 @@ import { text_bytes } from "unsafe"
 // ParseError is what a conversion reports: the text that was refused and
 // why, in one sentence.
 export struct ParseError {
-    export text: string
+    text: string
 }
 
 export fn ParseError::message(self): string !{ &self } {

@@ -10,15 +10,15 @@ import { CalcError } from "./error"
 import { heap, format } from "mem"
 
 export struct Calc {
-    stack: Array<f64>
+    private stack: Array<f64>
 
-    vars: Map<string, f64>
-    var_names: Array<string>
+    private vars: Map<string, f64>
+    private var_names: Array<string>
 
-    words: Map<string, Array<string>>
-    word_names: Array<string>
+    private words: Map<string, Array<string>>
+    private word_names: Array<string>
 
-    export done: bool
+    done: bool
 }
 
 export fn Calc::new(): Calc {

@@ -13,9 +13,9 @@ import { open, read_all } from "fs"
 import { heap, format } from "mem"
 
 export struct RangeError {
-    export value: i32
-    export low: i32
-    export high: i32
+    value: i32
+    low: i32
+    high: i32
 }
 
 // This method is what makes RangeError usable as an error. It is small, so

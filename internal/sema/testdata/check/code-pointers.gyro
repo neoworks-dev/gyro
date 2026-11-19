@@ -47,7 +47,7 @@ fn noGenericAddress() {
 }
 
 struct Counter {
-    export n: i32
+    n: i32
 }
 
 fn Counter::bump(*self) {

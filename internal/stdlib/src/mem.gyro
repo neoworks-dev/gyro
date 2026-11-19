@@ -22,8 +22,8 @@ export enum Mode {
 }
 
 export struct Allocator {
-    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-    export data: anyptr?
+    proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    data: anyptr?
 }
 
 // size and align answer what C's sizeof and _Alignof would for T.
@@ -88,10 +88,10 @@ export fn heap(): Allocator !{} {
 // ---------------------------------------------------------------------------
 
 export struct Arena {
-    parent: Allocator
-    base: anyptr
-    capacity: usize
-    used: usize
+    private parent: Allocator
+    private base: anyptr
+    private capacity: usize
+    private used: usize
 }
 
 // new takes the buffer from a, and remembers a so that free can give it
@@ -190,7 +190,7 @@ export fn Arena::free(*self) !{} {
 // It lives here rather than in stdlib because stdlib imports Allocator from
 // mem, and format needs both.
 export struct Format {
-    pieces: any[]
+    private pieces: any[]
 }
 
 export fn Format::len(self): usize !{} {

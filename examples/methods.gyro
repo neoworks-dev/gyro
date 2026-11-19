@@ -7,8 +7,8 @@ import { println, Eq, Ord, Print, Add } from "stdlib"
 import { format, heap } from "mem"
 
 export struct Version {
-    export major: i32
-    export minor: i32
+    major: i32
+    minor: i32
 }
 
 export fn Version::new(major: i32, minor: i32): Version {
@@ -58,8 +58,8 @@ export fn max<T: Ord>(a: T, b: T): T {
 
 // Arithmetic on a user type is the trait's method behind the operator.
 export struct Vector2 {
-    export x: f64
-    export y: f64
+    x: f64
+    y: f64
 }
 
 impl Add for Vector2 {
@@ -71,8 +71,8 @@ impl Add for Vector2 {
 // A user-defined generic struct, instantiated like the built-in ones. It
 // only stores its parameter, so it needs no bound.
 export struct Pair<T> {
-    export first: T
-    export second: T
+    first: T
+    second: T
 }
 
 export fn Pair<T>::swap(*self) {

@@ -304,30 +304,30 @@ const NO_TOUCHES: u16[64] = [
 // ---------------------------------------------------------------------------
 
 export struct Cpu {
-    export pc: u16
-    export sp: u8
-    export a: u8
-    export x: u8
-    export y: u8
-    export status: u8
+    pc: u16
+    sp: u8
+    a: u8
+    x: u8
+    y: u8
+    status: u8
 
-    export clockticks: u32
-    export instructions: u32
+    clockticks: u32
+    instructions: u32
 
     // What the addressing mode worked out, and the scratch the instruction
     // handlers share: C keeps all four as globals for the same reason.
-    ea: u16
-    reladdr: u16
-    value: u16
-    result: u16
+    private ea: u16
+    private reladdr: u16
+    private value: u16
+    private result: u16
 
-    opcode: u8
-    penaltyop: bool
-    penaltyaddr: bool
+    private opcode: u8
+    private penaltyop: bool
+    private penaltyaddr: bool
 
-    ram: Array<u8>
-    touched: u16[64]
-    export ntouched: usize
+    private ram: Array<u8>
+    private touched: u16[64]
+    ntouched: usize
 }
 
 export fn Cpu::new(): Cpu {

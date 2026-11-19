@@ -22,10 +22,10 @@ const NEED_HTML_ESC: u8 = 1
 const NEED_URL_ESC: u8 = 2
 
 export struct Render {
-    export out: Array<u8>
-    image_nesting_level: i64
+    out: Array<u8>
+    private image_nesting_level: i64
     // Per byte: which of the two escapes it needs, if any.
-    escape_map: Array<u8>
+    private escape_map: Array<u8>
 }
 
 var HEX: u8[16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]

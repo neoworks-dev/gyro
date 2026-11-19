@@ -104,11 +104,11 @@ export enum Value {
 // Node is one item. `key` is the member name when the node sits in an
 // object — C's `string`, renamed because `string` is a type here.
 export struct Node {
-    export value: Value
-    export key: string?
-    export next: *Node?
-    export prev: *Node?
-    export child: *Node?
+    value: Value
+    key: string?
+    next: *Node?
+    prev: *Node?
+    child: *Node?
 }
 
 // ---------------------------------------------------------------------------

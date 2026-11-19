@@ -80,7 +80,7 @@ func (c *checker) buildStruct(decl *ast.StructDecl) {
 			shell.Fields = append(shell.Fields, types.Field{
 				Name:     field.Name,
 				Type:     c.noFormat(field.Type.Pos(), c.resolveType(field.Type)),
-				Exported: field.Exported,
+				Exported: decl.Exported && !field.Private,
 			})
 		}
 	})
@@ -92,7 +92,7 @@ func (c *checker) buildUnion(decl *ast.UnionDecl) {
 		shell.Members = append(shell.Members, types.Field{
 			Name:     member.Name,
 			Type:     c.resolveType(member.Type),
-			Exported: member.Exported,
+			Exported: decl.Exported && !member.Private,
 		})
 	}
 }

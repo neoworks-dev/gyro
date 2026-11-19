@@ -3,8 +3,8 @@
 import { Store } from "./store"
 
 export struct Slot<V> {
-    export id: i32
-    export held: V
+    id: i32
+    held: V
 }
 
 impl Store for Slot<V> {
@@ -20,7 +20,7 @@ impl Store for Slot<V> {
 }
 
 export struct Flag {
-    export on: bool
+    on: bool
 }
 
 impl Store for Flag {

@@ -209,8 +209,8 @@ and a closure's environment, belongs to the `unsafe` module below, which
 export enum Mode { Alloc, Free, FreeAll, Resize }
 
 export struct Allocator {
-    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-    export data: anyptr?
+    proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    data: anyptr?
 }
 
 export fn heap(): Allocator !{}

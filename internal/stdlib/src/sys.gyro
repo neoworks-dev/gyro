@@ -40,7 +40,7 @@ export const EISDIR: isize = 21
 // SysError is what the library's own i/o reports: a sentence that says
 // what was attempted, on what, and why the kernel refused.
 export struct SysError {
-    export text: string
+    text: string
 }
 
 export fn SysError::message(self): string !{ &self } {

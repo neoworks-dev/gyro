@@ -2,7 +2,7 @@ import { Eq, Print } from "stdlib"
 import * as shape from "./shape"
 
 export struct Square {
-    export side: i32
+    side: i32
 }
 
 impl Eq for Square

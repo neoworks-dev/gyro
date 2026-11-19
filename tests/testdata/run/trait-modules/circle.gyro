@@ -1,7 +1,7 @@
 import { Shape } from "./shape"
 
 export struct Circle {
-    export radius: i32
+    radius: i32
 }
 
 impl Shape for Circle {

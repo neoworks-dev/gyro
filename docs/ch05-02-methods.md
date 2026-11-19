@@ -6,8 +6,8 @@ any file order.
 
 ```gyro
 export struct Stack {
-    export capacity: i32
-    top: i32
+    capacity: i32
+    private top: i32
 }
 
 export fn Stack::new(capacity: i32): Stack {

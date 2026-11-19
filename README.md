@@ -16,8 +16,8 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 export struct Stack {
-    export capacity: i32
-    items: Array<i32>
+    capacity: i32
+    private items: Array<i32>
 }
 
 export fn Stack::new(capacity: i32): Stack {

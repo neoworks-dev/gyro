@@ -9,10 +9,10 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 export struct Stack {
-    export capacity: i32
-    top: i32
+    capacity: i32
+    private top: i32
     // Array<T> owns its buffer and grows. A slice, i32[], only borrows one.
-    items: Array<i32>
+    private items: Array<i32>
 }
 
 // An associated function: no receiver, called as Stack::new(..).

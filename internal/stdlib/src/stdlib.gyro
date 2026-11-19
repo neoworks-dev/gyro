@@ -408,7 +408,7 @@ struct ArrayHead<T> {
 }
 
 export struct Array<T> {
-    head: *ArrayHead<T>
+    private head: *ArrayHead<T>
 }
 
 export safe fn Array<T>::new(a: Allocator): Array<T> !{ &a } {
@@ -651,8 +651,8 @@ export safe fn string::runes(self, a: Allocator): rune[] !{ &a } {
 // A String records the allocator it was made with, beside the one its
 // bytes record, so appending can copy the text it reads from the same one.
 export struct String {
-    bytes: Array<u8>
-    alloc: Allocator
+    private bytes: Array<u8>
+    private alloc: Allocator
 }
 
 export fn String::new(a: Allocator): String !{ &a } {
@@ -890,9 +890,9 @@ export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
 // A Map records the allocator it was made with, as an Array does, and
 // every bucket and every grown table comes from it.
 export struct Map<K: Eq & Hash, V> {
-    buckets: Array<Array<(K, V)>>
-    count: usize
-    alloc: Allocator
+    private buckets: Array<Array<(K, V)>>
+    private count: usize
+    private alloc: Allocator
 }
 
 // bucket_index folds a hash onto a bucket count. The count is never zero:
@@ -1062,7 +1062,7 @@ struct MutexHead<T> {
 }
 
 export struct Mutex<T> {
-    head: *MutexHead<T>
+    private head: *MutexHead<T>
 }
 
 export safe fn Mutex<T>::new(value: T): Mutex<T> !{} {
@@ -1079,8 +1079,8 @@ export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{} {
 }
 
 export struct MutexGuard<T> {
-    head: *MutexHead<T>
-    epoch: u64
+    private head: *MutexHead<T>
+    private epoch: u64
 }
 
 export safe fn MutexGuard<T>::get(self): T !{} {
@@ -1118,7 +1118,7 @@ export safe fn MutexGuard<T>::unlock(*self) !{} {
 // Copying an Atomic copies the number it holds at that moment, not the
 // cell.
 export struct Atomic<T: Eq> {
-    value: T
+    private value: T
 }
 
 export fn Atomic<T>::new(value: T): Atomic<T> !{} {

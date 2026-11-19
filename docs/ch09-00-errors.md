@@ -31,9 +31,9 @@ match on the concrete kind:
 
 ```gyro
 export struct RangeError {
-    export value: i32
-    export low: i32
-    export high: i32
+    value: i32
+    low: i32
+    high: i32
 }
 
 fn RangeError::message(self): string {

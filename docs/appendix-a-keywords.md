@@ -25,7 +25,7 @@ trait or an impl, and the owner inside a method.
 
 ## Contextual identifiers
 
-`move`, `copy`, `from`, `unsafe`, `safe`, `dyn` and `type` are **not** keywords. Each is
+`move`, `copy`, `from`, `unsafe`, `safe`, `private`, `dyn` and `type` are **not** keywords. Each is
 recognized by the parser in a position of its own and is an ordinary
 identifier everywhere else:
 
@@ -35,6 +35,7 @@ identifier everywhere else:
 | `from` | between an import list and its path: `import { x } from "m"` |
 | `unsafe`, `safe` | in front of `fn` (after `export`, before `async`): `unsafe fn f()`, `safe fn f()` |
 | `safe` | in front of an import list or `*`: `import safe { x } from "m.c"` |
+| `private` | in front of a struct field's name: `private top: i32` |
 | `dyn` | in a type, in front of a trait's name: `dyn Element` |
 | `type` | the first word of a member of a trait or an impl: `type Item`, `type Item = T` |
 

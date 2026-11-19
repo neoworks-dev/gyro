@@ -62,17 +62,17 @@ export enum Kind {
 impl Eq for Kind
 
 export struct Node {
-    export kind: Kind
-    export ch: u8
+    kind: Kind
+    ch: u8
     // Offset into Pattern.classes of this node's NUL-terminated class
     // bytes; 0 for every other kind.
-    export ccl: i64
+    ccl: i64
 }
 
 export struct Pattern {
-    export nodes: Array<Node>
-    export classes: Array<u8>
-    export ok: bool
+    nodes: Array<Node>
+    classes: Array<u8>
+    ok: bool
 }
 
 export fn Pattern::free(*self) {

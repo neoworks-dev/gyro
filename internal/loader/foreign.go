@@ -259,10 +259,10 @@ func (h *headerGen) declare(decl *metals.TypeDecl) string {
 			// something else.
 			spelling = "<" + err.Error() + ">"
 		}
-		// Every member is exported. A C struct has no private members,
-		// and a producer that wants one keeps the type out of its
-		// exports rather than hiding a field of it.
-		fmt.Fprintf(&out, "  export %s: %s\n", member.Name, spelling)
+		// Every member is visible, because the type is exported and a C
+		// struct has no private members. A producer that wants one keeps the
+		// type out of its exports rather than hiding a field of it.
+		fmt.Fprintf(&out, "  %s: %s\n", member.Name, spelling)
 	}
 	out.WriteString("}\n")
 	return out.String()

@@ -243,9 +243,13 @@ module.exports = grammar({
       '}',
     ),
 
+    // `private` keeps a field to its module. It is a contextual word, so a
+    // field may still be named `private`: the token after it decides.
     field_declaration: $ => seq(
-      optional('export'),
-      field('name', $.identifier),
+      choice(
+        seq('private', field('name', $.identifier)),
+        field('name', choice($.identifier, alias('private', $.identifier))),
+      ),
       ':',
       field('type', $._type),
     ),

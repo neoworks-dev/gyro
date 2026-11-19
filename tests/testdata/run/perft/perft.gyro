@@ -108,11 +108,11 @@ const EMPTY_BITBOARDS: u64[12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 const EMPTY_OCCUPANCIES: u64[3] = [0, 0, 0]
 
 export struct Board {
-    export bitboards: u64[12]
-    export occupancies: u64[3]
-    export side: i32
-    export enpassant: i32
-    export castle: i32
+    bitboards: u64[12]
+    occupancies: u64[3]
+    side: i32
+    enpassant: i32
+    castle: i32
 }
 
 // ---------------------------------------------------------------------------

@@ -5,16 +5,20 @@ free-standing methods ([chapter 5.2](ch05-02-methods.md)).
 
 ```gyro
 export struct Stack {
-    export capacity: i32
-    top: i32
-    items: Array<i32>
+    capacity: i32
+    private top: i32
+    private items: Array<i32>
 }
 ```
 
-Visibility is per declaration **and** per field. `export` on the struct
-makes the type visible to importers; `export` on a field makes that field
-visible. A field without it is private to the module, whatever the struct's
-own visibility is.
+**An exported struct exports its fields.** `export` on the struct makes the
+type and every field visible to importers, and a field written `private`
+stays visible only inside the module that declares it. A struct that is not
+exported keeps all of its fields to its module.
+
+`private` is contextual, the way `safe` and `unsafe` are: it means something
+in front of a field name and is an ordinary identifier everywhere else, so a
+field may be called `private` too.
 
 ## Literals come in two forms
 
@@ -40,7 +44,7 @@ export fn Stack::new(capacity: i32): Stack {
 Outside the module, `Stack{ ... }` does not compile, so `Stack::new` is the
 only way in and whatever it establishes holds for every `Stack` that exists.
 That is the whole mechanism — there are no constructors, no privacy
-modifiers beyond `export`, and no way around it.
+modifiers beyond `export` and `private`, and no way around it.
 
 ## Structs are values
 

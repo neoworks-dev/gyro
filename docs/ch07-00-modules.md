@@ -18,7 +18,8 @@ export { a } from "./m" // re-export
 export * from "./m"
 ```
 
-Struct fields carry their own `export` ([chapter 5.1](ch05-01-structs.md)).
+An exported struct exports its fields, except those written `private`
+([chapter 5.1](ch05-01-structs.md)).
 
 A trait is exported and imported like a type, by name. An `impl` is not
 exported: it belongs to the type it is for, and every module that sees the

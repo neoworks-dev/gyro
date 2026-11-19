@@ -382,6 +382,16 @@ func TestDeclarations(t *testing.T) {
 			src:  "fn f(ch: chan<i32>) {\n}\n",
 			want: "File test.gyro Func f Param ch: Type: ChanType NamedType i32 Body: Block",
 		},
+		{
+			name: "private keeps a field to its module",
+			src:  "export struct Port {\n  private number: i32\n  name: string\n}\n",
+			want: "File test.gyro Struct export Port Field private number: NamedType i32 Field name: NamedType string",
+		},
+		{
+			name: "private is an ordinary name everywhere else",
+			src:  "struct Flags {\n  private: bool\n}\n",
+			want: "File test.gyro Struct Flags Field private: NamedType bool",
+		},
 	}
 
 	for _, test := range tests {
@@ -453,7 +463,7 @@ func TestUnionIsDeclaredOnlyByForeignText(t *testing.T) {
 	}
 
 	bag = diag.Bag{}
-	tree := ParseForeign(diag.NewFile("foreign.gyro", "export union Bits {\n  export whole: i32\n}\n"), &bag)
+	tree := ParseForeign(diag.NewFile("foreign.gyro", "export union Bits {\n  whole: i32\n}\n"), &bag)
 	if bag.HasErrors() || len(tree.Decls) != 1 {
 		t.Fatalf("generated text did not parse: %v", bag.Items())
 	}
@@ -991,7 +1001,8 @@ func TestForms(t *testing.T) {
 		"fn t() {\n  var c = chan<i32>(64)\n}\n",
 		"fn t() {\n  var c = chan<i32>()\n}\n",
 		"enum Shape {\n  Circle(f64),\n  Rect(f64, f64),\n  Point,\n}\n",
-		"struct P {\n  export x: i32\n  y: f64\n}\n",
+		"struct P {\n  private x: i32\n  y: f64\n}\n",
+		"struct P {\n  private: i32\n}\n",
 		"fn t(f: fn(i32): bool) {\n}\n",
 		"fn t(xs: i32[], m: i32[4]) {\n}\n",
 		"fn t() {\n  var p: *ast::Literal = null\n}\n",

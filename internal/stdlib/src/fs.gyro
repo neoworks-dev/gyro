@@ -10,8 +10,8 @@ import { syscall3 } from "unsafe"
 // A File names a path that open found reachable. Reading it opens the path
 // again, so a handle holds nothing the kernel could run out of.
 export struct File {
-    name: string
-    closed: bool
+    private name: string
+    private closed: bool
 }
 
 export fn open(path: string): (File, error?) !{ io } {

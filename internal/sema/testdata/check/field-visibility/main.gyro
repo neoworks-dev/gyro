@@ -1,5 +1,5 @@
-// A field is private unless it says otherwise, and a struct literal is
-// only legal where every field is visible.
+// An exported struct exports its fields, except one written `private`, and a
+// struct literal is only legal where every field is visible.
 
 import { Config } from "./lib"
 

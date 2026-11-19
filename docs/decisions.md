@@ -389,6 +389,26 @@ it.
 Rejected Go's capitalization rule outright — it makes visibility a property
 of spelling, which is invisible at the use site and impossible to grep for.
 
+### An exported struct exports its fields *(revised)*
+
+**Status: done (#162).** `export` on a struct makes the type and every field
+visible to importers, and a field written `private` stays inside the module
+that declares it. A struct that is not exported keeps all of its fields to
+its module. `private` is contextual, the way `safe` is, so a field may still
+be named `private`.
+
+It replaces the rule that every field needed its own `export`, which made
+the common case pay. Most structs are plain data whose fields are all meant
+to be read, and they had to repeat `export` on every line. The rare type
+that protects an invariant, such as a `Port` whose number has to be in
+range, is the one that should write something, and with a `private` field
+it still can only be built through its own functions.
+
+Rejected **keeping a field `export`** as the opt-in, which was the old rule.
+Rejected **all or nothing**, an exported struct with every field visible and
+no way to hide one: a type could then no longer protect what its
+constructor checked, and the literal rule below would protect nothing.
+
 ### `main` is the one blessed name *(new)*
 
 **Status: planned.** The compiler finds `fn main` in the root module; it

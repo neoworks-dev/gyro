@@ -48,16 +48,16 @@ export const ERROR_PART: i64 = -3
 // A token is a span of the input: [start, end) and how many children it
 // has. An object counts its keys, a key counts its one value.
 export struct Token {
-    export kind: Kind
-    export start: i64
-    export end: i64
-    export size: i64
+    kind: Kind
+    start: i64
+    end: i64
+    size: i64
 }
 
 export struct Parser {
-    export pos: i64
-    export toknext: i64
-    export toksuper: i64
+    pos: i64
+    toknext: i64
+    toksuper: i64
 }
 
 export fn init(): Parser {

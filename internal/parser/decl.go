@@ -663,7 +663,7 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 
 	for !p.at(token.RBrace) && !p.atEOF() {
 		field := ast.Field{Offset: p.offset()}
-		field.Exported = p.accept(token.Export)
+		field.Private = p.acceptPrivate()
 		field.Name, _ = p.expectIdent()
 		p.expect(token.Colon)
 		field.Type = p.parseType()
@@ -691,7 +691,7 @@ func (p *Parser) parseUnionDecl() *ast.UnionDecl {
 
 	for !p.at(token.RBrace) && !p.atEOF() {
 		member := ast.Field{Offset: p.offset()}
-		member.Exported = p.accept(token.Export)
+		member.Private = p.acceptPrivate()
 		member.Name, _ = p.expectIdent()
 		p.expect(token.Colon)
 		member.Type = p.parseType()
@@ -777,4 +777,15 @@ func (p *Parser) parseBinding() ast.Binding {
 	}
 	binding.Name, _ = p.expectIdent()
 	return binding
+}
+
+// acceptPrivate consumes the `private` in front of a field. It is contextual,
+// the way `safe` and `unsafe` are: only a field name after it makes it the
+// modifier, so a field may still be called `private`.
+func (p *Parser) acceptPrivate() bool {
+	if p.at(token.Ident) && p.tok().Text == "private" && p.peekAt(1).Kind == token.Ident {
+		p.next()
+		return true
+	}
+	return false
 }
