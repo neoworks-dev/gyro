@@ -70,12 +70,12 @@ universe scope ([chapter 5.2](ch05-02-methods.md)).
 `Array<string>` owns a buffer; `string[]` is a slice, a pointer and a length
 borrowing storage it does not own. `.slice()` hands out the view. The
 distinction is not decoration — an owner is freed and a view never is
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 **`defer` runs at block exit**, in reverse order of registration. The
 `defer parts.free()` inside the loop runs on *every iteration*, which is
 exactly what you want for a value created every iteration
-([chapter 4.2](ch04-02-leaks-and-defer.md)).
+([chapter 4.2](ch04-02-destroy-and-defer.md)).
 
 Leave one of those `free` calls out and the program still runs. Nothing
 detects the leak at run time yet; the compiler's leak analysis warns about

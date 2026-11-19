@@ -8,6 +8,15 @@ it also lives in the execution corpus as a `//gyro:skip` with its reason
 attached — a skip is a program that will fail the day the gap closes
 ([chapter 17.3](ch17-03-testing.md)).
 
+## Ownership is specified, not built
+
+[Chapter 4](ch04-01-ownership.md) describes ownership, destructors,
+borrowing and `Box`, and the compiler implements none of it yet (#164).
+Until it does, memory is still freed by hand with `free`, `alloc` hands out
+raw pointers in safe code, and none of the borrowing checks run. The rest
+of the book's examples still use the old spelling in places, `*self` and
+`.free()` among them, and move over as the implementation lands.
+
 ## Blocking real applications
 
 - **Small standard-library functions are calls.** The backend has no
@@ -19,7 +28,7 @@ attached — a skip is a program that will fail the day the gap closes
   that keeps short-lived values out of the frame.
 
 - **Memory reclamation.** The allocator model
-  ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
+  ([chapter 4.6](ch04-06-allocators.md)) is the answer, and
   `alloc<T>(a)`, `free(a, p)`, `format(a, ...)` and the containers and text
   functions honour it today, but the runtime's own storage does not yet: a
   future, a channel and the message of an error
@@ -93,7 +102,7 @@ attached — a skip is a program that will fail the day the gap closes
   a read; it is gone, and with it the only thing that caught either. The
   place for that check now is an allocator: one that quarantines freed
   blocks and poisons them is ordinary Gyro over
-  [chapter 4.5](ch04-05-allocators.md), and is not written yet.
+  [chapter 4.6](ch04-06-allocators.md), and is not written yet.
 - **Type punning is not diagnosed.** Reading across two members of a C union that
   share no common initial sequence, or reading a struct's storage as
   bytes, reinterprets whatever is there. It is undefined in C too, `char *`
@@ -104,10 +113,10 @@ attached — a skip is a program that will fail the day the gap closes
   are both a producer's claim and nothing verifies either
   ([appendix D](appendix-d-metals.md)).
 - **A slice can outlive the memory behind it**, and nothing detects that
-  ([chapter 4.4](ch04-04-slices-and-views.md)).
+  ([chapter 4.4](ch04-04-borrowing.md)).
 - **`safe` is a promise nothing checks.** A `safe fn` may do unsafe
   things, and the compiler takes the author's word that no caller can
-  misuse it ([chapter 4.6](ch04-06-unsafe.md)). `import safe` of a C file is
+  misuse it ([chapter 4.7](ch04-07-unsafe.md)). `import safe` of a C file is
   the same promise about every name the line binds.
 - **Pointer arithmetic on `*T` does not exist yet** (#68). When it does it
   is an `unsafe fn` in the `unsafe` module; `offset` on an `anyptr` is the

@@ -629,36 +629,48 @@ The guard rides the same `&&` / `||` / `!` plumbing as null narrowing, so
 
 ## Memory
 
-### Manual allocation with a checked safety net
+### Values own what they hold *(revised)*
 
-**Status: done.** `alloc<T>()` returns `*T`, `free(p)` releases it, `defer`
-runs a call at scope exit. A sema pass tracks allocations and **warns** when
-one can reach the end of its block unfreed and unescaped.
+**Status: decided, being built (#164).** Every value has one owner, and an
+owning value is destroyed when its owner goes out of scope, through the
+`Destroy` trait. Assigning an owning value moves it, and a type with no
+destructor anywhere in it copies automatically. Parameters borrow unless
+their type is written `T!`, which takes ownership, and `inout` borrows
+exclusively so the function may change the argument. A view blocks its
+source from being moved or changed until its last use. `Box<T>` owns one
+value, `&x` makes a pointer that views one value, and raw pointers only come
+out of unsafe code. Allocators stay values, with the heap as the default,
+and a value made from an arena views the arena. Chapter 4 is the
+specification.
 
-Warnings rather than errors, so arenas and process-lifetime allocations are
-not blocked.
+It replaces manual allocation with a leak analysis that only warned. That
+model could not keep a slice from outliving its array or a pointer from
+being used after `free`, and it could not free a heap-formatted `string` at
+all, since a view had no way to give its block back. The decision was taken
+on 2026-11-19 while reviewing the language for safety.
 
-Escaping is read broadly on purpose: a return, a send, a call argument, a
-struct or array literal field, and a `move` capture all settle the question,
-because a callee may keep what it is handed and following it is exactly what
-this pass cannot do. The bias is toward silence — a missed leak costs less
-than a warning on correct code, which teaches people to ignore the category.
-
-Only a bare name settles. `node.value` reads through the pointer and leaves
-ownership where it was, so a block that only reads its allocation is still
-reported.
-
-A `return` is treated as an exit the check sees rather than a place to stop
-looking. Checking only the closing brace missed `let node = alloc<Node>()`
-followed by `return 0`, where the allocation is lost on the way out.
-
-Rejected ownership-and-borrows, which is a large sema investment, and
-garbage collection, which needs a runtime and conflicts with `@gpu`.
+Rejected **garbage collection**, which needs a runtime and breaks the C
+memory model below. Rejected **Rust's convention, move by default and `&`
+to borrow**, because most functions only read and the common case should
+cost nothing at the call. Rejected **lifetime annotations**: Gyro compiles
+whole programs, so a returned view is inferred from its one view parameter,
+with `from a` only when there are several. Rejected **a view lasting until
+the end of its block**, which is simpler to check and refuses correct code
+that a view's last use would allow. Rejected **`move xs`, `take`, `sink` and
+`own`** as the spelling for taking ownership, in favour of `T!`, which reads
+as the counterpart of `T?`. Rejected **an opt-in `Copy` trait**, since
+whether a type copies follows from what it is made of. Rejected **deleting
+`defer`**, which is still the shortest way to undo something on every exit.
+Rejected **a destructor as a method with a special name**, so that a type
+opts in on purpose. Rejected **making every pointer dereference unsafe**:
+safe code needs to look at one value without owning it, so a pointer made
+with `&` is a tracked view, and only pointers made by unsafe code are
+unchecked.
 
 ### Gyro's memory model is C's, and stays C's *(new)*
 
-**Status: decided.** Gyro is and remains unmanaged: manual `alloc`/`free`,
-addresses that never move, no collector. This is now a commitment, not an
+**Status: decided, amended by #164.** Gyro is and remains unmanaged: no collector,
+and addresses that never move. Freeing is now done by destructors rather than by hand, which changes when memory is released and not how it is laid out. This is a commitment, not an
 accident of v1 — the goal it buys is full C compatibility: **any existing
 C program, unmodified, can be imported directly into a Gyro program**
 (`import { parse } from "./cJSON.c"`), a C struct and a Gyro struct can
@@ -729,7 +741,7 @@ and a function allocates exactly when it is handed one as a parameter.
 back, `heap()` is the process heap, and `Arena::new(a, capacity)` takes
 its buffer from `a` and remembers it, so `Arena::free` returns the buffer
 to the allocator it came from without being told which. Running out of
-memory panics with the size. [Chapter 4.5](ch04-05-allocators.md) is the
+memory panics with the size. [Chapter 4.5](ch04-06-allocators.md) is the
 specification.
 
 **Why explicit.** The first design made the allocator a hidden trailing
@@ -2582,7 +2594,7 @@ cross.
 - A function becomes an import from the native library, called in C's ABI
   through the shim the backend already generated for `@extern`. It is
   `unsafe` to call unless the import says `import safe`, which is the rule
-  for a `.c` import and is stated once ([chapter 4.6](ch04-06-unsafe.md)).
+  for a `.c` import and is stated once ([chapter 4.7](ch04-07-unsafe.md)).
 - A struct or union, under its tag, or under the typedef name when the
   typedef names a struct (`typedef struct { ... } div_t`). A tag the header
   leaves incomplete is a fieldless struct, which is Gyro's spelling for a
@@ -4768,7 +4780,6 @@ and bound imports opaquely; it is deleted.
 | `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
 | conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
-| guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |

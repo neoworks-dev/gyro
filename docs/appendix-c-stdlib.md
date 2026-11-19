@@ -37,7 +37,7 @@ containers: `xs[i]` on a slice, on a fixed-size array, and on an `Array<T>`,
 and any type that implements `Index<T>`. Every one is a **place**, so
 `xs[i] = v` and `&xs[i]` work. Narrowing — `xs[lo..hi]`
 — reaches all three too, and answers with a slice
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 Positional tuple access — `pair.0` — is syntax, not a method.
 
@@ -196,7 +196,7 @@ ones take integers). The operations are written in Gyro over `unsafe`'s
 
 ### `mem`
 
-The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
+The allocator model is [chapter 4.6](ch04-06-allocators.md). `alloc`,
 `free`, `heap` and `Arena` are ordinary Gyro over the procedure an
 `Allocator` carries; `size`, `align` and `panic` are the intrinsics under
 them. The raw memory they stand on, the process heap, `copy_bytes`, `offset`
@@ -435,7 +435,7 @@ or falls into the subnormals or to zero and loses digits, ends as
 ### `unsafe`
 
 The operations the compiler cannot check, each an `unsafe fn`
-([chapter 4.6](ch04-06-unsafe.md)). Calling one needs an `unsafe fn` or a
+([chapter 4.7](ch04-07-unsafe.md)). Calling one needs an `unsafe fn` or a
 `safe fn` around it.
 
 ```gyro

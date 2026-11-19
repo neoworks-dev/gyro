@@ -27,7 +27,7 @@ row without `io` promises no io.
 ## Allocation is not an effect
 
 There is no effect for allocating. A function allocates when it is handed
-an `Allocator` as a parameter ([chapter 4.5](ch04-05-allocators.md)), and
+an `Allocator` as a parameter ([chapter 4.6](ch04-06-allocators.md)), and
 that is visible in its signature without a row to say it again. So `!{}`
 says nothing about allocation: `alloc` and `free` carry it, a function
 that takes an `Allocator` may be `!{}`, and so may `Array<T>::push`, which
@@ -238,7 +238,7 @@ that outlives the frame, and lending a view of it is fine.
 
 What is tracked here is **provenance, not lifetime**: where a view came
 from, not how long the storage lives. That is why a slice can still outlive
-its backing memory ([chapter 4.4](ch04-04-slices-and-views.md)) — this
+its backing memory ([chapter 4.4](ch04-04-borrowing.md)) — this
 analysis was never the one that would catch it.
 
 ## Views inside other values
@@ -334,7 +334,7 @@ analysis cannot trace ([appendix G](appendix-g-known-gaps.md)).
 An allocator is a borrow source too. A value allocated from
 `arena.allocator()` sits in the arena, so it borrows `arena`, and the
 rule that keeps a view from outliving a frame keeps it from outliving an
-arena ([chapter 4.5](ch04-05-allocators.md)).
+arena ([chapter 4.6](ch04-06-allocators.md)).
 
 ## Borrows on a generic
 

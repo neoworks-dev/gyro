@@ -38,7 +38,7 @@ walk is the C-style header. `break` and `continue` do what they look like.
 
 A loop body's `defer` runs at the end of **every iteration**, because a
 defer runs at the exit of its enclosing block
-([chapter 4.2](ch04-02-leaks-and-defer.md)).
+([chapter 4.2](ch04-02-destroy-and-defer.md)).
 
 ## What `for ... in` accepts
 

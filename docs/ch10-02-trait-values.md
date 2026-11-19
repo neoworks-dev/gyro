@@ -36,7 +36,7 @@ one that matters.
 **A trait value is a view of the value it was made from, as a slice is a view
 of its array.** Making one takes a pointer, `&button as dyn Element`, and the
 result is only as long-lived as what the pointer points at. The borrow
-analysis follows it like a slice ([chapter 4.4](ch04-04-slices-and-views.md)):
+analysis follows it like a slice ([chapter 4.4](ch04-04-borrowing.md)):
 a function returning one says where it came from, and a view of this
 frame's storage cannot be returned.
 

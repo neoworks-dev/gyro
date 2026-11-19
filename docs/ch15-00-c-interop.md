@@ -76,7 +76,7 @@ import said.
 A function imported from a header is **unsafe to call**, as one from a `.c`
 file is: the front end checks the signature, and nothing about what the C
 does with it. `import safe` vouches for every name the line binds, and a
-call then needs no `unsafe fn` around it ([chapter 4.6](ch04-06-unsafe.md)):
+call then needs no `unsafe fn` around it ([chapter 4.7](ch04-07-unsafe.md)):
 
 ```gyro
 import safe { sqrt } from "<math.h>" // no f64 misuses it
@@ -170,7 +170,7 @@ qsort(&xs[0] as anyptr, 5, 4, &ascending)  // C's loop, this program's order
 
 `&xs[0]` is the element's own address, and the stride C walks is the one
 Gyro laid out: an `i32` is four bytes of storage
-([chapter 4.1](ch04-01-manual-memory.md)). A `fn` is refused where a `code`
+([chapter 4.1](ch04-01-ownership.md)). A `fn` is refused where a `code`
 is accepted, because a `fn` is code *and* the environment it captured,
 which is two words, and a C function pointer has room for one. `&f` on a
 declared function is the code pointer.
@@ -233,7 +233,7 @@ A function imported from a `.c` file is **unsafe to call** unless the import
 vouches for it, as `safe` does above: the C behind it can corrupt memory
 even though its signature is checked. One word on the import line keeps the
 trust visible without marking every call, and it covers every name the line
-binds ([chapter 4.6](ch04-06-unsafe.md)). Without it a call needs an
+binds ([chapter 4.7](ch04-07-unsafe.md)). Without it a call needs an
 `unsafe fn` or a `safe fn` around it. `import safe * as lib from "./x.c"`
 vouches for the namespace, and `safe` on an import of a Gyro module is an
 error, since a Gyro function already says for itself whether it is unsafe.
@@ -274,7 +274,7 @@ no `union` declaration of its own, so this is the only way one reaches a
 program. It can be held, passed, and built with a literal that names
 exactly one member (`Value{ i: 42 }`); members are written and read by
 name, and writing one is writing the same storage as the others. Reading a
-member needs an unsafe context ([chapter 4.6](ch04-06-unsafe.md)), because
+member needs an unsafe context ([chapter 4.7](ch04-07-unsafe.md)), because
 nothing says which member is live; writing one, and writing a literal, are
 safe.
 
@@ -324,7 +324,7 @@ Forgetting is free and cannot be wrong, so it is an ordinary `as`.
 own cast makes, and the native tiers do what C does when it is wrong. It is
 `cast<T>(p)` from the `unsafe` module, an unsafe function, so a program
 makes the claim inside an `unsafe fn` or a `safe fn`
-([chapter 4.6](ch04-06-unsafe.md)). `p as *T` on an `anyptr` is not a
+([chapter 4.7](ch04-07-unsafe.md)). `p as *T` on an `anyptr` is not a
 conversion in the language.
 
 Only a pointer converts to an `anyptr`; an integer does not. A pointer made
@@ -369,7 +369,7 @@ both directions and by both routes: C's loop can run a Gyro function it was
 handed, and a pointer C returns can be called from Gyro.
 
 A function that allocates takes an `Allocator` as an ordinary parameter
-([chapter 4.5](ch04-05-allocators.md)), so `&f` on one is an ordinary code
+([chapter 4.6](ch04-06-allocators.md)), so `&f` on one is an ordinary code
 pointer whose type has that parameter in it. C has no way to pass an
 `Allocator`, so a callback C is to call is written without one, and gets
 the allocator it needs from wherever the program keeps it.

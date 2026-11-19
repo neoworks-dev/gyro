@@ -61,7 +61,7 @@ method on a built-in type:
 | --- | --- |
 | `println`, `print`, `eprintln` | imported from `stdlib` |
 | `alloc`, `free`, `size`, `align`, `allocator`, `heap`, `Arena` | imported from `mem` |
-| `cast`, `offset`, `ptr_from_int` | imported from `unsafe`, all of them `unsafe fn` ([chapter 4.6](ch04-06-unsafe.md)) |
+| `cast`, `offset`, `ptr_from_int` | imported from `unsafe`, all of them `unsafe fn` ([chapter 4.7](ch04-07-unsafe.md)) |
 | `spawn` | imported from `mem` — a function taking a closure, not grammar |
 | `Array`, `String`, `Map`, `Mutex` | imported types |
 | `len`, `runes`, `bytes`, `close`, `compare`, `hash`, `eq`, `message` | the built-in method surface |

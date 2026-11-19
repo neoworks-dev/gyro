@@ -1,4 +1,4 @@
-# 4.6. Unsafe code
+# 4.7. Unsafe code
 
 Most of what Gyro checks, it checks for you: a slice cannot outlive its
 storage, a nullable cannot be used unchecked, a leak is warned about. A
@@ -110,7 +110,7 @@ safe fn pixels(buffer: anyptr, count: usize): u32[] {
 ```
 
 `offset` and the raw heap functions are what `mem` is written over
-([chapter 4.5](ch04-05-allocators.md)); they were `mem`'s own, and are here
+([chapter 4.6](ch04-06-allocators.md)); they were `mem`'s own, and are here
 so that a program writing its own allocator, or a kernel writing its own
 page frame table, has the same floor. `env_of` and `with_env` are the two
 operations `keep` and `release` are written over: a closure's environment is
@@ -183,10 +183,10 @@ four, would be one worth marking `safe`; one that left the index to the
 caller is an `unsafe fn`. Which of the two a function is, is the decision
 the marker records.
 
-The standard library does this throughout. `mem`'s `alloc`, `keep` and
-`release`, the heap and arena procedures, and the thread entry that `spawn`
-starts are `safe fn`s over the `unsafe` module; `free`, `format` and
-`Arena::new` need nothing from it and are plain.
+The standard library does this throughout. `Box`, `Array` and `String` own
+their memory through `safe fn`s over the `unsafe` module, and so do the heap
+and arena procedures and the thread entry that `spawn` starts. `alloc` and
+`free` are `unsafe fn`: a raw block is only as good as the code using it.
 
 ## Foreign functions
 
@@ -235,5 +235,5 @@ is read to be written through, which is a read.
 A plain function can reach unsafe code only through a `safe fn`, so reading
 the `safe` and `unsafe` markers, and the imports from `unsafe`, finds every
 place a program makes a claim the compiler does not check. Everything else
-is checked as before: [chapter 4.2](ch04-02-leaks-and-defer.md) and
+is checked as before: [chapter 4.2](ch04-02-destroy-and-defer.md) and
 [chapter 12](ch12-00-effect-rows.md) are not relaxed inside a `safe fn`.

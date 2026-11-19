@@ -22,7 +22,7 @@ That goal is why the language has:
 
 None of those is a lint you can switch off. Each is a rule the compiler
 enforces, and [chapter 12](ch12-00-effect-rows.md) and
-[chapter 4](ch04-01-manual-memory.md) are where most of them live.
+[chapter 4](ch04-01-ownership.md) are where most of them live.
 
 ## One way to state a contract: a trait
 

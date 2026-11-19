@@ -49,7 +49,7 @@ let release = fn[move node]() { free(heap(), node) } // ownership moves in
 
 `fn[move node]` moves the binding into the closure, which is what lets the
 leak analysis see an allocation escape
-([chapter 4.2](ch04-02-leaks-and-defer.md)). `move` is contextual — an
+([chapter 4.2](ch04-02-destroy-and-defer.md)). `move` is contextual — an
 ordinary identifier everywhere else.
 
 Copying is safe for a value and not for a reference, and that difference is
@@ -155,7 +155,7 @@ what it captured accumulate across calls.
 
 The consequence is the one a slice of an array literal already has: **the
 closure borrows the frame.** The borrow analysis
-([chapter 4.4](ch04-04-slices-and-views.md)) treats a capturing closure as a
+([chapter 4.4](ch04-04-borrowing.md)) treats a capturing closure as a
 view of the function that wrote it, and a `return` of one is an error:
 
 ```gyro
@@ -195,7 +195,7 @@ After `keep` the closure's storage is `a`'s, and the borrow analysis no longer
 ties it to the frame. The copy is a copy: it has its own record, so mutations
 do not reach the original. A `fn[move node]` capture list moves the binding
 into the record and into the copy, as it does into the record in the frame
-([chapter 4.2](ch04-02-leaks-and-defer.md)). `release` has to be given the
+([chapter 4.2](ch04-02-destroy-and-defer.md)). `release` has to be given the
 allocator the closure was kept in, and only a closure `keep` returned; giving
 it a frame closure frees memory that was never allocated.
 
@@ -248,5 +248,5 @@ Futures and channels are not part of this; they still use the process heap
 ([appendix G](appendix-g-known-gaps.md)).
 
 A closure that allocates does so from an `Allocator` it captured like any
-other local, or was handed as a parameter ([chapter 4.5](ch04-05-allocators.md)).
+other local, or was handed as a parameter ([chapter 4.6](ch04-06-allocators.md)).
 Nothing is captured on its behalf.

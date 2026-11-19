@@ -393,7 +393,7 @@ own cells — a closure environment, a boxed `any` — are made of. Gyro's
 `alloc<T>(a)` is not one of them: it is an ordinary call through the
 procedure the allocator value `a` carries, and the allocator reaches a
 function as an ordinary parameter, declared like any other
-([chapter 4.5](ch04-05-allocators.md)). The format has no allocator
+([chapter 4.6](ch04-06-allocators.md)). The format has no allocator
 concept to verify, on purpose — a producer that wants one declares a
 record and passes it.
 

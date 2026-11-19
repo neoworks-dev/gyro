@@ -2,7 +2,7 @@
 
 `string` is a **borrowed view** of UTF-8 bytes. `String` is the owning
 builder. The relationship is the one `T[]` has with `Array<T>`
-([chapter 4.4](ch04-04-slices-and-views.md)), and the same rules follow from
+([chapter 4.4](ch04-04-borrowing.md)), and the same rules follow from
 it: a `string` never owns, so a function handing one back has to say where
 the view came from.
 

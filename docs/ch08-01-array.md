@@ -2,10 +2,10 @@
 
 `Array<T>` owns a buffer, grows, and is freed explicitly. It is the
 counterpart to `T[]`, which borrows and cannot grow
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 An array is made with an allocator and **remembers it**
-([chapter 4.5](ch04-05-allocators.md)). Its header and its buffer come from
+([chapter 4.6](ch04-06-allocators.md)). Its header and its buffer come from
 that allocator, `push` grows the buffer through it, and `free` hands the
 buffer back to it. Nothing after `new` names an allocator, which is what
 keeps an array from being freed to one it did not come from.
@@ -40,8 +40,8 @@ println(buf[0])         // 4
 | `free(*self)` | `!{}` | returns the buffer to the recorded allocator |
 
 `Array<T>` is ordinary Gyro in the bundled `stdlib`, written over the
-`unsafe` module ([chapter 4.6](ch04-06-unsafe.md)) and the allocator
-([chapter 4.5](ch04-05-allocators.md)). An array is a handle: a pointer to a
+`unsafe` module ([chapter 4.7](ch04-07-unsafe.md)) and the allocator
+([chapter 4.6](ch04-06-allocators.md)). An array is a handle: a pointer to a
 header holding the buffer, the length, the capacity and the allocator, so a
 copy of the value is the same array. The header stays allocated after `free`,
 which is how a second `free` and a use after `free` are caught. `pop` on an
@@ -75,7 +75,7 @@ the array reallocates, exactly as `&vec[i]` in C is invalidated by
 
 `xs[lo..hi]` narrows it, through the same view `slice()` hands out, so a
 window borrows the array's buffer and copies nothing
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 Every form is bounds-checked and panics with the length in the message,
 including taking an address: the address is refused where it is made
@@ -95,7 +95,7 @@ export fn Stack::view(self): i32[] !{ &self } {
 
 The view stays valid exactly as long as the array's buffer does. Free the
 array and the slice dangles; nothing detects that
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 Iterating is the same view:
 
