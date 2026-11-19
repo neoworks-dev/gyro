@@ -1,0 +1,73 @@
+import { println, Destroy, Box } from "stdlib"
+
+// A box is an owner, and it is looked through: a field or a method asked of
+// one is the boxed value's.
+
+struct File {
+    fd: i32
+}
+
+impl Destroy for File {
+    fn destroy(inout self) {
+        println(self.fd)
+    }
+}
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fn Point::shift(inout self) {
+    self.x += 1
+}
+
+struct Holder {
+    file: File
+}
+
+fn useAfterMove() {
+    let a = Box::new(Point{ x: 1, y: 2 })
+    let b = a
+    println(a.x) //~ E0701 a is used after it was moved
+}
+
+fn changeThroughBorrowed(b: Box<Point>) {
+    b.x = 3   //~ E0634 b cannot be changed: a plain parameter only borrows its argument
+    b.shift() //~ E0634 b cannot be changed: a plain parameter only borrows its argument
+}
+
+fn changeThroughOwned(b: Box<Point>!, c: inout Box<Point>) {
+    b.x = 3
+    b.shift()
+    c.x = 3
+    c.shift()
+}
+
+fn changeThroughConst() {
+    const b = Box::new(Point{ x: 1, y: 2 })
+    b.x = 3 //~ E0634 b cannot be changed: it is a const
+}
+
+fn absent(b: Box<Point>?) {
+    println(b.x) //~ E0510 this value is Box<Point>? and may be null
+    if b != null {
+        println(b.x)
+    }
+}
+
+fn missingField(b: Box<Point>) {
+    println(b.z) //~ E0405 Point has no field or method z
+}
+
+fn takeAFieldOut(b: Box<Holder>!) {
+    let file = b.file //~ E0702 cannot move a field
+}
+
+fn addressOfBox() {
+    let b = Box::new(Point{ x: 1, y: 2 })
+    let p: *Point = &b
+    let q: Box<Point>? = null
+    let r: *Point? = &q
+    let wrong: *Box<Point> = &b //~ E0501 cannot use *Point as *Box<Point>
+}

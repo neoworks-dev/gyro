@@ -1,0 +1,101 @@
+// A Box<T> owns one value in memory of its own. Destroying the box destroys
+// the value and gives the memory back, a field or a method asked of a box
+// reaches the value inside, and `&box` points at it. A type can hold a box
+// of itself, which is how a list is built.
+
+import { println, Destroy, Box } from "stdlib"
+
+struct Noisy {
+    name: string
+    count: i32
+}
+
+impl Destroy for Noisy {
+    fn destroy(inout self) {
+        println("destroy #{self.name}")
+    }
+}
+
+fn Noisy::bump(inout self) {
+    self.count += 1
+}
+
+fn Noisy::label(self): string !{ &self } {
+    return self.name
+}
+
+struct Node {
+    tag: Noisy
+    next: Box<Node>?
+}
+
+fn consume(b: Box<Noisy>!) {
+    println("consumed #{b.name}")
+}
+
+fn main() {
+    {
+        let b = Box::new(Noisy{ name: "scoped", count: 0 })
+        println("in scope")
+    }
+    println("after scope")
+
+    {
+        let first = Box::new(Noisy{ name: "moved", count: 0 })
+        let second = first
+        println("moved on")
+    }
+    println("after move")
+
+    let b = Box::new(Noisy{ name: "fields", count: 1 })
+    println(b.name)
+    b.count = 5
+    println(b.count)
+    b.bump()
+    println(b.count)
+    println(b.label())
+
+    let p: *Noisy = &b
+    p.count = 10
+    println(b.count)
+
+    let maybe: Box<Noisy>? = Box::new(Noisy{ name: "maybe", count: 0 })
+    let q: *Noisy? = &maybe
+    if q != null {
+        println(q.name)
+    }
+    let none: Box<Noisy>? = null
+    let r: *Noisy? = &none
+    if r == null {
+        println("absent")
+    }
+
+    let n = Box::new(41)
+    let m: *i32 = &n
+    *m += 1
+    println(*m)
+
+    consume(Box::new(Noisy{ name: "passed", count: 0 }))
+    println("after consume")
+
+    let slot = Box::new(Noisy{ name: "old", count: 0 })
+    slot = Box::new(Noisy{ name: "new", count: 0 })
+    println("replaced")
+
+    let list = Node{
+        tag: Noisy{ name: "one", count: 0 },
+        next: Box::new(Node{
+            tag: Noisy{ name: "two", count: 0 },
+            next: Box::new(Node{ tag: Noisy{ name: "three", count: 0 }, next: null }),
+        }),
+    }
+    let current: *Node = &list
+    println(current.tag.name)
+    let next: *Node? = &current.next
+    while next != null {
+        current = next
+        println(current.tag.name)
+        next = &current.next
+    }
+    println("end")
+}

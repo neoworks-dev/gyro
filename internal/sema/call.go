@@ -186,7 +186,7 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 }
 
 func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
-	base := c.expr(fun.X)
+	base := c.throughBox(fun.X, c.expr(fun.X))
 
 	recv := base
 	if pointer, ok := recv.(*types.Pointer); ok {

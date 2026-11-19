@@ -1,0 +1,47 @@
+// A box allocates from the allocator it is given and gives its memory back
+// to the same one when it is destroyed. The counter counts the requests that
+// reach it and leaves the work to the heap.
+
+import { println, Box } from "stdlib"
+import { Allocator, Mode, heap } from "mem"
+import { cast } from "unsafe"
+
+struct Counter {
+    allocs: i32
+    frees: i32
+}
+
+safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
+    old: anyptr?, old_size: usize): anyptr? {
+    if data == null {
+        return null
+    }
+    let counter = cast<Counter>(data)
+    if mode == Mode::Alloc {
+        counter.allocs += 1
+    }
+    if mode == Mode::Free {
+        counter.frees += 1
+    }
+    let h = heap()
+    return h.proc(h.data, mode, size, align, old, old_size)
+}
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fn main() {
+    let counter = Counter{ allocs: 0, frees: 0 }
+    let a = Allocator{ proc: &counting, data: &counter as anyptr }
+    {
+        let p = Box::new(Point{ x: 3, y: 4 }, a)
+        println(p.x + p.y)
+        println("allocs #{counter.allocs} frees #{counter.frees}")
+    }
+    println("allocs #{counter.allocs} frees #{counter.frees}")
+
+    let plain = Box::new(Point{ x: 1, y: 1 })
+    println(plain.x)
+}
