@@ -344,7 +344,7 @@ func (c *hintCollector) paramsOf(call *ast.CallExpr) []ast.Param {
 }
 
 func (c *hintCollector) addParameterHint(param ast.Param, arg ast.Arg) {
-	if arg.Name != "" || arg.Value == nil {
+	if arg.Value == nil {
 		return
 	}
 	if param.Name == "" || param.Name == "_" {

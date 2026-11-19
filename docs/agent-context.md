@@ -756,9 +756,9 @@ folding that made `1 << 40` disagree between the checker and a tier, and
 the `select` arm chosen among ready arms, which is now unspecified by the
 language rather than a divergence — a fair native runtime is queued work.
 
-**Design questions open:** `@comptime` evaluation subset, drop/RAII (which
-governs `MutexGuard::unlock`, `free`, `close` alike), decorator execution
-model, `syntaxfn`, the Stack package manager, METALS linking/binary
+**Design questions open:** drop and RAII (which
+govern `MutexGuard::unlock`, `free` and `close` alike), `syntaxfn`, the
+Stack package manager, and METALS linking and binary
 encoding.
 
 ---

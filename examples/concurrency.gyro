@@ -1,6 +1,6 @@
 // Threads, channels and async, which solve three different problems.
 //
-//   threads  - use every core                (@concurrent)
+//   threads  - use every core                (spawn, Mutex)
 //   channels - hand work between them safely  (chan<T>, select)
 //   async    - hold many idle IO operations   (async fn / await)
 
@@ -49,7 +49,6 @@ fn drain(values: chan<i32>, quit: chan<bool>) {
 
 // --- threads --------------------------------------------------------------
 
-@concurrent(threads = 8)
 fn sum_shared(values: i32[]) {
     var total = Mutex::new(0)
 

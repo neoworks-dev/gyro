@@ -78,7 +78,6 @@ attached — a skip is a program that will fail the day the gap closes
 | feature | state |
 | --- | --- |
 | mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
-| `@comptime` evaluation | typed, not evaluated |
 | effect rows | `io` is checked against declared rows; row variables, function values and spawn/channel effects are not ([chapter 12](ch12-00-effect-rows.md)) |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` and `=>` | reserved tokens, unused |
@@ -243,9 +242,9 @@ Open questions in the format itself ([appendix D](appendix-d-metals.md)):
 
 ## Open design questions
 
-`@comptime`'s evaluation subset; drop/RAII, which governs
-`MutexGuard::unlock`, `free` and `close` alike; the decorator execution
-model; `syntaxfn`; the Stack package manager; METALS' binary encoding.
+Drop and RAII, which govern
+`MutexGuard::unlock`, `free` and `close` alike; `syntaxfn`; the Stack
+package manager; METALS' binary encoding.
 
 Each of these is recorded, with what has been rejected so far, in
 [`decisions.md`](decisions.md) under "Still open".

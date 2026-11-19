@@ -152,21 +152,14 @@ func (p *Parser) parseExportDecl() *ast.ExportDecl {
 	return decl
 }
 
-// parseDecl parses one top-level declaration together with any decorators
-// and the optional `export` modifier that precede it.
+// parseDecl parses one top-level declaration together with the optional
+// `export` modifier that precedes it.
 func (p *Parser) parseDecl() ast.Decl {
-	decorators := p.parseDecorators()
 	offset := p.offset()
-	if len(decorators) > 0 {
-		offset = decorators[0].Offset
-	}
 
 	// A standalone `export { ... }` or `export * from ...` is a declaration
 	// in its own right rather than a modifier on the one that follows.
 	if p.at(token.Export) && (p.peekAt(1).Kind == token.LBrace || p.peekAt(1).Kind == token.Star) {
-		if len(decorators) > 0 {
-			p.errorf(offset, "decorators cannot be attached to an export list")
-		}
 		return p.parseExportDecl()
 	}
 
@@ -174,31 +167,31 @@ func (p *Parser) parseDecl() ast.Decl {
 
 	if p.foreign && p.at(token.Ident) && p.tok().Text == "union" {
 		decl := p.parseUnionDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		decl.Offset, decl.Exported = offset, exported
 		return decl
 	}
 	if p.atFuncModifier() {
 		fn := p.parseFuncDecl()
-		fn.Offset, fn.Decorators, fn.Exported = offset, decorators, exported
+		fn.Offset, fn.Exported = offset, exported
 		return fn
 	}
 
 	switch p.kind() {
 	case token.Fn, token.Async:
 		fn := p.parseFuncDecl()
-		fn.Offset, fn.Decorators, fn.Exported = offset, decorators, exported
+		fn.Offset, fn.Exported = offset, exported
 		return fn
 	case token.Struct:
 		decl := p.parseStructDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		decl.Offset, decl.Exported = offset, exported
 		return decl
 	case token.Enum:
 		decl := p.parseEnumDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		decl.Offset, decl.Exported = offset, exported
 		return decl
 	case token.Trait:
 		decl := p.parseTraitDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		decl.Offset, decl.Exported = offset, exported
 		return decl
 	case token.Impl:
 		decl := p.parseImplDecl()
@@ -206,13 +199,10 @@ func (p *Parser) parseDecl() ast.Decl {
 		if exported {
 			p.errorf(offset, "an impl is not exported; it belongs to the type it is for")
 		}
-		if len(decorators) > 0 {
-			p.errorf(offset, "decorators cannot be attached to an impl")
-		}
 		return decl
 	case token.Var, token.Const:
 		decl := p.parseVarDecl()
-		decl.Offset, decl.Decorators, decl.Exported = offset, decorators, exported
+		decl.Offset, decl.Exported = offset, exported
 		p.expectTerminator()
 		return decl
 	}
@@ -220,24 +210,6 @@ func (p *Parser) parseDecl() ast.Decl {
 	p.errorf(p.offset(), "expected a declaration, found %s", describe(p.tok()))
 	p.syncStatement()
 	return nil
-}
-
-// parseDecorators parses a run of `@name` / `@name(args)` annotations.
-func (p *Parser) parseDecorators() []*ast.Decorator {
-	var decorators []*ast.Decorator
-	for p.at(token.At) {
-		decorator := &ast.Decorator{Offset: p.offset()}
-		p.next()
-		decorator.Name = p.parsePath()
-
-		if p.at(token.LParen) {
-			decorator.HasParens = true
-			decorator.Args = p.parseArgs()
-		}
-		decorators = append(decorators, decorator)
-		p.skipTerminators()
-	}
-	return decorators
 }
 
 // `unsafe` and `safe` are contextual, the way `move` and `copy` are: they
@@ -260,8 +232,8 @@ func (p *Parser) atFuncModifier() bool {
 }
 
 // parseFuncDecl parses `fn name<T>(params): results { body }` and the
-// method form `fn Type::name(self, ...)`. The caller fills in the offset,
-// decorators and export flag.
+// method form `fn Type::name(self, ...)`. The caller fills in the offset
+// and export flag.
 func (p *Parser) parseFuncDecl() *ast.FuncDecl {
 	fn := &ast.FuncDecl{Offset: p.offset()}
 	for p.atFuncModifier() {

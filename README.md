@@ -167,7 +167,7 @@ syntax; each one is checked by the test suite.
 | example | shows |
 | --- | --- |
 | `hello.gyro` | bindings, interpolation, an effect row |
-| `fibonacci.gyro` | recursion, loops, `@comptime` |
+| `fibonacci.gyro` | recursion, loops, module constants |
 | `structs.gyro` | structs, free methods, enums, `match`, borrows |
 | `errors.gyro` | `(T, error?)` returns and explicit handling |
 | `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, `move` |

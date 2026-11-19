@@ -40,7 +40,7 @@ They are the shortest route to seeing real syntax:
 | example | shows |
 | --- | --- |
 | `hello.gyro` | bindings, interpolation, an effect row |
-| `fibonacci.gyro` | recursion, loops, `@comptime` |
+| `fibonacci.gyro` | recursion, loops, module constants |
 | `structs.gyro` | structs, free methods, enums, `match`, borrows |
 | `errors.gyro` | `(T, error?)` returns and explicit handling |
 | `memory.gyro` | `alloc`/`free`, `defer`, nullable pointers, `move` |

@@ -41,9 +41,6 @@
 (variant_pattern
   (identifier) @constant)
 
-(decorator
-  (identifier) @attribute)
-
 (effect_row
   (identifier) @attribute)
 
@@ -192,7 +189,5 @@
   "[" "]"
   "{" "}"
 ] @punctuation.bracket
-
-"@" @attribute
 
 (wildcard_pattern) @variable.builtin

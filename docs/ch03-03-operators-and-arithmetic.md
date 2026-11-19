@@ -11,7 +11,7 @@
 | access | `.` field, `::` namespace, `[]` index |
 | conversion | `as` |
 | type | `?` nullable |
-| other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
+| other | `..` range, `<-` channel, `!{}` effect row |
 
 On a type the program declares, `+ - * / %`, unary `-`, `== !=` and
 `< <= > >=` are the methods of the traits `Add`, `Sub`, `Mul`, `Div`, `Rem`,

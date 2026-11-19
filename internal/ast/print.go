@@ -88,16 +88,9 @@ func (p *printer) node(node Node) {
 		}
 		p.line("Export %s from %q", clause, n.Path)
 
-	case *Decorator:
-		p.line("Decorator @%s", pathString(n.Name))
-		p.indent++
-		p.args(n.Args)
-		p.indent--
-
 	case *FuncDecl:
 		p.line("Func %s%s%s%s%s%s", exportMark(n.Exported), trustMark(n), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
 		p.indent++
-		p.decorators(n.Decorators)
 		if n.Recv != nil {
 			p.line("Recv: %sself", pointerMark(n.Recv.Pointer))
 		}
@@ -117,7 +110,6 @@ func (p *printer) node(node Node) {
 	case *StructDecl:
 		p.line("Struct %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
 		p.indent++
-		p.decorators(n.Decorators)
 		for _, field := range n.Fields {
 			p.group("Field "+exportMark(field.Exported)+field.Name, func() {
 				p.node(field.Type)
@@ -128,7 +120,6 @@ func (p *printer) node(node Node) {
 	case *UnionDecl:
 		p.line("Union %s%s", exportMark(n.Exported), n.Name)
 		p.indent++
-		p.decorators(n.Decorators)
 		for _, member := range n.Members {
 			p.group("Member "+exportMark(member.Exported)+member.Name, func() {
 				p.node(member.Type)
@@ -139,7 +130,6 @@ func (p *printer) node(node Node) {
 	case *EnumDecl:
 		p.line("Enum %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
 		p.indent++
-		p.decorators(n.Decorators)
 		for _, variant := range n.Variants {
 			p.group("Variant "+variant.Name, func() {
 				for _, payload := range variant.Payload {
@@ -160,7 +150,6 @@ func (p *printer) node(node Node) {
 		}
 		p.line("Trait %s%s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams), supers)
 		p.indent++
-		p.decorators(n.Decorators)
 		for _, assoc := range n.Assoc {
 			p.assoc(assoc)
 		}
@@ -189,7 +178,6 @@ func (p *printer) node(node Node) {
 	case *VarDecl:
 		p.line("%s %s%s", varKeyword(n.Const), exportMark(n.Exported), bindingString(n.Names))
 		p.indent++
-		p.decorators(n.Decorators)
 		p.child("Type", n.Type)
 		p.child("Value", n.Value)
 		p.indent--
@@ -651,12 +639,6 @@ func asyncMark(async bool) string {
 	return ""
 }
 
-func (p *printer) decorators(decorators []*Decorator) {
-	for _, decorator := range decorators {
-		p.node(decorator)
-	}
-}
-
 func (p *printer) assoc(a *AssocDecl) {
 	p.group("Assoc "+a.Name, func() {
 		for _, bound := range a.Bounds {
@@ -669,9 +651,6 @@ func (p *printer) assoc(a *AssocDecl) {
 func (p *printer) args(args []Arg) {
 	for _, arg := range args {
 		label := "Arg"
-		if arg.Name != "" {
-			label = "Arg " + arg.Name
-		}
 		if arg.Spread {
 			label += " ..."
 		}

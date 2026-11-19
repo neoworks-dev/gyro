@@ -79,7 +79,7 @@ func (f *formatter) needSpace(a, b int) bool {
 	case ka == token.Gt && !f.angle(a) && (kb == token.Gt || kb == token.GtEq) && f.toks[a].end == f.toks[b].Offset:
 		// A shift is two adjacent `>` tokens, which the parser joins.
 		return false
-	case kb == token.Colon, kb == token.Question, ka == token.At, ka == token.Bang:
+	case kb == token.Colon, kb == token.Question, ka == token.Bang:
 		return false
 	case ka == token.Colon:
 		return true
@@ -126,7 +126,7 @@ func (f *formatter) wouldMerge(a, b int) bool {
 
 func isPunct(c byte) bool {
 	switch c {
-	case '+', '-', '*', '/', '%', '&', '|', '^', '~', '<', '>', '!', '=', ':', '.', '?', '@':
+	case '+', '-', '*', '/', '%', '&', '|', '^', '~', '<', '>', '!', '=', ':', '.', '?':
 		return true
 	}
 	return false

@@ -234,58 +234,13 @@ export enum Shape {
         (identifier)))))
 
 ==================
-decorators
-==================
-
-@comptime const FIB_10: i32 = fib(10)
-
-@gpu fn kernel(a: *f32) {}
-
-@concurrent(threads = 8) fn work() {}
-
----
-
-(source_file
-  (variable_declaration
-    (decorator
-      (identifier))
-    (identifier)
-    (named_type
-      (type_identifier))
-    (call_expression
-      (identifier)
-      (arguments
-        (int_literal))))
-  (function_declaration
-    (decorator
-      (identifier))
-    (identifier)
-    (parameter_list
-      (parameter
-        (identifier)
-        (pointer_type
-          (named_type
-            (type_identifier)))))
-    (block))
-  (function_declaration
-    (decorator
-      (identifier)
-      (arguments
-        (named_argument
-          (identifier)
-          (int_literal))))
-    (identifier)
-    (parameter_list)
-    (block)))
-
-==================
 effect rows
 ==================
 
 export fn log(msg: string) !{ io }
 export fn load(p: string): (string, error?) !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
-@gpu fn kernel(a: *f32) !{}
+fn kernel(a: *f32) !{}
 
 ---
 
@@ -342,8 +297,6 @@ fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e
     (effect_row
       (identifier)))
   (function_declaration
-    (decorator
-      (identifier))
     (identifier)
     (parameter_list
       (parameter
@@ -789,7 +742,6 @@ unsafe and safe functions
 unsafe fn danger(p: anyptr): i32 !{}
 export safe fn vouched() {}
 safe async fn later() {}
-@gpu("m")
 safe fn sqrt(x: f64): f64 !{}
 unsafe fn Cell::peek(self): i32 {}
 
@@ -815,11 +767,6 @@ unsafe fn Cell::peek(self): i32 {}
     (parameter_list)
     (block))
   (function_declaration
-    (decorator
-      (identifier)
-      (arguments
-        (string_literal
-          (string_content))))
     (identifier)
     (parameter_list
       (parameter

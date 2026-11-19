@@ -283,7 +283,6 @@ func (c *checker) checkPlainCall(call *ast.CallExpr, sig *types.Func, name strin
 	c.checkArity(call, sig, name)
 
 	for i, arg := range call.Args {
-		c.checkNamedArg(arg)
 		target, ok := c.paramTarget(call, sig, i, name)
 		if !ok {
 			c.expr(arg.Value)
@@ -419,12 +418,6 @@ func (c *checker) checkArity(call *ast.CallExpr, sig *types.Func, name string) {
 	c.errorf(call.Offset, "%s takes %d to %d arguments, got %d", name, sig.Required, len(sig.Params), got)
 }
 
-func (c *checker) checkNamedArg(arg ast.Arg) {
-	if arg.Name != "" {
-		c.errorf(arg.Offset, "arguments are positional; only decorator arguments take names")
-	}
-}
-
 // checkCall handles a possibly generic function or method call: explicit
 // type arguments or inference, argument checking against the substituted
 // signature, and the duck-typed instantiation check of the body.
@@ -454,7 +447,6 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 	poisoned := false
 	var deferred []int
 	for i, arg := range call.Args {
-		c.checkNamedArg(arg)
 		if i >= len(sig.Params) && packIndex(sig) < 0 {
 			c.expr(arg.Value)
 			continue
@@ -651,7 +643,6 @@ func (c *checker) constructVariant(call *ast.CallExpr, target callee) types.Type
 			target.variantEnum.Name, variant.Name, len(variant.Payload), len(call.Args))
 	}
 	for i, arg := range call.Args {
-		c.checkNamedArg(arg)
 		if i < len(variant.Payload) {
 			c.assignExpr(arg.Value, variant.Payload[i], "the payload of "+variant.Name)
 		} else {

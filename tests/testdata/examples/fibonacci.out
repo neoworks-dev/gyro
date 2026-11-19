@@ -37,4 +37,4 @@
 40320
 362880
 3628800
-fib(10) was folded to 55 at compile time
+fib(10) is 55

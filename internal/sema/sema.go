@@ -26,13 +26,6 @@ import (
 	"math/big"
 )
 
-// decorators is the fixed set of names the compiler accepts after `@`.
-// Decorators configure compilation itself, so there is nothing an import
-// could bind; an unknown name is an error rather than a lookup failure.
-var decorators = map[string]bool{
-	"comptime": true, "gpu": true, "concurrent": true, "distributed": true,
-}
-
 type symbolKind int
 
 const (
@@ -736,12 +729,6 @@ func (c *checker) checkDecls(tree *ast.File) {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			c.checkFuncDecl(d)
-		case *ast.StructDecl:
-			c.checkDecorators(d.Decorators)
-		case *ast.UnionDecl:
-			c.checkDecorators(d.Decorators)
-		case *ast.EnumDecl:
-			c.checkDecorators(d.Decorators)
 		case *ast.TraitDecl:
 			c.checkTraitDecl(d)
 		case *ast.ImplDecl:
@@ -749,10 +736,6 @@ func (c *checker) checkDecls(tree *ast.File) {
 			if owner := c.implTypes[d]; owner != nil {
 				c.instantiateImpls(owner)
 			}
-		case *ast.VarDecl:
-			// Module-level values were typed by buildTypes; only the
-			// decorators remain.
-			c.checkDecorators(d.Decorators)
 		case *ast.ExportDecl:
 			c.checkExport(d)
 		}
@@ -770,26 +753,4 @@ func (c *checker) checkExport(decl *ast.ExportDecl) {
 			c.errorf(name.Offset, "cannot export %s: it is not declared in this module", name.Name)
 		}
 	}
-}
-
-func (c *checker) checkDecorators(list []*ast.Decorator) {
-	for _, decorator := range list {
-		if !decorator.Name.IsPlainName() || !decorators[decorator.Name.Segments[0].Name] {
-			c.errorf(decorator.Offset, "unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed",
-				decoratorName(decorator))
-			continue
-		}
-		for _, arg := range decorator.Args {
-			c.expr(arg.Value)
-		}
-	}
-}
-
-func decoratorName(decorator *ast.Decorator) string {
-	names := decorator.Name.Names()
-	joined := names[0]
-	for _, name := range names[1:] {
-		joined += "::" + name
-	}
-	return joined
 }

@@ -10,7 +10,7 @@ fn add(a: i32, b: i32): i32 // no row: unconstrained
 export fn log(msg: string) !{ io }
 export fn load(p: string): (string, error?) !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e // effect-polymorphic
-@gpu fn kernel(a: *f32) !{}                   // empty row
+fn kernel(a: *f32) !{}                        // empty row
 ```
 
 Forms: `!{}`, `!{ a, b }`, `!e` for a bare row variable, and `!{ a, ..e }`
@@ -344,10 +344,9 @@ instantiation ([chapter 10](ch10-00-generics.md)).
 
 ## Why rows exist at all
 
-The decorators are the motivation. `@comptime` needs purity, `@gpu` forbids
-allocation and syscalls, and `@distributed` restricts what may cross a node
-boundary. Today each of those is a bespoke check; effect rows are how they
-become one mechanism.
+Without a row, knowing whether a function does io means reading its body
+and every body it calls. A row says it in the signature, and the compiler
+holds the body to what the row says.
 
 ## What is outside v1, deliberately
 

@@ -9,8 +9,7 @@ var codes = map[string]diag.Code{
 	// Names. The undeclared-name and already-declared diagnostics are built
 	// by hand in suggest.go and sema.go, and the leak warning in leak.go, so
 	// their codes sit at those sites rather than here.
-	"cannot move %s: no such name in scope":                                                   diag.EMoveUnknownName,
-	"unknown decorator @%s; the decorators are @comptime, @gpu, @concurrent and @distributed": diag.EUnknownDecorator,
+	"cannot move %s: no such name in scope": diag.EMoveUnknownName,
 
 	"%s cannot be imported from a C header: it %s":                               diag.EHeaderName,
 	"%s declares more than a program wants; name what is imported from a header": diag.EHeaderName,
@@ -158,15 +157,14 @@ var codes = map[string]diag.Code{
 	"slices do not compare with ==; compare the contents explicitly":                 diag.ENotComparable,
 
 	// Calls
-	"%s takes %d argument(s), got %d":                               diag.EWrongArgCount,
-	"%s takes %d to %d arguments, got %d":                           diag.EWrongArgCount,
-	"%s takes at least %d argument(s), got %d":                      diag.EWrongArgCount,
-	"arguments are positional; only decorator arguments take names": diag.EWrongArgCount,
-	"%s::%s carries %d value(s), got %d":                            diag.EWrongArgCount,
-	"%s::%s carries a payload; construct it with its values":        diag.EWrongArgCount,
-	"%s::%s carries no payload; write it without parentheses":       diag.EWrongArgCount,
-	"%s is not callable":                                            diag.ENotCallable,
-	"%s is %s, which is not callable":                               diag.ENotCallable,
+	"%s takes %d argument(s), got %d":                         diag.EWrongArgCount,
+	"%s takes %d to %d arguments, got %d":                     diag.EWrongArgCount,
+	"%s takes at least %d argument(s), got %d":                diag.EWrongArgCount,
+	"%s::%s carries %d value(s), got %d":                      diag.EWrongArgCount,
+	"%s::%s carries a payload; construct it with its values":  diag.EWrongArgCount,
+	"%s::%s carries no payload; write it without parentheses": diag.EWrongArgCount,
+	"%s is not callable":                                      diag.ENotCallable,
+	"%s is %s, which is not callable":                         diag.ENotCallable,
 
 	// Variadics
 	"only the last parameter may be variadic":                                            diag.EVariadicParam,

@@ -8,7 +8,6 @@ import (
 // isStringSlice reports the one parameter shape main may take.
 
 func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
-	c.checkDecorators(decl.Decorators)
 	c.checkEntryPoint(decl)
 	c.checkFuncBody(decl, nil)
 }

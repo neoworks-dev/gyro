@@ -20,7 +20,6 @@ var codes = map[string]diag.Code{
 	"an owner's bounds are declared on the type, not on its methods":                       diag.EBoundPlacement,
 	"expected a trait name, found %s":                                                      diag.EExpectedType,
 	"an impl is not exported; it belongs to the type it is for":                            diag.ETraitForm,
-	"decorators cannot be attached to an impl":                                             diag.ETraitForm,
 	"a trait's method is written without an owner: fn %s(...)":                             diag.ETraitForm,
 	"a method in an impl is written without an owner: fn %s(...)":                          diag.ETraitForm,
 	"expected a method or an associated type in the trait, found %s":                       diag.ETraitForm,
@@ -38,7 +37,6 @@ var codes = map[string]diag.Code{
 	"tuple index must be a plain decimal number":                                           diag.ETupleIndexForm,
 	"expected a tuple index after '.'":                                                     diag.ETupleIndexForm,
 	"a function is unsafe to call or vouched for, not both":                                diag.EFuncModifier,
-	"decorators cannot be attached to an export list":                                      diag.EDecoratorPlace,
 	"expected an assignment after a comma-separated target list":                           diag.EAssignmentForm,
 	"a range needs at least one end; xs[..] is the slice xs already is":                    diag.ERangeForm,
 

@@ -35,7 +35,6 @@ const (
 	EMatchArmForm     Code = "E0212"
 	EDeferNeedsCall   Code = "E0213"
 	ETupleIndexForm   Code = "E0214"
-	EDecoratorPlace   Code = "E0215"
 	EAssignmentForm   Code = "E0216"
 	ERangeForm        Code = "E0217"
 	EFuncModifier     Code = "E0218"
@@ -56,7 +55,6 @@ const (
 	EAlreadyDeclared   Code = "E0403"
 	EWrongKind         Code = "E0404"
 	ENoSuchMember      Code = "E0405"
-	EUnknownDecorator  Code = "E0406"
 	ESelfOutsideMethod Code = "E0407"
 	EMoveUnknownName   Code = "E0408"
 
@@ -164,7 +162,7 @@ var explanations = map[Code]explanation{
 	EUnexpectedToken: {"unexpected token",
 		"The parser needed one thing and found another."},
 	EExpectedDecl: {"expected a declaration",
-		"Only declarations live at the top level of a module: fn, struct, enum,\nvar, const, import, export and decorators on them."},
+		"Only declarations live at the top level of a module: fn, struct, enum,\nvar, const, import and export."},
 	EExpectedExpr:    {"expected an expression", "A value was needed here."},
 	EExpectedType:    {"expected a type", "A type was needed here."},
 	EExpectedPattern: {"expected a pattern", "A match arm begins with a pattern."},
@@ -188,8 +186,6 @@ var explanations = map[Code]explanation{
 		"defer takes a function call, so there is something to run later."},
 	ETupleIndexForm: {"malformed tuple index",
 		"A tuple element is reached with .0, .1, ... — a plain decimal number."},
-	EDecoratorPlace: {"decorator in the wrong place",
-		"Decorators attach to a declaration, not to an export list."},
 	EAssignmentForm: {"malformed assignment",
 		"A comma-separated target list is a destructuring assignment and needs\none value to destructure."},
 	ERangeForm: {"malformed range",
@@ -220,8 +216,6 @@ var explanations = map[Code]explanation{
 		"The name resolves, but to a type where a value was needed, a module\nwhere a function was, a method used without a call, or similar."},
 	ENoSuchMember: {"no such member",
 		"The type has no field, method, variant or associated function of that\nname."},
-	EUnknownDecorator: {"unknown decorator",
-		"The decorators are @comptime, @gpu, @concurrent and @distributed."},
 	ESelfOutsideMethod: {"self outside a method",
 		"self names the receiver, so it exists only in a fn declared on a type."},
 	EMoveUnknownName: {"move captures an unknown name",
