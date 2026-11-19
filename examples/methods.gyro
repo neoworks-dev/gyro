@@ -75,10 +75,20 @@ export struct Pair<T> {
     second: T
 }
 
-export fn Pair<T>::swap(*self) {
+export fn Pair<T>::swap(inout self) {
     let tmp = self.first
     self.first = self.second
     self.second = tmp
+}
+
+// A plain parameter only reads its argument. One meant to change it says so
+// with inout, and the call looks the same.
+fn clamp(value: inout i32, low: i32, high: i32) {
+    if value < low {
+        value = low
+    } elif value > high {
+        value = high
+    }
 }
 
 fn main() {
@@ -97,4 +107,8 @@ fn main() {
     let pair = Pair<i32>{ 1, 2 }
     pair.swap()
     println(pair.first)
+
+    let level = 15
+    clamp(level, 0, 10)
+    println(level)
 }

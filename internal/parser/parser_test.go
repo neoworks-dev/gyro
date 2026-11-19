@@ -336,10 +336,27 @@ func TestDeclarations(t *testing.T) {
 			want: "File test.gyro Func async f Body: Block",
 		},
 		{
-			name: "method with a pointer receiver",
-			src:  "fn Stack::push(*self, v: i32) {\n}\n",
-			want: "File test.gyro Func Stack::push Recv: *self " +
+			name: "method with an inout receiver",
+			src:  "fn Stack::push(inout self, v: i32) {\n}\n",
+			want: "File test.gyro Func Stack::push Recv: inout self " +
 				"Param v: Type: NamedType i32 Body: Block",
+		},
+		{
+			name: "inout parameter",
+			src:  "fn sort(xs: inout Array<i32>, n: i32) {\n}\n",
+			want: "File test.gyro Func sort Param xs inout: Type: NamedType Array<_> NamedType i32 " +
+				"Param n: Type: NamedType i32 Body: Block",
+		},
+		{
+			name: "inout is a name outside the receiver and the type position",
+			src:  "fn Stack::f(self, inout: i32, other: inout) {\n  inout = 1\n}\n",
+			want: "File test.gyro Func Stack::f Recv: self Param inout: Type: NamedType i32 " +
+				"Param other: Type: NamedType inout Body: Block Assign = Lhs: Ident inout Rhs: Lit int literal 1",
+		},
+		{
+			name: "inout pointer parameter",
+			src:  "fn f(p: inout *Node?) {\n}\n",
+			want: "File test.gyro Func f Param p inout: Type: OptionalType PointerType NamedType Node Body: Block",
 		},
 		{
 			name: "effect row",
@@ -589,8 +606,8 @@ func TestMethods(t *testing.T) {
 		},
 		{
 			name: "method on a generic type",
-			src:  "fn Pair<T>::swap(*self) {\n}\n",
-			want: "File test.gyro Func Pair<T>::swap Recv: *self Body: Block",
+			src:  "fn Pair<T>::swap(inout self) {\n}\n",
+			want: "File test.gyro Func Pair<T>::swap Recv: inout self Body: Block",
 		},
 		{
 			name: "unbounded generic function",
@@ -649,7 +666,7 @@ func TestGenericBounds(t *testing.T) {
 
 func TestOwnerParametersTakeNoBounds(t *testing.T) {
 	var bag diag.Bag
-	Parse("test.gyro", "fn Pair<T: Eq>::swap(*self) {\n}\n", &bag)
+	Parse("test.gyro", "fn Pair<T: Eq>::swap(inout self) {\n}\n", &bag)
 
 	if !bag.HasErrors() {
 		t.Fatal("expected a bound on an owner parameter to be rejected")

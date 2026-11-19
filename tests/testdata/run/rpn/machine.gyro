@@ -32,7 +32,7 @@ export fn Calc::new(): Calc {
     }
 }
 
-export fn Calc::free(*self) {
+export fn Calc::free(inout self) {
     self.stack.free()
     self.vars.free()
     self.var_names.free()
@@ -50,11 +50,11 @@ export fn Calc::free(*self) {
 // The stack
 // ---------------------------------------------------------------------------
 
-export fn Calc::push(*self, value: f64) {
+export fn Calc::push(inout self, value: f64) {
     self.stack.push(value)
 }
 
-export fn Calc::pop(*self, word: string): (f64, error?) {
+export fn Calc::pop(inout self, word: string): (f64, error?) {
     let value, ok = self.stack.pop()
     if !ok {
         return 0.0, CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
@@ -64,7 +64,7 @@ export fn Calc::pop(*self, word: string): (f64, error?) {
 
 // pop2 answers the operands in the order they were written: `a b -` is
 // a - b, not b - a.
-export fn Calc::pop2(*self, word: string): (f64, f64, error?) {
+export fn Calc::pop2(inout self, word: string): (f64, f64, error?) {
     if self.stack.len() < 2 {
         return 0.0, 0.0, CalcError{
             text: format(heap(), "#{word} wants two values and the stack has #{self.stack.len()}"),
@@ -76,7 +76,7 @@ export fn Calc::pop2(*self, word: string): (f64, f64, error?) {
 }
 
 // pop3 is what `rot` wants: the three values in written order.
-export fn Calc::pop3(*self, word: string): (f64, f64, f64, error?) {
+export fn Calc::pop3(inout self, word: string): (f64, f64, f64, error?) {
     if self.stack.len() < 3 {
         return 0.0, 0.0, 0.0, CalcError{
             text: format(heap(), "#{word} wants three values and the stack has #{self.stack.len()}"),
@@ -92,7 +92,7 @@ export fn Calc::depth(self): usize {
     return self.stack.len()
 }
 
-export fn Calc::clear(*self) {
+export fn Calc::clear(inout self) {
     while !self.stack.is_empty() {
         let _, _ = self.stack.pop()
     }
@@ -107,7 +107,7 @@ export fn Calc::snapshot(self): Array<f64> {
     return copy
 }
 
-export fn Calc::restore(*self, saved: Array<f64>) {
+export fn Calc::restore(inout self, saved: Array<f64>) {
     self.stack.free()
     self.stack = saved
 }
@@ -135,7 +135,7 @@ export fn Calc::show(self) {
 // Variables
 // ---------------------------------------------------------------------------
 
-export fn Calc::store(*self, name: string, value: f64) {
+export fn Calc::store(inout self, name: string, value: f64) {
     if !self.vars.contains(name) {
         self.var_names.push(name)
     }
@@ -156,7 +156,7 @@ export fn Calc::var_list(self): string[] !{ &self } {
 
 // define takes the body: the array is the machine's from here, and the
 // body it replaces is freed rather than left behind.
-export fn Calc::define(*self, name: string, body: Array<string>) {
+export fn Calc::define(inout self, name: string, body: Array<string>) {
     let existing = self.words.get(name)
     if existing != null {
         existing.free()
@@ -176,7 +176,7 @@ export fn Calc::word_list(self): string[] !{ &self } {
 
 // forget drops a definition. The name list has no remove, so it is built
 // again without the name — there are as many names as a person typed.
-export fn Calc::forget(*self, name: string): bool {
+export fn Calc::forget(inout self, name: string): bool {
     let body = self.words.get(name)
     if body == null {
         return false

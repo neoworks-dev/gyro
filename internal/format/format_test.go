@@ -47,6 +47,11 @@ var cases = []struct {
 		want: "fn name(a: i32, b: string): Result !{ io, &a } {\n    return\n}\nfn g(): i32 !e\n",
 	},
 	{
+		name: "inout receivers and parameters",
+		in:   "fn Stack::push(inout self,v:inout Array<i32>,n:i32){\n}\n",
+		want: "fn Stack::push(inout self, v: inout Array<i32>, n: i32) {\n}\n",
+	},
+	{
 		name: "unary and binary operators",
 		in:   "fn f() {\n  let a = -x\n  let b = x-y\n  let c = *p * *q\n  let d = &x\n  let e = !ok\n  let f = x < -1\n  let g = <-ch\n  ch <- v\n}\n",
 		want: "fn f() {\n    let a = -x\n    let b = x - y\n    let c = *p * *q\n    let d = &x\n    let e = !ok\n    let f = x < -1\n    let g = <-ch\n    ch <- v\n}\n",

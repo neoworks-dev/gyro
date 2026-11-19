@@ -11,7 +11,7 @@ struct Pair {
     right: i64
 }
 
-fn push_all(into: Array<i32>, count: i32) {
+fn push_all(into: inout Array<i32>, count: i32) {
     for i in 0..count {
         into.push(i * 3)
     }

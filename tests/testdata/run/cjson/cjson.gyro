@@ -342,7 +342,7 @@ fn Buffer::keyword4(self, a: u8, b: u8, c: u8, d: u8): bool {
 // skip_whitespace is C's buffer_skip_whitespace, decrement included: a
 // buffer skipped to its very end steps one back, which is what leaves the
 // NUL readable for require_null_terminated.
-fn Buffer::skip_whitespace(*self) {
+fn Buffer::skip_whitespace(inout self) {
     if !self.can_access(0) {
         return
     }
@@ -354,7 +354,7 @@ fn Buffer::skip_whitespace(*self) {
     }
 }
 
-fn Buffer::skip_bom(*self) {
+fn Buffer::skip_bom(inout self) {
     if self.offset != 0 {
         return
     }
@@ -584,7 +584,7 @@ fn parse_hex4(input: *Buffer, at: i64): i64 {
 // utf16_to_utf8 converts one `\uXXXX`, or a surrogate pair, appending the
 // UTF-8 bytes. It answers how many input bytes the sequence took, or 0 on
 // failure.
-fn utf16_to_utf8(input: *Buffer, pointer: i64, end: i64, out: Array<u8>): i64 {
+fn utf16_to_utf8(input: *Buffer, pointer: i64, end: i64, out: inout Array<u8>): i64 {
     if end - pointer < 6 {
         return 0
     }
@@ -735,11 +735,11 @@ struct Printer {
     format: bool
 }
 
-fn Printer::byte(*self, value: u8) {
+fn Printer::byte(inout self, value: u8) {
     self.out.push(value)
 }
 
-fn Printer::text(*self, value: string) {
+fn Printer::text(inout self, value: string) {
     for byte in value.bytes(heap()) {
         self.out.push(byte)
     }
@@ -1727,7 +1727,7 @@ fn text_value(item: *Node): string? {
 // it. The buffer here carries the trailing NUL C stops on, and the walk is
 // the same two indexes C keeps as two pointers into one array — including
 // the string case's habit of copying a byte it has already passed.
-fn minify_bytes(json: Array<u8>) {
+fn minify_bytes(json: inout Array<u8>) {
     let read: usize = 0
     let into: usize = 0
     let length = json.len()

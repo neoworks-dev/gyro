@@ -491,7 +491,7 @@ func (p *Parser) implOwner(t ast.Type) (string, []ast.TypeParam) {
 }
 
 // parseParams parses a parenthesized parameter list. A leading `self` or
-// `*self` becomes the receiver rather than an ordinary parameter.
+// `inout self` becomes the receiver rather than an ordinary parameter.
 func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
 	p.noteList()
 	p.expect(token.LParen)
@@ -521,15 +521,12 @@ func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
 }
 
 func (p *Parser) isReceiver() bool {
-	if p.at(token.Self) {
-		return true
-	}
-	return p.at(token.Star) && p.peekAt(1).Kind == token.Self
+	return p.at(token.Self) || p.atInout() && p.peekAt(1).Kind == token.Self
 }
 
 func (p *Parser) parseReceiver() *ast.Receiver {
 	recv := &ast.Receiver{Offset: p.offset()}
-	recv.Pointer = p.accept(token.Star)
+	recv.Inout = p.acceptInout()
 	p.expect(token.Self)
 	return recv
 }
@@ -538,7 +535,13 @@ func (p *Parser) parseParam() ast.Param {
 	param := ast.Param{Offset: p.offset()}
 	param.Name, _ = p.expectIdent()
 	p.expect(token.Colon)
-	param.Variadic = p.accept(token.Ellipsis)
+	param.Inout = p.acceptInout()
+	// A pack is collected into a slice the callee owns, so there is nothing
+	// in the caller for it to change in place: `inout ...T` is left to fail
+	// as the missing type it is.
+	if !param.Inout {
+		param.Variadic = p.accept(token.Ellipsis)
+	}
 	param.Type = p.parseType()
 
 	if p.accept(token.Assign) {
@@ -777,6 +780,29 @@ func (p *Parser) parseBinding() ast.Binding {
 	}
 	binding.Name, _ = p.expectIdent()
 	return binding
+}
+
+// atInout reports the `inout` in front of a receiver or a parameter's type.
+// It is contextual, like `private`: only a word that can start a type, or
+// `self`, after it makes it the modifier, so `inout` stays usable as a
+// name, and as a type's name, everywhere else.
+func (p *Parser) atInout() bool {
+	if !p.at(token.Ident) || p.tok().Text != "inout" {
+		return false
+	}
+	switch p.peekAt(1).Kind {
+	case token.Self, token.Ident, token.Star, token.LParen, token.Fn, token.Async, token.Chan:
+		return true
+	}
+	return false
+}
+
+func (p *Parser) acceptInout() bool {
+	if !p.atInout() {
+		return false
+	}
+	p.next()
+	return true
 }
 
 // acceptPrivate consumes the `private` in front of a field. It is contextual,

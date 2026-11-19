@@ -77,7 +77,7 @@ export struct Counter {
   n: i32
 }
 
-export fn Counter::bump(*self): i32 {
+export fn Counter::bump(inout self): i32 {
   self.n += 1
   return self.n
 }
@@ -151,7 +151,7 @@ export fn Counter::new(): Counter {
   return Counter{ n: 0 }
 }
 
-export fn Counter::bump(*self): i32 {
+export fn Counter::bump(inout self): i32 {
   self.n += 1
   return self.n
 }

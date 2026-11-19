@@ -351,6 +351,14 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 // assigning a fresh *Node? into a narrowed *Node? local is fine, and the
 // write is what withdraws the narrowing afterwards.
 func (c *checker) assignTarget(lhs ast.Expr) types.Type {
+	target := c.assignTargetType(lhs)
+	if target != nil && !types.IsUnknown(target) {
+		c.checkChangeable(lhs)
+	}
+	return target
+}
+
+func (c *checker) assignTargetType(lhs ast.Expr) types.Type {
 	switch lhs := lhs.(type) {
 	case *ast.Ident:
 		if lhs.Name == "_" {
@@ -820,7 +828,7 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		return elem
 	}
 	c.errorHintf(e.Pos(), []string{
-		"a type is iterated by implementing Iterator: impl Iterator<T> for " + t.String() + " { fn next(*self): (T, bool) }",
+		"a type is iterated by implementing Iterator: impl Iterator<T> for " + t.String() + " { fn next(inout self): (T, bool) }",
 	}, "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator", t)
 	return types.Unknown
 }

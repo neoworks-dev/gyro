@@ -115,6 +115,7 @@
   "unsafe"
   "safe"
   "private"
+  "inout"
 ] @keyword.modifier
 
 "move" @keyword.modifier

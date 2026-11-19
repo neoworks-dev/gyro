@@ -10,7 +10,7 @@ fn Stack::new(): Stack {
     return Stack{ top: 0 }
 }
 
-fn Stack::push(*self, v: i32) {
+fn Stack::push(inout self, v: i32) {
     self.top += 1
 }
 

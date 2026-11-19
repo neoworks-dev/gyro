@@ -21,7 +21,7 @@ fn empty_rows<K, V>(count: usize): Array<Array<K>> {
     return rows
 }
 
-fn Grid<K, V>::widen(*self) {
+fn Grid<K, V>::widen(inout self) {
     let wider = empty_rows<K, V>(self.rows.len() * 2)
     for i in 0..self.rows.len() {
         let row = self.rows.get(i)

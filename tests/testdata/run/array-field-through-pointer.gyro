@@ -10,7 +10,7 @@ struct Buf {
     data: i32[4]
 }
 
-fn Buf::set(*self, at: usize, value: i32) {
+fn Buf::set(inout self, at: usize, value: i32) {
     self.data[at] = value
 }
 
@@ -30,7 +30,7 @@ fn Buf::total(self): i32 {
 
 // Accumulating in place is the loop the whole thing is for: no element
 // is loaded to write one, and the array is never copied.
-fn Buf::double(*self) {
+fn Buf::double(inout self) {
     let i: usize = 0
     while i < 4 {
         self.data[i] = self.data[i] * 2

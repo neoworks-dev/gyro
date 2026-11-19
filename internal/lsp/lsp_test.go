@@ -671,7 +671,7 @@ struct Counter {
   count: i32
 }
 
-fn Counter::bump(*self, by: i32) {
+fn Counter::bump(inout self, by: i32) {
   self.count += by
 }
 
@@ -744,8 +744,8 @@ func TestReferences(t *testing.T) {
 		includeDeclaration bool
 		want               []string
 	}{
-		{"a method from its declaration", "bump(*self", true,
-			[]string{"bump(*self", "bump(1)", "bump(2)"}},
+		{"a method from its declaration", "bump(inout self", true,
+			[]string{"bump(inout self", "bump(1)", "bump(2)"}},
 		{"a method from a call", "bump(2)", false,
 			[]string{"bump(1)", "bump(2)"}},
 		{"a parameter", "by: i32", true,

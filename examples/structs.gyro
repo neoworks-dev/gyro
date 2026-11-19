@@ -26,7 +26,7 @@ export fn Stack::is_empty(self): bool {
 }
 
 // A pointer receiver may mutate the value it was called on.
-export fn Stack::push(*self, value: i32) {
+export fn Stack::push(inout self, value: i32) {
     self.items.push(value)
     self.top += 1
 }
@@ -38,7 +38,7 @@ export fn Stack::view(self): i32[] !{ &self } {
     return self.items.slice()
 }
 
-export fn Stack::free(*self) {
+export fn Stack::free(inout self) {
     self.items.free()
 }
 

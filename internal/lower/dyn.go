@@ -130,7 +130,11 @@ func (l *lowerer) thunkFor(t types.Type, entry *types.TraitMethod) string {
 	args := []string{}
 	for i, param := range entry.Method.Sig.Params {
 		argName := "a" + itoa(i)
-		fn.Params = append(fn.Params, metals.Param{Name: argName, Type: l.metalsType(param)})
+		paramType := l.metalsType(param)
+		if entry.Method.InoutAt(i) {
+			paramType = &metals.Ptr{Elem: paramType}
+		}
+		fn.Params = append(fn.Params, metals.Param{Name: argName, Type: paramType})
 		args = append(args, argName)
 	}
 	if !isVoid(entry.Method.Sig.Result) {
@@ -245,9 +249,12 @@ func (f *funcLowerer) prepareDynCall(call *ast.CallExpr, resolved *sema.CallInfo
 	if pointer, ok := recvType.(*types.Pointer); ok {
 		value = f.pointerPlace(value, pointer.Elem).load()
 	}
-	args := f.callArgs(call, resolved.Sig, nil)
+	var args []string
+	owed := f.collectWriteBacks(func() {
+		args = f.callArgs(call, resolved.Sig, resolved.Method.Decl)
+	})
 
-	return func() string {
+	return afterCall(func() string {
 		data := f.newReg("data")
 		f.emit(&metals.FieldGet{Dst: data, X: value, Index: 0})
 		table := f.newReg("table")
@@ -265,5 +272,5 @@ func (f *funcLowerer) prepareDynCall(call *ast.CallExpr, resolved *sema.CallInfo
 		out := f.newReg("r")
 		f.emit(&metals.CallIndirect{Dst: out, Fn: code, Args: all})
 		return out
-	}
+	}, owed)
 }

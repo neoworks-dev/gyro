@@ -133,6 +133,12 @@ const (
 	ELoopSharedStore  Code = "E0632"
 	EArenaUseAfterEnd Code = "E0633"
 
+	// Changing a value
+	EReadOnlyPlace Code = "E0634"
+	EInoutPlace    Code = "E0635"
+	EInoutAlias    Code = "E0636"
+	EInoutParam    Code = "E0637"
+
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
 	WPossibleLeak Code = "W0701"
@@ -335,6 +341,14 @@ var explanations = map[Code]explanation{
 		"A value allocated from arena.allocator() sits in the arena and goes\nwith it. When the arena is local to this function it ends with the\nfunction, so returning the value, or storing it into something that\noutlives the function, hands out memory that is gone.\n\nTake the allocator as a parameter and the arena belongs to the caller.\nA value from heap() is not in an arena."},
 	EArenaUseAfterEnd: {"value used after its arena was freed or reset",
 		"Freeing an arena returns the buffer, and free_all hands the same bytes\nout again, so everything allocated from it before is gone. Reading such a\nvalue after the call reads memory that is freed or reused.\n\nThis follows the function's own statements in order; it does not see a\nloop carrying a value from one iteration to the next, or a free inside a\ncallee.\n\nAn allocator is not a value allocated from the arena: after free_all it\ncan allocate again."},
+	EReadOnlyPlace: {"value cannot be changed",
+		"A plain parameter borrows its argument: the function may read it and\nmay not change it, and neither may it change a field or an element of it\nor call a method that takes `inout self` on it. The same goes for a plain\n`self`, and for a `const`, which never changes.\n\nWrite the parameter `inout` to change the caller's value, or copy it into\na let and change the copy. A method that changes its receiver takes\n`inout self`."},
+	EInoutPlace: {"inout argument is not a variable that can change",
+		"An `inout` parameter changes the caller's own value, so the argument is\na variable, a field or element of one, or an inout parameter of the caller\nitself. A temporary has nowhere to keep the change, and a `const` or a\nplain parameter of the caller may not be changed."},
+	EInoutAlias: {"value is passed twice, once as inout",
+		"An `inout` parameter is exclusive for as long as the call runs. Passing\nthe same variable, or a part of it, as another argument or as the\nreceiver would let the callee change it through one name and read it\nthrough the other. A number passed plainly is a copy and is not counted.\nTwo elements of one array count as the same place, since which elements\nthey are is not known here."},
+	EInoutParam: {"inout parameter is used wrongly",
+		"An `inout` parameter is passed by address, so it takes no default, an\nasync function may not have one, and a function that has one is only\ncalled by name: a function value or a code pointer carries a signature that\nhas no way to say a parameter is inout. Wrap the call in a closure to pass\nit on."},
 	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",
 		"A channel, a send, a receive, closing or iterating a channel, a select, an\nasync function and an await are written in Gyro, and their code is in\nstdlib. The compiler never loads a module the program did not import, so a\nprogram that uses one has to load stdlib itself.\n\nImport something from it, such as println: import { println } from \"stdlib\""},
 	EFormatEscapes: {"format value outlives its statement",

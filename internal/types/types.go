@@ -250,10 +250,10 @@ type RecvKind int
 const (
 	// NoRecv marks an associated function, called as Type::name().
 	NoRecv RecvKind = iota
-	// ValueRecv is `self`: borrows immutably.
+	// ValueRecv is `self`: borrows, and may not change the receiver.
 	ValueRecv
-	// PointerRecv is `*self`: may mutate.
-	PointerRecv
+	// InoutRecv is `inout self`: borrows exclusively and may change it.
+	InoutRecv
 )
 
 // Method is a free-standing fn attached to a type, or a free function when
@@ -275,6 +275,27 @@ type Method struct {
 	// the method is the trait's, shared by every implementer, and the
 	// impl says what Self and the trait's arguments are for this one.
 	Impl *Impl
+}
+
+// InoutAt reports whether parameter i, counted without the receiver, is
+// declared `inout`. A method with no declaration, one the checker
+// synthesizes, takes everything as a plain borrow.
+func (m *Method) InoutAt(i int) bool {
+	return m.Decl != nil && i < len(m.Decl.Params) && m.Decl.Params[i].Inout
+}
+
+// HasInoutParam reports whether any parameter, not counting the receiver, is
+// declared `inout`.
+func (m *Method) HasInoutParam() bool {
+	if m.Decl == nil {
+		return false
+	}
+	for _, param := range m.Decl.Params {
+		if param.Inout {
+			return true
+		}
+	}
+	return false
 }
 
 // Field is one struct field. Exported reports that it is visible outside its

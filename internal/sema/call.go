@@ -48,6 +48,7 @@ func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 	if target.method != nil {
 		t := c.checkCall(call, target)
 		c.noteCall(call, target)
+		c.checkInoutCall(call, target)
 		if strings.HasPrefix(c.intrinsicCall(call), "syscall") {
 			c.checkSyscallArgs(call)
 		}
@@ -1004,6 +1005,9 @@ func (c *checker) pathValue(path *ast.Path) types.Type {
 		}
 		if p.method.Recv != types.NoRecv {
 			c.errorf(path.Offset, "%s takes a receiver; call it on a value", p.method.Name)
+			return types.Unknown
+		}
+		if c.refuseInoutValue(path.Offset, p.method) {
 			return types.Unknown
 		}
 		c.recordRef(path, p.method.Decl)

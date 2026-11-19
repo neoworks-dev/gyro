@@ -50,7 +50,7 @@ struct Counter {
     n: i32
 }
 
-fn Counter::bump(*self) {
+fn Counter::bump(inout self) {
     self.n = self.n + 1
 }
 

@@ -88,6 +88,9 @@ type symbol struct {
 	// does for every iteration after the first.
 	loopDepth int
 	param     bool
+	// inout marks a parameter declared `inout`, the only kind a function
+	// may change.
+	inout bool
 	// exports holds the target module's export set for a namespace import,
 	// when the loader supplied one.
 	exports *Exports
@@ -197,6 +200,9 @@ type funcContext struct {
 	// receiver is not a scope symbol — `self` is its own expression — so
 	// borrows need something to point at.
 	selfSymbol *symbol
+	// selfBorrowed marks a method whose receiver is a plain `self`, which
+	// it may read and not change. A closure inside it shares the flag.
+	selfBorrowed bool
 	// generic marks a function with type parameters. Its borrows are
 	// conditional: `&a` where `a: T` is load-bearing when T is a view and
 	// vacuous when it is not, so whether the source or the result is a view

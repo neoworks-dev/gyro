@@ -72,14 +72,14 @@ export trait Neg {
 // Iterator is what for..in walks: next hands back the following element and
 // whether there was one.
 export trait Iterator<T> {
-    fn next(*self): (T, bool)
+    fn next(inout self): (T, bool)
 }
 
 // Index is `value[i]`. at hands back the address of element i, which is
 // what makes the index a place: `value[i] = x` writes through it and
 // `&value[i]` is the address itself, as on an Array.
 export trait Index<T> {
-    fn at(*self, index: usize): *T
+    fn at(inout self, index: usize): *T
 }
 
 // A line is written piece by piece, so the output lock is held across
@@ -391,7 +391,7 @@ fn stream_eprintln(message: Format) !{ io } {
 // allocator, so an array cannot be freed to one it did not come from.
 //
 // An Array is a handle: a pointer to a header, so a copy of the value is
-// the same array, and a method that takes `*self` changes what every copy
+// the same array, and a method that takes `inout self` changes what every copy
 // sees. The header stays allocated after free, which is how a second free
 // or a use after free is caught rather than read through.
 struct ArrayHead<T> {
@@ -458,7 +458,7 @@ safe fn array_grow<T>(head: *ArrayHead<T>) !{} {
     head.capacity = grown
 }
 
-export safe fn Array<T>::push(*self, value: T) !{} {
+export safe fn Array<T>::push(inout self, value: T) !{} {
     let head = self.head
     if head.freed {
         panic("use after free of an Array")
@@ -474,7 +474,7 @@ export safe fn Array<T>::push(*self, value: T) !{} {
 // pop on an empty array answers a zeroed element and false: Gyro has no
 // value to put there, so the element is read out of a block the allocator
 // zero-filled.
-export safe fn Array<T>::pop(*self): (T, bool) !{} {
+export safe fn Array<T>::pop(inout self): (T, bool) !{} {
     let head = self.head
     if head.freed {
         panic("use after free of an Array")
@@ -501,7 +501,7 @@ export safe fn Array<T>::get(self, index: usize): T !{} {
     return *cast<T>(offset(head.data, index *% size<T>()))
 }
 
-export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
+export safe fn Array<T>::set(inout self, index: usize, value: T) !{} {
     let head = self.head
     if head.freed {
         panic("use after free of an Array")
@@ -545,7 +545,7 @@ export safe fn Array<T>::slice(self): T[] !{ &self } {
     return slice_from_raw<T>(head.data, head.count)
 }
 
-export safe fn Array<T>::free(*self) !{} {
+export safe fn Array<T>::free(inout self) !{} {
     let head = self.head
     if head.freed {
         panic("double free of an Array")
@@ -669,7 +669,7 @@ export fn String::of(a: Allocator, text: string): String !{ &a } {
     return out
 }
 
-export fn String::push(*self, text: string) !{} {
+export fn String::push(inout self, text: string) !{} {
     for byte in text.bytes(self.alloc) {
         self.bytes.push(byte)
     }
@@ -678,7 +678,7 @@ export fn String::push(*self, text: string) !{} {
 // push_rune encodes one code point as UTF-8. The four cases are the four
 // lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
 // what runes() produces for an invalid sequence.
-export fn String::push_rune(*self, value: rune) !{} {
+export fn String::push_rune(inout self, value: rune) !{} {
     let point = value as u32
     if point > 1114111 || (point >= 55296 && point <= 57343) {
         point = 65533
@@ -719,7 +719,7 @@ export fn String::to_string(self): string !{} {
     return self.text(heap())
 }
 
-export fn String::free(*self) !{} {
+export fn String::free(inout self) !{} {
     self.bytes.free()
 }
 
@@ -920,7 +920,7 @@ fn Map<K, V>::bucket_of(self, key: K): Array<(K, V)> {
 // grow doubles the bucket count and redistributes every entry. Insertion
 // order within a bucket is not part of the contract; the walk order here
 // is still deterministic, so every tier agrees byte for byte.
-fn Map<K, V>::grow(*self) {
+fn Map<K, V>::grow(inout self) {
     let wider = empty_buckets<K, V>(self.alloc, self.buckets.len() * 2)
     for i in 0..self.buckets.len() {
         let bucket = self.buckets.get(i)
@@ -937,7 +937,7 @@ fn Map<K, V>::grow(*self) {
 
 // insert adds the pair, replacing the value (and the stored key) when an
 // equal key is already present.
-export fn Map<K, V>::insert(*self, key: K, value: V) !{} {
+export fn Map<K, V>::insert(inout self, key: K, value: V) !{} {
     let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
         if bucket.get(i).0 == key {
@@ -976,7 +976,7 @@ export fn Map<K, V>::contains(self, key: K): bool !{} {
 
 // remove takes the entry out by swapping the last one into its place,
 // and reports whether the key was present.
-export fn Map<K, V>::remove(*self, key: K): bool !{} {
+export fn Map<K, V>::remove(inout self, key: K): bool !{} {
     let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
         if bucket.get(i).0 == key {
@@ -1011,9 +1011,10 @@ export fn Map<K, V>::keys(self): Array<K> !{} {
     return out
 }
 
-export fn Map<K, V>::free(*self) !{} {
+export fn Map<K, V>::free(inout self) !{} {
     for i in 0..self.buckets.len() {
-        self.buckets.get(i).free()
+        let bucket = self.buckets.get(i)
+        bucket.free()
     }
     self.buckets.free()
     self.count = 0
@@ -1071,7 +1072,7 @@ export safe fn Mutex<T>::new(value: T): Mutex<T> !{} {
     return Mutex<T>{ head: head }
 }
 
-export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{} {
+export safe fn Mutex<T>::lock(inout self): MutexGuard<T> !{} {
     let head = self.head
     lock_word(&head.word)
     head.epoch = head.epoch + 1
@@ -1090,7 +1091,7 @@ export safe fn MutexGuard<T>::get(self): T !{} {
     return self.head.value
 }
 
-export safe fn MutexGuard<T>::set(*self, value: T) !{} {
+export safe fn MutexGuard<T>::set(inout self, value: T) !{} {
     if self.head.epoch != self.epoch {
         panic("the guard was already unlocked")
     }
@@ -1099,7 +1100,7 @@ export safe fn MutexGuard<T>::set(*self, value: T) !{} {
 
 // Release is explicit until a drop-based design is settled; pair lock()
 // with `defer guard.unlock()`.
-export safe fn MutexGuard<T>::unlock(*self) !{} {
+export safe fn MutexGuard<T>::unlock(inout self) !{} {
     if self.head.epoch != self.epoch {
         panic("the guard was already unlocked")
     }
@@ -1125,44 +1126,44 @@ export fn Atomic<T>::new(value: T): Atomic<T> !{} {
     return Atomic<T>{ value: value }
 }
 
-export safe fn Atomic<T>::load(*self): T !{} {
+export safe fn Atomic<T>::load(inout self): T !{} {
     return atomic_load(&self.value)
 }
 
-export safe fn Atomic<T>::store(*self, value: T) !{} {
+export safe fn Atomic<T>::store(inout self, value: T) !{} {
     atomic_store(&self.value, value)
 }
 
 // swap stores value and answers what the cell held.
-export safe fn Atomic<T>::swap(*self, value: T): T !{} {
+export safe fn Atomic<T>::swap(inout self, value: T): T !{} {
     return atomic_swap(&self.value, value)
 }
 
 // compare_and_swap stores desired when the cell holds expected, and answers
 // whether it did.
-export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{} {
+export safe fn Atomic<T>::compare_and_swap(inout self, expected: T, desired: T): bool !{} {
     return atomic_cas(&self.value, expected, desired) == expected
 }
 
 // The fetch operations store the result of the arithmetic and answer what the
 // cell held before. They wrap, and they are for integers.
-export safe fn Atomic<T>::fetch_add(*self, value: T): T !{} {
+export safe fn Atomic<T>::fetch_add(inout self, value: T): T !{} {
     return atomic_add(&self.value, value)
 }
 
-export safe fn Atomic<T>::fetch_sub(*self, value: T): T !{} {
+export safe fn Atomic<T>::fetch_sub(inout self, value: T): T !{} {
     return atomic_sub(&self.value, value)
 }
 
-export safe fn Atomic<T>::fetch_and(*self, value: T): T !{} {
+export safe fn Atomic<T>::fetch_and(inout self, value: T): T !{} {
     return atomic_and(&self.value, value)
 }
 
-export safe fn Atomic<T>::fetch_or(*self, value: T): T !{} {
+export safe fn Atomic<T>::fetch_or(inout self, value: T): T !{} {
     return atomic_or(&self.value, value)
 }
 
-export safe fn Atomic<T>::fetch_xor(*self, value: T): T !{} {
+export safe fn Atomic<T>::fetch_xor(inout self, value: T): T !{} {
     return atomic_xor(&self.value, value)
 }
 

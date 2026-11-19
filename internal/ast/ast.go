@@ -141,7 +141,7 @@ type Borrow struct {
 }
 
 // FuncDecl is a function, or a method when Owner names the type it belongs
-// to: `fn Stack::push(*self, v: i32)`.
+// to: `fn Stack::push(inout self, v: i32)`.
 type FuncDecl struct {
 	Offset   int
 	Exported bool
@@ -189,11 +189,11 @@ type FuncDecl struct {
 func (f *FuncDecl) Pos() int  { return f.Offset }
 func (f *FuncDecl) declNode() {}
 
-// Receiver is the `self` or `*self` parameter of a method.
+// Receiver is the `self` or `inout self` parameter of a method.
 type Receiver struct {
 	Offset int
-	// Pointer is true for `*self`, meaning the method may mutate its type.
-	Pointer bool
+	// Inout is true for `inout self`: the method may change its receiver.
+	Inout bool
 }
 
 // Param is one declared function parameter.
@@ -201,6 +201,9 @@ type Param struct {
 	Offset int
 	Name   string
 	Type   Type
+	// Inout marks `name: inout T`: the function may change the argument in
+	// place, and nothing else may see it for the length of the call.
+	Inout bool
 	// Default is the expression after `=`, or nil.
 	Default Expr
 	// Variadic marks `name: ...T`, which collects the remaining arguments.

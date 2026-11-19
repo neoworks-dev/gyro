@@ -32,7 +32,7 @@ struct Canvas {
     texts: Array<string>
 }
 
-fn Canvas::fill(*self, r: Rect, pixel: rune) {
+fn Canvas::fill(inout self, r: Rect, pixel: rune) {
     for let y = r.y; y < r.y + r.h; y += 1 {
         for let x = r.x; x < r.x + r.w; x += 1 {
             self.pixels[(y * WIDTH + x) as usize] = pixel as u32
@@ -48,7 +48,7 @@ struct Mouse {
 
 trait Element {
     fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse)
-    fn press(*self, mouse: Mouse): bool
+    fn press(inout self, mouse: Mouse): bool
 }
 
 struct Button {
@@ -67,7 +67,7 @@ impl Element for Button {
         canvas.texts.push(format(frame, "#{self.label} (#{self.clicks})"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }
@@ -90,7 +90,7 @@ impl Element for Meter {
         canvas.texts.push(format(frame, "#{self.level} of #{self.capacity}"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         return false
     }
 }
@@ -109,7 +109,7 @@ impl Element for Panel {
         }
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }

@@ -76,11 +76,11 @@ fn Stack::is_empty(self): bool {
   return self.top == 0
 }
 
-fn Stack::push(*self, v: i32) {
+fn Stack::push(inout self, v: i32) {
   self.top += 1
 }
 
-fn Pair<T>::swap(*self) {
+fn Pair<T>::swap(inout self) {
 }
 
 ---
@@ -891,7 +891,7 @@ trait requiring other traits and taking parameters
 ==================
 
 export trait Widget<T>: Element & Named {
-  fn click(*self, at: T)
+  fn click(inout self, at: T)
 }
 
 ---
@@ -1210,3 +1210,28 @@ struct Flags {
         (identifier)
         (named_type
           (type_identifier))))))
+
+==================
+inout receivers and parameters
+==================
+
+fn Stack::push(inout self, xs: inout Stack, n: i32) {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (receiver)
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block)))

@@ -68,7 +68,7 @@ struct Canvas {
 }
 
 // fill paints a rectangle, clipped to the canvas.
-fn Canvas::fill(*self, r: Rect, colour: u32) {
+fn Canvas::fill(inout self, r: Rect, colour: u32) {
     let left = max(r.x, 0)
     let top = max(r.y, 0)
     let right = min(r.x + r.w, WIDTH)
@@ -81,7 +81,7 @@ fn Canvas::fill(*self, r: Rect, colour: u32) {
     }
 }
 
-fn Canvas::write(*self, x: i32, y: i32, text: string) {
+fn Canvas::write(inout self, x: i32, y: i32, text: string) {
     self.texts.push(Text{ x: x, y: y, text: text })
 }
 
@@ -115,7 +115,7 @@ trait Element {
     fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse)
 
     // press reacts to a click at the mouse and reports whether it hit.
-    fn press(*self, mouse: Mouse): bool
+    fn press(inout self, mouse: Mouse): bool
 }
 
 struct Button {
@@ -134,7 +134,7 @@ impl Element for Button {
         canvas.write(self.rect.x + 10, self.rect.y + 12, format(frame, "#{self.label} (#{self.clicks})"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }
@@ -158,7 +158,7 @@ impl Element for Meter {
         canvas.write(self.rect.x, self.rect.y - 14, format(frame, "#{self.level} of #{self.capacity} clicks"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         return false
     }
 }
@@ -179,7 +179,7 @@ impl Element for Panel {
         }
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }

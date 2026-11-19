@@ -77,7 +77,7 @@ const ZERO_DIGEST: u8[16] = [
 // The compression function
 // ---------------------------------------------------------------------------
 
-fn Ctx::transform(*self) {
+fn Ctx::transform(inout self) {
     // MD5 reads its message words little-endian, which is the reverse of
     // SHA-256.
     let m: u32[16] = ZERO_SCHEDULE
@@ -182,7 +182,7 @@ export fn init(): Ctx {
     }
 }
 
-export fn Ctx::update(*self, data: u8[]) {
+export fn Ctx::update(inout self, data: u8[]) {
     for byte in data {
         self.data[self.datalen] = byte
         self.datalen += 1
@@ -194,7 +194,7 @@ export fn Ctx::update(*self, data: u8[]) {
     }
 }
 
-export fn Ctx::final(*self): u8[16] {
+export fn Ctx::final(inout self): u8[16] {
     let i = self.datalen
 
     if self.datalen < 56 {

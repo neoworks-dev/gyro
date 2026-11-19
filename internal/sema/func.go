@@ -93,6 +93,8 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		async:    decl.Async,
 		inMethod: decl.Recv != nil,
 		selfType: selfType,
+		// The receiver is the caller's, and a plain `self` only borrows it.
+		selfBorrowed: decl.Recv != nil && !decl.Recv.Inout,
 		// A generic body checked without type arguments cannot answer
 		// whether T is a view; the instantiation can, and does.
 		borrowChecked: !c.lenient,
@@ -125,6 +127,7 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		// A struct counts: `s.items.slice()` is a view of s.
 		if sym != nil {
 			sym.param = true
+			sym.inout = param.Inout
 		}
 		if sym != nil && isAllocator(paramType) {
 			// What is allocated from a parameter is the caller's to free;

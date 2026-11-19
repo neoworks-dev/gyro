@@ -108,7 +108,7 @@ struct Pair<T> {
     second: T
 }
 
-fn Pair<T>::swap(*self) {
+fn Pair<T>::swap(inout self) {
     let tmp = self.first
     self.first = self.second
     self.second = tmp

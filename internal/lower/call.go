@@ -85,6 +85,10 @@ func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.Fu
 			args = append(args, f.packArgs(call, sig.Params[i], i))
 			continue
 		}
+		if i < len(call.Args) && decl != nil && decl.Params[i].Inout {
+			args = append(args, f.inoutAddress(call.Args[i].Value))
+			continue
+		}
 		if i < len(call.Args) {
 			args = append(args, f.lowerExpr(call.Args[i].Value, sig.Params[i]))
 			continue
@@ -203,37 +207,95 @@ func (f *funcLowerer) prepareUserCall(call *ast.CallExpr, resolved *sema.CallInf
 	name := f.l.ensureFunc(decl, resolved.Bindings)
 
 	var args []string
-	if decl.Recv != nil {
-		selector, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			f.l.fail("@%s: a method call without a receiver expression", f.fn.Name)
+	owed := f.collectWriteBacks(func() {
+		if decl.Recv != nil {
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				f.l.fail("@%s: a method call without a receiver expression", f.fn.Name)
+			}
+			args = append(args, f.methodReceiver(selector.X, resolved.Method))
 		}
-		args = append(args, f.methodReceiver(selector.X, resolved.Method))
-	}
-	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
-	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
+		args = append(args, f.callArgs(call, resolved.Sig, decl)...)
+	})
+	return afterCall(f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async), owed)
 }
 
-// methodReceiver produces the receiver argument: a pointer for *self, a
+// inoutAddress is what an inout parameter receives: the address of the place
+// the argument names, so that the callee changes it where it lies. sema
+// refuses an argument that is not a place.
+func (f *funcLowerer) inoutAddress(arg ast.Expr) string {
+	target := f.placeOfAddressable(arg)
+	if target == nil {
+		f.l.fail("@%s: an inout argument is not a place", f.fn.Name)
+	}
+	if _, stored := target.typ.(*types.Optional); stored {
+		if _, used := f.typeOf(arg).(*types.Optional); !used {
+			return f.inoutNarrowed(arg, target)
+		}
+	}
+	addr := target.addr()
+	if addr == "" {
+		f.l.fail("@%s: an inout argument has no address", f.fn.Name)
+	}
+	return addr
+}
+
+// inoutNarrowed passes a local the checker narrowed from `T?` to `T`. It is
+// stored as the optional, and the payload has no address of its own, so the
+// callee gets a cell holding the payload and what it leaves there is put
+// back when the call returns. Nothing else can see the local meanwhile,
+// which is what inout promises.
+func (f *funcLowerer) inoutNarrowed(arg ast.Expr, target *place) string {
+	payload := f.typeOf(arg)
+	cell := f.newReg("inout")
+	f.emit(&metals.Slot{Dst: cell, Type: f.l.metalsType(payload)})
+	f.emit(&metals.Store{Ptr: cell, Val: f.narrowed(target.load(), target.typ, payload)})
+	f.writeBacks = append(f.writeBacks, func() {
+		held := f.newReg("inout.v")
+		f.emit(&metals.Load{Dst: held, Ptr: cell})
+		wrapped := f.newReg("inout.o")
+		f.emit(&metals.OptWrap{Dst: wrapped, X: held})
+		target.store(wrapped)
+	})
+	return cell
+}
+
+// collectWriteBacks runs the lowering of a call's receiver and arguments and
+// returns what they owe once the call has returned. A call nested in an
+// argument collects its own.
+func (f *funcLowerer) collectWriteBacks(prepare func()) []func() {
+	outer := f.writeBacks
+	f.writeBacks = nil
+	prepare()
+	owed := f.writeBacks
+	f.writeBacks = outer
+	return owed
+}
+
+// afterCall is emit, followed by the write-backs.
+func afterCall(emit func() string, owed []func()) func() string {
+	if len(owed) == 0 {
+		return emit
+	}
+	return func() string {
+		out := emit()
+		for _, writeBack := range owed {
+			writeBack()
+		}
+		return out
+	}
+}
+
+// methodReceiver produces the receiver argument: a pointer for inout self, a
 // value for self, through an existing pointer either way.
 func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string {
 	recvType := f.typeOf(recv)
 
-	if method.Recv == types.PointerRecv {
+	if method.Recv == types.InoutRecv {
 		if _, ok := recvType.(*types.Pointer); ok {
 			return f.lowerExpr(recv, nil)
 		}
-		if target := f.placeOfAddressable(recv); target != nil {
-			if addr := target.addr(); addr != "" {
-				return addr
-			}
-		}
-		// A mutating method on an rvalue: give it a cell to scribble on.
-		value := f.lowerExpr(recv, nil)
-		slot := f.newReg("recv")
-		f.emit(&metals.Slot{Dst: slot, Type: f.l.metalsType(recvType)})
-		f.emit(&metals.Store{Ptr: slot, Val: value})
-		return slot
+		return f.inoutAddress(recv)
 	}
 
 	if pointer, ok := recvType.(*types.Pointer); ok {
@@ -304,7 +366,7 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 }
 
 // nativeReceiver produces the receiver of a runtime method. A runtime
-// object is a handle, which is already a reference, so `*self` needs no
+// object is a handle, which is already a reference, so `inout self` needs no
 // pointer — but the receiver expression may still be one, as it is inside
 // a function taking `*Array<T>`, and then it has to be loaded through.
 func (f *funcLowerer) nativeReceiver(recv ast.Expr) string {
@@ -699,7 +761,7 @@ func (f *funcLowerer) ensureErrorMessage() string {
 			&metals.VariantField{Dst: value, X: "e", Variant: index, Index: 0},
 		}
 		receiver := value
-		if method.Recv == types.PointerRecv {
+		if method.Recv == types.InoutRecv {
 			body = append(body,
 				&metals.Slot{Dst: cell, Type: f.l.metalsType(errType)},
 				&metals.Store{Ptr: cell, Val: value},

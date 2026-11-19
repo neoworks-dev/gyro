@@ -584,6 +584,13 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 			decl.Name, len(have.TypeParams), len(declared.TypeParams))
 		return
 	}
+	for i, param := range decl.Params {
+		if have.InoutAt(i) != declared.InoutAt(i) {
+			c.errorf(param.Offset, "parameter %s of %s is %s, but the trait declares it %s",
+				param.Name, decl.Name, inoutText(have.InoutAt(i)), inoutText(declared.InoutAt(i)))
+			return
+		}
+	}
 
 	// The method's own generics are different objects on each side; map
 	// the trait's onto the impl's before comparing.
@@ -602,12 +609,19 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 	}
 }
 
+func inoutText(inout bool) string {
+	if inout {
+		return "inout"
+	}
+	return "a plain borrow"
+}
+
 func receiverText(r types.RecvKind) string {
 	switch r {
 	case types.ValueRecv:
 		return "self"
-	case types.PointerRecv:
-		return "*self"
+	case types.InoutRecv:
+		return "inout self"
 	}
 	return "no receiver"
 }

@@ -395,7 +395,7 @@ func (f *funcLowerer) chanLoop(s *ast.ForInStmt, elemType types.Type) {
 	}, nil)
 }
 
-// iteratorLoop drives a type implementing Iterator: next(*self): (T, bool)
+// iteratorLoop drives a type implementing Iterator: next(inout self): (T, bool)
 // until it says there is no more.
 func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, target *types.Struct, elemType types.Type) {
 	value := f.lowerExpr(s.Iterable, nil)

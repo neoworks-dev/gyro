@@ -108,7 +108,7 @@ export fn Arena::new(a: Allocator, capacity: usize): Arena !{ &a } {
 
 // take carves the next block out of the buffer, aligned, zeroed, or
 // answers null when the arena is full. It does not grow.
-safe fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
+safe fn Arena::take(inout self, size: usize, align: usize): anyptr? !{} {
     let start = self.used
     if align > 1 {
         let over = start % align
@@ -166,17 +166,17 @@ safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: an
 // allocator is the value to hand to whatever should allocate from the
 // arena. It points at the arena, so
 // the arena has to stay where it is while the value is in use.
-export fn Arena::allocator(*self): Allocator !{ &self } {
+export fn Arena::allocator(inout self): Allocator !{ &self } {
     return Allocator{ proc: &arena_proc, data: &self as anyptr }
 }
 
 // free_all resets the arena: every block it handed out is gone at once.
-export fn Arena::free_all(*self) !{} {
+export fn Arena::free_all(inout self) !{} {
     self.used = 0
 }
 
 // free returns the buffer to the allocator new took it from.
-export fn Arena::free(*self) !{} {
+export fn Arena::free(inout self) !{} {
     self.parent.proc(self.parent.data, Mode::Free, 0, 0, self.base, self.capacity)
 }
 

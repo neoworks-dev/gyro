@@ -92,10 +92,10 @@ func (p *printer) node(node Node) {
 		p.line("Func %s%s%s%s%s%s", exportMark(n.Exported), trustMark(n), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		if n.Recv != nil {
-			p.line("Recv: %sself", pointerMark(n.Recv.Pointer))
+			p.line("Recv: %sself", inoutMark(n.Recv.Inout))
 		}
 		for _, param := range n.Params {
-			p.group("Param "+param.Name+variadicMark(param.Variadic), func() {
+			p.group("Param "+param.Name+inoutSuffix(param.Inout)+variadicMark(param.Variadic), func() {
 				p.child("Type", param.Type)
 				p.child("Default", param.Default)
 			})
@@ -747,9 +747,16 @@ func exportMark(exported bool) string {
 	return ""
 }
 
-func pointerMark(pointer bool) string {
-	if pointer {
-		return "*"
+func inoutMark(inout bool) string {
+	if inout {
+		return "inout "
+	}
+	return ""
+}
+
+func inoutSuffix(inout bool) string {
+	if inout {
+		return " inout"
 	}
 	return ""
 }

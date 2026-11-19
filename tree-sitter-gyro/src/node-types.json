@@ -2959,6 +2959,10 @@
     "named": false
   },
   {
+    "type": "inout",
+    "named": false
+  },
+  {
     "type": "int_literal",
     "named": true
   },

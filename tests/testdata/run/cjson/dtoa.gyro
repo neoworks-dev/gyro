@@ -103,7 +103,7 @@ fn from_u64(value: u64): Array<u64> {
     return limbs
 }
 
-fn multiply(limbs: Array<u64>, factor: u64) {
+fn multiply(limbs: inout Array<u64>, factor: u64) {
     let carry: u64 = 0
     for let i: usize = 0; i < limbs.len(); i += 1 {
         let product = limbs.get(i) * factor + carry
@@ -118,7 +118,7 @@ fn multiply(limbs: Array<u64>, factor: u64) {
 
 // power_of raises the limbs by `base^count`, in the largest chunks that
 // still fit one machine multiplication.
-fn scale(limbs: Array<u64>, chunk: u64, chunk_size: i64, single: u64, count: i64) {
+fn scale(limbs: inout Array<u64>, chunk: u64, chunk_size: i64, single: u64, count: i64) {
     let left = count
     while left >= chunk_size {
         multiply(limbs, chunk)
@@ -130,13 +130,13 @@ fn scale(limbs: Array<u64>, chunk: u64, chunk_size: i64, single: u64, count: i64
     }
 }
 
-fn push_digit(out: String, digit: u64) {
+fn push_digit(out: inout String, digit: u64) {
     out.push_rune((DIGIT_ZERO + (digit as u8)) as rune)
 }
 
 // push_limb writes one limb as nine digits, zero padded, which is what the
 // limbs below the most significant one are.
-fn push_limb(out: String, limb: u64) {
+fn push_limb(out: inout String, limb: u64) {
     let divisor: u64 = 100000000
     let rest = limb
     while divisor > 0 {
@@ -267,7 +267,7 @@ fn round_to(digits: u8[], precision: usize): (Array<u8>, bool) {
 // %g
 // ---------------------------------------------------------------------------
 
-fn push_exponent(out: String, exponent: i64) {
+fn push_exponent(out: inout String, exponent: i64) {
     out.push("e")
     let value = exponent
     if value < 0 {
@@ -303,7 +303,7 @@ fn trimmed(kept: Array<u8>, from: usize, to: usize): usize {
     return stop
 }
 
-fn push_range(out: String, kept: Array<u8>, from: usize, to: usize) {
+fn push_range(out: inout String, kept: Array<u8>, from: usize, to: usize) {
     for let i = from; i < to; i += 1 {
         out.push_rune(kept.get(i) as rune)
     }

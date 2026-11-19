@@ -75,7 +75,7 @@ export struct Pattern {
     ok: bool
 }
 
-export fn Pattern::free(*self) {
+export fn Pattern::free(inout self) {
     self.nodes.free()
     self.classes.free()
 }

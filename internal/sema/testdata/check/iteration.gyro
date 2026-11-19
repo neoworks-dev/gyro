@@ -34,7 +34,7 @@ struct Counter {
 }
 
 impl Iterator<i32> for Counter {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.n >= self.limit {
             return 0, false
         }
@@ -53,7 +53,7 @@ struct Shaped {
     n: i32
 }
 
-fn Shaped::next(*self): (i32, bool) {
+fn Shaped::next(inout self): (i32, bool) {
     return 0, false
 }
 

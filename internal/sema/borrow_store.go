@@ -98,7 +98,7 @@ func (c *checker) firstLocalArena(o borrowOrigin) *arenaRef {
 }
 
 // noteCall follows what a resolved call does to its receiver: a method that
-// takes `*self` may keep what it is handed, and an arena's free ends the
+// takes `inout self` may keep what it is handed, and an arena's free ends the
 // values in it.
 func (c *checker) noteCall(call *ast.CallExpr, target callee) {
 	if !c.borrowTracked() || target.method == nil {
@@ -114,7 +114,7 @@ func (c *checker) noteCall(call *ast.CallExpr, target callee) {
 		return
 	}
 
-	if target.method.Recv != types.PointerRecv {
+	if target.method.Recv != types.InoutRecv {
 		return
 	}
 	var origin borrowOrigin

@@ -16,7 +16,7 @@ struct Countdown {
 }
 
 impl Iterator<i32> for Countdown {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.from == 0 {
             return 0, false
         }
@@ -48,7 +48,7 @@ struct Ticks {
 }
 
 impl Iterator<bool> for Ticks {
-    fn next(*self): (bool, bool) {
+    fn next(inout self): (bool, bool) {
         if self.left == 0 {
             return false, false
         }

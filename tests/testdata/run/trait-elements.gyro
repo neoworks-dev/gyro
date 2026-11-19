@@ -21,7 +21,7 @@ trait Element {
 // A widget is an element that can also be clicked, which changes it. Its
 // table holds the methods of Element too.
 trait Widget: Element {
-    fn click(*self)
+    fn click(inout self)
 }
 
 struct Label {
@@ -65,7 +65,7 @@ impl Element for Button {
 }
 
 impl Widget for Button {
-    fn click(*self) {
+    fn click(inout self) {
         self.clicks += 1
     }
 }

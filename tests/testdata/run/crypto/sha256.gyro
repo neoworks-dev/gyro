@@ -97,7 +97,7 @@ const ZERO_DIGEST: u8[32] = [
 // The compression function
 // ---------------------------------------------------------------------------
 
-fn Ctx::transform(*self) {
+fn Ctx::transform(inout self) {
     let m: u32[64] = ZERO_SCHEDULE
 
     let i: usize = 0
@@ -163,7 +163,7 @@ export fn init(): Ctx {
     }
 }
 
-export fn Ctx::update(*self, data: u8[]) {
+export fn Ctx::update(inout self, data: u8[]) {
     for byte in data {
         self.data[self.datalen] = byte
         self.datalen += 1
@@ -175,7 +175,7 @@ export fn Ctx::update(*self, data: u8[]) {
     }
 }
 
-export fn Ctx::final(*self): u8[32] {
+export fn Ctx::final(inout self): u8[32] {
     let i = self.datalen
 
     // Pad whatever data is left in the buffer.

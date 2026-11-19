@@ -116,7 +116,7 @@ fn Ranked<T>::new(): Ranked<T> {
     return Ranked{ items: Array<T>::new(heap()) }
 }
 
-fn Ranked<T>::add(*self, item: T) {
+fn Ranked<T>::add(inout self, item: T) {
     self.items.push(item)
 }
 

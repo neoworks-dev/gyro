@@ -9,7 +9,8 @@ fn assignments() {
     x += 3
 }
 
-fn badAssignments(s: string) {
+fn badAssignments(given: string) {
+    let s = given
     let x = 1
     x = "two"  //~ cannot use string as i32 in assignment
     x += "two" //~ matching numeric operands

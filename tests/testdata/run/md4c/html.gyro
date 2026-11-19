@@ -66,19 +66,19 @@ export fn Render::new(): *Render {
 // Writing out
 // ---------------------------------------------------------------------------
 
-fn Render::verbatim(*self, text: u8[], beg: i64, end: i64) {
+fn Render::verbatim(inout self, text: u8[], beg: i64, end: i64) {
     for let i = beg; i < end; i += 1 {
         self.out.push(text[i as usize])
     }
 }
 
-fn Render::literal(*self, text: string) {
+fn Render::literal(inout self, text: string) {
     for byte in text.bytes(heap()) {
         self.out.push(byte)
     }
 }
 
-fn Render::number(*self, value: i64) {
+fn Render::number(inout self, value: i64) {
     if value == 0 {
         self.out.push(48)
         return
@@ -95,7 +95,7 @@ fn Render::number(*self, value: i64) {
     digits.free()
 }
 
-fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
+fn Render::html_escaped(inout self, data: u8[], beg: i64, end: i64) {
     let run = beg
     let off = beg
 
@@ -127,7 +127,7 @@ fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
     }
 }
 
-fn Render::url_escaped(*self, data: u8[], beg: i64, end: i64) {
+fn Render::url_escaped(inout self, data: u8[], beg: i64, end: i64) {
     let run = beg
     let off = beg
 
@@ -162,7 +162,7 @@ const APPEND_VERBATIM: i64 = 0
 const APPEND_HTML: i64 = 1
 const APPEND_URL: i64 = 2
 
-fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
+fn Render::append(inout self, how: i64, data: u8[], beg: i64, end: i64) {
     if how == APPEND_HTML {
         self.html_escaped(data, beg, end)
     } elif how == APPEND_URL {
@@ -174,7 +174,7 @@ fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
 
 // utf8_codepoint writes one code point, substituting U+FFFD for anything
 // out of range, for a surrogate, and for NUL.
-fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
+fn Render::utf8_codepoint(inout self, codepoint: u32, how: i64) {
     let bytes = Array<u8>::new(heap())
 
     if codepoint <= 0x7f {
@@ -218,7 +218,7 @@ fn hex_value(byte: u8): u32 {
 
 // entity_text renders "&...;" as the code point it names, or verbatim when
 // md4c's table does not know it.
-fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
+fn Render::entity_text(inout self, data: u8[], beg: i64, end: i64, how: i64) {
     let size = end - beg
 
     if size > 3 && data[(beg + 1) as usize] == 35 { // '#'
@@ -256,7 +256,7 @@ fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
     self.append(how, data, beg, end)
 }
 
-fn Render::attribute(*self, attr: md::Attribute, how: i64) {
+fn Render::attribute(inout self, attr: md::Attribute, how: i64) {
     if !attr.present() {
         return
     }
@@ -284,7 +284,7 @@ fn Render::attribute(*self, attr: md::Attribute, how: i64) {
 // The callbacks
 // ---------------------------------------------------------------------------
 
-fn Render::open_ol(*self, detail: md::Detail) {
+fn Render::open_ol(inout self, detail: md::Detail) {
     if detail.start == 1 {
         self.literal("<ol>\n")
         return
@@ -294,7 +294,7 @@ fn Render::open_ol(*self, detail: md::Detail) {
     self.literal("\">\n")
 }
 
-fn Render::open_code(*self, detail: md::Detail) {
+fn Render::open_code(inout self, detail: md::Detail) {
     self.literal("<pre><code")
 
     if detail.lang.present() {
@@ -325,7 +325,7 @@ fn starts_with_language(lang: md::Attribute): bool {
     return true
 }
 
-fn Render::open_a(*self, detail: md::Detail) {
+fn Render::open_a(inout self, detail: md::Detail) {
     self.literal("<a href=\"")
     self.attribute(detail.href, APPEND_URL)
     if detail.title.present() {
@@ -335,13 +335,13 @@ fn Render::open_a(*self, detail: md::Detail) {
     self.literal("\">")
 }
 
-fn Render::open_img(*self, detail: md::Detail) {
+fn Render::open_img(inout self, detail: md::Detail) {
     self.literal("<img src=\"")
     self.attribute(detail.href, APPEND_URL)
     self.literal("\" alt=\"")
 }
 
-fn Render::close_img(*self, detail: md::Detail) {
+fn Render::close_img(inout self, detail: md::Detail) {
     if detail.title.present() {
         self.literal("\" title=\"")
         self.attribute(detail.title, APPEND_HTML)
@@ -349,7 +349,7 @@ fn Render::close_img(*self, detail: md::Detail) {
     self.literal("\">")
 }
 
-fn Render::enter_block(*self, kind: md::BlockKind, detail: md::Detail) {
+fn Render::enter_block(inout self, kind: md::BlockKind, detail: md::Detail) {
     match kind {
         md::BlockKind::Doc: {}
         md::BlockKind::Quote: self.literal("<blockquote>\n")
@@ -364,7 +364,7 @@ fn Render::enter_block(*self, kind: md::BlockKind, detail: md::Detail) {
     }
 }
 
-fn Render::leave_block(*self, kind: md::BlockKind, detail: md::Detail) {
+fn Render::leave_block(inout self, kind: md::BlockKind, detail: md::Detail) {
     match kind {
         md::BlockKind::Doc: {}
         md::BlockKind::Quote: self.literal("</blockquote>\n")
@@ -379,7 +379,7 @@ fn Render::leave_block(*self, kind: md::BlockKind, detail: md::Detail) {
     }
 }
 
-fn Render::open_heading(*self, level: i64, closing: bool) {
+fn Render::open_heading(inout self, level: i64, closing: bool) {
     if closing {
         self.literal("</h")
         self.number(level)
@@ -391,7 +391,7 @@ fn Render::open_heading(*self, level: i64, closing: bool) {
     self.literal(">")
 }
 
-fn Render::enter_span(*self, kind: md::SpanKind, detail: md::Detail) {
+fn Render::enter_span(inout self, kind: md::SpanKind, detail: md::Detail) {
     let inside_image = self.image_nesting_level > 0
 
     // Inside an image's label the contents become the alt attribute, where
@@ -413,7 +413,7 @@ fn Render::enter_span(*self, kind: md::SpanKind, detail: md::Detail) {
     }
 }
 
-fn Render::leave_span(*self, kind: md::SpanKind, detail: md::Detail) {
+fn Render::leave_span(inout self, kind: md::SpanKind, detail: md::Detail) {
     if kind == md::SpanKind::Img {
         self.image_nesting_level -= 1
     }
@@ -430,7 +430,7 @@ fn Render::leave_span(*self, kind: md::SpanKind, detail: md::Detail) {
     }
 }
 
-fn Render::text(*self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
+fn Render::text(inout self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
     match kind {
         md::TextKind::NullChar: self.utf8_codepoint(0, APPEND_VERBATIM)
         md::TextKind::Br: {

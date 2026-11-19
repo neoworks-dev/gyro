@@ -7,7 +7,7 @@ import { Eq, Hash, Print, Ord, Add, Neg, Iterator } from "stdlib"
 trait Shape {
     fn area(self): i32
     fn name(self): string
-    fn scale(*self, by: i32)
+    fn scale(inout self, by: i32)
     fn describe(self): string {
         return self.name()
     }
@@ -24,7 +24,7 @@ impl Shape for Square {
     fn name(self): string {
         return "square"
     }
-    fn scale(*self, by: i32) {
+    fn scale(inout self, by: i32) {
         self.side = self.side * by
     }
 }
@@ -50,7 +50,7 @@ impl Shape for Extra {
     fn name(self): string {
         return "extra"
     }
-    fn scale(*self, by: i32) {
+    fn scale(inout self, by: i32) {
     }
     fn perimeter(self): i32 { //~ E0528 perimeter is not a method of Shape
         return 4
@@ -68,7 +68,7 @@ impl Shape for Mismatched {
     fn name(self, extra: i32): string { //~ E0528 name does not match the trait
         return "m"
     }
-    fn scale(self, by: i32) { //~ E0528 scale takes self, but the trait declares it taking *self
+    fn scale(self, by: i32) { //~ E0528 scale takes self, but the trait declares it taking inout self
     }
 }
 
@@ -80,7 +80,7 @@ impl Shape for Square {  //~ E0529 Square already implements Shape
     fn name(self): string { //~ E0603 Square already has a method name
         return ""
     }
-    fn scale(*self, by: i32) { //~ E0603 Square already has a method scale
+    fn scale(inout self, by: i32) { //~ E0603 Square already has a method scale
     }
 }
 

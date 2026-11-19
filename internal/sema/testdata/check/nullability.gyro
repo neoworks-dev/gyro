@@ -42,7 +42,8 @@ fn elseKnows(n: *Node?): i32 {
     return 0
 }
 
-fn whileNarrowsItsBody(n: *Node?) {
+fn whileNarrowsItsBody(start: *Node?) {
+    let n = start
     while n != null {
         n = n.next
     }
@@ -63,7 +64,8 @@ fn find(): *Node? {
     return null
 }
 
-fn assignmentKillsNarrowing(n: *Node?) {
+fn assignmentKillsNarrowing(start: *Node?) {
+    let n = start
     if n != null {
         n = find()
         let v = n.value //~ may be null

@@ -48,7 +48,7 @@ struct Span<T> {
 }
 
 impl Iterator<T> for Span<T> {
-    fn next(*self): (T, bool) {
+    fn next(inout self): (T, bool) {
         if self.at >= self.items.len() {
             return self.items[0], false
         }

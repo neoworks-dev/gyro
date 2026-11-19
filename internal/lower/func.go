@@ -30,6 +30,10 @@ type funcLowerer struct {
 	result    types.Type
 	addrTaken map[string]bool
 
+	// writeBacks collects what the call being prepared owes its inout
+	// arguments once it returns. See collectWriteBacks.
+	writeBacks []func()
+
 	// written holds the names the body may change in place, which is what
 	// decides whether a record parameter needs a slot of its own. It is nil
 	// where nobody has looked, and nil means every name.
@@ -91,7 +95,7 @@ func (l *lowerer) lowerFunc(item workItem) {
 		f.fn.Result = l.metalsType(f.result)
 	}
 	f.addrTaken = map[string]bool{}
-	markAddressTaken(decl.Body, f.addrTaken)
+	f.markAddressTaken(decl.Body)
 	f.written = f.writtenNames(decl.Body)
 
 	f.blocks = []*[]metals.Instr{&f.fn.Body}
@@ -102,6 +106,10 @@ func (l *lowerer) lowerFunc(item workItem) {
 		f.declareReceiver()
 	}
 	for _, param := range decl.Params {
+		if param.Inout {
+			f.declareInout(param.Name, f.localType(decl, param.Name))
+			continue
+		}
 		f.declareParam(param.Name, f.localType(decl, param.Name))
 	}
 	f.blockInPlace(decl.Body)
@@ -116,16 +124,26 @@ func (f *funcLowerer) declareReceiver() {
 	if selfType == nil {
 		f.l.fail("@%s has a receiver but no recorded self type", f.fn.Name)
 	}
-	if f.decl.Recv.Pointer {
-		f.fn.Params = append(f.fn.Params, metals.Param{
-			Name: "self",
-			Type: &metals.Ptr{Elem: f.l.metalsType(selfType)},
-		})
-		f.bind("self", &local{reg: "self", typ: selfType, slot: true, env: -1})
-		f.noteReg("self")
+	if f.decl.Recv.Inout {
+		f.declareInout("self", selfType)
 		return
 	}
 	f.declareParam("self", selfType)
+}
+
+// declareInout takes a parameter passed by address. The name is the
+// caller's own storage, so every read and write in the body goes through
+// the pointer, and nothing is copied in or out.
+func (f *funcLowerer) declareInout(name string, typ types.Type) {
+	if typ == nil {
+		f.l.fail("@%s: parameter %s has no recorded type", f.fn.Name, name)
+	}
+	f.fn.Params = append(f.fn.Params, metals.Param{
+		Name: name,
+		Type: &metals.Ptr{Elem: f.l.metalsType(typ)},
+	})
+	f.bind(name, &local{reg: name, typ: typ, slot: true, env: -1})
+	f.noteReg(name)
 }
 
 // declareParam takes one incoming value parameter, spilling it to a slot
@@ -185,17 +203,43 @@ func stmtTerminates(s ast.Stmt) bool {
 	return false
 }
 
-// markAddressTaken collects every name whose address the body takes.
-func markAddressTaken(node ast.Node, out map[string]bool) {
+// markAddressTaken collects every name whose address the body takes: with
+// `&`, or by passing it as an inout argument, which the callee reaches
+// through a pointer.
+func (f *funcLowerer) markAddressTaken(node ast.Node) {
 	walk(node, func(n ast.Node) {
-		unary, ok := n.(*ast.UnaryExpr)
-		if !ok || unary.Op != token.Amp {
-			return
-		}
-		if name := placeRoot(unary.X); name != "" {
-			out[name] = true
+		switch n := n.(type) {
+		case *ast.UnaryExpr:
+			if n.Op == token.Amp {
+				f.markAddress(n.X)
+			}
+		case *ast.CallExpr:
+			f.markInoutPasses(n)
 		}
 	})
+}
+
+func (f *funcLowerer) markAddress(place ast.Expr) {
+	if name := placeRoot(place); name != "" {
+		f.addrTaken[name] = true
+	}
+}
+
+// markInoutPasses marks what a call to a function written in Gyro passes by
+// address. A runtime method takes a handle, which is already a reference.
+func (f *funcLowerer) markInoutPasses(call *ast.CallExpr) {
+	info := f.lookupCall(call)
+	if info == nil || info.Method == nil || info.Method.Decl == nil || info.Method.Decl.Body == nil {
+		return
+	}
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && info.Method.Recv == types.InoutRecv {
+		f.markAddress(selector.X)
+	}
+	for i, arg := range call.Args {
+		if info.Method.InoutAt(i) {
+			f.markAddress(arg.Value)
+		}
+	}
 }
 
 // placeRoot names the local a place expression is rooted at, so that
@@ -386,7 +430,7 @@ func (f *funcLowerer) paramNeedsSlot(name string, typ types.Type) bool {
 // writtenNames collects every name the body may change in place, or take
 // the address of by another road than &: assigned to through a field or an
 // index, narrowed into a view that can be written, called with a method
-// that takes *self, or mentioned inside a closure, which may do any of
+// that takes inout self, or mentioned inside a closure, which may do any of
 // them later. It errs towards yes.
 func (f *funcLowerer) writtenNames(body ast.Node) map[string]bool {
 	written := map[string]bool{}
@@ -414,7 +458,7 @@ func (f *funcLowerer) writtenNames(body ast.Node) map[string]bool {
 				return
 			}
 			info := f.lookupCall(n)
-			if info == nil || info.Method == nil || info.Method.Recv == types.PointerRecv {
+			if info == nil || info.Method == nil || info.Method.Recv == types.InoutRecv {
 				written[root] = true
 			}
 		case *ast.ClosureExpr:

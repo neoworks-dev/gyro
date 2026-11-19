@@ -163,8 +163,8 @@ func recvKind(decl *ast.FuncDecl) types.RecvKind {
 	if decl.Recv == nil {
 		return types.NoRecv
 	}
-	if decl.Recv.Pointer {
-		return types.PointerRecv
+	if decl.Recv.Inout {
+		return types.InoutRecv
 	}
 	return types.ValueRecv
 }
@@ -173,6 +173,9 @@ func (c *checker) buildFuncSig(decl *ast.FuncDecl) *types.Func {
 	sig := &types.Func{Async: decl.Async, Required: len(decl.Params)}
 	for i, param := range decl.Params {
 		typ := c.resolveType(param.Type)
+		if param.Inout {
+			c.checkInoutParam(decl, param)
+		}
 		if param.Variadic {
 			// The body sees the pack as the slice it is, so the signature
 			// carries T[] and only the Variadic flag records the form.
@@ -199,6 +202,21 @@ func (c *checker) checkVariadicParam(decl *ast.FuncDecl, i int, param ast.Param)
 	}
 	if param.Default != nil {
 		c.errorf(param.Offset, "a variadic parameter takes no default; it is empty when nothing is passed")
+	}
+}
+
+// checkInoutParam enforces what an inout parameter is: the caller's own
+// variable, for as long as the call runs. It has no default to stand in for
+// a variable, and an async function may outlive the call that started it.
+func (c *checker) checkInoutParam(decl *ast.FuncDecl, param ast.Param) {
+	if param.Default != nil {
+		c.errorf(param.Offset, "an inout parameter takes no default; the caller names the variable it changes")
+	}
+	if decl.Async {
+		c.errorf(param.Offset, "an async function cannot take an inout parameter; it may run after the caller's variable is gone")
+	}
+	if decl.Body == nil && decl.Trait == nil {
+		c.errorf(param.Offset, "a function the runtime provides cannot take an inout parameter; it has no variable to change")
 	}
 }
 

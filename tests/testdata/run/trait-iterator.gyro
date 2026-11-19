@@ -10,7 +10,7 @@ struct Countdown {
 }
 
 impl Iterator<i32> for Countdown {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.from == 0 {
             return 0, false
         }
@@ -26,7 +26,7 @@ struct Walk {
 }
 
 impl Iterator<string> for Walk {
-    fn next(*self): (string, bool) !{ &self } {
+    fn next(inout self): (string, bool) !{ &self } {
         if self.at >= self.items.len() {
             return "", false
         }

@@ -57,7 +57,7 @@ export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
     return text, null
 }
 
-export fn File::close(*self) !{ io } {
+export fn File::close(inout self) !{ io } {
     self.closed = true
 }
 
@@ -106,7 +106,7 @@ safe fn entry_name(a: Allocator, window: u8[]): string !{ &a } {
 
 // sort orders the names bytewise, the way Go sorts a listing. A shell sort:
 // no allocation, and good enough for a directory.
-fn sort(names: Array<string>) !{} {
+fn sort(names: inout Array<string>) !{} {
     let gap = names.len() / 2
     while gap > 0 {
         for let i = gap; i < names.len(); i += 1 {

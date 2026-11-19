@@ -72,7 +72,7 @@ const zero_digit: u8 = 48
 const nine_digit: u8 = 57
 const space: u8 = 32
 
-fn push_text(a: Allocator, out: Array<u8>, text: string) !{} {
+fn push_text(a: Allocator, out: inout Array<u8>, text: string) !{} {
     for byte in text.bytes(a) {
         out.push(byte)
     }

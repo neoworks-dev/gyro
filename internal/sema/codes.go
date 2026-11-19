@@ -242,6 +242,16 @@ var codes = map[string]diag.Code{
 	"%s is called through a trait value, and its trait states no row, so it may do %s": diag.EUnnamedEffect,
 	"%s is not an effect": diag.EUnknownEffect,
 
+	// Changing a value
+	"%s cannot be changed: %s": diag.EReadOnlyPlace,
+	"%s is inout, so it must be a variable that can change, not a temporary value":                     diag.EInoutPlace,
+	"%s and %s overlap, and one of them is inout in this call to %s":                                   diag.EInoutAlias,
+	"an inout parameter takes no default; the caller names the variable it changes":                    diag.EInoutParam,
+	"an async function cannot take an inout parameter; it may run after the caller's variable is gone": diag.EInoutParam,
+	"%s takes an inout parameter, so it can only be called, not used as a value":                       diag.EInoutParam,
+	"a function the runtime provides cannot take an inout parameter; it has no variable to change":     diag.EInoutParam,
+	"parameter %s of %s is %s, but the trait declares it %s":                                           diag.EImplMismatch,
+
 	// Statements
 	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
 	"cannot assign to this expression":                                                     diag.ENotAssignable,

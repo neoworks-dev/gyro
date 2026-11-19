@@ -196,7 +196,7 @@ fn callerOwns(): i32 {
 }
 
 // Stored into something that outlives the function.
-fn storeIntoParameter(out: Array<*Node>) {
+fn storeIntoParameter(out: inout Array<*Node>) {
     let frame = Arena::new(heap(), 4096)
     out.push(alloc<Node>(frame.allocator())) //~ E0631 this stores a value allocated from frame into out, which outlives it
 }

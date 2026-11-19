@@ -174,6 +174,9 @@ func (c *checker) symbolValueType(sym *symbol, offset int, name string) types.Ty
 	if sym.typ == nil {
 		return types.Unknown
 	}
+	if sym.fn != nil && c.refuseInoutValue(offset, sym.fn) {
+		return types.Unknown
+	}
 	if c.facts[sym] {
 		if optional, ok := sym.typ.(*types.Optional); ok {
 			return optional.Elem
@@ -1755,7 +1758,8 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 				selfType = savedFn.selfType
 			}
 			c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType,
-				trusted: savedFn != nil && savedFn.trusted}
+				trusted:      savedFn != nil && savedFn.trusted,
+				selfBorrowed: savedFn != nil && savedFn.selfBorrowed}
 
 			if e.Body != nil {
 				// A closure runs at a time this analysis cannot pin down, so its

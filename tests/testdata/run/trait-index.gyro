@@ -11,7 +11,7 @@ struct Grid {
 }
 
 impl Index<i32> for Grid {
-    fn at(*self, index: usize): *i32 {
+    fn at(inout self, index: usize): *i32 {
         return &self.cells[index]
     }
 }
@@ -21,7 +21,7 @@ struct Bag<T> {
 }
 
 impl Index<T> for Bag<T> {
-    fn at(*self, index: usize): *T {
+    fn at(inout self, index: usize): *T {
         return self.items.at(index)
     }
 }

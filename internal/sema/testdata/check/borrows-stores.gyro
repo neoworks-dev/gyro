@@ -11,51 +11,51 @@ struct Registry {
     window: i32[]
 }
 
-fn Registry::add(*self, n: i32) {
+fn Registry::add(inout self, n: i32) {
     self.handlers.push(fn(): i32 { return n }) //~ E0630 this stores a closure that borrows this frame into self, which outlives it
     //~^ help: copy it out first with keep(allocator, f) from mem, or write a closure that captures nothing
 }
 
-fn Registry::addKept(*self, a: Allocator, n: i32) {
+fn Registry::addKept(inout self, a: Allocator, n: i32) {
     self.handlers.push(keep(a, fn(): i32 { return n }))
 }
 
-fn Registry::addPlain(*self) {
+fn Registry::addPlain(inout self) {
     self.handlers.push(fn(): i32 { return 7 })
 }
 
-fn Registry::look(*self) {
+fn Registry::look(inout self) {
     let buf = [1, 2, 3]
     self.window = buf //~ E0630 this stores a view into storage that ends with this function into self, which outlives it
 }
 
 // A view the caller handed in is the caller's, and stays so.
-fn Registry::watch(*self, xs: i32[]) {
+fn Registry::watch(inout self, xs: i32[]) {
     self.window = xs
 }
 
-fn fill(hs: Array<fn(): i32>, n: i32) {
+fn fill(hs: inout Array<fn(): i32>, n: i32) {
     hs.push(fn(): i32 { return n }) //~ E0630 this stores a closure that borrows this frame into hs, which outlives it
 }
 
-fn fillKept(a: Allocator, hs: Array<fn(): i32>, n: i32) {
+fn fillKept(a: Allocator, hs: inout Array<fn(): i32>, n: i32) {
     hs.push(keep(a, fn(): i32 { return n }))
 }
 
-fn setElement(hs: Array<fn(): i32>, n: i32) {
+fn setElement(hs: inout Array<fn(): i32>, n: i32) {
     hs.set(0, fn(): i32 { return n }) //~ E0630 this stores a closure that borrows this frame into hs, which outlives it
 }
 
-fn insertElement(table: Map<string, fn(): i32>, n: i32) {
+fn insertElement(table: inout Map<string, fn(): i32>, n: i32) {
     table.insert("k", fn(): i32 { return n }) //~ E0630 this stores a closure that borrows this frame into table, which outlives it
 }
 
-fn keepSlice(out: Array<i32[]>) {
+fn keepSlice(out: inout Array<i32[]>) {
     let buf = [1, 2, 3]
     out.push(buf) //~ E0630 this stores a view into storage that ends with this function into out, which outlives it
 }
 
-fn keepParam(out: Array<i32[]>, xs: i32[]) {
+fn keepParam(out: inout Array<i32[]>, xs: i32[]) {
     out.push(xs)
 }
 
@@ -140,6 +140,6 @@ fn loopSlice(): usize {
 }
 
 // A number pushed out of a view stores no view.
-fn lengthsOnly(out: Array<usize>, s: string) {
+fn lengthsOnly(out: inout Array<usize>, s: string) {
     out.push(s.len())
 }
