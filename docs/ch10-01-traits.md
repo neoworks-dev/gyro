@@ -159,7 +159,7 @@ trait value yet ([chapter 10.2](ch10-02-trait-values.md)): the type behind a
 
 ## The capability traits
 
-Equality, hashing, printing, ordering, the operators and iteration are
+Equality, hashing, printing, ordering, the operators, iteration and errors are
 traits, declared in `stdlib` like any others and imported where they are
 named. The compiler gives each a meaning by where it is declared.
 
@@ -171,10 +171,15 @@ named. The compiler gives each a meaning by where it is declared.
 | `Ord: Eq` | `compare(self, other: Self): i32` | `< <= > >=` |
 | `Add`, `Sub`, `Mul`, `Div`, `Rem` | `add`, `sub`, `mul`, `div`, `rem` taking and giving `Self` | `+ - * / %` |
 | `Neg` | `neg(self): Self` | unary `-` |
+| `Error` | `message(self): string` | `T \| Error`, `Error?` and `?` ([chapter 9](ch09-00-errors.md)) |
 | `Iterator<T>` | `next(inout self): (T, bool)` | `for..in` |
 | `Index<T>` | `at(inout self, index: usize): *T` | `value[i]` |
 
-**The built-in types implement the ones that apply to them without any
+**`Error` is also a type.** It is the one trait that is, the owned value that
+holds any type implementing it, and it is only ever implemented on purpose:
+no built-in type is an error ([chapter 9](ch09-00-errors.md)).
+
+**The built-in types implement the others that apply to them without any
 impl.** Every number is `Eq`, `Hash`, `Print`, `Ord` and has the operators;
 `string` and `rune` are `Ord`; a tuple, an optional, a fixed-size array or a
 pointer is `Eq` and `Print` where what it holds is. Nothing is written for

@@ -83,8 +83,8 @@ Most of the standard library's string surface is exactly this: `split`,
 are part of the type rather than an addition to it. They need no import, and an
 extension of the same name does not displace them.
 
-`void` and `error` cannot be extended: nothing has type void, and `error` is
-a contract satisfied by whatever carries `message()`, not a type.
+`void` cannot be extended, as nothing has that type, and neither can `any`,
+whose behaviour belongs to the type inside it.
 
 ## Methods and traits
 
@@ -125,8 +125,8 @@ max(3, 7)            // fine: i32 is Ord
 The same pattern runs through the language. `impl Iterator<T>` makes a type
 work in `for..in`, `impl Print` with a `to_string` controls its own
 printing, `impl Hash` with a `hash` replaces the derived one — and takes on
-keeping it consistent with `Eq`. The one contract still met by shape is
-`error`, which is any type with `message(): string`.
+keeping it consistent with `Eq`, and `impl Error` is what makes a type an
+error ([chapter 9](ch09-00-errors.md)).
 
 ## Receivers in effect rows
 

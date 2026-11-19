@@ -32,8 +32,8 @@ match shape {
 ```
 
 **A type test** applies where the value's concrete type is not statically
-known — an `error`, or an `any`. It matches when the value is of that type
-and binds the whole value:
+known — an `Error`, a `T | Error`, or an `any`. It matches when the value is
+of that type and binds the whole value:
 
 ```gyro
 match err {
@@ -43,8 +43,9 @@ match err {
 ```
 
 Any type may name itself in a test over an `any`, primitives included:
-`i32(n)`, `string(s)`, `Point(p)`. A type no ordinary path can spell is
-written out as itself:
+`i32(n)`, `string(s)`, `Point(p)`. A generic type names its arguments,
+`Array<string>(xs)`, and a type no ordinary path can spell is written out as
+itself:
 
 ```gyro
 let text = match v {
@@ -77,10 +78,22 @@ match shape {
 So a match that filters on a payload value still needs an arm for the
 variant in general.
 
-Open subjects are exempt: integers, strings, `any`, and an `error` whose
+Open subjects are exempt: integers, strings, `any`, and an `Error` whose
 concrete type is unknown have no finite variant set, so such a match is
 never reported as partial. **Falling off the end of one panics at run
 time.**
+
+A `T | Error` is the one closed subject that is not an enum. It has two cases,
+the value and the error, and a match over one covers both or ends in `_`:
+
+```gyro
+match parse_port(text) {
+    i32(port): println(port)
+    Error(e): println(e.message())
+}
+```
+
+The diagnostic names the case that is missing, as it names a missing variant.
 
 ## Match in the flow analyses
 

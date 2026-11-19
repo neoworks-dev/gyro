@@ -1,33 +1,103 @@
 # 9. Errors
 
-Errors are ordinary values. A fallible function returns a `(T, error?)`
-tuple and the caller has to handle it — **there is no propagation operator,
-no exceptions and no unwinding.**
+Errors are ordinary values. A function that can fail returns `T | Error`, and
+`?` takes the value out of one — or returns the error to the caller.
+**There are no exceptions and no unwinding,** and every place an error
+leaves a function is marked in the source.
 
 ```gyro
-fn parse_port(text: string): (i32, error?) {
-    ...
-    return value, null
+import { println, Error } from "stdlib"
+import { to_i32 } from "convert"
+
+fn parse_port(text: string): i32 | Error {
+    let value = to_i32(text)?
+    if value < 1 || value > 65535 {
+        return Error::new("port out of range")
+    }
+    return value
 }
 
-let port, err = parse_port("8080")
-if err != null {
-    eprintln(err.message())
-    return
+fn main(): i32 | Error {
+    let port = parse_port("8080")?
+    println("listening on #{port}")
+    return 0
 }
-println("listening on #{port}")
 ```
 
-## `error` is satisfied by shape
+`to_i32(text)?` is the number, or `parse_port` returning the error `to_i32`
+found. Nothing else is hidden: a call without a `?` yields the result itself.
 
-`error` is a built-in contract, and unlike every other it is satisfied
-structurally: **any type with a `message(): string` method is an error.**
-Nothing is declared; having the method is the whole test. Everything else
-that a type promises is a trait ([chapter 10.1](ch10-01-traits.md)); folding
-`error` into the same mechanism is future work.
+## The type `T | Error`
 
-So a library defines its own error type, carrying its own data, and callers
-match on the concrete kind:
+`T | Error` holds either a `T` or an error. It is the one union in the
+language, so the right side is always `Error`, and writing any other union is
+an error. The marker binds looser than `?`, so `i32 | Error?` is a union whose
+right side is nullable, which is refused rather than read as a nullable
+result.
+
+A result is an ordinary type: a field, a parameter, a variable, a channel
+element. A value of `T` and an error both go where one is expected, and
+nothing converts between typed values otherwise:
+
+```gyro
+fn lookup(id: i32): User | Error {
+    if id < 0 {
+        return Error::new("no such user")    // an Error
+    }
+    return User{ id: id }                    // a User
+}
+```
+
+## A function with no value
+
+A function that has nothing to return when it succeeds returns `Error?`. The
+nullable is the success case: `null` is "no error", and **reaching the end of
+the body is success**, so there is no `return null` to write.
+
+```gyro
+fn save(path: string, text: string): Error? {
+    write_file(path, text)?
+    println("saved #{path}")
+}
+```
+
+A bare `return` is success too, and `return err` or `return Error::new(...)`
+is the failure. An `Error?` is a nullable like any other, so a caller can
+check it with `!= null` ([chapter 4.3](ch04-03-nullability.md)) or send it on
+with `?`.
+
+## `?`
+
+`x?` is a postfix operator on a `T | Error` or an `Error?`:
+
+- on a `T | Error` it is the `T` when there is one, and otherwise it returns
+  the error from the enclosing function;
+- on an `Error?` it is nothing when the value is null, and otherwise it
+  returns the error.
+
+The enclosing function has to be able to return one: its own result is
+`U | Error` or `Error?`, for any `U`. Applying `?` to anything else, or in a
+function that returns something else, is a compile error. A closure is its own
+function, so a `?` inside one returns from the closure.
+
+`?` is a return, and acts like one: deferred calls run
+([chapter 4.2](ch04-02-leaks-and-defer.md)), and an allocation the function
+still owns is reported as it would be at any other exit. After `await` it
+applies to the awaited value, so `await fetch(url)?` is `(await fetch(url))?`.
+
+```gyro
+fn load_config(path: string): string | Error {
+    let handle = open(path)?
+    defer handle.close()
+    return read_all(heap(), handle)?
+}
+```
+
+## `Error` is a trait
+
+`Error` is a trait ([chapter 10.1](ch10-01-traits.md)) with one method,
+`message`. A type is an error because it **says so**: nothing is an error by
+having the method.
 
 ```gyro
 export struct RangeError {
@@ -36,64 +106,97 @@ export struct RangeError {
     high: i32
 }
 
-fn RangeError::message(self): string {
-    return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+impl Error for RangeError {
+    fn message(self): string {
+        return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+    }
 }
 
-export fn parse_port(text: string): (i32, error?) {
-    let value, err = to_i32(text)
-    if err != null {
-        return 0, err
-    }
+export fn check(value: i32): i32 | Error {
     if value < 1 || value > 65535 {
-        return 0, RangeError{ value: value, low: 1, high: 65535 }
+        return RangeError{ value: value, low: 1, high: 65535 }
     }
-    return value, null
+    return value
 }
 ```
 
-`error` is not a type you can extend with methods, and there is no `Result`:
-the tuple is the shape, and `error?` is a nullable of a contract.
+The trait is declared in `stdlib` and imported like any other name:
+`import { Error } from "stdlib"`. The impl is for a struct or enum the same
+module declares, with no type parameters of its own; an error value names its
+type, and a generic type would be many.
 
-## Matching on the concrete kind
+`Error` is also a **type**: the owned value that holds any type implementing
+the trait, with its data. Where an `Error` is wanted, a `RangeError` goes, and
+`Error::new(message)` makes the plain one, which carries a message and nothing
+else. The two roles share a name because they are the same idea — the trait
+is what a type promises, the type is what holds a promise kept — and they are
+told apart by position: `impl Error for T` and `T: Error` name the trait,
+`fn f(): i32 | Error` and `let e: Error` the type.
 
-Where the concrete type is not statically known, a pattern is a **type
-test** ([chapter 6.2](ch06-02-match.md)):
+An `Error` owns what it holds, so it can be returned up the stack without
+pointing into a frame that is gone, and it allocates nothing: it is a value the
+size of the largest error type the program declares. That also means the
+message of a plain error is a string the program keeps alive itself.
+
+## Handling an error without `?`
+
+A match over a result names its two cases with type tests
+([chapter 6.2](ch06-02-match.md)), `T(name)` for the value and `Error(name)`
+for the error, and both have to be covered or the match ends in `_`:
 
 ```gyro
-match err {
-    RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
-    _: eprintln("bad port: #{err.message()}")
+match parse_port(text) {
+    i32(port): println("listening on #{port}")
+    Error(e): eprintln("bad port: #{e.message()}")
 }
 ```
 
-`RangeError(e)` matches when the error's concrete type is `RangeError` and
-binds the whole struct, payload included. An `error` is an open subject, so
-the match is never reported as partial — and falling off the end panics, so
-write the `_`.
-
-## Ignoring an error is visible
-
-Dropping an error result is a **compile error**. Discarding takes an
-explicit `_`:
+Where the concrete kind of an error matters, a type test on the `Error` itself
+matches when the error's type is the one named, and binds the whole value,
+payload included:
 
 ```gyro
-let _, _ = parse_port("not a number")
+match e {
+    RangeError(r): eprintln("port #{r.value} not in #{r.low}..#{r.high}")
+    _: eprintln("bad port: #{e.message()}")
+}
+```
+
+An `Error` is an open subject, so the match is never reported as partial — and
+falling off the end panics, so write the `_`. A type that is not generic is
+named by its path; a generic one by its arguments, `Array<string>(names)`.
+
+## Ignoring a result is visible
+
+Dropping a result is a **compile error**. The two ways to deal with it are `?`
+and a match; discarding takes an explicit `_`:
+
+```gyro
+let _ = parse_port("not a number")
 ```
 
 An un-awaited async call in statement position is an error for the same
 reason ([chapter 13.3](ch13-03-async.md)).
 
-## How an error is stored
+## What `main` does with one
 
-An `error` value whose concrete type is unknown at the call site is a vtable
-pointer plus a fixed inline buffer. Small types travel inside it with no
-allocation; **a type larger than the cap is a compile error naming the
-size**, and must be boxed explicitly.
+`main` may return nothing, an `i32`, or an `i32 | Error`. An `i32` is the
+exit status. An error is written to standard error, as its message and a
+newline, and the status is 1; output the program wrote before that stays
+where it was written.
 
-That is the tradeoff written down: the error path allocates nothing for the
-error types people actually write, and the ones that would have allocated
-say so at compile time instead of at run time.
+```gyro
+fn main(): i32 | Error {
+    let config = load_config("app.toml")?    // missing: "stat app.toml: no such file or directory", status 1
+    println(config)
+    return 0
+}
+```
+
+Deferred calls in `main` run before the status is decided, as they do at any
+return. A `main` that returns a value needs `stdlib` loaded, since what acts
+on the result is code in it; one that returns `i32 | Error` has already
+imported `Error` from there.
 
 ## The other kind of failure
 
@@ -107,10 +210,10 @@ panic: index 7 out of range for length 3
   at main.gyro:12:11
 ```
 
-They are neither returnable nor catchable. That is what keeps the
-`(T, error?)` channel meaningful — if any call could also fail invisibly,
-the tuple would stop being a complete statement about what a function does —
-and it is what lets the language have no unwinding machinery at all.
+They are neither returnable nor catchable. That is what keeps the result
+meaningful — if any call could also fail invisibly, the type would stop being a
+complete statement about what a function does — and it is what lets the
+language have no unwinding machinery at all.
 
 A panic aborts the process on the main thread, and kills only the offending
 thread when it happens on a spawned one. That is also why `Mutex` has no
@@ -118,28 +221,21 @@ poisoning ([chapter 13.1](ch13-01-threads.md)).
 
 ## Errors from the standard library
 
-Everything fallible in the bundled modules returns the same shape:
+Everything fallible in the bundled modules returns the same shapes: `T |
+Error`, or `Error?` when there is no value.
 
 ```gyro
+import { Error } from "stdlib"
 import { open, read_all } from "fs"
-import { to_i32 } from "convert"
 import { heap } from "mem"
 
-fn load_config(path: string): (string, error?) {
-    let handle, err = open(path)
-    if err != null {
-        return "", err
-    }
+fn load_config(path: string): string | Error {
+    let handle = open(path)?
     defer handle.close()
-
-    let contents, read_err = read_all(heap(), handle)
-    if read_err != null {
-        return "", read_err
-    }
-    return contents, null
+    return read_all(heap(), handle)?
 }
 ```
 
-Note the two error names. There is no shadowing trick and no `?`: each call
-that can fail gets its own binding, and each one is checked. That is the
-verbosity the design accepts in exchange for having no hidden control flow.
+Each call that can fail is checked at the point it is made, and the `?` is
+the whole of the checking: that is the verbosity the design accepts in
+exchange for having no hidden control flow, and it is one character.

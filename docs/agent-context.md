@@ -328,7 +328,7 @@ That also keeps coherence trivial: two modules may each define
 reports. A trait cannot be implemented for a built-in type, so a built-in
 type has no second source of methods.
 
-The compiler's own surface wins a name clash. `void` and `error` are not
+The compiler's own surface wins a name clash. `void` and `any` are not
 extensible. An extension is still a method — calling one without a
 receiver is an error.
 
@@ -369,20 +369,27 @@ decisions are in `decisions.md` under "Traits". What an agent needs loaded:
 
 ### Errors
 
-Errors are values. A fallible function returns `(T, error?)`. **There is
-no propagation operator** — no `?`, no exceptions, no unwinding. `error`
-is the one contract still met by shape: any type with `message(): string` is
-one. Folding it into traits is future work.
+Errors are values. A fallible function returns `T | Error`, or `Error?` when
+it has no value, and `x?` takes the value or returns the error — no
+exceptions, no unwinding. `Error` is a capability trait declared in the
+bundled `stdlib` (a type implements it with `impl Error for T`), and also
+the one trait that is a type: sema reads the bare name in type position as
+`types.Error`, and `Error::new` as a function with a signature and no
+declaration. Lowering makes `Error` a closed program-wide enum, with one
+variant for `Error::new` and one per implementing type, and `T | Error` a
+two-variant enum over it (`internal/lower/errors.go`). `main` returning a
+result is lowered as `main::run` plus an exported `main` that calls stdlib's
+`finish_main`.
 
-Dropping an error is an error; discarding takes an explicit `let _, _ =`.
+Dropping a result is an error; discarding takes an explicit `let _ =`.
 
 Programmer errors — bounds, divide by zero, null deref, overflow,
 narrowing `as` — panic and abort. Not catchable, not returnable.
 
 ### The entry point
 
-`fn main()` or `fn main(args: string[])`, either optionally `async`.
-Anything else is E0523. `args[0]` is the invocation name.
+`fn main()` or `fn main(args: string[])`, either optionally `async`, and
+returning nothing, an `i32` or an `i32 | Error`. Anything else is E0523. `args[0]` is the invocation name.
 
 ---
 
@@ -483,7 +490,7 @@ The IR. `docs/appendix-d-metals.md` is the spec.
 - one flat whole-program module; generics monomorphized under quoted
   names (`@"Pair<i32>::sum"`), closures lifted with heap env records,
   defers inlined at every exit, narrowing made explicit as `opt.unwrap`,
-  `error` as a closed program-wide enum
+  `Error` as a closed program-wide enum
 - three sigils: `@name` function or global, `%name` register or named
   type, `$name` label
 - a **global is module storage**, zero-initialized, reached through
@@ -786,7 +793,7 @@ the first passed, which means a hole in the first.
 
 **Cascading diagnostics are real.** A rejected row entry leaves the row
 empty, so the return is unaccounted for too — two diagnostics, both
-correct. `return null, 0` against `(i32, error?)` is two mismatches.
+correct. `return null, 0` against `(i32, string?)` is two mismatches.
 
 **Per-module checkers.** `c.funcSigs` is per-checker. For an imported
 declaration the signature lives in the _defining_ module's checker; reach
@@ -827,25 +834,20 @@ Gouraud-shaded triangle in pure Gyro and puts it in an SDL window.
 A real program that works end to end:
 
 ```gyro
-import { println, eprintln, Array, String, join } from "stdlib"
+import { println, eprintln, Array, Error, String, join } from "stdlib"
 import { split, trim, starts_with } from "stdlib"
 import { open, read_all } from "fs"
 import { heap } from "mem"
 
-fn main(args: string[]) {
+fn main(args: string[]): i32 | Error {
     if args.len() < 2 {
         eprintln("usage: wc <file>")
-        return
+        return 2
     }
-    let file, err = open(args[1])
-    if err != null {
-        eprintln("cannot open #{args[1]}: #{err.message()}")
-        return
-    }
+    let file = open(args[1])?
     defer file.close()
 
-    let text, readErr = read_all(heap(), file)
-    if readErr != null { return }
+    let text = read_all(heap(), file)?
 
     let lines = text.split(heap(), "\n")
     defer lines.free()
@@ -854,5 +856,6 @@ fn main(args: string[]) {
         if clean.len() == 0 || clean.starts_with("#") { continue }
         println(clean.split(heap(), " ").get(0))
     }
+    return 0
 }
 ```

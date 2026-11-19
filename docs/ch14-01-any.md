@@ -28,7 +28,7 @@ an error and `42 as any` is the fix.
 ## Asking instead of asserting
 
 `match` tests the type rather than asserting it, spelled like the type test
-on an `error`:
+on an `Error`:
 
 ```gyro
 let text = match v {
@@ -38,7 +38,7 @@ let text = match v {
 }
 ```
 
-`any` is an open subject like `error`, so a match on one is never reported
+`any` is an open subject like `Error`, so a match on one is never reported
 as partial — and falling off the end panics. Write the `_`.
 
 A type an ordinary path cannot spell is written out in the arm:
@@ -60,8 +60,8 @@ themselves afterwards:
 
 - `void` and `null`
 - another `any` — they do not nest
-- an `error` or a `T?`, both of which hide the concrete type the `any` is
-  meant to be sure of
+- an `Error`, a `T | Error` or a `T?`, all of which hide the concrete type the
+  `any` is meant to be sure of
 - a channel, a future, a function value
 - `anyptr` and `code(..)` ([chapter 15](ch15-00-c-interop.md))
 - the runtime-owned handles, such as `Array` and `Mutex`

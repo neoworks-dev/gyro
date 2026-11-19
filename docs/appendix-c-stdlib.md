@@ -20,11 +20,12 @@ same name does not displace one of these.
 | `hash()` | types that are `Hash`: those, and tuples, and structs and enums that implement it | `u64` |
 | `eq(other)` | types that are `Eq` | `bool` |
 | `add`, `sub`, `mul`, `div`, `rem`, `neg` | the numeric primitives | the same type |
-| `message()` | `error` | `string` |
+| `message()` | `Error` | `string` |
 
 The last two rows are the methods of the capability traits below, present on
 the built-in types so a generic body may call `a.add(b)` where `a + b` would
-do. `to_string` is not on the list: a type that implements `Print` with a
+do; `message` is the method of `Error`, which the owned `Error` has for
+whatever it holds. `to_string` is not on the list: a type that implements `Print` with a
 block has its own, and no built-in type does, since a number's text is made
 by the runtime.
 
@@ -41,8 +42,8 @@ and any type that implements `Index<T>`. Every one is a **place**, so
 
 Positional tuple access — `pair.0` — is syntax, not a method.
 
-`void` and `error` cannot be extended: nothing has type void, and `error` is
-a contract rather than a type.
+`void` and `any` cannot be extended: nothing has type void, and an `any`'s
+behaviour belongs to the type inside it.
 
 ## The standard library
 
@@ -77,6 +78,7 @@ export trait Mul { fn mul(self, other: Self): Self }
 export trait Div { fn div(self, other: Self): Self }
 export trait Rem { fn rem(self, other: Self): Self }
 export trait Neg { fn neg(self): Self }
+export trait Error { fn message(self): string }
 export trait Iterator<T> { fn next(inout self): (T, bool) }
 export trait Index<T> { fn at(inout self, index: usize): *T }
 export trait Destroy { fn destroy(inout self) }
@@ -84,6 +86,14 @@ export trait Destroy { fn destroy(inout self) }
 
 `Destroy` runs when a value goes away and is never called by name
 ([chapter 4.2](ch04-02-destroy-and-defer.md)).
+
+`Error` is the one capability trait that is also a type. A type implements it
+with `impl Error for Type`, and nothing implements it by shape. Named in a
+type position it is the owned value that holds any implementer, which `T | Error`
+and `Error?` are written over, and `Error::new(message: string): Error` makes
+the plain one ([chapter 9](ch09-00-errors.md)). The module also holds
+`finish_main`, which the entry point calls with the result of a `main` that
+returns one; it is not exported and a program does not call it.
 
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
 `Allocator` from `mem` and records it, and `push` and `free` go through
@@ -309,14 +319,14 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{}
 ```gyro
 export struct File { ... }
 
-export fn open(path: string): (File, error?) !{ io }
-export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
+export fn open(path: string): File | Error !{ io }
+export fn read_all(a: Allocator, file: File): string | Error !{ io }
 export fn File::close(inout self) !{ io }
 
-export fn write_file(path: string, text: string): error? !{ io }
-export fn append_file(path: string, text: string): error? !{ io }
-export fn remove(path: string): error? !{ io }
-export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io }
+export fn write_file(path: string, text: string): Error? !{ io }
+export fn append_file(path: string, text: string): Error? !{ io }
+export fn remove(path: string): Error? !{ io }
+export fn read_dir(a: Allocator, path: string): Array<string> | Error !{ io }
 export fn exists(path: string): bool !{ io }
 ```
 
@@ -397,10 +407,10 @@ Numbers from text, written in Gyro. One function for each integer width,
 `to_i8` through `to_usize`, and `to_f64`:
 
 ```gyro
-export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{}
-export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{}
-export fn to_f64(text: string): (f64, error?) !{}
-export struct ParseError { export text: string }
+export fn to_i32(text: string, radix: u32 = 10): i32 | Error !{}
+export fn to_u8(text: string, radix: u32 = 10): u8 | Error !{}
+export fn to_f64(text: string): f64 | Error !{}
+export struct ParseError { export text: string }   // implements Error
 ```
 
 An integer is an optional sign, then digits of the radix, which is 2 to 36
@@ -542,7 +552,7 @@ The module also exports the system call numbers and flag values it uses.
 ### `net`
 
 ```gyro
-export async fn get(url: string): (string, error?) !{ io }
+export async fn get(url: string): string | Error !{ io }
 ```
 
 ## What is runtime-backed and what is Gyro

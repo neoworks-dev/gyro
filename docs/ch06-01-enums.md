@@ -46,16 +46,17 @@ the exact coverage rules — including the one about payload patterns that
 *test* rather than *bind*.
 
 Only enums are enumerable. A match on an integer, a string, an `any`, or an
-`error` whose concrete type is unknown is never reported as partial, because
-there is no finite variant set to compare against.
+`Error` whose concrete type is unknown is never reported as partial, because
+there is no finite variant set to compare against. A `T | Error` has exactly
+two cases and is checked for both.
 
 ## What enums are not used for
 
 Two jobs that would be an enum in other languages are not one here:
 
-- **Errors.** There is no `Result`. A fallible function returns
-  `(T, error?)`, and `error` is a duck-typed contract, not a variant set
-  ([chapter 9](ch09-00-errors.md)).
+- **Errors.** There is no `Result` enum. A fallible function returns
+  `T | Error`, a type of its own that `?` and a match know how to take
+  apart ([chapter 9](ch09-00-errors.md)).
 - **Optionality.** There is no `Option`. `T?` is a type-level marker with
   narrowing behind it ([chapter 4.3](ch04-03-nullability.md)).
 

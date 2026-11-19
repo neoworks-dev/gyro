@@ -35,7 +35,9 @@ const PREC = {
 
 // Type suffixes bind tighter than the pointer prefix, and `?` binds to the
 // whole type: `*Node?` is a nullable pointer, `*i32[]` points at a slice.
+// The `|` of a result type binds loosest, so `T | Error?` is a union.
 const TYPE_PREC = {
+  union: 0,
   optional: 1,
   pointer: 2,
   suffix: 3,
@@ -508,6 +510,7 @@ module.exports = grammar({
       $.unary_expression,
       $.receive_expression,
       $.await_expression,
+      $.try_expression,
       $.binary_expression,
       $.cast_expression,
       $.range_expression,
@@ -625,6 +628,15 @@ module.exports = grammar({
       field('operand', $._expression),
     )),
 
+    // `x?` takes the value of a `T | Error`, or returns the error. In
+    // `await f()?` the compiler moves the `?` out past the await, since
+    // what fails is the result of the call; here the tree keeps it inside,
+    // which is the same tokens and all a highlighter needs.
+    try_expression: $ => prec(PREC.postfix, seq(
+      field('operand', $._expression),
+      '?',
+    )),
+
     binary_expression: $ => {
       const table = [
         [PREC.or, '||'],
@@ -646,10 +658,12 @@ module.exports = grammar({
         ))));
     },
 
+    // A cast takes a type without a union: in `x as u8 | y` the `|` is the
+    // bitwise operator.
     cast_expression: $ => prec.left(PREC.cast, seq(
       field('operand', $._expression),
       'as',
-      field('type', $._type),
+      field('type', $._cast_type),
     )),
 
     range_expression: $ => prec.left(PREC.range, seq(
@@ -796,13 +810,22 @@ module.exports = grammar({
       ),
     ),
 
-    // A type test on an `any` whose type no path can spell: a tuple, a
-    // slice, an array or a pointer. A type that is a plain name stays a
+    // A type test on an `any` or a `T | Error` whose type no path can
+    // spell: a tuple, a slice, an array, a pointer, or a generic type such
+    // as `Array<string>`. A type that is a plain name stays a
     // variant_pattern, since the two are the same syntax until the
     // subject says which one it is.
     type_test_pattern: $ => seq(
-      field('type', choice($.tuple_type, $.slice_type, $.array_type, $.pointer_type)),
+      field('type', choice(
+        $.tuple_type, $.slice_type, $.array_type, $.pointer_type,
+        alias($._generic_pattern_type, $.named_type),
+      )),
       optional(field('payload', $.pattern_payload)),
+    ),
+
+    _generic_pattern_type: $ => seq(
+      alias($.identifier, $.type_identifier),
+      $.type_arguments,
     ),
 
     pattern_payload: $ => seq('(', commaSep($._pattern), ')'),
@@ -812,6 +835,11 @@ module.exports = grammar({
     // -----------------------------------------------------------------------
 
     _type: $ => choice(
+      $._cast_type,
+      $.union_type,
+    ),
+
+    _cast_type: $ => choice(
       $.named_type,
       $.pointer_type,
       $.slice_type,
@@ -824,6 +852,14 @@ module.exports = grammar({
       $.optional_type,
       $.dyn_type,
     ),
+
+    // `T | Error`, the type of a function that can fail. The syntax takes
+    // any two types and the compiler holds the right side to Error.
+    union_type: $ => prec.left(TYPE_PREC.union, seq(
+      field('value', $._type),
+      '|',
+      field('error', $._type),
+    )),
 
     named_type: $ => seq(
       alias($.identifier, $.type_identifier),

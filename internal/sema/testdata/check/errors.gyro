@@ -1,7 +1,7 @@
 // Error is a trait a type implements on purpose, and `T | Error` is the type
 // of a function that can fail.
 
-import { Error } from "stdlib"
+import { Error, println } from "stdlib"
 
 struct WithMessage {
     code: i32
@@ -123,6 +123,12 @@ fn valueless(): Error | Error { //~ Error | Error holds no value
 
 fn nested(): i32 | Error | Error { //~ a result is T | Error once
     return 1
+}
+
+// An Error is shown by its message.
+fn notPrinted(e: Error) {
+    println(e.message())
+    println(e) //~ Error does not implement Print
 }
 
 // Error::new is called, not passed around.

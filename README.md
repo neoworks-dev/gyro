@@ -103,7 +103,7 @@ compiler-compiler.
 | null | `*T` is never null; only `T?` is, and it must be checked |
 | visibility | explicit `export`; no capitalization rules, no default exports |
 | modules | one file is one module |
-| errors | `(T, error?)` pairs, checked; `error` is any type with `message()` |
+| errors | `T \| Error` results and the `?` operator; `Error` is a trait a type implements |
 | panics | out-of-bounds, null deref, divide by zero and overflow abort; `+%` wraps on purpose |
 | memory | manual `alloc(a)` / `free(a, p)` over explicit allocators, `defer` at block exit, leak analysis warns |
 | slices | `T[]` borrows, `Array<T>` owns and grows |
@@ -121,7 +121,8 @@ library function rather than a keyword — it takes a closure, so it needs no
 grammar of its own.
 
 **Errors cannot escape by accident.** A fallible function returns
-`(T, error?)`, and discarding the error requires writing `_` explicitly.
+`T | Error`, `?` hands the error to the caller, and discarding a result
+requires writing `_` explicitly.
 
 ## Getting started
 
@@ -169,7 +170,7 @@ syntax; each one is checked by the test suite.
 | `hello.gyro` | bindings, interpolation, an effect row |
 | `fibonacci.gyro` | recursion, loops, module constants |
 | `structs.gyro` | structs, free methods, enums, `match`, borrows |
-| `errors.gyro` | `(T, error?)` returns and explicit handling |
+| `errors.gyro` | `T \| Error` returns, `?` and explicit handling |
 | `memory.gyro` | `alloc` / `free`, `defer`, nullable pointers, `move` |
 | `closures.gyro` | anonymous functions, inference, capture lists |
 | `methods.gyro` | methods, traits, bounded generics, operator traits, `to_string` |

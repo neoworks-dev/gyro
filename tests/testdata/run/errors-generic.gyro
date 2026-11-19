@@ -1,0 +1,47 @@
+// A result is an ordinary type: a field, an argument to a generic, and the
+// result of a generic function whose `?` returns it.
+
+import { println, Error } from "stdlib"
+
+struct Slot<T> {
+    held: T | Error
+}
+
+fn first<T>(xs: T[]): T | Error {
+    if xs.len() == 0 {
+        return Error::new("empty")
+    }
+    return xs[0]
+}
+
+fn twice<T>(xs: T[]): T | Error {
+    let a = first(xs)?
+    return a
+}
+
+// A function with no value may say that it succeeded.
+fn check(flag: bool): Error? {
+    if flag {
+        return null
+    }
+    return Error::new("flagged")
+}
+
+fn main() {
+    let slot = Slot<i32>{ held: 5 }
+    match slot.held {
+        i32(n): println(n)
+        Error(e): println(e.message())
+    }
+    let empty: i32[] = []
+    match twice(empty) {
+        i32(n): println(n)
+        Error(e): println(e.message())
+    }
+    match twice([7, 8]) {
+        i32(n): println(n)
+        Error(e): println(e.message())
+    }
+    println(check(true) == null)
+    println(check(false) == null)
+}

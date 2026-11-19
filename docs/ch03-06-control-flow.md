@@ -89,7 +89,7 @@ Because an arm body is delimited by the newline that ends it, a `return`
 inside an arm yields at most one value; returning several needs a block.
 
 A match over an enum is checked for exhaustiveness, and a match over an
-`error` or an `any` is a type test. [Chapter 6.2](ch06-02-match.md) is the
+`Error`, a `T | Error` or an `any` is a type test. [Chapter 6.2](ch06-02-match.md) is the
 whole story.
 
 ## What is missing on purpose

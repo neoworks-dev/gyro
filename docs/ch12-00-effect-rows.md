@@ -8,7 +8,7 @@ entries against what the result views.
 ```gyro
 fn add(a: i32, b: i32): i32 // no row: unconstrained
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io }
+export fn load(p: string): string | Error !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e // effect-polymorphic
 fn kernel(a: *f32) !{}                        // empty row
 ```

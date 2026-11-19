@@ -11,7 +11,9 @@ later; this is the map.
 | `isize` | pointer-width signed; differences, offsets, a system call's answer |
 | `f32 f64` | floats |
 | `rune` | a Unicode code point (32-bit) |
-| `bool string void error` | other primitives |
+| `bool string void` | other primitives |
+| `Error` | an error of any type that implements the trait; imported from `stdlib` |
+| `T \| Error` | a value, or an error |
 | `any` | a value of any single type, carrying which |
 | `anyptr` | an address whose target's type is forgotten; C's `void *` |
 | `*T` | pointer, never null |
@@ -107,8 +109,8 @@ let pair = (200, null)
 let code = pair.0
 let a, b = pair
 
-let results = chan<(string, error?)>()
-results <- (body, null)
+let results = chan<(string, i32)>()
+results <- (body, 200)
 ```
 
 A multi-value `return a, b` is sugar for returning a tuple. `(expr)` with
@@ -146,7 +148,7 @@ by `Ord` ([chapter 10](ch10-00-generics.md)).
 | `*T`, `T?` | [4.1](ch04-01-ownership.md), [4.3](ch04-03-nullability.md) |
 | `T[]`, `T[N]`, `string` | [4.4](ch04-04-borrowing.md), [8.2](ch08-02-strings.md) |
 | structs, enums | [5.1](ch05-01-structs.md), [6.1](ch06-01-enums.md) |
-| `error` | [9](ch09-00-errors.md) |
+| `Error`, `T \| Error` | [9](ch09-00-errors.md) |
 | `fn`, `async fn` | [11](ch11-00-closures.md) |
 | `chan<T>` | [13.2](ch13-02-channels.md) |
 | `any` | [14.1](ch14-01-any.md) |

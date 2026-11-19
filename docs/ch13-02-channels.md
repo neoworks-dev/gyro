@@ -9,12 +9,13 @@ for v in ch {}         // drain until closed
 ch.close()
 ```
 
-A channel element can be any type a value can be, tuples included — which is
-how a worker reports a fallible result without a wrapper struct:
+A channel element can be any type a value can be, tuples and results
+included — which is how a worker reports a fallible result without a wrapper
+struct:
 
 ```gyro
-fn fetch_into(url: string, results: chan<(string, error?)>) {
-    results <- (format(heap(), "stub body for #{url}"), null)
+fn fetch_into(url: string, results: chan<string | Error>) {
+    results <- format(heap(), "stub body for #{url}")
     results.close()
 }
 ```

@@ -42,7 +42,7 @@ They are the shortest route to seeing real syntax:
 | `hello.gyro` | bindings, interpolation, an effect row |
 | `fibonacci.gyro` | recursion, loops, module constants |
 | `structs.gyro` | structs, free methods, enums, `match`, borrows |
-| `errors.gyro` | `(T, error?)` returns and explicit handling |
+| `errors.gyro` | `T \| Error` returns, `?` and explicit handling |
 | `memory.gyro` | `alloc`/`free`, `defer`, nullable pointers, `move` |
 | `closures.gyro` | anonymous functions, inference, capture lists |
 | `methods.gyro` | methods and extension methods |

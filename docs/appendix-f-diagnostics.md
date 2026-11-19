@@ -94,10 +94,12 @@ A sample, so the ranges have a shape:
 | E0534 | a pinned `Item = X` that the trait does not allow |
 | E0535 | a type argument whose associated type is not the pinned one |
 | E0536 | a system call argument that is not an integer, a bool or a pointer |
-| E0517 | an error result dropped |
+| E0537 | a result type that is not `T \| Error`: another union, a nullable right side, no value on the left, or a nested one |
+| E0538 | a `?` on something that is not a `T \| Error` or an `Error?`, or in a function that cannot return an error |
+| E0517 | a `T \| Error` or `Error?` result dropped |
 | E0521 | a match over an enum that is not exhaustive |
 | E0522 | a read of a variable no path has written |
-| E0523 | a `main` with a signature nothing can call |
+| E0523 | a `main` with a signature nothing can call, or a result other than nothing, `i32` and `i32 \| Error` |
 | E0607 | a private field used from another module |
 | E0609 | a returned view, or an aggregate holding one, whose source the row does not name |
 | E0610 | a returned view of this frame's storage |
@@ -116,7 +118,7 @@ A sample, so the ranges have a shape:
 | E0704 | `destroy` called by name |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
-| E0620 | a channel, send, receive, select, async function or await in a program that does not load `stdlib` |
+| E0620 | a channel, send, receive, select, async function, await or `main` result in a program that does not load `stdlib` |
 | W0701 | a possible leak |
 | W0801 | a spawned closure sharing a reference |
 
@@ -130,7 +132,7 @@ it reports rather than refuses ([chapter 13.1](ch13-01-threads.md)).
 One malformed construct legitimately produces more than one error. A
 rejected row entry leaves the row empty, so the return is unaccounted for
 too — two diagnostics, both correct. `return null, 0` against
-`(i32, error?)` is two mismatches. These are not suppressed.
+`(i32, string?)` is two mismatches. These are not suppressed.
 
 A generic is checked once against its bounds, so a body that uses more than
 they give is reported **in the body**, and a call whose type argument does not

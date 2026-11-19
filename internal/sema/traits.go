@@ -975,7 +975,8 @@ func (c *checker) builtinHash(t types.Type, seen map[string]bool) bool {
 func (c *checker) builtinPrint(t types.Type, seen map[string]bool) bool {
 	switch t := t.(type) {
 	case *types.Basic:
-		return t.Kind != types.VoidKind
+		// An Error is shown by its message, which the program asks for.
+		return t.Kind != types.VoidKind && t.Kind != types.ErrorKind
 	case *types.Pointer:
 		return c.hasCapability(t.Elem, "Print", seen)
 	case *types.Optional:

@@ -57,6 +57,11 @@ var cases = []struct {
 		want: "fn keep(names: Array<string>!, n: i32) {\n}\n",
 	},
 	{
+		name: "a result type and the try operator",
+		in:   "fn f(a:i32|Error,b:(i32,i32)|Error): i32|Error {\n  let x=g()?+1\n  let y = g() ?\n  return x as u8|1\n}\n",
+		want: "fn f(a: i32 | Error, b: (i32, i32) | Error): i32 | Error {\n    let x = g()? + 1\n    let y = g()?\n    return x as u8 | 1\n}\n",
+	},
+	{
 		name: "unary and binary operators",
 		in:   "fn f() {\n  let a = -x\n  let b = x-y\n  let c = *p * *q\n  let d = &x\n  let e = !ok\n  let f = x < -1\n  let g = <-ch\n  ch <- v\n}\n",
 		want: "fn f() {\n    let a = -x\n    let b = x - y\n    let c = *p * *q\n    let d = &x\n    let e = !ok\n    let f = x < -1\n    let g = <-ch\n    ch <- v\n}\n",

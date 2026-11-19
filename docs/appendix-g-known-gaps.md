@@ -96,7 +96,19 @@ The rest of the book's examples still use the old spelling in places,
   requires,** and has no implicit conversion from a pointer: it is made with
   `as dyn Trait`.
 - **No `T::new()` through a bound.** A bound provides methods with a receiver.
-- **`error` is not a trait yet,** and keeps its shape-based rule.
+- **A generic type cannot implement `Error`.** An `Error` is a closed sum
+  over the types of the whole program, named one by one, so an implementer
+  has no type parameters of its own.
+- **An `Error` does not run the `Destroy` of what it holds.** It is a value
+  of the program's closed sum and is copied like one, so an error type that
+  owns a resource, and implements `Destroy`, is not released when the `Error`
+  goes away. Error types that own nothing are unaffected, which is every one
+  the standard library declares.
+- **A `T | Error` is taken apart by a match or by `?`, and by nothing else.**
+  It has no `==`, no printing and no hashing, and it is not an `any` payload.
+- **`?` passes the error on as it is.** There is nothing to convert it to
+  another error type, and no way to add context on the way: a function wraps
+  one by matching and returning a new `Error`.
 - **A trait with associated types is not a trait value.** `dyn Container`
   does not exist: the type behind the value is unknown, so its `Item` is too.
 - **No `iter()`.** `for..in` takes an `Iterator<T>`; a collection that hands

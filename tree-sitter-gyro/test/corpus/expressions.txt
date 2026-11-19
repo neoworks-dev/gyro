@@ -733,3 +733,121 @@ fn f(v: any): i32 {
           (match_arm
             (wildcard_pattern)
             (int_literal)))))))
+
+==================
+try operator
+==================
+
+fn main() {
+  let a = f()?
+  let b = f()? + 1
+  g()?
+  let c = await h()?
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (try_expression
+          (call_expression
+            (identifier)
+            (arguments))))
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (try_expression
+            (call_expression
+              (identifier)
+              (arguments)))
+          (int_literal)))
+      (expression_statement
+        (try_expression
+          (call_expression
+            (identifier)
+            (arguments))))
+      (variable_declaration
+        (identifier)
+        (await_expression
+          (try_expression
+            (call_expression
+              (identifier)
+              (arguments))))))))
+
+==================
+a cast does not take a union
+==================
+
+fn main() {
+  let a = x as u8 | y
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (binary_expression
+          (cast_expression
+            (identifier)
+            (named_type
+              (type_identifier)))
+          (identifier))))))
+
+==================
+type tests on a result
+==================
+
+fn main() {
+  let a = match r {
+    Error(e): 1
+    Array<string>(xs): 2
+    i32(n): 3
+  }
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (block
+      (variable_declaration
+        (identifier)
+        (match_expression
+          (identifier)
+          (match_arm
+            (variant_pattern
+              (identifier)
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (type_test_pattern
+              (named_type
+                (type_identifier)
+                (type_arguments
+                  (named_type
+                    (type_identifier))))
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal))
+          (match_arm
+            (variant_pattern
+              (identifier)
+              (pattern_payload
+                (binding_pattern
+                  (identifier))))
+            (int_literal)))))))

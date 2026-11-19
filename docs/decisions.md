@@ -31,11 +31,12 @@ that it keeps it:
 - equality, hashing and ordering — `Eq`, `Hash` and `Ord`
 - the operators — `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`
 - indexing — `Index<T>`
+- failure — `Error`
 
 This is one rule applied everywhere, replacing the duck typing that was
 the unifying rule from the second round: "does the type have the method".
-The reasoning is in "Traits". The one exception is `error`, which is still
-any type with `message(): string`; folding it into traits is future work.
+The reasoning is in "Traits", and "Errors" records `Error`, the last
+contract that was met by shape.
 
 ---
 
@@ -89,7 +90,7 @@ resolution as Rust.
 ### Primitives carry explicit widths; `usize`, `isize` and `rune` exist *(revised)*
 
 **Status: done (the names resolve), planned (their semantics).** `i8`–`i64`, `u8`–`u64`, `f32`, `f64`,
-`bool`, `string`, `void`, `error` — plus, from the review:
+`bool`, `string`, `void` — plus, from the review:
 
 - **`usize`**: pointer-width unsigned. `len()` returns it, `[]` indexes with
   it, `T[N]` sizes are it. The classic unsigned-underflow footgun is blunted
@@ -326,7 +327,7 @@ first-class — variable, field, slice element, channel element. `x as any`
 wraps and never fails; `v as i32` unwraps and panics on disagreement, the
 same rule a narrowing conversion follows. `match` tests instead of
 asserting, spelled exactly like the type test that already exists on an
-`error`, and an `any` is an open subject there, so exhaustiveness does not
+`Error`, and an `any` is an open subject there, so exhaustiveness does not
 apply and falling off the end panics. Printing an `any` prints what is
 inside it.
 
@@ -344,8 +345,8 @@ all four tiers", with METALS `dyn` as the substrate. That was wrong, and
 the reason is that Gyro compiles whole programs: the set of types any
 `as any` in the program mentions is known at compile time, so `any` lowers
 to a synthesized closed enum with one variant per wrapped type. This is not
-a new mechanism — `error` is already lowered exactly this way, as a closed
-sum over every concrete error struct in the program. Wrapping is `variant`,
+a new mechanism — `Error` is already lowered exactly this way, as a closed
+sum over every concrete error type in the program. Wrapping is `variant`,
 the match test is `variant.tag`, unwrapping is a tag check plus
 `variant.field`, and printing is a `switch` calling each type's existing
 derived repr. No new IR instruction, no runtime type tags, no boxing, no
@@ -357,7 +358,7 @@ METALS boundary. Gyro's `any` is not that and does not use it.
 
 What this costs, recorded because it is real: an `any` value is as wide as
 the widest type the program ever wraps, since the payload is inline rather
-than boxed — the same trade `error` already makes. Boxing aggregates was
+than boxed — the same trade `Error` already makes. Boxing aggregates was
 considered and rejected: it would make every `...any` call allocate, and
 allocation on `printf` is a worse deal than a wide value.
 
@@ -518,61 +519,159 @@ files, which defeats grep and adds a second export mechanism for no gain.
 
 ## Errors
 
-### Errors are values returned in a `(T, error?)` tuple
+### A fallible function returns `T | Error`, and `?` passes the error on *(revised)*
 
-**Status: done (syntax), sema (the check).** The error slot is explicitly
-nullable: `null` means no error. Signatures reading `(T, error)` in older
-drafts were wrong — a non-nullable `error` slot has no way to say "it
-worked".
+**Status: done.** A function that can fail returns `T | Error`. A function
+with no value to return writes `Error?`, where null is success and reaching
+the end of the body is success, so `return null` is never written. Failure is
+`return err` or `return Error::new("message")`. `x?` is the `T` of a
+`T | Error`, or returns the error from the enclosing function, which has to
+return `U | Error` or `Error?` itself; on an `Error?` it returns the error
+when there is one. `?` on anything else is E0538.
 
-No exceptions, no unwinding, no propagation operator. The caller must handle
-the error, and discarding it requires writing `_` explicitly, so ignoring a
-failure is always visible in the source.
+This replaces the `(T, error?)` tuple, which the book held for two rounds and
+which cost the language its feel. Every call site took four lines to check
+and pass the error on. The tuple also forced a value for `T` on the failure
+path, so the code wrote `return 0, err` with a zero nobody reads, which is a
+zero value in disguise in a language that has none. The decision was taken on
+2026-11-19 while reviewing the language, and the property the tuple was
+protecting survives: every propagation is a visible `?` in the source, there
+are no exceptions and no unwinding.
 
-Rejected `throws`/`try`, which the book's decorator page used: unwinding
-tables and landing pads are a large backend cost, and implicit propagation
-is exactly what this design is trying to prevent.
+`|` is only allowed with `Error` on the right. Any other union spelling is
+E0537, and so is `T | Error?`, `Error | Error` and a nested result: the
+syntax takes two types so that the mistake is reported where it is written,
+and the checker holds the right side to `Error`. `|` binds looser than `?` in
+a type, so the nullable marker stays on the type it follows, and a cast takes
+a type without a union, because `x as u8 | y` is the bitwise operator.
 
-### `error` is satisfied structurally *(revised)*
+Rejected:
 
-**Status: planned.** Any type with a `message(): string` method is an
-error — nothing is declared. Library code defines error types carrying their
-own data and callers match on the concrete kind with a type-test pattern:
-`RangeError(e)`.
+- **Keeping the tuple and adding `?` to it.** `?` has to take the value out of
+  something and leave the error behind, and a tuple of a value and a nullable
+  error has a value on both paths. The zero on the failure path is the
+  complaint, and a `?` over the tuple would keep it.
+- **Zig's `!T`.** The error is half of what a function says, and `!T` makes
+  the half a prefix mark on the type. It also reads as the effect row, which
+  already owns `!` after the result (`!{ io }`), so `fn f(): !i32 !{ io }`
+  puts two bangs with two meanings on one line.
+- **`T or error`.** A keyword in the type grammar for one use, where `|` is
+  already a token, and it leaves open what `or` means anywhere else. `|` also
+  says what the type is: a value or an error, one of two.
+- **A general union.** `T | U` for any two types has to say what is inside, how
+  to match it, and what it does to every analysis. The one union the language
+  needs is `T | Error`, and a second would be a feature nobody has asked for.
+- **A `Result<T, E>` enum in the standard library.** Two error styles in the
+  wild, and a generic error parameter to thread through every signature. It
+  was rejected once already, below.
 
-Originally `error` was a built-in *interface* implemented via
-`impl error for RangeError`; that declaration form died with traits, and the
-structural rule replaced it. A built-in error struct was considered and
-rejected earlier: it cannot carry typed payloads, leaving callers to parse
-strings. `(T, string?)` was rejected for the same reason.
+A multi-value return composes with it: `(f64, f64) | Error` is a tuple that
+can fail, and `return a, b` fills it. A parenthesized result list followed by
+`|` or `?` is read as the tuple type, the way `?` alone already made it a
+grouping.
 
-### There is no `Result` *(new)*
+The standard library moved over with it: `fs`, `convert`, `net` and `sys`
+return `T | Error` and `Error?`, and the dropped-result check (E0517) now asks
+for `?`, a match or `let _ =`.
 
-**Status: planned.** One error mechanism: `(T, error?)` tuples, everywhere.
-The concurrency example briefly used `Ok`/`Err` copied from Rust; both the
-type and the mutex poisoning it modelled are gone. Poisoning cannot exist in
-Gyro at all — it is Rust's answer to a panic *unwinding* past a held lock,
-and Gyro panics abort the process. `Mutex::lock()` returns the guard
-directly.
+### `await f()?` is `(await f())?`
+
+**Status: done.** `await` binds like a prefix operator, so `await f().field`
+awaits the whole selector. A `?` at the end of an await's operand would then
+apply to the future, which is not a result. The parser moves it out past the
+await, so `?` always reads the value the call produced. Only a `?` that ends
+the operand moves; one in the middle of a chain stays where it is written.
+
+### `Error` is a trait, and also the type that holds one *(revised)*
+
+**Status: done.** `Error` is an ordinary capability trait declared in the
+bundled `stdlib`, with one method, `message(self): string`. A type implements
+it on purpose, with `impl Error for T`; having the method is not enough, which
+removes the last contract the language checked by shape. The impl is for a
+struct or enum with no type parameters of its own, so the closed sum below
+can name it.
+
+`Error` is also a concrete type, the owned value that holds any implementer.
+The name is both because the two are one idea, and position says which: the
+trait is named after `impl`, `:` in a bound and `dyn`, and the type everywhere
+else. `Error::new(message)` makes the plain error, which carries a message and
+nothing else; it is the one function a trait has.
+
+**Representation.** An `Error` is the closed sum whole-program lowering already
+built for the old `error`: an enum with one variant for the plain error and
+one for each struct or enum in the program that implements the trait. It is
+owned, so it can be returned up the stack without pointing into a frame that
+is gone, and it allocates nothing. `message()` on it is a `switch` over the
+variants, synthesized in lowering. A `T | Error` is a two-variant enum, the
+value or the `Error`, generated for each `T` that is used. Nothing in METALS,
+the runtime or the backend is new.
+
+Rejected:
+
+- **Inline storage with a size cap**, a vtable pointer and a fixed buffer, as
+  the old text here described. A cap that rejects an error type by its size is
+  the wrong rule for a type people write for other reasons, and the closed sum
+  has no cap to explain: the cost is that `Error` is as wide as the widest
+  implementer.
+- **A `dyn Error`.** A trait value borrows what it points at, and an error
+  usually outlives the frame that made it, so returning one would name an
+  allocator or dangle. `dyn Error` still exists as a borrowed view, like any
+  trait value; a function does not return it.
+- **Boxing each error into an allocator.** The value would be allocated when
+  the error is made and nobody knows who frees it: hidden ownership, against
+  explicit allocation.
+- **A built-in error struct with only a message.** It cannot carry typed
+  payloads, and callers parse strings. `Error::new` is the plain case and a
+  type implementing the trait is the rest.
+
+A type test on an `Error`, `RangeError(e)`, binds the whole value as before,
+and the tested type is now recorded by the checker, since the pattern is only
+a path and two modules may name types alike. A type test also works for an
+enum that implements the trait.
+
+### Handling a result without `?` is a match on its two cases *(provisional)*
+
+**Status: provisional.** The book did not say how a result is taken apart
+without `?`, and this is the choice made to ship `?`. A `match` over a
+`T | Error` takes type-test arms, `i32(n)` for the value and `Error(e)` for
+the error, the same arms an `any` takes. The match is exhaustive when both are
+covered or it ends in `_`, and the diagnostic names the missing case. A type
+test may name a generic type, `Array<string>(xs)`, which the pattern parser now
+reads. An `Error?` is a nullable and is checked with `!= null`, which narrows
+it, as every nullable is.
+
+The alternatives were narrowing with an `is` operator, which is a new
+expression form, and extending `!= null` to results, which has no null to
+compare against. A match reuses the only machinery that already takes a type
+apart, at the cost of repeating the type in the arm. If a better form turns up
+it replaces this one outright.
+
+### `main` may return an exit status, or an error *(new)*
+
+**Status: done.** `main` returns nothing, an `i32` or an `i32 | Error`. An
+`i32` is the exit status. An error is written to standard error, as its
+message and a newline, and the status is 1. Making the `i32` mandatory is a
+separate, later change.
+
+It is implemented once, in Gyro: lowering gives a `main` that returns
+something the name `main::run`, exports a generated `main` that calls it and
+hands the result to `finish_main` in `stdlib`, and `finish_main` is an
+ordinary function that matches the result, prints and exits. Nothing is added
+to the C runtime, and METALS' entry still returns nothing, which is what the
+backend and the corpus of hand-written METALS expect. A `main` that returns a
+value needs `stdlib` loaded, and the checker says so (E0620) rather than
+loading it.
+
+### There is no `Result` type *(revised)*
+
+**Status: done.** One error mechanism: `T | Error`. The concurrency example
+briefly used `Ok`/`Err` copied from Rust; both the type and the mutex
+poisoning it modelled are gone. Poisoning cannot exist in Gyro at all — it is
+Rust's answer to a panic *unwinding* past a held lock, and Gyro panics abort
+the process. `Mutex::lock()` returns the guard directly.
 
 Rejected keeping Result as an ordinary stdlib enum: two competing error
 styles in the wild for no gain.
-
-### Trait objects use inline storage with a size cap
-
-**Status: planned.** Specific to `error`, whose value is a vtable pointer
-plus a fixed inline buffer. Small error types are returned by value with no
-allocation. A type exceeding the cap is a compile error naming the size, and
-the author boxes it explicitly.
-
-The alternative — a hidden heap allocation on every error path — contradicts
-explicit `alloc`/`free`.
-
-This is not how a trait value (`dyn Trait`) is represented. A trait value
-borrows ("Trait values are a pointer and a table"); inline storage was
-considered for them and rejected there, because a cap that rejects types
-by size is the wrong rule for a general-purpose value and because it copies
-the value, so mutating through one would mutate a copy.
 
 ---
 
@@ -1374,8 +1473,8 @@ array: nothing is allocated to make one, and the borrow analysis follows it
 with the slice's rules (a function returning one names where it came from,
 and a view of this frame's storage cannot be returned).
 
-**Rejected: inline storage with a cap.** The `error` mechanism, a buffer
-inside the value. It would make `Array<dyn Element>` a fixed-size-element
+**Rejected: inline storage with a cap.** The mechanism the book once gave
+`error`, a buffer inside the value. It would make `Array<dyn Element>` a fixed-size-element
 array of whatever the biggest implementer is, reject types by their size,
 and copy the value so that an `inout self` method mutated a copy. **Rejected:
 boxing into an allocator.** The value is allocated when the trait value is
@@ -1515,7 +1614,7 @@ outside the stdlib — it is `Mutex::new(0)`.
 ### Tuples are first-class *(revised)*
 
 **Status: done (syntax), planned (semantics).** `(A, B)` is a real type:
-usable in `chan<(string, error?)>`, fields, variables. Values are written `(a, b)`, read by
+usable in `chan<(string, i32)>`, fields, variables. Values are written `(a, b)`, read by
 destructuring (`let a, b = pair`) or positional access (`pair.0`). No
 one-element tuples; `(expr)` stays grouping. `return a, b` is sugar for
 returning a tuple, so multi-value returns are no longer a special form.
@@ -1539,7 +1638,7 @@ the same shape for free.
   `Shape::Circle(r)`, never bare `Circle(r)`. Grep-friendly, and it keeps
   variant destructuring visually distinct from the other `Name(binding)`
   form.
-- `RangeError(e)` where the scrutinee is an `error` is a type test binding
+- `RangeError(e)` where the scrutinee is an `Error` is a type test binding
   the whole value. Same surface shape as variant destructuring, told apart
   by what the name resolves to. A distinct type-test syntax was considered
   and rejected as a second pattern form to learn.
@@ -1625,7 +1724,7 @@ exists for the case where a format string is data.
 print a message with source position and terminate. Not returnable, not
 catchable.
 
-Keeps the `(T, error?)` channel meaningful — it carries conditions, not
+Keeps the `T | Error` channel meaningful — it carries conditions, not
 bugs — and needs no unwinding machinery.
 
 ### Float division by zero is IEEE; NaN is unordered *(new)*
@@ -2337,7 +2436,7 @@ Corpus: `tests/testdata/run/shift-edges.gyro`.
 strings (`usize`); `runes(): rune[]` on strings; `compare(other): i32` on
 the numeric primitives, `rune` and `string` — which is what lets
 `max(3, 7)` and `max("pear", "apple")` both instantiate;
-`message(): string` on `error`. There is no `append` on a
+`message(): string` on `Error`. There is no `append` on a
 slice: `T[]` borrows memory it cannot grow, so growth lives in
 `Array<T>::push`. The docs briefly said `xs.append(v)`; that was a relic
 and was removed.
@@ -2429,7 +2528,7 @@ foreign parameter substitution could never rewrite.
 
 ### Tuples assign structurally *(new)*
 
-**Status: done.** `(string, null)` goes where `(string, error?)` is
+**Status: done.** `(string, null)` goes where `(string, i32?)` is
 required: tuple assignability is elementwise, since a tuple is shape, not
 identity. Everything else converts only by `as`.
 
@@ -4639,8 +4738,8 @@ global, so nothing can conflict globally.
 
 The compiler's own surface stays separate and wins on a name clash: `len`
 and `runes` are part of the type, not additions to it, and they need no
-import. `void` and `error` are not extensible — nothing has type void,
-and `error` is a contract met by shape rather than a type.
+import. `void` and `any` are not extensible — nothing has type void,
+and an any's behaviour belongs to the type inside it.
 
 ### `bytes()` and `from_utf8` both copy *(new)*
 
@@ -4714,13 +4813,13 @@ one-shot has no open state to forget. When the guard/resource-release
 question settles, a streaming write API can be designed against it;
 until then the path forms cover what a CLI needs.
 
-`read_dir` returns `(Array<string>, error?)`: entry names only, sorted
+`read_dir` returns `Array<string> | Error`: entry names only, sorted
 bytewise, without `.` and `..` — the evaluator leans on Go's
 `os.ReadDir` and the C runtime sorts the same way, so a listing is
 deterministic on every tier. Rejected returning richer entries (name
 plus kind and size): that shape wants a struct and a stat per entry,
 and a caller who needs it can `open` the name. `exists` returns a bare
-`bool`; the two-valued form `(bool, error?)` was rejected because the
+`bool`; the two-valued form `bool | Error` was rejected because the
 boolean answer is the whole point — a path that cannot be stat'ed is
 absent for every purpose a caller has.
 
@@ -4886,7 +4985,6 @@ and bound imports opaquely; it is deleted.
 
 | question | why it matters |
 | --- | --- |
-| `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
 | conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
 | mutation rules | what a view in use across an `inout` call may not be; the rest is checked |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |

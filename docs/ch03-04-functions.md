@@ -6,9 +6,9 @@ fn add(a: i32, b: i32): i32 {
 }
 
 fn nothing() {}                      // no annotation means no result
-fn load(p: string): (string, error?) // returns a tuple
+fn load(p: string): string | Error   // can fail
 fn max<T>(a: T, b: T): T             // generic
-async fn fetch(u: string): (string, error?)
+async fn fetch(u: string): string | Error
 fn apply(f: fn(i32): bool) {}        // function-valued parameter
 fn sum(xs: ...i32): i32              // variadic
 fn printf(fmt: string, args: ...any) // variadic over mixed types
@@ -66,8 +66,9 @@ fn divmod(a: i32, b: i32): (i32, i32) {
 let q, r = divmod(17, 5)
 ```
 
-A fallible function is this shape with `error?` on the right
-([chapter 9](ch09-00-errors.md)).
+A fallible function does not return several values: it returns one result,
+`T | Error`, and `?` takes the `T` out of it ([chapter 9](ch09-00-errors.md)).
+Several values and a failure are a tuple on the left, `(i32, i32) | Error`.
 
 ## Variadic parameters
 
@@ -134,7 +135,7 @@ A signature may carry an effect row after the result:
 
 ```gyro
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io }
+export fn load(p: string): string | Error !{ io }
 fn first(xs: i32[]): i32[] !{ &xs }
 ```
 

@@ -1258,3 +1258,61 @@ fn keep(names: Names!, count: i32) {
         (named_type
           (type_identifier))))
     (block)))
+
+==================
+result types
+==================
+
+fn read(): i32 | Error {
+}
+
+fn check(): Error? {
+}
+
+fn pair(): (i32, i32) | Error {
+}
+
+fn odd(): i32 | Error? {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (named_type
+        (type_identifier))
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (optional_type
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (tuple_type
+        (named_type
+          (type_identifier))
+        (named_type
+          (type_identifier)))
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (named_type
+        (type_identifier))
+      (optional_type
+        (named_type
+          (type_identifier))))
+    (block)))

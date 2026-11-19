@@ -112,14 +112,14 @@ var codes = map[string]diag.Code{
 	"%s cannot be a system call argument; it takes an integer, a bool or a pointer":                          diag.ESyscallArgument,
 
 	// Errors. A result is T | Error, and ? returns the error of one.
-	"the right side of | has to be Error, not %s":                                   diag.EBadResultType,
-	"%s | Error holds no value; the left side of | has to be the type of one":       diag.EBadResultType,
-	"a result is T | Error once; it does not nest":                                  diag.EBadResultType,
-	"? needs a T | Error or an Error?, not %s":                                      diag.ETryMisuse,
-	"? sends an error back to the caller, but this function returns %s":             diag.ETryMisuse,
-	"? returns from a function, and this is not inside one":                         diag.ETryMisuse,
-	"%s is a trait, not a value":                                                    diag.EWrongKind,
-	"Error::new makes an error, so it is called: Error::new(message)":               diag.EWrongKind,
+	"the right side of | has to be Error, not %s":                                                                                   diag.EBadResultType,
+	"%s | Error holds no value; the left side of | has to be the type of one":                                                       diag.EBadResultType,
+	"a result is T | Error once; it does not nest":                                                                                  diag.EBadResultType,
+	"? needs a T | Error or an Error?, not %s":                                                                                      diag.ETryMisuse,
+	"? sends an error back to the caller, but this function returns %s":                                                             diag.ETryMisuse,
+	"? returns from a function, and this is not inside one":                                                                         diag.ETryMisuse,
+	"%s is a trait, not a value":                                                                                                    diag.EWrongKind,
+	"Error::new makes an error, so it is called: Error::new(message)":                                                               diag.EWrongKind,
 	"%s cannot implement Error: an error value holds its type by name, so it has to be a struct or an enum without type parameters": diag.EImplConflict,
 
 	// Members
@@ -275,16 +275,16 @@ var codes = map[string]diag.Code{
 	"parameter %s of %s is %s, but the trait declares it %s":                                           diag.EImplMismatch,
 
 	// Statements
-	"a condition is a bool, not %s":                                                        diag.EConditionNotBool,
-	"cannot assign to this expression":                                                     diag.ENotAssignable,
-	"cannot assign to a narrowing; assign its elements, or the slice variable":             diag.ENotAssignable,
-	"_ discards a value; there is nothing to update":                                       diag.ENotAssignable,
-	"a compound assignment takes one target":                                               diag.EAssignmentForm,
-	"a declaration needs a type or a value":                                                diag.EBindingNeedsType,
-	"a const needs its value here":                                                         diag.EBindingNeedsType,
-	"the error result is dropped here; take its value with ?, or discard it: let _ = ...":   diag.EDroppedError,
-	"the parameter %s needs a type; nothing here says what the closure is":                 diag.EClosureParams,
-	"this closure takes %d parameter(s), the context wants %s":                             diag.EClosureParams,
+	"a condition is a bool, not %s":                                                       diag.EConditionNotBool,
+	"cannot assign to this expression":                                                    diag.ENotAssignable,
+	"cannot assign to a narrowing; assign its elements, or the slice variable":            diag.ENotAssignable,
+	"_ discards a value; there is nothing to update":                                      diag.ENotAssignable,
+	"a compound assignment takes one target":                                              diag.EAssignmentForm,
+	"a declaration needs a type or a value":                                               diag.EBindingNeedsType,
+	"a const needs its value here":                                                        diag.EBindingNeedsType,
+	"the error result is dropped here; take its value with ?, or discard it: let _ = ...": diag.EDroppedError,
+	"the parameter %s needs a type; nothing here says what the closure is":                diag.EClosureParams,
+	"this closure takes %d parameter(s), the context wants %s":                            diag.EClosureParams,
 
 	// Methods and receivers
 	"self is only available inside a method":                          diag.ESelfOutsideMethod,

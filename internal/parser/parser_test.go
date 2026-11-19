@@ -894,6 +894,119 @@ func TestVariadicParameterAndSpread(t *testing.T) {
 	}
 }
 
+func TestResultTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "a result is a value and an error",
+			src:  "fn f(): i32 | Error {\n}\n",
+			want: "File test.gyro Func f Result: UnionType NamedType i32 NamedType Error Body: Block",
+		},
+		{
+			name: "the marker binds tighter than the bar",
+			src:  "fn f(): *Node? | Error {\n}\n",
+			want: "File test.gyro Func f Result: UnionType OptionalType PointerType NamedType Node " +
+				"NamedType Error Body: Block",
+		},
+		{
+			name: "a nullable error is not a union's right side",
+			src:  "fn f(): i32 | Error? {\n}\n",
+			want: "File test.gyro Func f Result: UnionType NamedType i32 OptionalType NamedType Error Body: Block",
+		},
+		{
+			name: "a tuple of results can fail",
+			src:  "fn f(): (i32, i32) | Error {\n}\n",
+			want: "File test.gyro Func f Result: UnionType TupleType NamedType i32 NamedType i32 " +
+				"NamedType Error Body: Block",
+		},
+		{
+			name: "no value is an optional error",
+			src:  "fn f(): Error? {\n}\n",
+			want: "File test.gyro Func f Result: OptionalType NamedType Error Body: Block",
+		},
+		{
+			name: "in a parameter, with an effect row after it",
+			src:  "fn f(g: fn(): i32 | Error): i32 | Error !{ io } {\n}\n",
+			want: "File test.gyro Func f Param g: Type: FuncType Result: UnionType NamedType i32 NamedType Error " +
+				"Result: UnionType NamedType i32 NamedType Error Effects: !{io} Body: Block",
+		},
+		{
+			name: "in a channel element",
+			src:  "fn f(ch: chan<string | Error>) {\n}\n",
+			want: "File test.gyro Func f Param ch: Type: ChanType UnionType NamedType string NamedType Error Body: Block",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := dumpOf(t, test.src); got != test.want {
+				t.Errorf("got:  %s\nwant: %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCastDoesNotTakeAUnion(t *testing.T) {
+	got := dumpOf(t, wrap("a as u8 | b"))
+	want := "File test.gyro Func t Body: Block Let x Value: Binary | Cast Ident a Type: NamedType u8 Ident b"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
+	}
+}
+
+func TestTryOperator(t *testing.T) {
+	tests := []struct {
+		name string
+		expr string
+		want string
+	}{
+		{"after a call", "f()?", "Try Call Fun: Ident f"},
+		{"chained", "f()?.g()?", "Try Call Fun: Selector .g Try Call Fun: Ident f"},
+		{"binds tighter than an operator", "f()? + 1", "Binary + Try Call Fun: Ident f Lit int literal 1"},
+		{"binds tighter than a cast", "f()? as i64", "Cast Try Call Fun: Ident f Type: NamedType i64"},
+		{"on a name", "a?", "Try Ident a"},
+		{"under a prefix operator", "-f()?", "Unary - Try Call Fun: Ident f"},
+		{
+			name: "after an await it applies to the awaited value",
+			expr: "await f()?",
+			want: "Try Await Call Fun: Ident f",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			want := "File test.gyro Func t Body: Block Let x Value: " + test.want
+			if got := dumpOf(t, wrap(test.expr)); got != want {
+				t.Errorf("got:  %s\nwant: %s", got, want)
+			}
+		})
+	}
+}
+
+func TestTryEndsALine(t *testing.T) {
+	src := "fn t() {\n  f()?\n  g()?\n}\n"
+	got := dumpOf(t, src)
+	want := "File test.gyro Func t Body: Block ExprStmt Try Call Fun: Ident f ExprStmt Try Call Fun: Ident g"
+	if got != want {
+		t.Errorf("got:  %s\nwant: %s", got, want)
+	}
+}
+
+// A type test names the type its subject holds, and that may be a generic
+// one.
+func TestTypeTestNamesAGenericType(t *testing.T) {
+	file := parseOK(t, "fn t() {\n  match r {\n    Error(e): 1\n    Array<string>(xs): 2\n  }\n}\n")
+	match := file.Decls[0].(*ast.FuncDecl).Body.Stmts[0].(*ast.ExprStmt).X.(*ast.MatchExpr)
+
+	pattern := match.Arms[1].Pattern.(*ast.VariantPattern)
+	if args := pattern.Path.Segments[0].Args; len(args) != 1 {
+		t.Errorf("Array<string>(xs) kept %d type arguments, want 1", len(args))
+	}
+}
+
 func TestTupleTypeInChannel(t *testing.T) {
 	got := dumpOf(t, "fn f(ch: chan<(i32, error?)>) {\n}\n")
 	want := "File test.gyro Func f Param ch: Type: ChanType TupleType " +
