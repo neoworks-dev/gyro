@@ -194,7 +194,7 @@ Two areas is fine when an issue genuinely spans them; three means split it.
 
 Work is done when it has been shown to work, not when the code is written. Shown means a corpus case or a Go test (see Testing) that fails without the change and passes with it, with a golden written by hand. `go test ./...`, `make check` and `make vet` pass on the branch either way, and a performance claim needs a `make bench` number.
 
-Then hand it over and stop: what changed in a sentence or two, the evidence, and the branch. When it has an issue, the evidence also goes on the issue as a comment — that comment is what I read, so it's written for someone who wasn't in the session.
+Then hand it over and stop: what changed in a sentence or two, the evidence, and the branch.
 
 ## Merging
 
