@@ -506,7 +506,7 @@ func (c *checker) unaryExpr(e *ast.UnaryExpr) types.Type {
 			}
 		}
 		c.killFactsFor(e.X)
-		return &types.Pointer{Elem: types.Default(operand)}
+		return c.addressOf(e.X, types.Default(operand))
 
 	case token.Star:
 		return c.derefType(e.Offset, operand)
@@ -1164,7 +1164,7 @@ func (c *checker) sliceNarrowing(e *ast.IndexExpr, r *ast.RangeExpr) types.Type 
 // calls are handled by callExpr, so a bare method reference is an error.
 func (c *checker) selectorExpr(e *ast.SelectorExpr) types.Type {
 	c.formatOK[e.X] = true
-	base := c.expr(e.X)
+	base := c.throughBox(e.X, c.expr(e.X))
 	field := c.selectField(e.NameOffset, base, e.Name, true)
 	c.recordFieldRef(e, base)
 

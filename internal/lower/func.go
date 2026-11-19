@@ -1075,21 +1075,75 @@ func (f *funcLowerer) pointerPlace(ptr string, typ types.Type) *place {
 	}
 }
 
+// pointeeField is the field e names of the value base points at.
+func (f *funcLowerer) pointeeField(e *ast.SelectorExpr, pointee types.Type, base string) *place {
+	if union, isUnion := pointee.(*types.Union); isUnion {
+		return f.unionMemberPlace(base, union, e.Name)
+	}
+	strct := f.structOf(pointee)
+	index := fieldIndex(strct, e.Name)
+	ptr := f.newReg(e.Name + ".p")
+	f.emit(&metals.FieldPtr{Dst: ptr, Ptr: base, Index: index})
+	return f.pointerPlace(ptr, strct.Fields[index].Type)
+}
+
+// boxedElem is the T of the box e was looked through as, and nil when e is
+// not one: sema records the boxes it looked through, so a stdlib body that
+// uses a box's own fields is told apart from a program reaching the value.
+func (f *funcLowerer) boxedElem(e ast.Expr) types.Type {
+	if !f.l.info.Boxed[e] {
+		return nil
+	}
+	return sema.BoxedType(f.typeOf(e))
+}
+
+// boxPointer is the pointer inside the box e evaluates to, which is what
+// every field, method and `&` on the box goes through.
+func (f *funcLowerer) boxPointer(e ast.Expr) string {
+	box := f.lowerExpr(e, nil)
+	ptr := f.newReg("boxed")
+	f.emit(&metals.FieldGet{Dst: ptr, X: box, Index: 0})
+	return ptr
+}
+
+// boxAddress lowers `&box`: the pointer inside the box, or for a box that
+// may be absent, that pointer or null.
+func (f *funcLowerer) boxAddress(box ast.Expr, result types.Type) string {
+	optional, absent := f.typeOf(box).(*types.Optional)
+	if !absent {
+		return f.boxPointer(box)
+	}
+	held := f.lowerExpr(box, nil)
+	out := f.newReg("boxed")
+	f.emit(&metals.Const{Dst: out, Type: f.l.metalsType(result), Null: true})
+	none := f.newReg("none")
+	f.emit(&metals.Const{Dst: none, Type: f.l.metalsType(optional), Null: true})
+	present := f.newReg("present")
+	f.emit(&metals.Bin{Dst: present, Op: "ne", A: held, B: none})
+	f.emit(&metals.If{
+		Cond: present,
+		Then: f.nested(func() {
+			inner := f.newReg("some")
+			f.emit(&metals.OptUnwrap{Dst: inner, X: held})
+			ptr := f.newReg("boxed")
+			f.emit(&metals.FieldGet{Dst: ptr, X: inner, Index: 0})
+			wrapped := f.newReg("wrapped")
+			f.emit(&metals.OptWrap{Dst: wrapped, X: ptr})
+			f.emit(&metals.Copy{Dst: out, X: wrapped})
+		}),
+	})
+	return out
+}
+
 func (f *funcLowerer) selectorPlace(e *ast.SelectorExpr) *place {
 	baseType := f.typeOf(e.X)
 
-	// Through a pointer the field has a stable address.
+	// Through a pointer, or a box, the field has a stable address.
 	if pointer, ok := baseType.(*types.Pointer); ok {
-		if union, isUnion := pointer.Elem.(*types.Union); isUnion {
-			base := f.lowerExpr(e.X, nil)
-			return f.unionMemberPlace(base, union, e.Name)
-		}
-		strct := f.structOf(pointer.Elem)
-		index := fieldIndex(strct, e.Name)
-		base := f.lowerExpr(e.X, nil)
-		ptr := f.newReg(e.Name + ".p")
-		f.emit(&metals.FieldPtr{Dst: ptr, Ptr: base, Index: index})
-		return f.pointerPlace(ptr, strct.Fields[index].Type)
+		return f.pointeeField(e, pointer.Elem, f.lowerExpr(e.X, nil))
+	}
+	if elem := f.boxedElem(e.X); elem != nil {
+		return f.pointeeField(e, elem, f.boxPointer(e.X))
 	}
 
 	// A union is only ever reached through its storage: writing one
