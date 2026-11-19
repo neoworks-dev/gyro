@@ -1235,3 +1235,26 @@ fn Stack::push(inout self, xs: inout Stack, n: i32) {
         (named_type
           (type_identifier))))
     (block)))
+
+==================
+a parameter that takes ownership
+==================
+
+fn keep(names: Names!, count: i32) {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block)))

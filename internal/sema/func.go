@@ -128,6 +128,10 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		if sym != nil {
 			sym.param = true
 			sym.inout = param.Inout
+			sym.take = param.Take
+			if param.Take {
+				c.owningLocal(sym, true)
+			}
 		}
 		if sym != nil && isAllocator(paramType) {
 			// What is allocated from a parameter is the caller's to free;

@@ -119,7 +119,15 @@ func (l *lowerer) lowerFunc(item workItem) {
 			f.declareInout(param.Name, f.localType(decl, param.Name))
 			continue
 		}
+		if param.Take {
+			// The function owns the argument now, and destroys it through
+			// its address.
+			f.addrTaken[param.Name] = true
+		}
 		f.declareParam(param.Name, f.localType(decl, param.Name))
+		if param.Take {
+			f.own(param.Name, true)
+		}
 	}
 	f.blockInPlace(decl.Body)
 	f.epilogue(blockTerminates(decl.Body))

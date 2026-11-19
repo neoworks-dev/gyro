@@ -95,7 +95,7 @@ func (p *printer) node(node Node) {
 			p.line("Recv: %sself", inoutMark(n.Recv.Inout))
 		}
 		for _, param := range n.Params {
-			p.group("Param "+param.Name+inoutSuffix(param.Inout)+variadicMark(param.Variadic), func() {
+			p.group("Param "+param.Name+inoutSuffix(param.Inout)+takeSuffix(param.Take)+variadicMark(param.Variadic), func() {
 				p.child("Type", param.Type)
 				p.child("Default", param.Default)
 			})
@@ -750,6 +750,13 @@ func exportMark(exported bool) string {
 func inoutMark(inout bool) string {
 	if inout {
 		return "inout "
+	}
+	return ""
+}
+
+func takeSuffix(take bool) string {
+	if take {
+		return " take"
 	}
 	return ""
 }

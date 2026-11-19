@@ -543,6 +543,11 @@ func (p *Parser) parseParam() ast.Param {
 		param.Variadic = p.accept(token.Ellipsis)
 	}
 	param.Type = p.parseType()
+	// `T!` hands the argument over. It mirrors `T?` but belongs to the
+	// parameter rather than the type: there is no value of type `T!`.
+	if !param.Inout && !param.Variadic {
+		param.Take = p.accept(token.Bang)
+	}
 
 	if p.accept(token.Assign) {
 		p.withStructLits(true, func() {

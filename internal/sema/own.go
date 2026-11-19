@@ -105,7 +105,7 @@ func (c *checker) moveName(e *ast.Ident) {
 		return
 	}
 	switch {
-	case sym.param:
+	case sym.param && !sym.take:
 		c.cannotMove(e.Offset, e.Name, "a parameter is borrowed from the caller")
 		return
 	case !sym.needsAssign:

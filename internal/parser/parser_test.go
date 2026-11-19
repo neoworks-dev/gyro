@@ -354,6 +354,12 @@ func TestDeclarations(t *testing.T) {
 				"Param other: Type: NamedType inout Body: Block Assign = Lhs: Ident inout Rhs: Lit int literal 1",
 		},
 		{
+			name: "parameter that takes ownership",
+			src:  "fn keep(names: Array<string>!, n: i32) {\n}\n",
+			want: "File test.gyro Func keep Param names take: Type: NamedType Array<_> NamedType string " +
+				"Param n: Type: NamedType i32 Body: Block",
+		},
+		{
 			name: "inout pointer parameter",
 			src:  "fn f(p: inout *Node?) {\n}\n",
 			want: "File test.gyro Func f Param p inout: Type: OptionalType PointerType NamedType Node Body: Block",

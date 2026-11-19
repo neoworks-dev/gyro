@@ -590,6 +590,11 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 				param.Name, decl.Name, inoutText(have.InoutAt(i)), inoutText(declared.InoutAt(i)))
 			return
 		}
+		if have.TakesAt(i) != declared.TakesAt(i) {
+			c.errorf(param.Offset, "parameter %s of %s is %s, but the trait declares it %s",
+				param.Name, decl.Name, takeText(have.TakesAt(i)), takeText(declared.TakesAt(i)))
+			return
+		}
 	}
 
 	// The method's own generics are different objects on each side; map
@@ -612,6 +617,13 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 func inoutText(inout bool) string {
 	if inout {
 		return "inout"
+	}
+	return "a plain borrow"
+}
+
+func takeText(take bool) string {
+	if take {
+		return "taken with !"
 	}
 	return "a plain borrow"
 }

@@ -89,7 +89,7 @@ func symbolFault(sym *symbol, name string) fault {
 	if decl, ok := sym.decl.(*ast.VarDecl); ok && decl.Const {
 		return fault{faultConst, name}
 	}
-	if sym.param && !sym.inout {
+	if sym.param && !sym.inout && !sym.take {
 		return fault{faultBorrowed, name}
 	}
 	return fault{}
@@ -307,6 +307,12 @@ func (c *checker) copied(p pass) bool {
 // value. The argument is passed by address, which a function value's
 // signature cannot say, so such a function is only ever called by name.
 func (c *checker) refuseInoutValue(offset int, method *types.Method) bool {
+	if method.HasTakeParam() {
+		c.errorHintf(offset, []string{
+			"call it directly, or wrap the call in a closure",
+		}, "%s takes ownership of a parameter, so it can only be called, not used as a value", method.Name)
+		return true
+	}
 	if !method.HasInoutParam() {
 		return false
 	}

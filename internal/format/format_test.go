@@ -52,6 +52,11 @@ var cases = []struct {
 		want: "fn Stack::push(inout self, v: inout Array<i32>, n: i32) {\n}\n",
 	},
 	{
+		name: "a parameter that takes ownership",
+		in:   "fn keep(names:Array<string> !,n:i32){\n}\n",
+		want: "fn keep(names: Array<string>!, n: i32) {\n}\n",
+	},
+	{
 		name: "unary and binary operators",
 		in:   "fn f() {\n  let a = -x\n  let b = x-y\n  let c = *p * *q\n  let d = &x\n  let e = !ok\n  let f = x < -1\n  let g = <-ch\n  ch <- v\n}\n",
 		want: "fn f() {\n    let a = -x\n    let b = x - y\n    let c = *p * *q\n    let d = &x\n    let e = !ok\n    let f = x < -1\n    let g = <-ch\n    ch <- v\n}\n",

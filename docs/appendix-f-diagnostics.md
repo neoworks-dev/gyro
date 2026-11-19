@@ -109,7 +109,7 @@ A sample, so the ranges have a shape:
 | E0634 | a plain parameter, a plain `self` or a `const` changed |
 | E0635 | an `inout` argument that is a temporary rather than a variable |
 | E0636 | one value passed twice to a call when one pass is `inout` |
-| E0637 | an `inout` parameter with a default, in an async function, in a runtime intrinsic, or on a function used as a value |
+| E0637 | an `inout` parameter with a default, in an async function or in a runtime intrinsic, or a function with an `inout` or `T!` parameter used as a value |
 | E0701 | a variable used after its value moved out |
 | E0702 | a move out of a parameter, a field, an element, a pointer or a deferred call |
 | E0703 | an owning type where ownership is not followed yet |

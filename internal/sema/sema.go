@@ -88,6 +88,9 @@ type symbol struct {
 	// does for every iteration after the first.
 	loopDepth int
 	param     bool
+	// take marks a parameter declared `T!`: the function owns the
+	// argument, so it may change it and move it on.
+	take bool
 	// inout marks a parameter declared `inout`, the only kind a function
 	// may change.
 	inout bool

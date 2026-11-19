@@ -258,6 +258,7 @@ var codes = map[string]diag.Code{
 	"an inout parameter takes no default; the caller names the variable it changes":                    diag.EInoutParam,
 	"an async function cannot take an inout parameter; it may run after the caller's variable is gone": diag.EInoutParam,
 	"%s takes an inout parameter, so it can only be called, not used as a value":                       diag.EInoutParam,
+	"%s takes ownership of a parameter, so it can only be called, not used as a value":                 diag.EInoutParam,
 	"a function the runtime provides cannot take an inout parameter; it has no variable to change":     diag.EInoutParam,
 	"parameter %s of %s is %s, but the trait declares it %s":                                           diag.EImplMismatch,
 

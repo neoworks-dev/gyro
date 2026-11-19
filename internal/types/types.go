@@ -284,6 +284,25 @@ func (m *Method) InoutAt(i int) bool {
 	return m.Decl != nil && i < len(m.Decl.Params) && m.Decl.Params[i].Inout
 }
 
+// TakesAt reports whether parameter i, counted without the receiver, is
+// declared `T!`, taking ownership of its argument.
+func (m *Method) TakesAt(i int) bool {
+	return m.Decl != nil && i < len(m.Decl.Params) && m.Decl.Params[i].Take
+}
+
+// HasTakeParam reports whether any parameter is declared `T!`.
+func (m *Method) HasTakeParam() bool {
+	if m.Decl == nil {
+		return false
+	}
+	for _, param := range m.Decl.Params {
+		if param.Take {
+			return true
+		}
+	}
+	return false
+}
+
 // HasInoutParam reports whether any parameter, not counting the receiver, is
 // declared `inout`.
 func (m *Method) HasInoutParam() bool {

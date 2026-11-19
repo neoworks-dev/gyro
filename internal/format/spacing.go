@@ -57,6 +57,20 @@ func (f *formatter) prefix(t int) bool {
 	return false
 }
 
+// takeBang reports the `!` of a parameter that takes ownership, `T!`,
+// which hugs its type the way `?` does. An effect row's `!` is followed by
+// the row instead, and keeps its space.
+func (f *formatter) takeBang(t int) bool {
+	if t+1 >= len(f.toks) {
+		return false
+	}
+	switch f.toks[t+1].Kind {
+	case token.Comma, token.RParen, token.Assign:
+		return true
+	}
+	return false
+}
+
 func (f *formatter) angle(t int) bool { return f.layout.Angles[f.toks[t].Offset] }
 
 func (f *formatter) needSpace(a, b int) bool {
@@ -80,6 +94,8 @@ func (f *formatter) needSpace(a, b int) bool {
 		// A shift is two adjacent `>` tokens, which the parser joins.
 		return false
 	case kb == token.Colon, kb == token.Question, ka == token.Bang:
+		return false
+	case kb == token.Bang && f.takeBang(b):
 		return false
 	case ka == token.Colon:
 		return true

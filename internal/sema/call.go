@@ -465,6 +465,11 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 		if !c.checkCallArg(call, target, sig, s, i) {
 			poisoned = true
 		}
+		// Moved as soon as it is passed, so a later argument naming the
+		// same variable sees it gone.
+		if method.TakesAt(i) {
+			c.consume(arg.Value)
+		}
 	}
 	for _, i := range deferred {
 		if !c.checkCallArg(call, target, sig, s, i) {

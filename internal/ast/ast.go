@@ -204,6 +204,9 @@ type Param struct {
 	// Inout marks `name: inout T`: the function may change the argument in
 	// place, and nothing else may see it for the length of the call.
 	Inout bool
+	// Take marks `name: T!`: the argument moves into the call, and the
+	// function owns it from then on.
+	Take bool
 	// Default is the expression after `=`, or nil.
 	Default Expr
 	// Variadic marks `name: ...T`, which collects the remaining arguments.

@@ -119,3 +119,27 @@ let global = open(9)
 fn fromGlobal(): File {
     return global //~ E0702 cannot move global
 }
+
+// A parameter written `T!` takes its argument: the caller's variable is
+// moved, and the function owns the value.
+fn take(f: File!) {
+    let kept = f
+}
+
+fn both(f: File!, g: File) {
+}
+
+fn takenThenUsed() {
+    let a = open(1)
+    take(a)
+    use(a) //~ E0701 a is used after it was moved
+}
+
+fn takenTwiceInOneCall() {
+    let a = open(1)
+    both(a, a) //~ E0701 a is used after it was moved
+}
+
+fn takerAsValue() {
+    let f = take //~ E0637 take takes ownership of a parameter, so it can only be called, not used as a value
+}

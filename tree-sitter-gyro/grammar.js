@@ -201,17 +201,18 @@ module.exports = grammar({
 
     receiver: $ => seq(optional('inout'), 'self'),
 
-    // `inout` lets the function change the caller's variable. A `...`
-    // before the type makes this the variadic parameter instead: it
-    // collects the remaining arguments, and the type written is the
-    // element type, since the body sees a slice of it. A pack is not
-    // changed in place, so the two do not combine.
+    // `inout` lets the function change the caller's variable, and a `!`
+    // after the type takes ownership of the argument. A `...` before the
+    // type makes this the variadic parameter instead: it collects the
+    // remaining arguments, and the type written is the element type,
+    // since the body sees a slice of it. None of the three combine.
     parameter: $ => seq(
       field('name', $.identifier),
       ':',
       choice(
         seq('inout', field('type', $._type)),
-        seq(optional('...'), field('type', $._type)),
+        seq('...', field('type', $._type)),
+        seq(field('type', $._type), optional(field('take', '!'))),
       ),
       optional(seq('=', field('default', $._expression))),
     ),
