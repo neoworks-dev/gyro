@@ -91,7 +91,7 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.BinaryExpr:
 		return f.evalBinary(e)
 	case *ast.CallExpr:
-		result := f.prepareCall(e)()
+		result := f.lowerCall(e)
 		if result == "" {
 			f.l.fail("@%s: a void call has no value", f.fn.Name)
 		}

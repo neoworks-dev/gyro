@@ -69,23 +69,19 @@ func (f *funcLowerer) piece(e ast.Expr) string {
 	return f.wrapAny(value, t)
 }
 
-// prepareShow lowers stdlib's show: an any rendered to text.
-func (f *funcLowerer) prepareShow(call *ast.CallExpr) func() string {
+// lowerShow lowers stdlib's show: an any rendered to text.
+func (f *funcLowerer) lowerShow(call *ast.CallExpr) string {
 	piece := f.lowerExpr(call.Args[0].Value, nil)
-	return func() string {
-		return f.displayReg(piece, types.Any)
-	}
+	return f.displayReg(piece, types.Any)
 }
 
-// prepareStream lowers print, println, eprint or eprintln of a Format to a
+// lowerStream lowers print, println, eprint or eprintln of a Format to a
 // call of stdlib's stream_ function for it, which holds the output lock
 // and writes the pieces in order.
-func (f *funcLowerer) prepareStream(printer *ast.FuncDecl, message string) func() string {
+func (f *funcLowerer) lowerStream(printer *ast.FuncDecl, message string) string {
 	callee := f.l.ensureFunc(f.l.stdlibDecl("stream_"+printer.Name), nil)
-	return func() string {
-		f.emit(&metals.Call{Callee: callee, Args: []string{message}})
-		return ""
-	}
+	f.emit(&metals.Call{Callee: callee, Args: []string{message}})
+	return ""
 }
 
 // stdlibDecl finds a function stdlib declares, by name.

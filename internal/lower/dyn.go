@@ -225,9 +225,9 @@ func (f *funcLowerer) lowerDynCast(value string, from types.Type, to *types.Dyn)
 	return out
 }
 
-// prepareDynCall dispatches a method called on a trait value through its
+// lowerDynCall dispatches a method called on a trait value through its
 // table.
-func (f *funcLowerer) prepareDynCall(call *ast.CallExpr, resolved *sema.CallInfo) func() string {
+func (f *funcLowerer) lowerDynCall(call *ast.CallExpr, resolved *sema.CallInfo) string {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		f.l.fail("@%s: a trait value's method is called on a receiver", f.fn.Name)
@@ -254,23 +254,23 @@ func (f *funcLowerer) prepareDynCall(call *ast.CallExpr, resolved *sema.CallInfo
 		args = f.callArgs(call, resolved.Sig, resolved.Method.Decl)
 	})
 
-	return afterCall(func() string {
-		data := f.newReg("data")
-		f.emit(&metals.FieldGet{Dst: data, X: value, Index: 0})
-		table := f.newReg("table")
-		f.emit(&metals.FieldGet{Dst: table, X: value, Index: 1})
-		slot := f.newReg("entry.p")
-		f.emit(&metals.FieldPtr{Dst: slot, Ptr: table, Index: index})
-		code := f.newReg("entry")
-		f.emit(&metals.Load{Dst: code, Ptr: slot})
+	data := f.newReg("data")
+	f.emit(&metals.FieldGet{Dst: data, X: value, Index: 0})
+	table := f.newReg("table")
+	f.emit(&metals.FieldGet{Dst: table, X: value, Index: 1})
+	slot := f.newReg("entry.p")
+	f.emit(&metals.FieldPtr{Dst: slot, Ptr: table, Index: index})
+	code := f.newReg("entry")
+	f.emit(&metals.Load{Dst: code, Ptr: slot})
 
-		all := append([]string{data}, args...)
-		if isVoid(resolved.Sig.Result) {
-			f.emit(&metals.CallIndirect{Fn: code, Args: all})
-			return ""
-		}
-		out := f.newReg("r")
+	all := append([]string{data}, args...)
+	out := ""
+	if isVoid(resolved.Sig.Result) {
+		f.emit(&metals.CallIndirect{Fn: code, Args: all})
+	} else {
+		out = f.newReg("r")
 		f.emit(&metals.CallIndirect{Dst: out, Fn: code, Args: all})
-		return out
-	}, owed)
+	}
+	f.settleWriteBacks(owed)
+	return out
 }

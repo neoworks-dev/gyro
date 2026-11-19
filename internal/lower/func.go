@@ -30,9 +30,9 @@ type funcLowerer struct {
 	result    types.Type
 	addrTaken map[string]bool
 
-	// writeBacks collects what the call being prepared owes its inout
+	// writeBacks collects what the call being lowered owes its inout
 	// arguments once it returns. See collectWriteBacks.
-	writeBacks []func()
+	writeBacks []writeBack
 
 	// written holds the names the body may change in place, which is what
 	// decides whether a record parameter needs a slot of its own. It is nil
@@ -630,7 +630,7 @@ func (f *funcLowerer) stmt(s ast.Stmt) {
 // nothing takes is destroyed right away.
 func (f *funcLowerer) discard(e ast.Expr) {
 	if call, ok := e.(*ast.CallExpr); ok {
-		result := f.prepareCall(call)()
+		result := f.lowerCall(call)
 		if t := f.typeOfVoidOK(call); result != "" && t != nil && types.Owning(t) {
 			f.destroyValue(result, t)
 		}
@@ -959,7 +959,7 @@ func (f *funcLowerer) deferStmt(s *ast.DeferStmt) {
 	top.defers = append(top.defers, func() {
 		open := f.scopes
 		f.scopes = append([]*scopeInfo(nil), open[:depth]...)
-		f.prepareCall(call)()
+		f.lowerCall(call)
 		f.scopes = open
 	})
 }

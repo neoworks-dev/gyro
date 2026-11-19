@@ -12,28 +12,27 @@ import (
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
-// prepareCall evaluates a call's callee, receiver and arguments and
-// returns the function that emits the call itself. Every caller invokes
-// the result at once. The emitted call returns its destination register,
-// "" for a void call.
-func (f *funcLowerer) prepareCall(call *ast.CallExpr) func() string {
+// lowerCall lowers a call: its callee, receiver and arguments, then the
+// call itself. It returns the register holding the result, "" for a void
+// call.
+func (f *funcLowerer) lowerCall(call *ast.CallExpr) string {
 	resolved := f.callInfo(call)
 
 	if resolved.Enum != nil {
-		return f.prepareVariant(call, resolved)
+		return f.lowerVariant(call, resolved)
 	}
 	if resolved.Dyn != nil {
-		return f.prepareDynCall(call, resolved)
+		return f.lowerDynCall(call, resolved)
 	}
 	if resolved.Method != nil {
 		decl := resolved.Method.Decl
 		if decl == nil {
-			return f.prepareBuiltin(call, resolved)
+			return f.lowerBuiltin(call, resolved)
 		}
 		if decl.Body == nil {
-			return f.prepareNative(call, resolved, decl)
+			return f.lowerNative(call, resolved, decl)
 		}
-		return f.prepareUserCall(call, resolved, decl)
+		return f.lowerUserCall(call, resolved, decl)
 	}
 
 	// A call through a function value. The callee is evaluated without
@@ -41,21 +40,19 @@ func (f *funcLowerer) prepareCall(call *ast.CallExpr) func() string {
 	// node itself carries no recorded type.
 	fn := f.eval(call.Fun, nil)
 	args := f.callArgs(call, resolved.Sig, nil)
-	return func() string {
-		if resolved.Sig.Async {
-			return f.startAsyncIndirect(fn, args, resolved.Sig)
-		}
-		if isVoid(resolved.Sig.Result) {
-			f.emit(&metals.CallIndirect{Fn: fn, Args: args})
-			return ""
-		}
-		out := f.newReg("r")
-		f.emit(&metals.CallIndirect{Dst: out, Fn: fn, Args: args})
-		return out
+	if resolved.Sig.Async {
+		return f.startAsyncIndirect(fn, args, resolved.Sig)
 	}
+	if isVoid(resolved.Sig.Result) {
+		f.emit(&metals.CallIndirect{Fn: fn, Args: args})
+		return ""
+	}
+	out := f.newReg("r")
+	f.emit(&metals.CallIndirect{Dst: out, Fn: fn, Args: args})
+	return out
 }
 
-func (f *funcLowerer) prepareVariant(call *ast.CallExpr, resolved *sema.CallInfo) func() string {
+func (f *funcLowerer) lowerVariant(call *ast.CallExpr, resolved *sema.CallInfo) string {
 	enum := resolved.Enum
 	payload := enum.Variants[resolved.Variant].Payload
 	args := make([]string, len(call.Args))
@@ -67,12 +64,9 @@ func (f *funcLowerer) prepareVariant(call *ast.CallExpr, resolved *sema.CallInfo
 		args[i] = f.lowerExpr(arg.Value, want)
 	}
 	named := f.l.metalsEnum(enum).(*metals.Named)
-	variant := resolved.Variant
-	return func() string {
-		out := f.newReg("variant")
-		f.emit(&metals.MakeVariant{Dst: out, TypeName: named.Name, Variant: variant, Args: args})
-		return out
-	}
+	out := f.newReg("variant")
+	f.emit(&metals.MakeVariant{Dst: out, TypeName: named.Name, Variant: resolved.Variant, Args: args})
+	return out
 }
 
 // callArgs lowers the arguments against the concrete signature, filling
@@ -184,26 +178,26 @@ func (f *funcLowerer) packArgs(call *ast.CallExpr, param types.Type, at int) str
 	return view
 }
 
-func (f *funcLowerer) emitCall(name string, args []string, result types.Type, async bool) func() string {
-	return func() string {
-		if async {
-			return f.startAsync(name, args, result)
-		}
-		if isVoid(result) {
-			f.emit(&metals.Call{Callee: name, Args: args})
-			return ""
-		}
-		out := f.newReg("r")
-		f.emit(&metals.Call{Dst: out, Callee: name, Args: args})
-		return out
+// emitCall calls a function by name, or starts the call on a thread of its
+// own when it is async.
+func (f *funcLowerer) emitCall(name string, args []string, result types.Type, async bool) string {
+	if async {
+		return f.startAsync(name, args, result)
 	}
+	if isVoid(result) {
+		f.emit(&metals.Call{Callee: name, Args: args})
+		return ""
+	}
+	out := f.newReg("r")
+	f.emit(&metals.Call{Dst: out, Callee: name, Args: args})
+	return out
 }
 
 // ---------------------------------------------------------------------------
 // User functions and methods
 // ---------------------------------------------------------------------------
 
-func (f *funcLowerer) prepareUserCall(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+func (f *funcLowerer) lowerUserCall(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) string {
 	name := f.l.ensureFunc(decl, resolved.Bindings)
 
 	var args []string
@@ -217,7 +211,9 @@ func (f *funcLowerer) prepareUserCall(call *ast.CallExpr, resolved *sema.CallInf
 		}
 		args = append(args, f.callArgs(call, resolved.Sig, decl)...)
 	})
-	return afterCall(f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async), owed)
+	out := f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
+	f.settleWriteBacks(owed)
+	return out
 }
 
 // inoutAddress is what an inout parameter receives: the address of the place
@@ -250,39 +246,38 @@ func (f *funcLowerer) inoutNarrowed(arg ast.Expr, target *place) string {
 	cell := f.newReg("inout")
 	f.emit(&metals.Slot{Dst: cell, Type: f.l.metalsType(payload)})
 	f.emit(&metals.Store{Ptr: cell, Val: f.narrowed(target.load(), target.typ, payload)})
-	f.writeBacks = append(f.writeBacks, func() {
-		held := f.newReg("inout.v")
-		f.emit(&metals.Load{Dst: held, Ptr: cell})
-		wrapped := f.newReg("inout.o")
-		f.emit(&metals.OptWrap{Dst: wrapped, X: held})
-		target.store(wrapped)
-	})
+	f.writeBacks = append(f.writeBacks, writeBack{cell: cell, target: target})
 	return cell
+}
+
+// A writeBack is what a call owes an inout argument that went through a
+// cell: the payload the callee left there, wrapped again and stored in
+// the place it came from.
+type writeBack struct {
+	cell   string
+	target *place
 }
 
 // collectWriteBacks runs the lowering of a call's receiver and arguments and
 // returns what they owe once the call has returned. A call nested in an
 // argument collects its own.
-func (f *funcLowerer) collectWriteBacks(prepare func()) []func() {
+func (f *funcLowerer) collectWriteBacks(lowerArgs func()) []writeBack {
 	outer := f.writeBacks
 	f.writeBacks = nil
-	prepare()
+	lowerArgs()
 	owed := f.writeBacks
 	f.writeBacks = outer
 	return owed
 }
 
-// afterCall is emit, followed by the write-backs.
-func afterCall(emit func() string, owed []func()) func() string {
-	if len(owed) == 0 {
-		return emit
-	}
-	return func() string {
-		out := emit()
-		for _, writeBack := range owed {
-			writeBack()
-		}
-		return out
+// settleWriteBacks pays what a call owes, once it has returned.
+func (f *funcLowerer) settleWriteBacks(owed []writeBack) {
+	for _, back := range owed {
+		held := f.newReg("inout.v")
+		f.emit(&metals.Load{Dst: held, Ptr: back.cell})
+		wrapped := f.newReg("inout.o")
+		f.emit(&metals.OptWrap{Dst: wrapped, X: held})
+		back.target.store(wrapped)
 	}
 }
 
@@ -309,7 +304,7 @@ func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string
 // Runtime natives
 // ---------------------------------------------------------------------------
 
-func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+func (f *funcLowerer) lowerNative(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) string {
 	module := f.l.moduleOf[decl]
 
 	// A declaration in a module another language produced is a real
@@ -331,23 +326,23 @@ func (f *funcLowerer) prepareNative(call *ast.CallExpr, resolved *sema.CallInfo,
 	}
 
 	if module != nil && module.Path == stdlib.Path("mem") {
-		if prepared := f.prepareMemIntrinsic(call, resolved, decl); prepared != nil {
-			return prepared
+		if out, ok := f.lowerMemIntrinsic(call, resolved, decl); ok {
+			return out
 		}
 	}
 	if module != nil && module.Path == stdlib.Path("unsafe") {
-		if prepared := f.prepareUnsafeIntrinsic(call, resolved, decl); prepared != nil {
-			return prepared
+		if out, ok := f.lowerUnsafeIntrinsic(call, resolved, decl); ok {
+			return out
 		}
 	}
 	if module != nil && module.Path == stdlib.Path("math") {
-		return f.prepareMathIntrinsic(call, decl)
+		return f.lowerMathIntrinsic(call, decl)
 	}
 	if module != nil && module.Path == stdlib.Path("mem") && decl.Owner == "" && decl.Name == "show" {
-		return f.prepareShow(call)
+		return f.lowerShow(call)
 	}
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
-		return f.preparePrint(call, resolved, decl)
+		return f.lowerPrint(call, resolved, decl)
 	}
 
 	name := f.l.funcName(decl, resolved.Bindings)
@@ -381,11 +376,11 @@ func isPrintName(name string) bool {
 	return name == "print" || name == "println" || name == "eprint" || name == "eprintln"
 }
 
-// preparePrint lowers the print family with display semantics: strings
+// lowerPrint lowers the print family with display semantics: strings
 // pass raw, a to_string method wins, a composite goes through its
 // synthesized repr, and only the leaves reach a monomorphized runtime
 // import.
-func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+func (f *funcLowerer) lowerPrint(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) string {
 	if len(call.Args) != 1 {
 		f.l.fail("@%s: %s takes one argument", f.fn.Name, decl.Name)
 	}
@@ -396,14 +391,12 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 	displayType := argType
 	switch {
 	case f.l.isFormat(argType):
-		return f.prepareStream(decl, f.lowerExpr(arg, nil))
+		return f.lowerStream(decl, f.lowerExpr(arg, nil))
 	case isAnyType(argType) && (decl.Name == "print" || decl.Name == "eprint"):
 		name := f.l.ensureAnyStream(decl.Name)
 		value := f.lowerExpr(arg, nil)
-		return func() string {
-			f.emit(&metals.Call{Callee: name, Args: []string{value}})
-			return ""
-		}
+		f.emit(&metals.Call{Callee: name, Args: []string{value}})
+		return ""
 	case isNullLiteral(arg):
 		value = f.text("null")
 		displayType = types.String
@@ -422,11 +415,8 @@ func (f *funcLowerer) preparePrint(call *ast.CallExpr, resolved *sema.CallInfo, 
 
 	name := decl.Name + "<" + displayType.String() + ">"
 	f.l.ensureImport(name, &metals.FnType{Params: []metals.Type{f.l.metalsType(displayType)}})
-	args := []string{value}
-	return func() string {
-		f.emit(&metals.Call{Callee: name, Args: args})
-		return ""
-	}
+	f.emit(&metals.Call{Callee: name, Args: []string{value}})
+	return ""
 }
 
 // mathUnary and mathBinary map the math module's names onto the METALS
@@ -445,40 +435,34 @@ var mathBinary = map[string]string{
 	"min": "fmin", "max": "fmax", "copysign": "fcopysign",
 }
 
-func (f *funcLowerer) prepareMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDecl) func() string {
+func (f *funcLowerer) lowerMathIntrinsic(call *ast.CallExpr, decl *ast.FuncDecl) string {
 	if op, ok := mathUnary[decl.Name]; ok {
 		x := f.lowerExpr(call.Args[0].Value, nil)
-		return func() string {
-			out := f.newReg(decl.Name)
-			f.emit(&metals.Un{Dst: out, Op: op, X: x})
-			return out
-		}
+		out := f.newReg(decl.Name)
+		f.emit(&metals.Un{Dst: out, Op: op, X: x})
+		return out
 	}
 	if op, ok := mathBinary[decl.Name]; ok {
 		x := f.lowerExpr(call.Args[0].Value, nil)
 		y := f.lowerExpr(call.Args[1].Value, nil)
-		return func() string {
-			out := f.newReg(decl.Name)
-			f.emit(&metals.Bin{Dst: out, Op: op, A: x, B: y})
-			return out
-		}
+		out := f.newReg(decl.Name)
+		f.emit(&metals.Bin{Dst: out, Op: op, A: x, B: y})
+		return out
 	}
 	f.l.fail("@%s: math has no intrinsic %s", f.fn.Name, decl.Name)
-	return nil
+	return ""
 }
 
-// prepareMemIntrinsic lowers the mem intrinsics the compiler answers
-// itself: the layout of a type. It returns nil for the ones the runtime
+// lowerMemIntrinsic lowers the mem intrinsics the compiler answers
+// itself: the layout of a type. It reports false for the ones the runtime
 // supplies, which lower as ordinary natives.
-func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+func (f *funcLowerer) lowerMemIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) (string, bool) {
 	switch decl.Name {
 	case "start_thread":
-		return f.startThread(call)
+		return f.startThread(call), true
 	case "end_thread":
-		return func() string {
-			f.emit(&metals.ThreadExit{})
-			return ""
-		}
+		f.emit(&metals.ThreadExit{})
+		return "", true
 	case "size", "align":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -492,25 +476,23 @@ func (f *funcLowerer) prepareMemIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 		if decl.Name == "align" {
 			answer = layout.Align(lowered)
 		}
-		return func() string {
-			out := f.newReg(decl.Name)
-			f.emit(&metals.Const{Dst: out, Type: metals.TUsize, Value: strconv.Itoa(answer)})
-			return out
-		}
+		out := f.newReg(decl.Name)
+		f.emit(&metals.Const{Dst: out, Type: metals.TUsize, Value: strconv.Itoa(answer)})
+		return out, true
 	}
-	return nil
+	return "", false
 }
 
-// prepareUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
+// lowerUnsafeIntrinsic lowers the unsafe intrinsics the compiler answers
 // itself: putting a type back on an address, moving one along, a closure's
-// environment, and a system call.
-// The rest of the module lowers as ordinary natives.
-func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) func() string {
+// environment, and a system call. It reports false for the rest of the
+// module, which lowers as ordinary natives.
+func (f *funcLowerer) lowerUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) (string, bool) {
 	switch decl.Name {
 	case "env_of", "with_env":
-		return f.prepareEnvIntrinsic(call, resolved, decl.Name)
+		return f.lowerEnvIntrinsic(call, resolved, decl.Name), true
 	case "thread_local":
-		return f.threadLocal(resolved.Bindings)
+		return f.threadLocal(resolved.Bindings), true
 	case "syscall0", "syscall1", "syscall2", "syscall3", "syscall4", "syscall5", "syscall6":
 		// Each argument lowers at the type its own parameter was bound to,
 		// so a pointer stays a pointer all the way into the instruction.
@@ -519,16 +501,14 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 		for index, arg := range call.Args[1:] {
 			args = append(args, f.lowerExpr(arg.Value, resolved.Sig.Params[index+1]))
 		}
-		return func() string {
-			out := f.newReg("sys")
-			f.emit(&metals.Syscall{Dst: out, Number: number, Args: args})
-			return out
-		}
+		out := f.newReg("sys")
+		f.emit(&metals.Syscall{Dst: out, Number: number, Args: args})
+		return out, true
 	case "futex_wait", "futex_wake":
-		return f.prepareFutex(call, resolved, decl.Name)
+		return f.lowerFutex(call, resolved, decl.Name), true
 	case "atomic_load", "atomic_store", "atomic_swap", "atomic_cas", "atomic_add", "atomic_sub",
 		"atomic_and", "atomic_or", "atomic_xor", "atomic_fence":
-		return f.prepareAtomicIntrinsic(call, resolved, decl.Name)
+		return f.lowerAtomicIntrinsic(call, resolved, decl.Name), true
 	case "slice_from_raw":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -537,34 +517,28 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 		target := f.l.metalsType(&types.Pointer{Elem: bound})
 		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
 		length := f.lowerExpr(call.Args[1].Value, types.USize)
-		return func() string {
-			first := f.newReg("first")
-			f.emit(&metals.PtrCast{Dst: first, X: address, To: target})
-			out := f.newReg("raw")
-			f.emit(&metals.SliceFrom{Dst: out, Ptr: first, Len: length})
-			return out
-		}
+		first := f.newReg("first")
+		f.emit(&metals.PtrCast{Dst: first, X: address, To: target})
+		out := f.newReg("raw")
+		f.emit(&metals.SliceFrom{Dst: out, Ptr: first, Len: length})
+		return out, true
 	case "offset":
 		// The address `bytes` past base is a pointer to bytes moved along by
 		// that many elements, and then forgotten again.
 		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
 		bytes := f.lowerExpr(call.Args[1].Value, types.USize)
-		return func() string {
-			typed := f.newReg("raw")
-			f.emit(&metals.PtrCast{Dst: typed, X: address, To: &metals.Ptr{Elem: metals.TUint8}})
-			moved := f.newReg("moved")
-			f.emit(&metals.PtrOffset{Dst: moved, Ptr: typed, N: bytes})
-			out := f.newReg("shifted")
-			f.emit(&metals.PtrErase{Dst: out, X: moved})
-			return out
-		}
+		typed := f.newReg("raw")
+		f.emit(&metals.PtrCast{Dst: typed, X: address, To: &metals.Ptr{Elem: metals.TUint8}})
+		moved := f.newReg("moved")
+		f.emit(&metals.PtrOffset{Dst: moved, Ptr: typed, N: bytes})
+		out := f.newReg("shifted")
+		f.emit(&metals.PtrErase{Dst: out, X: moved})
+		return out, true
 	case "ptr_to_int":
 		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
-		return func() string {
-			out := f.newReg("addr")
-			f.emit(&metals.PtrAddr{Dst: out, X: address})
-			return out
-		}
+		out := f.newReg("addr")
+		f.emit(&metals.PtrAddr{Dst: out, X: address})
+		return out, true
 	case "ptr_from_int":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -572,13 +546,11 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 		}
 		target := f.l.metalsType(&types.Pointer{Elem: bound})
 		number := f.lowerExpr(call.Args[0].Value, types.USize)
-		return func() string {
-			address := f.newReg("claimed")
-			f.emit(&metals.PtrFrom{Dst: address, X: number, To: &metals.AnyPtr{}})
-			out := f.newReg("restored")
-			f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
-			return out
-		}
+		address := f.newReg("claimed")
+		f.emit(&metals.PtrFrom{Dst: address, X: number, To: &metals.AnyPtr{}})
+		out := f.newReg("restored")
+		f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
+		return out, true
 	case "cast":
 		bound := resolved.Bindings["T"]
 		if bound == nil {
@@ -586,20 +558,18 @@ func (f *funcLowerer) prepareUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.
 		}
 		target := f.l.metalsType(&types.Pointer{Elem: bound})
 		address := f.lowerExpr(call.Args[0].Value, types.AnyPtr)
-		return func() string {
-			out := f.newReg("restored")
-			f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
-			return out
-		}
+		out := f.newReg("restored")
+		f.emit(&metals.PtrCast{Dst: out, X: address, To: target})
+		return out, true
 	}
-	return nil
+	return "", false
 }
 
 // ---------------------------------------------------------------------------
 // Built-in method surface
 // ---------------------------------------------------------------------------
 
-func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo) func() string {
+func (f *funcLowerer) lowerBuiltin(call *ast.CallExpr, resolved *sema.CallInfo) string {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		f.l.fail("@%s: a built-in method call without a receiver", f.fn.Name)
@@ -610,18 +580,14 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 	switch resolved.Method.Name {
 	case "close":
 		ch := f.lowerExpr(recv, nil)
-		return func() string {
-			f.closeChan(ch)
-			return ""
-		}
+		f.closeChan(ch)
+		return ""
 
 	case "len":
 		value := f.lowerExpr(recv, nil)
-		return func() string {
-			out := f.newReg("len")
-			f.emit(&metals.Len{Dst: out, X: value})
-			return out
-		}
+		out := f.newReg("len")
+		f.emit(&metals.Len{Dst: out, X: value})
+		return out
 
 	case "compare":
 		left := f.lowerExpr(recv, nil)
@@ -645,7 +611,7 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 	case "eq":
 		left := f.lowerExpr(recv, nil)
 		right := f.lowerExpr(call.Args[0].Value, recvType)
-		return func() string { return f.equalValues(left, right, types.Default(recvType)) }
+		return f.equalValues(left, right, types.Default(recvType))
 
 	case "add", "sub", "mul", "div", "rem":
 		left := f.lowerExpr(recv, nil)
@@ -653,19 +619,15 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 		op := map[string]token.Kind{
 			"add": token.Plus, "sub": token.Minus, "mul": token.Star, "div": token.Slash, "rem": token.Percent,
 		}[resolved.Method.Name]
-		return func() string {
-			out := f.newReg(resolved.Method.Name)
-			f.emit(&metals.Bin{Dst: out, Op: binOpFor(op, types.Default(recvType), f), A: left, B: right})
-			return out
-		}
+		out := f.newReg(resolved.Method.Name)
+		f.emit(&metals.Bin{Dst: out, Op: binOpFor(op, types.Default(recvType), f), A: left, B: right})
+		return out
 
 	case "neg":
 		value := f.lowerExpr(recv, nil)
-		return func() string {
-			out := f.newReg("neg")
-			f.emit(&metals.Un{Dst: out, Op: "neg", X: value})
-			return out
-		}
+		out := f.newReg("neg")
+		f.emit(&metals.Un{Dst: out, Op: "neg", X: value})
+		return out
 
 	case "message":
 		name := f.ensureErrorMessage()
@@ -673,7 +635,7 @@ func (f *funcLowerer) prepareBuiltin(call *ast.CallExpr, resolved *sema.CallInfo
 		return f.emitCall(name, []string{value}, types.String, false)
 	}
 	f.l.fail("@%s: cannot lower the built-in method %s", f.fn.Name, resolved.Method.Name)
-	return nil
+	return ""
 }
 
 // ensureCompareFn synthesizes the three-way compare the ordered

@@ -34,8 +34,8 @@ func (f *funcLowerer) fnWords(fn string, fnType metals.Type) (slot, envPtr strin
 	return slot, envPtr
 }
 
-// prepareEnvIntrinsic lowers unsafe's env_of and with_env.
-func (f *funcLowerer) prepareEnvIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, name string) func() string {
+// lowerEnvIntrinsic lowers unsafe's env_of and with_env.
+func (f *funcLowerer) lowerEnvIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, name string) string {
 	bound := resolved.Bindings["F"]
 	if bound == nil {
 		f.l.fail("@%s: %s without a bound F", f.fn.Name, name)
@@ -44,19 +44,15 @@ func (f *funcLowerer) prepareEnvIntrinsic(call *ast.CallExpr, resolved *sema.Cal
 	fn := f.lowerExpr(call.Args[0].Value, nil)
 
 	if name == "env_of" {
-		return func() string {
-			_, envPtr := f.fnWords(fn, fnType)
-			out := f.newReg("env")
-			f.emit(&metals.Load{Dst: out, Ptr: envPtr})
-			return out
-		}
-	}
-	env := f.lowerExpr(call.Args[1].Value, resolved.Sig.Params[1])
-	return func() string {
-		slot, envPtr := f.fnWords(fn, fnType)
-		f.emit(&metals.Store{Ptr: envPtr, Val: env})
-		out := f.newReg("rebound")
-		f.emit(&metals.Load{Dst: out, Ptr: slot})
+		_, envPtr := f.fnWords(fn, fnType)
+		out := f.newReg("env")
+		f.emit(&metals.Load{Dst: out, Ptr: envPtr})
 		return out
 	}
+	env := f.lowerExpr(call.Args[1].Value, resolved.Sig.Params[1])
+	slot, envPtr := f.fnWords(fn, fnType)
+	f.emit(&metals.Store{Ptr: envPtr, Val: env})
+	out := f.newReg("rebound")
+	f.emit(&metals.Load{Dst: out, Ptr: slot})
+	return out
 }

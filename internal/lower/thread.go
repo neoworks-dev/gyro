@@ -18,7 +18,7 @@ import (
 
 // startThread lowers mem's start_thread to thread.start. The entry has to
 // be a declared function, since the instruction names one.
-func (f *funcLowerer) startThread(call *ast.CallExpr) func() string {
+func (f *funcLowerer) startThread(call *ast.CallExpr) string {
 	entry, ok := call.Args[0].Value.(*ast.UnaryExpr)
 	if !ok || entry.Op != token.Amp {
 		f.l.fail("@%s: start_thread takes the address of a declared function", f.fn.Name)
@@ -29,15 +29,13 @@ func (f *funcLowerer) startThread(call *ast.CallExpr) func() string {
 	}
 	body := f.l.ensureFunc(decl, nil)
 	data := f.lowerExpr(call.Args[1].Value, types.AnyPtr)
-	return func() string {
-		f.emit(&metals.ThreadStart{
-			Dst:   f.newReg("thread"),
-			Stack: f.nullStack(),
-			Body:  body,
-			Data:  data,
-		})
-		return ""
-	}
+	f.emit(&metals.ThreadStart{
+		Dst:   f.newReg("thread"),
+		Stack: f.nullStack(),
+		Body:  body,
+		Data:  data,
+	})
+	return ""
 }
 
 // nullStack is the stack operand that leaves the stack to the backend.
@@ -49,7 +47,7 @@ func (f *funcLowerer) nullStack() string {
 
 // threadLocal lowers unsafe's thread_local<T>: the address of the calling
 // thread's cell for T, which is a thread_local global named for the type.
-func (f *funcLowerer) threadLocal(resolved typesBinding) func() string {
+func (f *funcLowerer) threadLocal(resolved typesBinding) string {
 	bound := resolved["T"]
 	if bound == nil {
 		f.l.fail("@%s: thread_local without a bound T", f.fn.Name)
@@ -60,11 +58,9 @@ func (f *funcLowerer) threadLocal(resolved typesBinding) func() string {
 		f.l.threadLocals[name] = true
 		f.l.module.Globals = append(f.l.module.Globals, &metals.Global{Name: name, Type: lowered, ThreadLocal: true})
 	}
-	return func() string {
-		out := f.newReg("tls")
-		f.emit(&metals.GlobalPtr{Dst: out, Name: name})
-		return out
-	}
+	out := f.newReg("tls")
+	f.emit(&metals.GlobalPtr{Dst: out, Name: name})
+	return out
 }
 
 type typesBinding = map[string]types.Type

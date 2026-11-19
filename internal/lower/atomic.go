@@ -8,15 +8,13 @@ import (
 	"github.com/gyro-lang/gyro/internal/sema"
 )
 
-// prepareAtomicIntrinsic lowers unsafe's atomic_* functions, each of which
+// lowerAtomicIntrinsic lowers unsafe's atomic_* functions, each of which
 // is one METALS atomic instruction. The pointer lowers at its own type, so
 // the cell is whatever T was bound to.
-func (f *funcLowerer) prepareAtomicIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, name string) func() string {
+func (f *funcLowerer) lowerAtomicIntrinsic(call *ast.CallExpr, resolved *sema.CallInfo, name string) string {
 	if name == "atomic_fence" {
-		return func() string {
-			f.emit(&metals.Fence{})
-			return ""
-		}
+		f.emit(&metals.Fence{})
+		return ""
 	}
 
 	bound := resolved.Bindings["T"]
@@ -33,24 +31,22 @@ func (f *funcLowerer) prepareAtomicIntrinsic(call *ast.CallExpr, resolved *sema.
 	for index, arg := range call.Args {
 		args[index] = f.lowerExpr(arg.Value, resolved.Sig.Params[index])
 	}
-	return func() string {
-		switch op {
-		case "store":
-			f.emit(&metals.AtomicStore{Ptr: args[0], Val: args[1]})
-			return ""
-		case "load":
-			out := f.newReg("atomic")
-			f.emit(&metals.AtomicLoad{Dst: out, Ptr: args[0]})
-			return out
-		case "cas":
-			out := f.newReg("atomic")
-			f.emit(&metals.AtomicCas{Dst: out, Ptr: args[0], Expected: args[1], New: args[2]})
-			return out
-		}
+	switch op {
+	case "store":
+		f.emit(&metals.AtomicStore{Ptr: args[0], Val: args[1]})
+		return ""
+	case "load":
 		out := f.newReg("atomic")
-		f.emit(&metals.AtomicRMW{Dst: out, Op: op, Ptr: args[0], Val: args[1]})
+		f.emit(&metals.AtomicLoad{Dst: out, Ptr: args[0]})
+		return out
+	case "cas":
+		out := f.newReg("atomic")
+		f.emit(&metals.AtomicCas{Dst: out, Ptr: args[0], Expected: args[1], New: args[2]})
 		return out
 	}
+	out := f.newReg("atomic")
+	f.emit(&metals.AtomicRMW{Dst: out, Op: op, Ptr: args[0], Val: args[1]})
+	return out
 }
 
 // atomicCell reports whether a cell of this type can take the operation,
@@ -94,29 +90,27 @@ func atomicCellWanted(op string) string {
 	return "an integer, a bool or a pointer"
 }
 
-// prepareFutex lowers futex_wait and futex_wake to the futex system call,
+// lowerFutex lowers futex_wait and futex_wake to the futex system call,
 // private to this process, with the operation and the unused arguments as
 // constants.
-func (f *funcLowerer) prepareFutex(call *ast.CallExpr, resolved *sema.CallInfo, name string) func() string {
+func (f *funcLowerer) lowerFutex(call *ast.CallExpr, resolved *sema.CallInfo, name string) string {
 	word := f.lowerExpr(call.Args[0].Value, resolved.Sig.Params[0])
 	argument := f.lowerExpr(call.Args[1].Value, resolved.Sig.Params[1])
-	return func() string {
-		constant := func(typ metals.Type, value string) string {
-			reg := f.newReg("futex")
-			f.emit(&metals.Const{Dst: reg, Type: typ, Value: value})
-			return reg
-		}
-		number := constant(metals.TUsize, "202")
-		var args []string
-		if name == "futex_wait" {
-			// FUTEX_WAIT_PRIVATE, the value the word must still hold, and
-			// no timeout.
-			args = []string{word, constant(metals.TInt64, "128"), argument, constant(metals.TInt64, "0")}
-		} else {
-			// FUTEX_WAKE_PRIVATE and how many to wake.
-			args = []string{word, constant(metals.TInt64, "129"), argument}
-		}
-		f.emit(&metals.Syscall{Dst: f.newReg("futex"), Number: number, Args: args})
-		return ""
+	constant := func(typ metals.Type, value string) string {
+		reg := f.newReg("futex")
+		f.emit(&metals.Const{Dst: reg, Type: typ, Value: value})
+		return reg
 	}
+	number := constant(metals.TUsize, "202")
+	var args []string
+	if name == "futex_wait" {
+		// FUTEX_WAIT_PRIVATE, the value the word must still hold, and
+		// no timeout.
+		args = []string{word, constant(metals.TInt64, "128"), argument, constant(metals.TInt64, "0")}
+	} else {
+		// FUTEX_WAKE_PRIVATE and how many to wake.
+		args = []string{word, constant(metals.TInt64, "129"), argument}
+	}
+	f.emit(&metals.Syscall{Dst: f.newReg("futex"), Number: number, Args: args})
+	return ""
 }
