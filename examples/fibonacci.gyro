@@ -32,10 +32,7 @@ fn factorial(n: i32): i32 {
     return n * factorial(n - 1)
 }
 
-// Evaluated during compilation; the binary contains 55, not a call.
-// `@comptime` is one of the fixed decorator names the compiler knows, so
-// there is nothing to import.
-@comptime const FIB_10: i32 = fib(10)
+const FIB_10: i32 = fib(10)
 
 fn main() {
     println("--- fibonacci (recursive) ---")
@@ -54,5 +51,5 @@ fn main() {
         println(factorial(n))
     }
 
-    println("fib(10) was folded to #{FIB_10} at compile time")
+    println("fib(10) is #{FIB_10}")
 }

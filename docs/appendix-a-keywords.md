@@ -70,23 +70,3 @@ method on a built-in type:
 **If a name is not part of the formal syntax, it has to be imported**
 ([chapter 7](ch07-00-modules.md)). There is no universe scope and no
 predeclared functions.
-
-## Decorators
-
-`@name` or `@name(args)`, attachable to any declaration; arguments may be
-named. The names are a **fixed set known to the compiler**, because they
-configure compilation itself and there is nothing meaningful to import. An
-unknown decorator name is a compile error.
-
-| decorator | state |
-| --- | --- |
-| `@comptime` | typed, not evaluated |
-| `@gpu` | parsed and typed |
-| `@concurrent(threads = N)` | parsed and typed |
-| `@distributed` | parsed and typed |
-
-```gyro
-@comptime const FIB_10: i32 = fib(10)
-@gpu fn kernel(a: *f32) {}
-@concurrent(threads = 8) fn work() {}
-```

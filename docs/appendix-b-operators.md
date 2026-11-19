@@ -11,7 +11,7 @@
 | access | `.` field, `::` namespace, `[]` index, `[lo..hi]` slice narrowing |
 | conversion | `as` |
 | type | `?` nullable |
-| other | `..` range, `@` decorator, `<-` channel, `!{}` effect row |
+| other | `..` range, `<-` channel, `!{}` effect row |
 
 There is no `++` or `--`; increment is `i += 1`. `+ - * / %`, unary `-`,
 `== !=` and `< <= > >=` are overloaded the one way there is: a type the

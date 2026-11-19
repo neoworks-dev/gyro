@@ -155,7 +155,6 @@ func (c *checker) bindTraitScope(trait *types.Trait) {
 // once with Self opaque and bounded by the trait, and again for every type
 // that takes it, like any generic.
 func (c *checker) checkTraitDecl(d *ast.TraitDecl) {
-	c.checkDecorators(d.Decorators)
 	for _, method := range d.Methods {
 		if c.funcSigs[method] == nil {
 			continue

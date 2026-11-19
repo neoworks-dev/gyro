@@ -15,9 +15,8 @@ fn arity() {
 }
 
 fn argumentTypes(x: i32) {
-    one("no")  //~ cannot use string as i32 in argument 1 to one
-    one(a = 1) //~ arguments are positional
-    x(1)       //~ not callable
+    one("no") //~ cannot use string as i32 in argument 1 to one
+    x(1)      //~ not callable
 }
 
 fn returnsInt(): i32 {

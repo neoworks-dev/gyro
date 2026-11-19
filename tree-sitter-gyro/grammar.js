@@ -152,14 +152,7 @@ module.exports = grammar({
       $.export_declaration,
     ),
 
-    decorator: $ => seq(
-      '@',
-      field('name', seq($.identifier, repeat(seq('::', $.identifier)))),
-      optional(field('arguments', $.arguments)),
-    ),
-
     function_declaration: $ => seq(
-      repeat($.decorator),
       optional('export'),
       // `unsafe fn` is unsafe to call; `safe fn` may do unchecked things and
       // vouches for its callers. Both are contextual words before `fn`.
@@ -237,7 +230,6 @@ module.exports = grammar({
     borrow: $ => seq('&', field('source', $.identifier)),
 
     struct_declaration: $ => seq(
-      repeat($.decorator),
       optional('export'),
       'struct',
       field('name', alias($.identifier, $.type_identifier)),
@@ -259,7 +251,6 @@ module.exports = grammar({
     ),
 
     enum_declaration: $ => seq(
-      repeat($.decorator),
       optional('export'),
       'enum',
       field('name', alias($.identifier, $.type_identifier)),
@@ -281,7 +272,6 @@ module.exports = grammar({
     // A trait lists method signatures, some with a default body, and may
     // require other traits: `trait Widget: Element`.
     trait_declaration: $ => seq(
-      repeat($.decorator),
       optional('export'),
       'trait',
       field('name', alias($.identifier, $.type_identifier)),
@@ -325,7 +315,6 @@ module.exports = grammar({
     // prec.right: in a select arm, the `:` after a binding is read as a type
     // annotation, not the arm's colon, matching the compiler's greedy parse.
     variable_declaration: $ => prec.right(seq(
-      repeat($.decorator),
       optional('export'),
       choice('var', 'const'),
       field('name', $._binding),
@@ -671,7 +660,7 @@ module.exports = grammar({
 
     arguments: $ => seq(
       '(',
-      commaSep(choice($.named_argument, $.spread_argument, $._expression)),
+      commaSep(choice($.spread_argument, $._expression)),
       ')',
     ),
 
@@ -679,12 +668,6 @@ module.exports = grammar({
     spread_argument: $ => seq(
       field('value', $._expression),
       '...',
-    ),
-
-    named_argument: $ => seq(
-      field('name', $.identifier),
-      '=',
-      field('value', $._expression),
     ),
 
     field_expression: $ => prec(PREC.postfix, seq(

@@ -642,8 +642,6 @@ func (l *Lexer) scanOperator() token.Token {
 		return make(token.Terminator)
 	case '?':
 		return make(token.Question)
-	case '@':
-		return make(token.At)
 	case '(':
 		return make(token.LParen)
 	case ')':

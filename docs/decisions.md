@@ -411,15 +411,23 @@ built-in types, so they need no import and introduce no implicit names.
 This rule has already changed one decision: `spawn` was a keyword until
 closures made a library function possible.
 
-### Decorator names are a fixed set *(new)*
+### There are no decorators *(revised)*
 
-**Status: done.** `@comptime`, `@gpu`, `@concurrent`, `@distributed` are
-known to the compiler; sema rejects an unknown `@name`. They are not
-imported: they configure compilation itself, so there is no value an import
-could bind.
+**Status: done (#163).** Gyro has no `@name` syntax. It used to accept a
+fixed set of four decorators, `@comptime`, `@gpu`, `@concurrent` and
+`@distributed`, and none of them did anything: they parsed and type-checked,
+so a program that wrote `@gpu` got no GPU and no error. A promise the
+compiler does not keep is worse than having no syntax for it, so all four
+were deleted, and the `@` token and named call arguments went with them,
+since decorators were the only place either meant anything.
 
-This is a deliberate carve-out from no-universe-scope, on the grounds that a
-decorator is an instruction to the compiler, not a name in the program.
+A decorator comes back only together with its meaning, designed and built
+in the same change. Compile-time evaluation is the likeliest candidate, and
+it is an open question on its own rather than a reserved spelling.
+
+Rejected **keeping them as documented placeholders**, which is what they
+had become. Rejected **turning them into warnings** that say the decorator
+is not implemented, which is a diagnostic about syntax that does nothing.
 
 ### One file is one module
 
@@ -1891,8 +1899,8 @@ states the fact and the body is held to it.
 only borrows, like `!{ &xs }` — promises that the body performs no concrete
 effect the row does not name. The alternative, treating the effect list as
 merely additive, was rejected: a row that cannot say "and nothing else"
-states nothing a caller can rely on, and it would make `!{}` meaningless —
-which is exactly the row `@gpu` and `@comptime` need. A function with no
+states nothing a caller can rely on, and it would make `!{}` meaningless.
+A function with no
 row is unconstrained in v1.
 
 **Inference reaches through imports** *(revised)*. A call contributes its
@@ -1985,8 +1993,8 @@ The effect sources are calls and the stdlib's declared rows:
 and one-shot writes, `remove` and `exists`, and `File::close`, `!{ io }`;
 `net::get` `!{ io }`; `os`'s `env`, `exit`, `read_stdin` and `readline`
 `!{ io }`; all of `time` `!{ io }` — a clock reading is an observation of
-the world, and marking it keeps `now()` out of anything `@comptime` will
-one day accept. Everything that only allocates, from `Array::new` to
+the world, and marking it keeps `now()` out of a `!{}` function.
+Everything that only allocates, from `Array::new` to
 `from_utf8` and the text builders, states `!{}`, since allocation is not
 an effect. `Array<T>::slice` keeps its borrow-only row — lending a view
 allocates nothing.
@@ -2018,17 +2026,13 @@ Still open, deliberately out of v1:
   `spawn` carries `!{ io }` as a stand-in for its task's effects for
   exactly this reason.
 - **Module-level `var` initializers.** They run before `main`, outside any
-  signature, so no row covers them and they are unconstrained. Whatever
-  `@comptime` settles for module-level evaluation is where this is
-  revisited.
+  signature, so no row covers them and they are unconstrained.
 - **Channels and Mutex.** No effect in v1. What concurrency should be in
   the effect vocabulary is undecided — `async` was already rejected as an
   effect in favour of colouring.
 
-The motivation is the decorators. `@comptime` needs purity, `@gpu` forbids
-allocation and syscalls, `@distributed` restricts what crosses a node
-boundary. Each is currently a bespoke check; effect rows are how they become
-one mechanism. METALS needs it more than Gyro does — a foreign function's
+The motivation is that knowing whether a function does io should not mean
+reading its body and every body it calls. METALS needs it more than Gyro does — a foreign function's
 effects are the one thing that cannot be recovered from its source.
 
 ---
@@ -2115,8 +2119,7 @@ written the natural way is rejected. Listed under "Still open".
 **Status: done.** Untyped literal arithmetic folds over big integers, so
 `var x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
 runtime panics. Operands are typed without the outer context — the folded
-result is what must fit. This is also the seed of `@comptime`, which needs
-an evaluator anyway.
+result is what must fit.
 
 ### Context reaches the operands, not just the expression *(new)*
 
@@ -4736,13 +4739,11 @@ and bound imports opaquely; it is deleted.
 | `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
 | conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
 | mutation rules | when a `*self` method may be called on what, and what `self` may not do |
-| `@comptime` evaluation subset | which operations may run at compile time |
 | guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
-| decorator execution model | the book has them mutating the AST on separate threads |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |
-| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use; `@comptime` folding will subsume this. Module-level `var` does have identity and lowers to METALS storage |
+| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use. Module-level `var` does have identity and lowers to METALS storage |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
 | narrowing text | `xs[a..b]` narrows a slice, and a `string` is deliberately not among them: its length is in bytes and its content is UTF-8, so a byte range can cut a code point in half. Whether a text window counts bytes, runes or something else is undecided |

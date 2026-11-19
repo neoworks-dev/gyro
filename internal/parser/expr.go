@@ -347,8 +347,7 @@ func (p *Parser) parseTypeArg() ast.TypeArg {
 	return ast.TypeArg{Expr: p.parseBinary(precShift)}
 }
 
-// parseArgs parses a parenthesized argument list, allowing the named form
-// `@concurrent(threads = 8)`.
+// parseArgs parses a parenthesized argument list.
 func (p *Parser) parseArgs() []ast.Arg {
 	p.noteList()
 	p.expect(token.LParen)
@@ -358,11 +357,6 @@ func (p *Parser) parseArgs() []ast.Arg {
 		p.skipTerminators()
 		for !p.at(token.RParen) && !p.atEOF() {
 			arg := ast.Arg{Offset: p.offset()}
-
-			if p.at(token.Ident) && p.peekAt(1).Kind == token.Assign {
-				arg.Name = p.next().Text
-				p.next()
-			}
 			arg.Value = p.parseExpr()
 			arg.Spread = p.accept(token.Ellipsis)
 			args = append(args, arg)
@@ -489,7 +483,7 @@ func (p *Parser) parseNameOrStructLit() ast.Expr {
 }
 
 // parsePath parses `a::b::c`, without type arguments on any segment. It is
-// used where a bare name is expected, such as a decorator.
+// used where a bare name is expected, such as a match pattern.
 func (p *Parser) parsePath() *ast.Path {
 	path := &ast.Path{Offset: p.offset()}
 

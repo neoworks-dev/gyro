@@ -7,7 +7,7 @@ fn fib(n: i32): i32 {
     return n
 }
 
-@comptime const F: i32 = fib(10)
+const F: i32 = fib(10)
 
 fn readsThem(): i32 {
     return MAX / 2 + counter

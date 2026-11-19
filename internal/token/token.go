@@ -68,7 +68,6 @@ const (
 	Ellipsis   // ...
 	Comma      // ,
 	Question   // ?
-	At         // @
 	LParen     // (
 	RParen     // )
 	LBrace     // {
@@ -166,7 +165,6 @@ var kindNames = map[Kind]string{
 	Ellipsis:   "...",
 	Comma:      ",",
 	Question:   "?",
-	At:         "@",
 	LParen:     "(",
 	RParen:     ")",
 	LBrace:     "{",

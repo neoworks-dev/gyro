@@ -294,10 +294,6 @@
           "named": true
         },
         {
-          "type": "named_argument",
-          "named": true
-        },
-        {
           "type": "spread_argument",
           "named": true
         }
@@ -933,36 +929,6 @@
     }
   },
   {
-    "type": "decorator",
-    "named": true,
-    "fields": {
-      "arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "arguments",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "::",
-            "named": false
-          },
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "defer_statement",
     "named": true,
     "fields": {},
@@ -1096,16 +1062,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "decorator",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -1469,13 +1425,9 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": false,
       "types": [
-        {
-          "type": "decorator",
-          "named": true
-        },
         {
           "type": "effect_row",
           "named": true
@@ -1820,32 +1772,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "named_argument",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "_expression",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -2349,16 +2275,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "decorator",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2469,16 +2385,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "decorator",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2686,16 +2592,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "decorator",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2931,10 +2827,6 @@
   },
   {
     "type": "?",
-    "named": false
-  },
-  {
-    "type": "@",
     "named": false
   },
   {

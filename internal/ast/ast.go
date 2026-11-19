@@ -107,31 +107,9 @@ type ExportDecl struct {
 func (e *ExportDecl) Pos() int  { return e.Offset }
 func (e *ExportDecl) declNode() {}
 
-// Decorator is `@name` or `@name(args)` attached to a declaration.
-type Decorator struct {
-	Offset int
-	Name   *Path
-	Args   []Arg
-	// HasParens distinguishes `@gpu` from `@gpu()`.
-	HasParens bool
-}
-
-func (d *Decorator) Pos() int { return d.Offset }
-
-// FindDecorator returns the decorator spelled `@name`, or nil.
-func FindDecorator(list []*Decorator, name string) *Decorator {
-	for _, decorator := range list {
-		if decorator.Name.IsPlainName() && decorator.Name.Segments[0].Name == name {
-			return decorator
-		}
-	}
-	return nil
-}
-
-// Arg is a call argument, optionally named as in `@concurrent(threads = 8)`.
+// Arg is a call argument.
 type Arg struct {
 	Offset int
-	Name   string
 	Value  Expr
 	// Spread marks the trailing `...` that forwards an existing slice as a
 	// whole variadic pack rather than as one element of it.
@@ -165,9 +143,8 @@ type Borrow struct {
 // FuncDecl is a function, or a method when Owner names the type it belongs
 // to: `fn Stack::push(*self, v: i32)`.
 type FuncDecl struct {
-	Offset     int
-	Decorators []*Decorator
-	Exported   bool
+	Offset   int
+	Exported bool
 	// Async marks an `async fn`, whose calls produce a value that must be
 	// awaited.
 	Async bool
@@ -245,7 +222,6 @@ type TypeParam struct {
 // free-standing FuncDecls whose Owner names the struct.
 type StructDecl struct {
 	Offset     int
-	Decorators []*Decorator
 	Exported   bool
 	Name       string
 	TypeParams []TypeParam
@@ -264,11 +240,10 @@ func (s *StructDecl) declNode() {}
 // difference is not where the members sit but what a read means, and a
 // pass handed a StructDecl would have no reason to ask.
 type UnionDecl struct {
-	Offset     int
-	Decorators []*Decorator
-	Exported   bool
-	Name       string
-	Members    []Field
+	Offset   int
+	Exported bool
+	Name     string
+	Members  []Field
 }
 
 func (u *UnionDecl) Pos() int  { return u.Offset }
@@ -286,7 +261,6 @@ type Field struct {
 // `Circle(f64)` and `Rect(f64, f64)`.
 type EnumDecl struct {
 	Offset     int
-	Decorators []*Decorator
 	Exported   bool
 	Name       string
 	TypeParams []TypeParam
@@ -302,7 +276,6 @@ func (e *EnumDecl) declNode() {}
 // `trait Iterator<T>`. Within it `Self` names the implementing type.
 type TraitDecl struct {
 	Offset     int
-	Decorators []*Decorator
 	Exported   bool
 	Name       string
 	TypeParams []TypeParam
@@ -359,9 +332,8 @@ type EnumVariant struct {
 // VarDecl is a `var` or `const` binding. It appears both at file scope and
 // as a statement, so it satisfies both Decl and Stmt.
 type VarDecl struct {
-	Offset     int
-	Decorators []*Decorator
-	Exported   bool
+	Offset   int
+	Exported bool
 	// Const marks a `const` binding, which must have a compile-time value.
 	Const bool
 	// Names holds the bound names. More than one appears in the
