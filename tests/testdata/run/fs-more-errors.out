@@ -1,9 +1,7 @@
 open /tmp: is a directory
-true
-0
+opened
 read /tmp: is a directory
 true
-0
 open /tmp/gyro-fs-more-errors.txt: not a directory
 true
 false

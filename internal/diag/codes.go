@@ -95,6 +95,8 @@ const (
 	EAssocPin            Code = "E0534"
 	EAssocMismatch       Code = "E0535"
 	ESyscallArgument     Code = "E0536"
+	EBadResultType       Code = "E0537"
+	ETryMisuse           Code = "E0538"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -272,7 +274,7 @@ var explanations = map[Code]explanation{
 	EUnassignedRead: {"value is read before it is assigned",
 		"Gyro has no zero values, so `let x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
 	EEntryPointSignature: {"main has the wrong signature",
-		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing: a\nfailing program prints and aborts rather than handing back a status."},
+		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing, an i32\nexit code, or `i32 | Error`: an error ends the program with its message on\nstandard error and status 1."},
 	EVariadicParam: {"variadic parameter is declared wrongly",
 		"A parameter written `name: ...T` collects the remaining arguments and\nis a T[] slice inside the body. Only the last parameter may be one, and\nit takes no default: a call that passes nothing for it gives it an empty\nslice."},
 	EBadSpread: {"spread argument is misplaced",
@@ -280,7 +282,7 @@ var explanations = map[Code]explanation{
 	ENoAddress: {"this function has no single address",
 		"`&f` on a declared function is a `code(...)`: the function's address\nand nothing beside it. An async function is run by this program's\nscheduler rather than by whoever holds the address, and a variadic one\ncarries an argument pack a bare address cannot."},
 	ETraitNotImplemented: {"type does not implement the trait",
-		"A bound, an operator or a printer asked for a trait the type does not\nimplement. The built-in types implement the capability traits Eq, Hash, Print,\nOrd, Add, Sub, Mul, Div, Rem and Neg on their own. A type a program declares\nimplements one only by saying so: `impl Eq for Point` takes the\nimplementation built from the fields, and `impl Ord for Point { ... }`\nsupplies the methods. Inside a generic, a parameter has the traits it is\nbounded by and no others."},
+		"A bound, an operator or a printer asked for a trait the type does not\nimplement. The built-in types implement the capability traits Eq, Hash, Print,\nOrd, Add, Sub, Mul, Div, Rem and Neg on their own, and Error is implemented\nonly on purpose. A type a program declares\nimplements one only by saying so: `impl Eq for Point` takes the\nimplementation built from the fields, and `impl Ord for Point { ... }`\nsupplies the methods. Inside a generic, a parameter has the traits it is\nbounded by and no others."},
 	EImplMismatch: {"impl does not match its trait",
 		"An impl provides every method the trait declares without a body, no\nmethod the trait does not declare, and each with the trait's signature, Self\nread as the type the impl is for. It also needs the impls of the traits the\ntrait requires."},
 	EImplConflict: {"impl cannot be written",
@@ -299,10 +301,14 @@ var explanations = map[Code]explanation{
 		"A bound such as `Container<Item = i32>` is satisfied only by a type whose\nimpl gave `Item` as exactly `i32`."},
 	ESyscallArgument: {"value cannot be a system call argument",
 		"The kernel reads each argument of a system call from one register, so\nan argument is an integer, a bool or a pointer, nullable or not. A string,\na slice, a struct or a float does not fit in one; pass the pointer to its\ndata and its length instead. Inside a generic function the check waits for\nthe concrete types each instantiation brings."},
+	EBadResultType: {"result type is malformed",
+		"`T | Error` is the type of a function that can fail, and the only union\nthe language has: the right side is Error and the left is the type of the\nvalue. A function with no value to return writes `Error?` instead, and\nreaching the end of its body is success."},
+	ETryMisuse: {"? is used where it cannot work",
+		"`x?` takes the value of a `T | Error` or an `Error?` and, when there is\nan error, returns it from the function it is written in. So the operand\nhas to be one of those, and the function has to return `T | Error` or\n`Error?` itself, with nowhere else for the error to go."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",
-		"A fallible call returns (value, error?). Dropping the error is\nallowed but never silent: write the discard out."},
+		"A fallible call returns `T | Error`, or `Error?` when it has no value.\nDropping the result is never silent: take the value and send the error\nback with `?`, handle it in a match, or discard it with `var _ = ...`."},
 	EClosureParams: {"closure parameters do not work out",
 		"A closure's parameters take their types from the context; where\nnothing says what the closure is, annotate them."},
 	EDivisionByZero: {"division by zero",

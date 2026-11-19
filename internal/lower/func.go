@@ -134,6 +134,9 @@ func (l *lowerer) lowerFunc(item workItem) {
 	f.popScopeNoDefers()
 
 	l.module.Funcs = append(l.module.Funcs, f.fn)
+	if f.fn.Name == mainRunName {
+		l.entryWrapper(f.fn, f.result)
+	}
 }
 
 func (f *funcLowerer) declareReceiver() {
@@ -187,6 +190,10 @@ func (f *funcLowerer) declareParam(name string, typ types.Type) {
 // epilogue closes the function when its body can fall off the end.
 func (f *funcLowerer) epilogue(terminated bool) {
 	if terminated {
+		return
+	}
+	if isErrorOptional(f.result) {
+		f.returnSuccess()
 		return
 	}
 	f.flushDefersDownTo(0)
@@ -675,6 +682,8 @@ func (f *funcLowerer) evalVoid(e ast.Expr) {
 		f.block(e.Block)
 	case *ast.AwaitExpr:
 		f.await(e)
+	case *ast.TryExpr:
+		f.tryExpr(e)
 	default:
 		f.lowerExpr(e, nil)
 	}
@@ -834,6 +843,10 @@ func (f *funcLowerer) compoundAssign(s *ast.AssignStmt) {
 func (f *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 	switch len(s.Results) {
 	case 0:
+		if isErrorOptional(f.result) {
+			f.returnSuccess()
+			return
+		}
 		f.leave()
 		f.emit(&metals.Return{})
 	case 1:
@@ -848,6 +861,9 @@ func (f *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 		f.emit(&metals.Return{Val: value})
 	default:
 		tuple, ok := f.result.(*types.Tuple)
+		if fallible, isResult := f.result.(*types.Result); isResult {
+			tuple, ok = fallible.Value.(*types.Tuple)
+		}
 		if !ok || len(tuple.Elems) != len(s.Results) {
 			f.l.fail("@%s: return arity does not match the result", f.fn.Name)
 		}
@@ -857,6 +873,7 @@ func (f *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 		}
 		value := f.newReg("ret")
 		f.emit(&metals.MakeTuple{Dst: value, Args: parts})
+		value = f.coerce(value, tuple, f.result)
 		f.leave()
 		f.emit(&metals.Return{Val: value})
 	}
@@ -1561,6 +1578,8 @@ func walk(node ast.Node, visit func(ast.Node)) {
 	case *ast.BlockExpr:
 		walk(n.Block, visit)
 	case *ast.AwaitExpr:
+		walk(n.X, visit)
+	case *ast.TryExpr:
 		walk(n.X, visit)
 	case *ast.RecvExpr:
 		walk(n.Chan, visit)

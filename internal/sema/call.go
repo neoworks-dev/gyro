@@ -831,7 +831,31 @@ type pathee struct {
 	variantEnum *types.Enum
 	variant     *types.Variant
 
+	// errorNew marks Error::new, which has a signature and no declaration.
+	errorNew bool
+
 	bad bool
+}
+
+// errorNewSig is the signature of Error::new, the one function a trait has:
+// it makes the plain error, which carries a message and nothing else.
+var errorNewSig = &types.Func{Params: []types.Type{types.String}, Required: 1, Result: types.Error}
+
+// traitPathee resolves a path that starts at a trait. Only Error has
+// anything to reach through one, and that is `new`.
+func (c *checker) traitPathee(path *ast.Path, sym *symbol) pathee {
+	head := path.Segments[0]
+	if !isErrorTrait(sym.typ) || len(path.Segments) == 1 {
+		c.errorf(head.Offset, "%s is a trait, not a value", head.Name)
+		return pathee{bad: true}
+	}
+	member := path.Segments[1]
+	if len(path.Segments) > 2 || member.Name != "new" {
+		c.errorf(member.Offset, "%s has no associated function %s", head.Name, member.Name)
+		return pathee{bad: true}
+	}
+	c.recordRef(path, sym.decl)
+	return pathee{valueType: errorNewSig, errorNew: true}
 }
 
 func (c *checker) resolvePathee(path *ast.Path) pathee {
@@ -857,6 +881,8 @@ func (c *checker) resolvePathee(path *ast.Path) pathee {
 	case symTypeParam:
 		c.errorf(head.Offset, "%s is a type parameter; it has no members", head.Name)
 		return pathee{bad: true}
+	case symTrait:
+		return c.traitPathee(path, sym)
 	}
 
 	// A value: only a plain single-segment path makes sense.
@@ -1000,6 +1026,9 @@ func (c *checker) pathValue(path *ast.Path) types.Type {
 	p := c.resolvePathee(path)
 	switch {
 	case p.bad:
+		return types.Unknown
+	case p.errorNew:
+		c.errorf(path.Offset, "Error::new makes an error, so it is called: Error::new(message)")
 		return types.Unknown
 	case p.valueType != nil:
 		return p.valueType

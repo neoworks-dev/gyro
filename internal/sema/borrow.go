@@ -311,6 +311,10 @@ func (c *checker) originOf(e ast.Expr) borrowOrigin {
 	case *ast.TupleIndexExpr:
 		return c.originOf(e.X)
 
+	case *ast.TryExpr:
+		// The value comes out of the result it was read from.
+		return c.originOf(e.X)
+
 	case *ast.SelfExpr:
 		if c.fn == nil || c.fn.selfSymbol == nil {
 			return borrowOrigin{}
@@ -516,6 +520,8 @@ func holdsViewIn(t types.Type, seen map[types.Type]bool) bool {
 		return true
 	case *types.Optional:
 		return holdsViewIn(t.Elem, seen)
+	case *types.Result:
+		return holdsViewIn(t.Value, seen)
 	case *types.Array:
 		return holdsViewIn(t.Elem, seen)
 	case *types.Future:

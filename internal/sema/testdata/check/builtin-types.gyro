@@ -1,4 +1,4 @@
-fn builtinsNeedNoImport(a: i32, b: usize, c: rune, d: error?): bool {
+fn builtinsNeedNoImport(a: i32, b: usize, c: rune, d: string?): bool {
     return true
 }
 

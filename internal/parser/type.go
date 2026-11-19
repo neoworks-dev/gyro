@@ -5,13 +5,34 @@ import (
 	"github.com/gyro-lang/gyro/internal/token"
 )
 
-// parseType parses a type expression.
+// parseType parses a type expression, including the `T | Error` union.
+// `|` binds looser than `?`, so `T | Error?` is a union whose right side is
+// nullable, which sema rejects rather than reading it as `(T | Error)?`.
+func (p *Parser) parseType() ast.Type {
+	return p.parseUnionFrom(p.parseOptionalType())
+}
+
+// parseUnionFrom continues a type with the `| Error` that may follow it.
+func (p *Parser) parseUnionFrom(typ ast.Type) ast.Type {
+	for p.at(token.Pipe) {
+		offset := p.offset()
+		p.next()
+		typ = &ast.UnionType{Offset: offset, Left: typ, Right: p.parseOptionalType()}
+	}
+	return typ
+}
+
+// parseOptionalType parses a type without a union. A cast takes this one:
+// in `x as u8 | y` the `|` is the bitwise operator.
 //
 // A trailing `?` binds to the whole type, so `*Node?` is a nullable pointer
 // rather than a pointer to a nullable value. Write `*(Node?)` for the latter.
-func (p *Parser) parseType() ast.Type {
-	typ := p.parseSuffixType()
+func (p *Parser) parseOptionalType() ast.Type {
+	return p.parseOptionalFrom(p.parseSuffixType())
+}
 
+// parseOptionalFrom applies the `?` that may follow an already parsed type.
+func (p *Parser) parseOptionalFrom(typ ast.Type) ast.Type {
 	for p.at(token.Question) {
 		typ = &ast.OptionalType{Offset: p.offset(), Elem: typ}
 		p.next()

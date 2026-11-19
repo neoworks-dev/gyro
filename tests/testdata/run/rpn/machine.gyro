@@ -5,7 +5,7 @@
 // the order they were defined, so `words` and `vars` list them the way
 // they were written rather than the way they hash.
 
-import { println, Array, Map, String, join } from "stdlib"
+import { println, Array, Map, String, Error, join } from "stdlib"
 import { CalcError } from "./error"
 import { heap, format } from "mem"
 
@@ -54,38 +54,38 @@ export fn Calc::push(inout self, value: f64) {
     self.stack.push(value)
 }
 
-export fn Calc::pop(inout self, word: string): (f64, error?) {
+export fn Calc::pop(inout self, word: string): f64 | Error {
     let value, ok = self.stack.pop()
     if !ok {
-        return 0.0, CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
+        return CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
     }
-    return value, null
+    return value
 }
 
 // pop2 answers the operands in the order they were written: `a b -` is
 // a - b, not b - a.
-export fn Calc::pop2(inout self, word: string): (f64, f64, error?) {
+export fn Calc::pop2(inout self, word: string): (f64, f64) | Error {
     if self.stack.len() < 2 {
-        return 0.0, 0.0, CalcError{
+        return CalcError{
             text: format(heap(), "#{word} wants two values and the stack has #{self.stack.len()}"),
         }
     }
     let b, _ = self.stack.pop()
     let a, _ = self.stack.pop()
-    return a, b, null
+    return a, b
 }
 
 // pop3 is what `rot` wants: the three values in written order.
-export fn Calc::pop3(inout self, word: string): (f64, f64, f64, error?) {
+export fn Calc::pop3(inout self, word: string): (f64, f64, f64) | Error {
     if self.stack.len() < 3 {
-        return 0.0, 0.0, 0.0, CalcError{
+        return CalcError{
             text: format(heap(), "#{word} wants three values and the stack has #{self.stack.len()}"),
         }
     }
     let c, _ = self.stack.pop()
     let b, _ = self.stack.pop()
     let a, _ = self.stack.pop()
-    return a, b, c, null
+    return a, b, c
 }
 
 export fn Calc::depth(self): usize {

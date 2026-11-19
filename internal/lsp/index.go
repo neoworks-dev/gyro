@@ -570,6 +570,8 @@ func (idx *index) indexExpr(expr ast.Expr, enclosing ast.Node, regionStart, regi
 		idx.indexBlock(e.Block, enclosing, regionStart, regionEnd)
 	case *ast.AwaitExpr:
 		idx.indexExpr(e.X, enclosing, regionStart, regionEnd)
+	case *ast.TryExpr:
+		idx.indexExpr(e.X, enclosing, regionStart, regionEnd)
 	case *ast.RecvExpr:
 		idx.indexExpr(e.Chan, enclosing, regionStart, regionEnd)
 	case *ast.ChanLit:
@@ -692,6 +694,9 @@ func (idx *index) indexType(typ ast.Type) {
 		}
 	case *ast.OptionalType:
 		idx.indexType(t.Elem)
+	case *ast.UnionType:
+		idx.indexType(t.Left)
+		idx.indexType(t.Right)
 	case *ast.ChanType:
 		idx.indexType(t.Elem)
 	}

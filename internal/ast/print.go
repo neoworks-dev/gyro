@@ -405,6 +405,12 @@ func (p *printer) node(node Node) {
 		p.node(n.X)
 		p.indent--
 
+	case *TryExpr:
+		p.line("Try")
+		p.indent++
+		p.node(n.X)
+		p.indent--
+
 	case *RecvExpr:
 		p.line("Recv")
 		p.indent++
@@ -496,6 +502,13 @@ func (p *printer) node(node Node) {
 		p.line("OptionalType")
 		p.indent++
 		p.node(n.Elem)
+		p.indent--
+
+	case *UnionType:
+		p.line("UnionType")
+		p.indent++
+		p.node(n.Left)
+		p.node(n.Right)
 		p.indent--
 
 	case *ArrayType:

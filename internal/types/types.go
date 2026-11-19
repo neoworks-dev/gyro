@@ -44,8 +44,8 @@ const (
 	BoolKind
 	StringKind
 	VoidKind
-	// ErrorKind is the structural error type: any type with a
-	// message(): string method satisfies it.
+	// ErrorKind is the owned error value: any type that implements the
+	// Error trait converts to it, and Error::new makes a plain one.
 	ErrorKind
 	// AnyKind holds a value of one other type and remembers which. It is a
 	// closed sum over the types the program wraps, not a runtime registry.
@@ -91,7 +91,7 @@ var (
 	Bool    = &Basic{BoolKind, "bool"}
 	String  = &Basic{StringKind, "string"}
 	Void    = &Basic{VoidKind, "void"}
-	Error   = &Basic{ErrorKind, "error"}
+	Error   = &Basic{ErrorKind, "Error"}
 	Any     = &Basic{AnyKind, "any"}
 	AnyPtr  = &Basic{AnyPtrKind, "anyptr"}
 	Null    = &Basic{NullKind, "null"}
@@ -106,7 +106,7 @@ var Builtin = map[string]*Basic{
 	"u8": Uint8, "u16": Uint16, "u32": Uint32, "u64": Uint64,
 	"usize": USize, "isize": ISize, "f32": Float32, "f64": Float64,
 	"rune": Rune, "bool": Bool, "string": String, "void": Void,
-	"error": Error, "any": Any, "anyptr": AnyPtr,
+	"any": Any, "anyptr": AnyPtr,
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,10 @@ type Pointer struct{ Elem Type }
 
 // Optional is T?, the only type that may hold null.
 type Optional struct{ Elem Type }
+
+// Result is `T | Error`: either a value or an error. It is the type of a
+// fallible function's result, and the only union the language has.
+type Result struct{ Value Type }
 
 // Slice is T[], a borrowed view.
 type Slice struct{ Elem Type }
@@ -185,6 +189,7 @@ func (p *Pointer) String() string {
 	return "*" + p.Elem.String()
 }
 func (o *Optional) String() string  { return o.Elem.String() + "?" }
+func (r *Result) String() string    { return r.Value.String() + " | Error" }
 func (s *Slice) String() string     { return s.Elem.String() + "[]" }
 func (c *Chan) String() string      { return "chan<" + c.Elem.String() + ">" }
 func (t *TypeParam) String() string { return t.Name }
@@ -592,6 +597,9 @@ func Identical(a, b Type) bool {
 	case *Optional:
 		y, ok := b.(*Optional)
 		return ok && Identical(x.Elem, y.Elem)
+	case *Result:
+		y, ok := b.(*Result)
+		return ok && Identical(x.Value, y.Value)
 	case *Slice:
 		y, ok := b.(*Slice)
 		return ok && Identical(x.Elem, y.Elem)
@@ -696,7 +704,8 @@ type Trait struct {
 	Decl  *ast.TraitDecl
 	// Kind names the capability the compiler knows the trait as — "Eq",
 	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg",
-	// "Iterator", "Index" or "Destroy" — and is empty for every other trait. Such a trait is
+	// "Iterator", "Index", "Destroy" or "Error" — and is empty for every
+	// other trait. Such a trait is
 	// declared in the bundled standard library like any other; the
 	// compiler recognizes it by where it is declared.
 	Kind string

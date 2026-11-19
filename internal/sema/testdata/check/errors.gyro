@@ -1,42 +1,146 @@
-// `error` is duck-typed: any type with a message(): string method is one.
-// Nothing is declared.
+// Error is a trait a type implements on purpose, and `T | Error` is the type
+// of a function that can fail.
+
+import { Error } from "stdlib"
 
 struct WithMessage {
     code: i32
 }
 
-fn WithMessage::message(self): string {
-    return "e"
+impl Error for WithMessage {
+    fn message(self): string {
+        return "e"
+    }
 }
 
+// Having the method is not enough.
 struct Quiet {
     code: i32
 }
 
-fn structural(): (i32, error?) {
-    return 0, WithMessage{ code: 1 }
+fn Quiet::message(self): string {
+    return "q"
 }
 
-fn withoutAMessage(): (i32, error?) {
-    return 0, Quiet{ code: 1 } //~ cannot use Quiet as error?
+fn implemented(): i32 | Error {
+    return WithMessage{ code: 1 }
 }
 
-fn fallible(): (i32, error?) {
-    return 0, null
+fn notAnError(): i32 | Error {
+    return Quiet{ code: 1 } //~ cannot use Quiet as i32 | Error
 }
 
-// Dropping an error result is an error; discarding it takes an explicit _.
+fn plain(): i32 | Error {
+    return Error::new("no")
+}
+
+fn valued(): i32 | Error {
+    return 7
+}
+
+fn missingValue(): i32 | Error {
+    return //~ the return gives nothing
+}
+
+// An Error? is a function with no value: nothing is success.
+fn succeeds(): Error? {
+    return
+}
+
+fn failsToo(): Error? {
+    return Error::new("no")
+}
+
+fn fallsOff(): Error? {
+}
+
+// A result is dropped explicitly or handled.
 fn dropped() {
-    fallible() //~ the error result is dropped here
+    valued()   //~ the error result is dropped here
+    succeeds() //~ the error result is dropped here
 }
 
 fn discarded() {
-    let _, _ = fallible()
+    let _ = valued()
 }
 
 fn handled() {
-    let v, err = fallible()
-    if err != null {
-        let m = err.message()
+    match valued() {
+        i32(n): {
+            let again = n
+        }
+        Error(e): {
+            let m = e.message()
+        }
+    }
+    let failure = succeeds()
+    if failure != null {
+        let m = failure.message()
+    }
+}
+
+// ? takes the value, or returns the error.
+fn propagates(): i32 | Error {
+    let n = valued()?
+    return n + 1
+}
+
+fn propagatesNothing(): Error? {
+    succeeds()?
+    let n = valued()?
+}
+
+fn propagatesIntoNothing(): Error? {
+    let n = valued()?
+}
+
+fn notFallible(): i32 {
+    let n = valued()? //~ ? sends an error back to the caller, but this function returns i32
+    return n
+}
+
+fn notAResult(): i32 | Error {
+    let n = 5? //~ ? needs a T | Error or an Error?, not an integer literal
+    return n
+}
+
+fn nullableIsNotAResult(maybe: i32?): i32 | Error {
+    return maybe? //~ ? needs a T | Error or an Error?, not i32?
+}
+
+// A union is only ever T | Error.
+fn otherUnion(): i32 | string { //~ the right side of | has to be Error, not string
+    return 1
+}
+
+fn nullableError(): i32 | Error? { //~ the right side of | has to be Error, not Error?
+    return 1
+}
+
+fn valueless(): Error | Error { //~ Error | Error holds no value
+    return Error::new("no")
+}
+
+fn nested(): i32 | Error | Error { //~ a result is T | Error once
+    return 1
+}
+
+// Error::new is called, not passed around.
+fn newPassed() {
+    let make = Error::new //~ Error::new makes an error, so it is called
+}
+
+fn newNeedsText(): Error {
+    return Error::new() //~ the function takes 1 argument(s), got 0
+}
+
+// An Error is a value of a struct or an enum without parameters.
+struct Wrapper<T> {
+    value: T
+}
+
+impl Error for Wrapper<T> { //~ Wrapper cannot implement Error
+    fn message(self): string {
+        return "w"
     }
 }

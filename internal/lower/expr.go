@@ -47,6 +47,9 @@ func (f *funcLowerer) text(value string) string {
 }
 
 func (f *funcLowerer) nullConst(want types.Type) string {
+	if result, ok := want.(*types.Result); ok {
+		return f.makeResult(result, resultValue, f.nullConst(result.Value))
+	}
 	optional, ok := want.(*types.Optional)
 	if !ok {
 		f.l.fail("@%s: null needs an optional context", f.fn.Name)
@@ -109,6 +112,8 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 		return f.evalMatch(e, want)
 	case *ast.AwaitExpr:
 		return f.await(e)
+	case *ast.TryExpr:
+		return f.tryExpr(e)
 	case *ast.RecvExpr:
 		pair := f.recvPair(e)
 		out := f.newReg("recvd")
@@ -751,6 +756,9 @@ func (f *funcLowerer) coerce(reg string, from, to types.Type) string {
 			return f.wrapError(reg, from)
 		}
 
+	case *types.Result:
+		return f.wrapResult(reg, from, to)
+
 	case *types.Slice:
 		if _, ok := from.(*types.Array); ok {
 			out := f.newReg("view")
@@ -788,27 +796,6 @@ func (f *funcLowerer) coerce(reg string, from, to types.Type) string {
 // derefWant strips nothing today but keeps the call sites honest about
 // what they pass: the target is used as-is.
 func derefWant(t types.Type) types.Type { return t }
-
-// wrapError boxes a concrete error struct into the %error enum.
-func (f *funcLowerer) wrapError(reg string, from types.Type) string {
-	if isErrorBasic(from) {
-		return reg
-	}
-	strct, ok := from.(*types.Struct)
-	if !ok {
-		f.l.fail("@%s: %s cannot become an error", f.fn.Name, from)
-	}
-	f.l.usesError = true
-	f.l.metalsStruct(strct)
-	out := f.newReg("err")
-	f.emit(&metals.MakeVariant{
-		Dst:      out,
-		TypeName: "error",
-		Variant:  f.l.errorVariantOf(strct),
-		Args:     []string{reg},
-	})
-	return out
-}
 
 // rewrapOptional converts between optionals of different element types
 // at runtime: null stays null, a present value converts.

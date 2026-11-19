@@ -584,21 +584,18 @@ func (p *Parser) parseResultList() []ast.Type {
 		}
 		p.expect(token.RParen)
 
-		// A `?` after the parens says they were grouping, because a
-		// result *list* has nothing to be null. It is the one way to
-		// write a nullable code pointer or function type — whose own
-		// spelling ends in a result the marker would otherwise bind to
-		// — and it settles the parenthesized tuple the same way.
-		if p.at(token.Question) && len(results) > 0 {
+		// A `?` or `| Error` after the parens says they were grouping,
+		// because a result *list* has nothing to be null or to fail. The
+		// `?` is the one way to write a nullable code pointer or function
+		// type — whose own spelling ends in a result the marker would
+		// otherwise bind to — and it settles the parenthesized tuple the
+		// same way, as `| Error` does for a tuple that can fail.
+		if (p.at(token.Question) || p.at(token.Pipe)) && len(results) > 0 {
 			var typ ast.Type = results[0]
 			if len(results) != 1 {
 				typ = &ast.TupleType{Offset: offset, Elements: results}
 			}
-			for p.at(token.Question) {
-				typ = &ast.OptionalType{Offset: p.offset(), Elem: typ}
-				p.next()
-			}
-			return []ast.Type{typ}
+			return []ast.Type{p.parseUnionFrom(p.parseOptionalFrom(typ))}
 		}
 		return results
 	}

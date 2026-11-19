@@ -1,13 +1,15 @@
-// Errors are ordinary return values. A function that can fail returns a
-// (value, error?) tuple, and the caller has to say what happens when the
-// error slot is not null: there is no implicit propagation and no unwinding.
+// Errors are ordinary values. A function that can fail returns `T | Error`,
+// and `?` takes the value out of one or sends the error back to the caller:
+// there is no unwinding, and every place an error leaves a function is
+// marked in the source.
 //
-// `error` is structural: any type with a message(): string method is an
-// error. Nothing is declared — having the method is the whole test — so a
-// library defines its own error type carrying its own data, and callers
-// match on the concrete kind.
+// Error is a trait. A type is an error because it says so, with an impl, and
+// an Error holds any of them with their data, so a caller can match on the
+// kind. `Error::new` makes the plain one, which is only a message.
 
-import { println, eprintln } from "stdlib"
+//gyro:exit 1
+
+import { println, eprintln, Error } from "stdlib"
 import { to_i32 } from "convert"
 import { open, read_all } from "fs"
 import { heap, format } from "mem"
@@ -18,60 +20,71 @@ export struct RangeError {
     high: i32
 }
 
-// This method is what makes RangeError usable as an error. It is small, so
-// it travels inside the error value's inline storage and costs no
-// allocation on the error path.
-fn RangeError::message(self): string {
-    return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+// This impl is what makes RangeError an error. The Error that holds one is
+// owned, so it can be returned up the stack without pointing into a frame
+// that is gone.
+impl Error for RangeError {
+    fn message(self): string {
+        return format(heap(), "value #{self.value} is outside #{self.low}..#{self.high}")
+    }
 }
 
-export fn parse_port(text: string): (i32, error?) {
-    let value, err = to_i32(text)
-    if err != null {
-        return 0, err
-    }
-
+// `to_i32(text)?` is the number, or this function returning the error
+// to_i32 found. A RangeError becomes an Error where one is returned.
+export fn parse_port(text: string): i32 | Error {
+    let value = to_i32(text)?
     if value < 1 || value > 65535 {
-        return 0, RangeError{ value: value, low: 1, high: 65535 }
+        return RangeError{ value: value, low: 1, high: 65535 }
     }
-    return value, null
+    return value
 }
 
-fn load_config(path: string): (string, error?) {
-    let handle, err = open(path)
-    if err != null {
-        return "", err
-    }
+fn load_config(path: string): string | Error {
+    let handle = open(path)?
     defer handle.close()
-
-    let contents, read_err = read_all(heap(), handle)
-    if read_err != null {
-        return "", read_err
-    }
-    return contents, null
+    return read_all(heap(), handle)?
 }
 
-fn main() {
-    let port, err = parse_port("8080")
-    if err != null {
-        // `RangeError(e)` is a type test: it matches when the error's concrete
-        // type is RangeError and binds the whole struct, payload included.
-        match err {
-            RangeError(e): eprintln("port #{e.value} not in #{e.low}..#{e.high}")
-            _: eprintln("bad port: #{err.message()}")
+// A function with no value to return writes Error?. Reaching the end of its
+// body is success, so there is no `return null`.
+fn check_ports(texts: string[]): Error? {
+    for text in texts {
+        parse_port(text)?
+    }
+}
+
+// main may return an i32 exit code, with an error as the other way out. An
+// error is written to standard error and the program exits with status 1.
+fn main(): i32 | Error {
+    // `?` is not the only way to handle an error. A match on the result
+    // names the two cases, one for the value and one for the error.
+    match parse_port("8080") {
+        i32(port): println("listening on #{port}")
+        Error(err): eprintln("bad port: #{err.message()}")
+    }
+
+    // `RangeError(e)` on the error is a type test: it matches when the
+    // error's concrete type is RangeError and binds the whole struct,
+    // payload included.
+    match parse_port("70000") {
+        i32(port): println("listening on #{port}")
+        Error(err): match err {
+            RangeError(e): println("port #{e.value} not in #{e.low}..#{e.high}")
+            _: println("bad port: #{err.message()}")
         }
-        return
     }
-    println("listening on #{port}")
 
-    // `_` explicitly discards a value. Dropping an error without it is a
-    // compile error, so ignoring one is always visible in the source.
-    let _, _ = parse_port("not a number")
-
-    let config, config_err = load_config("gyro.toml")
-    if config_err != null {
-        eprintln("could not read config: #{config_err.message()}")
-        return
+    // An Error? is a nullable, so it is handled like one.
+    let failure = check_ports(["8080", "not a number"])
+    if failure != null {
+        println("bad port list: #{failure.message()}")
     }
+
+    // `let _ = ...` discards a result on purpose. Dropping one without it is
+    // a compile error, so ignoring a failure is always visible.
+    let _ = parse_port("not a number")
+
+    let config = load_config("gyro.toml")?
     println(config)
+    return 0
 }

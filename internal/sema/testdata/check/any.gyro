@@ -1,9 +1,13 @@
+import { Error } from "stdlib"
+
 struct Point {
     x: i32
 }
 
-fn Point::message(self): string {
-    return "point"
+impl Error for Point {
+    fn message(self): string {
+        return "point"
+    }
 }
 
 struct Plain {
@@ -22,8 +26,8 @@ fn noImplicitWrap(n: i32) {
     let b: any = n as any
 }
 
-fn hidingTypes(err: error, maybe: i32?, e: Point) {
-    let a = err as any   //~ E0509 an any cannot hold error
+fn hidingTypes(err: Error, maybe: i32?, e: Point) {
+    let a = err as any   //~ E0509 an any cannot hold Error
     let b = maybe as any //~ E0509 an any cannot hold i32?
     let c = e as any
 }
@@ -54,7 +58,7 @@ fn openSubject(v: any): string {
 
 fn badTests(v: any) {
     let a = match v {
-        error(e): "err" //~ E0512 an any never holds error
+        Error(e): "err" //~ E0512 an any never holds Error
         _: "other"
     }
     let b = match v {
@@ -82,7 +86,7 @@ fn structural(v: any, pair: (i32, string), xs: i32[], p: *Plain) {
 // A type test needs a subject whose type is not already known.
 fn wrongSubject(n: i32) {
     let text = match n {
-        (i32, string)(both): "pair" //~ E0512 a type test on i32 needs an any subject
+        (i32, string)(both): "pair" //~ E0512 a type test on i32 needs an any or a T | Error subject
         _: "other"
     }
 }

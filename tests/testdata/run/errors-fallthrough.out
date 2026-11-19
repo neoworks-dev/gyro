@@ -1,0 +1,14 @@
+checked 3
+succeeded
+succeeded
+failed: negative
+checked 1
+checked 2
+both fine
+done with 1 and 2
+succeeded
+checked 1
+done with 1 and -2
+failed: negative
+done with -1 and 2
+failed: negative

@@ -1,0 +1,10 @@
+// A main that returns an i32 ends the program with it as the exit status.
+
+//gyro:exit 3
+
+import { println } from "stdlib"
+
+fn main(): i32 {
+    println("working")
+    return 3
+}

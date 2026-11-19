@@ -1,5 +1,8 @@
-// A failing program prints and aborts; it does not hand back a status.
+// main returns nothing, an i32 exit code, or an i32 that may be an error.
+// Any other result has no status to become.
 
-fn main(): i32 { //~ E0523 main returns nothing
-    return 1
+import { Error } from "stdlib"
+
+fn main(): string | Error { //~ E0523 main returns nothing, i32 or i32 | Error, not string | Error
+    return "done"
 }

@@ -57,7 +57,7 @@
 //     `Array<u8>`. What survives is the failure return, which the depth
 //     limit and a raw node with no text still produce.
 
-import { Array, String, from_utf8, bytes } from "stdlib"
+import { Array, String, Error, from_utf8, bytes } from "stdlib"
 import { alloc, free, heap, format } from "mem"
 import { to_f64 } from "convert"
 import * as dtoa from "./dtoa"
@@ -498,11 +498,10 @@ fn saturate(text: string): f64 {
 }
 
 fn parse_double(text: string): f64 {
-    let value, err = to_f64(text)
-    if err == null {
-        return value
+    match to_f64(text) {
+        f64(value): return value
+        Error(e): return saturate(text)
     }
-    return saturate(text)
 }
 
 fn slice_text(bytes: u8[], from: i64, length: i64): string {

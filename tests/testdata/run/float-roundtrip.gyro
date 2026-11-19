@@ -4,16 +4,14 @@
 // halfway points between neighbours, and the decade boundaries where the
 // plain and exponent forms meet.
 
-import { println } from "stdlib"
+import { println, Error } from "stdlib"
 import { to_f64 } from "convert"
 
 fn read(text: string) {
-    let value, err = to_f64(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_f64(text) {
+        f64(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn main() {

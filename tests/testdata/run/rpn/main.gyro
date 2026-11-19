@@ -19,7 +19,7 @@
 //
 // The program is one module per job:
 //
-//     error.gyro     the error type, which is a type with a message()
+//     error.gyro     the error type, which implements Error
 //     text.gyro      a line to words, and which words are numbers
 //     machine.gyro   the stack, the variables, the definitions
 //     builtins.gyro  the words that are not made of other words

@@ -12,7 +12,7 @@
 // thing it builds that on is the heap.
 
 import { heap, format, panic, quote } from "mem"
-import { starts_with } from "stdlib"
+import { Error, starts_with } from "stdlib"
 import { parse, READ_RANGE, READ_SYNTAX } from "float"
 import { text_bytes } from "unsafe"
 
@@ -22,8 +22,10 @@ export struct ParseError {
     text: string
 }
 
-export fn ParseError::message(self): string !{ &self } {
-    return self.text
+impl Error for ParseError {
+    fn message(self): string !{ &self } {
+        return self.text
+    }
 }
 
 fn refuse(input: string, kind: string): ParseError !{} {
@@ -114,140 +116,100 @@ safe fn read_number(text: string, radix: u32): (u64, bool, Reading) !{} {
 
 // read_signed answers the value of the text when it fits `bits` bits of a
 // signed integer, as an i64.
-fn read_signed(text: string, radix: u32, bits: u32, kind: string): (i64, error?) !{} {
+fn read_signed(text: string, radix: u32, bits: u32, kind: string): i64 | Error !{} {
     let magnitude, negative, reading = read_number(text, radix)
     match reading {
         Reading::Invalid: {
-            return 0, refuse(text, kind)
+            return refuse(text, kind)
         }
         Reading::Huge: {
-            return 0, overflow(text, kind)
+            return overflow(text, kind)
         }
         Reading::Number: {
             let room: u64 = 1
             room = room << (bits - 1)
             if negative {
                 if magnitude > room {
-                    return 0, overflow(text, kind)
+                    return overflow(text, kind)
                 }
                 if magnitude == room {
-                    return (0 - ((room - 1) as i64)) - 1, null
+                    return (0 - ((room - 1) as i64)) - 1
                 }
-                return 0 - (magnitude as i64), null
+                return 0 - (magnitude as i64)
             }
             if magnitude >= room {
-                return 0, overflow(text, kind)
+                return overflow(text, kind)
             }
-            return magnitude as i64, null
+            return magnitude as i64
         }
     }
 }
 
 // read_unsigned answers the value of the text when it fits `bits` bits of
 // an unsigned integer. A minus sign is refused, except on zero.
-fn read_unsigned(text: string, radix: u32, bits: u32, kind: string): (u64, error?) !{} {
+fn read_unsigned(text: string, radix: u32, bits: u32, kind: string): u64 | Error !{} {
     let magnitude, negative, reading = read_number(text, radix)
     match reading {
         Reading::Invalid: {
-            return 0, refuse(text, kind)
+            return refuse(text, kind)
         }
         Reading::Huge: {
-            return 0, overflow(text, kind)
+            return overflow(text, kind)
         }
         Reading::Number: {
             if negative && magnitude != 0 {
-                return 0, overflow(text, kind)
+                return overflow(text, kind)
             }
             if bits < 64 {
                 let room: u64 = 1
                 room = room << bits
                 if magnitude >= room {
-                    return 0, overflow(text, kind)
+                    return overflow(text, kind)
                 }
             }
-            return magnitude, null
+            return magnitude
         }
     }
 }
 
-export fn to_i8(text: string, radix: u32 = 10): (i8, error?) !{} {
-    let value, err = read_signed(text, radix, 8, "i8")
-    if err != null {
-        return 0, err
-    }
-    return value as i8, null
+export fn to_i8(text: string, radix: u32 = 10): i8 | Error !{} {
+    return read_signed(text, radix, 8, "i8")? as i8
 }
 
-export fn to_i16(text: string, radix: u32 = 10): (i16, error?) !{} {
-    let value, err = read_signed(text, radix, 16, "i16")
-    if err != null {
-        return 0, err
-    }
-    return value as i16, null
+export fn to_i16(text: string, radix: u32 = 10): i16 | Error !{} {
+    return read_signed(text, radix, 16, "i16")? as i16
 }
 
-export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{} {
-    let value, err = read_signed(text, radix, 32, "i32")
-    if err != null {
-        return 0, err
-    }
-    return value as i32, null
+export fn to_i32(text: string, radix: u32 = 10): i32 | Error !{} {
+    return read_signed(text, radix, 32, "i32")? as i32
 }
 
-export fn to_i64(text: string, radix: u32 = 10): (i64, error?) !{} {
-    let value, err = read_signed(text, radix, 64, "i64")
-    if err != null {
-        return 0, err
-    }
-    return value as i64, null
+export fn to_i64(text: string, radix: u32 = 10): i64 | Error !{} {
+    return read_signed(text, radix, 64, "i64")? as i64
 }
 
-export fn to_isize(text: string, radix: u32 = 10): (isize, error?) !{} {
-    let value, err = read_signed(text, radix, 64, "isize")
-    if err != null {
-        return 0, err
-    }
-    return value as isize, null
+export fn to_isize(text: string, radix: u32 = 10): isize | Error !{} {
+    return read_signed(text, radix, 64, "isize")? as isize
 }
 
-export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{} {
-    let value, err = read_unsigned(text, radix, 8, "u8")
-    if err != null {
-        return 0, err
-    }
-    return value as u8, null
+export fn to_u8(text: string, radix: u32 = 10): u8 | Error !{} {
+    return read_unsigned(text, radix, 8, "u8")? as u8
 }
 
-export fn to_u16(text: string, radix: u32 = 10): (u16, error?) !{} {
-    let value, err = read_unsigned(text, radix, 16, "u16")
-    if err != null {
-        return 0, err
-    }
-    return value as u16, null
+export fn to_u16(text: string, radix: u32 = 10): u16 | Error !{} {
+    return read_unsigned(text, radix, 16, "u16")? as u16
 }
 
-export fn to_u32(text: string, radix: u32 = 10): (u32, error?) !{} {
-    let value, err = read_unsigned(text, radix, 32, "u32")
-    if err != null {
-        return 0, err
-    }
-    return value as u32, null
+export fn to_u32(text: string, radix: u32 = 10): u32 | Error !{} {
+    return read_unsigned(text, radix, 32, "u32")? as u32
 }
 
-export fn to_u64(text: string, radix: u32 = 10): (u64, error?) !{} {
-    let value, err = read_unsigned(text, radix, 64, "u64")
-    if err != null {
-        return 0, err
-    }
-    return value as u64, null
+export fn to_u64(text: string, radix: u32 = 10): u64 | Error !{} {
+    return read_unsigned(text, radix, 64, "u64")? as u64
 }
 
-export fn to_usize(text: string, radix: u32 = 10): (usize, error?) !{} {
-    let value, err = read_unsigned(text, radix, 64, "usize")
-    if err != null {
-        return 0, err
-    }
-    return value as usize, null
+export fn to_usize(text: string, radix: u32 = 10): usize | Error !{} {
+    return read_unsigned(text, radix, 64, "usize")? as usize
 }
 
 // to_f64 reads a decimal number: a sign, digits with an optional point, an
@@ -256,13 +218,13 @@ export fn to_usize(text: string, radix: u32 = 10): (usize, error?) !{} {
 // to even, however many digits it has. A value too large for a double, or
 // too small to keep all its precision as one, is an error rather than an
 // infinity or a rounded zero.
-export fn to_f64(text: string): (f64, error?) !{} {
+export fn to_f64(text: string): f64 | Error !{} {
     let value, status = parse(text)
     if status == READ_SYNTAX {
-        return 0.0, refuse(text, "f64")
+        return refuse(text, "f64")
     }
     if status == READ_RANGE {
-        return 0.0, overflow(text, "f64")
+        return overflow(text, "f64")
     }
-    return value, null
+    return value
 }

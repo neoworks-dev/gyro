@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall1, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -67,6 +67,15 @@ export trait Rem {
 
 export trait Neg {
     fn neg(self): Self
+}
+
+// Error is what a failure is. A fallible function returns `T | Error`, or
+// `Error?` when it has no value, and `?` hands the error to its caller. A
+// type becomes an error on purpose, by implementing this, and an Error
+// holds any of them with their data, so a caller can match on the kind.
+// `Error::new(message)` makes the plain one, which is only a message.
+export trait Error {
+    fn message(self): string
 }
 
 // Iterator is what for..in walks: next hands back the following element and
@@ -198,6 +207,25 @@ export safe fn flush_output() !{ io } {
     lock_output()
     flush_stream(&stdout_stream)
     unlock_output()
+}
+
+// finish_main is what a program does with the result of a main that
+// returns one, and the lowering calls it from the entry point. A number is
+// the exit status; an error is its message on standard error and status 1.
+// Like exit, it is immediate: nothing is deferred past the end of main.
+safe fn finish_main(result: i32 | Error) !{ io } {
+    let status: i32 = 0
+    match result {
+        Error(e): {
+            eprintln(e.message())
+            status = 1
+        }
+        i32(code): {
+            status = code
+        }
+    }
+    flush_output()
+    let _ = syscall1(231, status)
 }
 
 // room leaves space for `need` more bytes in the block, which is at most

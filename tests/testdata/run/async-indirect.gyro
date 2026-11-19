@@ -2,7 +2,7 @@
 // The thunk that carries the call to another thread keys on the signature
 // rather than a callee symbol, since there is none.
 
-import { println } from "stdlib"
+import { println, Error } from "stdlib"
 import { format, heap } from "mem"
 
 async fn work(n: i32): i32 {
@@ -13,8 +13,8 @@ async fn scale(factor: f64, n: i32): f64 {
     return factor * (n as f64)
 }
 
-async fn describe(n: i32): (string, error?) {
-    return format(heap(), "n=#{n}"), null
+async fn describe(n: i32): string | Error {
+    return format(heap(), "n=#{n}")
 }
 
 async fn main() {
@@ -32,7 +32,8 @@ async fn main() {
 
     // An aggregate result travels through the hidden sret pointer.
     let described = describe
-    let text, err = await described(7)
-    println(text)
-    println(err == null)
+    match await described(7) {
+        string(text): println(text)
+        Error(e): println(e.message())
+    }
 }

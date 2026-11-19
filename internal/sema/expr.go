@@ -94,6 +94,9 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 	case *ast.AwaitExpr:
 		return c.awaitExpr(e)
 
+	case *ast.TryExpr:
+		return c.tryExpr(e)
+
 	case *ast.RecvExpr:
 		return c.recvExpr(e)
 
@@ -227,6 +230,10 @@ func (c *checker) adaptUntyped(e ast.Expr, t types.Type, want types.Type) types.
 	for {
 		if optional, ok := target.(*types.Optional); ok {
 			target = optional.Elem
+			continue
+		}
+		if result, ok := target.(*types.Result); ok {
+			target = result.Value
 			continue
 		}
 		break
@@ -379,8 +386,8 @@ func describeType(t types.Type) string {
 // assignableType reports whether a value of one type can be stored where
 // the other is required. There are no implicit conversions between typed
 // values; what this allows beyond identity is exactly: null into T?, T into
-// T?, a fixed-size array borrowed as a slice, and any type with
-// message(): string used as an error.
+// T?, a T or an error into T | Error, a fixed-size array borrowed as a
+// slice, and any type that implements Error used as an Error.
 func (c *checker) assignableType(value, target types.Type) bool {
 	if flexible(value) || flexible(target) {
 		return true
@@ -404,6 +411,8 @@ func (c *checker) assignableType(value, target types.Type) bool {
 	switch target := target.(type) {
 	case *types.Optional:
 		return c.assignableType(value, target.Elem)
+	case *types.Result:
+		return c.assignableType(value, target.Value) || c.satisfiesError(value)
 	case *types.Basic:
 		if target.Kind == types.ErrorKind {
 			return c.satisfiesError(value)
@@ -429,17 +438,10 @@ func (c *checker) assignableType(value, target types.Type) bool {
 	return false
 }
 
-// satisfiesError implements the structural error contract: any type with a
-// message(): string method is an error.
+// satisfiesError reports whether a value of type t can be used as an Error:
+// the Error itself, or a type that implements the trait of that name.
 func (c *checker) satisfiesError(t types.Type) bool {
-	if basic, ok := t.(*types.Basic); ok && basic.Kind == types.ErrorKind {
-		return true
-	}
-	method, _ := c.lookupMethod(t, "message")
-	if method == nil || method.Recv == types.NoRecv || len(method.TypeParams) > 0 {
-		return false
-	}
-	return len(method.Sig.Params) == 0 && types.Identical(method.Sig.Result, types.String)
+	return c.hasCapability(t, "Error", map[string]bool{})
 }
 
 // ---------------------------------------------------------------------------
@@ -1549,7 +1551,7 @@ func anyPayload(t types.Type) bool {
 		// does not record which member it holds — so what came out would
 		// be storage rather than a value.
 		return false
-	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Assoc, *types.Dyn:
+	case *types.Optional, *types.Result, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Assoc, *types.Dyn:
 		return false
 	case *types.Pointer:
 		return anyPayload(t.Elem)
@@ -1671,20 +1673,27 @@ func (c *checker) matchArm(arm ast.MatchArm, subject, want, result types.Type) (
 
 // checkExhaustive demands that a match over an enum name every variant or
 // end in a `_`. Adding a variant then breaks every match that enumerated
-// the old set, which is the point of the check.
+// the old set, which is the point of the check. A `T | Error` has two, the
+// value and the error.
 func (c *checker) checkExhaustive(e *ast.MatchExpr, subject types.Type, covered map[string]bool, irrefutable bool) {
 	if irrefutable {
 		return
 	}
-	enum, ok := subject.(*types.Enum)
-	if !ok {
-		return
-	}
 
 	var missing []string
-	for _, variant := range enum.Variants {
-		if !covered[variant.Name] {
-			missing = append(missing, enum.Name+"::"+variant.Name)
+	switch subject := subject.(type) {
+	case *types.Enum:
+		for _, variant := range subject.Variants {
+			if !covered[variant.Name] {
+				missing = append(missing, subject.Name+"::"+variant.Name)
+			}
+		}
+	case *types.Result:
+		if !covered["value"] {
+			missing = append(missing, subject.Value.String()+"(value)")
+		}
+		if !covered["error"] {
+			missing = append(missing, "Error(e)")
 		}
 	}
 	if len(missing) == 0 {

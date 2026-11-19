@@ -27,7 +27,7 @@ import (
 var capabilityNames = map[string]bool{
 	"Eq": true, "Hash": true, "Print": true, "Ord": true,
 	"Add": true, "Sub": true, "Mul": true, "Div": true, "Rem": true, "Neg": true,
-	"Iterator": true, "Index": true, "Destroy": true,
+	"Iterator": true, "Index": true, "Destroy": true, "Error": true,
 }
 
 // derivable are the capabilities `impl Trait for Type` with no block asks
@@ -366,6 +366,10 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 			return
 		}
 	}
+	if ref.Trait.Kind == "Error" && !errorImplementer(owner, params) {
+		c.errorf(d.Offset, "%s cannot implement Error: an error value holds its type by name, so it has to be a struct or an enum without type parameters", owner)
+		return
+	}
 
 	impl := &types.Impl{Trait: ref.Trait, Args: ref.Args, Derived: !d.Body, Decl: d, Owner: owner}
 	*impls = append(*impls, impl)
@@ -378,6 +382,20 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 		self.typ = owner
 		c.registerImplAssoc(d, impl, owner)
 	})
+}
+
+// errorImplementer reports a type that can inhabit an Error value, which
+// holds the type as one variant of a closed sum: a struct or an enum with
+// no parameters of its own.
+func errorImplementer(owner types.Type, params []*types.TypeParam) bool {
+	if len(params) > 0 {
+		return false
+	}
+	switch owner.(type) {
+	case *types.Struct, *types.Enum:
+		return true
+	}
+	return false
 }
 
 // implOwnerOf finds the type an impl is for, which has to be declared in
@@ -855,6 +873,11 @@ func (c *checker) hasCapability(t types.Type, kind string, seen map[string]bool)
 		return c.implementsRef(t, c.capabilityRef(kind))
 	}
 
+	// Nothing is an Error unless it says so, in the bundled library as much
+	// as in a program; the Error itself is the one built-in.
+	if kind == "Error" {
+		return isErrorBasic(t) || c.userHasCapability(t, kind, seen)
+	}
 	if c.userNamed(t) {
 		return c.userHasCapability(t, kind, seen)
 	}
@@ -1319,6 +1342,8 @@ func typeMentionsSelf(t ast.Type) bool {
 		return typeMentionsSelf(t.Elem)
 	case *ast.OptionalType:
 		return typeMentionsSelf(t.Elem)
+	case *ast.UnionType:
+		return typeMentionsSelf(t.Left) || typeMentionsSelf(t.Right)
 	case *ast.ArrayType:
 		return typeMentionsSelf(t.Elem)
 	case *ast.ChanType:
@@ -1595,6 +1620,8 @@ func hasUnknown(t types.Type) bool {
 		return hasUnknown(t.Elem)
 	case *types.Optional:
 		return hasUnknown(t.Elem)
+	case *types.Result:
+		return hasUnknown(t.Value)
 	case *types.Slice:
 		return hasUnknown(t.Elem)
 	case *types.Array:

@@ -1,1 +1,1 @@
-could not read config: stat gyro.toml: no such file or directory
+stat gyro.toml: no such file or directory

@@ -111,6 +111,17 @@ var codes = map[string]diag.Code{
 	"operator %s does not apply to %s":                                                                       diag.EBadOperands,
 	"%s cannot be a system call argument; it takes an integer, a bool or a pointer":                          diag.ESyscallArgument,
 
+	// Errors. A result is T | Error, and ? returns the error of one.
+	"the right side of | has to be Error, not %s":                                   diag.EBadResultType,
+	"%s | Error holds no value; the left side of | has to be the type of one":       diag.EBadResultType,
+	"a result is T | Error once; it does not nest":                                  diag.EBadResultType,
+	"? needs a T | Error or an Error?, not %s":                                      diag.ETryMisuse,
+	"? sends an error back to the caller, but this function returns %s":             diag.ETryMisuse,
+	"? returns from a function, and this is not inside one":                         diag.ETryMisuse,
+	"%s is a trait, not a value":                                                    diag.EWrongKind,
+	"Error::new makes an error, so it is called: Error::new(message)":               diag.EWrongKind,
+	"%s cannot implement Error: an error value holds its type by name, so it has to be a struct or an enum without type parameters": diag.EImplConflict,
+
 	// Members
 	"%s has no field or method %s":                 diag.ENoSuchMember,
 	"%s has no field %s":                           diag.ENoSuchMember,
@@ -120,7 +131,6 @@ var codes = map[string]diag.Code{
 	"%s has no element %d":                         diag.ENoSuchMember,
 	"%s has no members; only structs and enums do": diag.ENoSuchMember,
 	"%s has no member %s":                          diag.ENoSuchMember,
-	"%s has no message(): string method, so an error can never hold one":                                                    diag.ENoSuchMember,
 	"a literal of %s is not allowed here: the member %s is private to its module; construct it with an associated function": diag.EPrivateField,
 	"%s.%s is private to its module": diag.EPrivateField,
 	"a literal of %s is not allowed here: the field %s is private to its module; construct it with an associated function": diag.EPrivateField,
@@ -221,9 +231,11 @@ var codes = map[string]diag.Code{
 	"this pattern is %s; it can never match %s":                                             diag.EPatternNeverMatches,
 	"a pattern names an enum variant or a struct type test; this is neither":                diag.EPatternNeverMatches,
 	"a type test binds the whole value: %s(name)":                                           diag.EPatternNeverMatches,
-	"a type test needs an error subject whose concrete type is unknown; this subject is %s": diag.EPatternNeverMatches,
+	"a type test needs an Error subject whose concrete type is unknown; this subject is %s": diag.EPatternNeverMatches,
+	"%s does not implement Error, so an Error can never hold one":                           diag.EPatternNeverMatches,
+	"%s holds an Error or a %s, so a test for %s can never match":                           diag.EPatternNeverMatches,
 	"an any never holds %s, so this pattern can never match":                                diag.EPatternNeverMatches,
-	"a type test on %s needs an any subject":                                                diag.EPatternNeverMatches,
+	"a type test on %s needs an any or a T | Error subject":                                 diag.EPatternNeverMatches,
 	"%s::%s carries %d value(s), the pattern binds %d":                                      diag.EPatternNeverMatches,
 	"this match leaves %s uncovered":                                                        diag.EMatchNotExhaustive,
 	"%s is read before it is assigned":                                                      diag.EUnassignedRead,
@@ -270,7 +282,7 @@ var codes = map[string]diag.Code{
 	"a compound assignment takes one target":                                               diag.EAssignmentForm,
 	"a declaration needs a type or a value":                                                diag.EBindingNeedsType,
 	"a const needs its value here":                                                         diag.EBindingNeedsType,
-	"the error result is dropped here; discarding one must be written out: let _, _ = ...": diag.EDroppedError,
+	"the error result is dropped here; take its value with ?, or discard it: let _ = ...":   diag.EDroppedError,
 	"the parameter %s needs a type; nothing here says what the closure is":                 diag.EClosureParams,
 	"this closure takes %d parameter(s), the context wants %s":                             diag.EClosureParams,
 
@@ -285,7 +297,7 @@ var codes = map[string]diag.Code{
 
 	// The entry point
 	"main takes no type parameters":                          diag.EEntryPointSignature,
-	"main returns nothing":                                   diag.EEntryPointSignature,
+	"main returns nothing, i32 or i32 | Error, not %s":       diag.EEntryPointSignature,
 	"main takes no parameters, or one string[] of arguments": diag.EEntryPointSignature,
 
 	// Concurrency

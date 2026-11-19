@@ -10,7 +10,7 @@
 // platform this module exists for.
 
 import { Allocator, heap, format } from "mem"
-import { Array } from "stdlib"
+import { Array, Error } from "stdlib"
 import { syscall1, syscall2, syscall3, syscall4, text_bytes } from "unsafe"
 
 // The system calls this library makes, by number.
@@ -43,8 +43,10 @@ export struct SysError {
     text: string
 }
 
-export fn SysError::message(self): string !{ &self } {
-    return self.text
+impl Error for SysError {
+    fn message(self): string !{ &self } {
+        return self.text
+    }
 }
 
 // errno_text is the sentence for an error number, spelled as the C

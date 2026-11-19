@@ -11,7 +11,7 @@ fn notATuple(x: i32) {
     let v = x.0 //~ needs a tuple
 }
 
-fn fallible(): (i32, error?) {
+fn fallible(): (i32, string?) {
     return 0, null
 }
 
@@ -29,11 +29,11 @@ fn destructuringNeedsATuple(x: i32) {
     let a, b = x //~ needs a tuple
 }
 
-fn assignability(ch: chan<(string, error?)>) {
+fn assignability(ch: chan<(string, string?)>) {
     ch <- ("body", null)
 }
 
-fn badSend(ch: chan<(string, error?)>) {
+fn badSend(ch: chan<(string, string?)>) {
     ch <- (1, null) //~ cannot use
 }
 

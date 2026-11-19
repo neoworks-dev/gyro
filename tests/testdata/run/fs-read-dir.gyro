@@ -1,7 +1,7 @@
 // read_dir lists entry names sorted bytewise on every tier. The case
 // writes its own files out of order, filters the shared directory down to
 // its own prefix, and cleans up after itself.
-import { println, starts_with } from "stdlib"
+import { println, starts_with, Array, Error } from "stdlib"
 import { write_file, remove, read_dir } from "fs"
 import { heap } from "mem"
 
@@ -11,16 +11,17 @@ fn main() {
     let second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
     println(first == null && second == null && third == null)
 
-    let names, err = read_dir(heap(), "/tmp")
-    if err != null {
-        return
-    }
-    for name in names.slice() {
-        if name.starts_with("gyro-fs-listing-") {
-            println(name)
+    match read_dir(heap(), "/tmp") {
+        Error(e): return
+        Array<string>(names): {
+            for name in names.slice() {
+                if name.starts_with("gyro-fs-listing-") {
+                    println(name)
+                }
+            }
+            names.free()
         }
     }
-    names.free()
 
     let one = remove("/tmp/gyro-fs-listing-a.txt")
     let two = remove("/tmp/gyro-fs-listing-b.txt")

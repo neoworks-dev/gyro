@@ -2,7 +2,7 @@
 // sys. Every error carries the call that failed, the path, and the
 // kernel's reason, worded the way Go's os package words them.
 
-import { Array, from_utf8, substring } from "stdlib"
+import { Array, Error, from_utf8, substring } from "stdlib"
 import { Allocator, heap } from "mem"
 import { O_APPEND, O_CREAT, O_DIRECTORY, O_RDONLY, O_TRUNC, O_WRONLY, SYS_GETDENTS64, access, close, fail, open as open_fd, read, unlink, write_text } from "sys"
 import { syscall3 } from "unsafe"
@@ -14,19 +14,18 @@ export struct File {
     private closed: bool
 }
 
-export fn open(path: string): (File, error?) !{ io } {
+export fn open(path: string): File | Error !{ io } {
     let found = access(path)
-    let file = File{ name: path.substring(heap(), 0, path.len()), closed: false }
     if found < 0 {
-        return file, fail("stat", path, found)
+        return fail("stat", path, found)
     }
-    return file, null
+    return File{ name: path.substring(heap(), 0, path.len()), closed: false }
 }
 
-export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
+export fn read_all(a: Allocator, file: File): string | Error !{ io, &a } {
     let fd = open_fd(file.name, O_RDONLY, 0)
     if fd < 0 {
-        return "", fail("open", file.name, fd)
+        return fail("open", file.name, fd)
     }
 
     let content = Array<u8>::new(heap())
@@ -41,7 +40,7 @@ export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
             close(fd)
             content.free()
             chunk.free()
-            return "", fail("read", file.name, got)
+            return fail("read", file.name, got)
         }
         if got == 0 {
             break
@@ -54,7 +53,7 @@ export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
     let text = from_utf8(a, content.slice())
     content.free()
     chunk.free()
-    return text, null
+    return text
 }
 
 export fn File::close(inout self) !{ io } {
@@ -62,7 +61,7 @@ export fn File::close(inout self) !{ io } {
 }
 
 // write_to opens, writes and closes in one call.
-fn write_to(path: string, text: string, flags: usize): error? !{ io } {
+fn write_to(path: string, text: string, flags: usize): Error? !{ io } {
     let fd = open_fd(path, flags, 438)
     if fd < 0 {
         return fail("open", path, fd)
@@ -72,23 +71,21 @@ fn write_to(path: string, text: string, flags: usize): error? !{ io } {
     if put < 0 {
         return fail("write", path, put)
     }
-    return null
 }
 
-export fn write_file(path: string, text: string): error? !{ io } {
+export fn write_file(path: string, text: string): Error? !{ io } {
     return write_to(path, text, O_WRONLY | O_CREAT | O_TRUNC)
 }
 
-export fn append_file(path: string, text: string): error? !{ io } {
+export fn append_file(path: string, text: string): Error? !{ io } {
     return write_to(path, text, O_WRONLY | O_CREAT | O_APPEND)
 }
 
-export fn remove(path: string): error? !{ io } {
+export fn remove(path: string): Error? !{ io } {
     let result = unlink(path)
     if result < 0 {
         return fail("remove", path, result)
     }
-    return null
 }
 
 export fn exists(path: string): bool !{ io } {
@@ -122,12 +119,12 @@ fn sort(names: inout Array<string>) !{} {
     }
 }
 
-export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &a } {
-    let names = Array<string>::new(a)
+export fn read_dir(a: Allocator, path: string): Array<string> | Error !{ io, &a } {
     let fd = open_fd(path, O_RDONLY | O_DIRECTORY, 0)
     if fd < 0 {
-        return names, fail("open", path, fd)
+        return fail("open", path, fd)
     }
+    let names = Array<string>::new(a)
 
     let block = Array<u8>::with_capacity(heap(), 32768)
     for i in 0..32768 {
@@ -139,7 +136,8 @@ export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &
         if got < 0 {
             close(fd)
             block.free()
-            return names, fail("read", path, got)
+            names.free()
+            return fail("read", path, got)
         }
         if got == 0 {
             break
@@ -159,7 +157,7 @@ export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &
     close(fd)
     block.free()
     sort(names)
-    return names, null
+    return names
 }
 
 safe fn syscall_getdents(fd: isize, buffer: u8[]): isize !{ io } {

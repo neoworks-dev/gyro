@@ -159,7 +159,7 @@ func isAlwaysTrue(e ast.Expr) bool {
 func (c *checker) exprStmt(s *ast.ExprStmt) {
 	t := c.expr(s.X)
 	if containsError(t) {
-		c.errorf(s.X.Pos(), "the error result is dropped here; discarding one must be written out: let _, _ = ...")
+		c.errorf(s.X.Pos(), "the error result is dropped here; take its value with ?, or discard it: let _ = ...")
 		return
 	}
 	if _, ok := t.(*types.Future); ok {
@@ -184,6 +184,8 @@ func containsError(t types.Type) bool {
 		return t.Kind == types.ErrorKind
 	case *types.Optional:
 		return containsError(t.Elem)
+	case *types.Result:
+		return true
 	case *types.Tuple:
 		for _, elem := range t.Elems {
 			if containsError(elem) {
@@ -535,7 +537,8 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 
 	switch len(s.Results) {
 	case 0:
-		if !flexible(want) && !types.Identical(want, types.Void) {
+		// An Error? function succeeds by returning nothing.
+		if !flexible(want) && !types.Identical(want, types.Void) && !isErrorOptional(want) {
 			c.errorf(s.Offset, "this function returns %s; the return gives nothing", want)
 		}
 	case 1:
@@ -549,7 +552,7 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 		c.assignExpr(s.Results[0], want, "return")
 		c.consume(s.Results[0])
 	default:
-		tuple, ok := want.(*types.Tuple)
+		tuple, ok := valueTuple(want)
 		if !ok || len(tuple.Elems) != len(s.Results) {
 			for _, result := range s.Results {
 				c.expr(result)
@@ -575,10 +578,20 @@ func (c *checker) resultAt(i, n int) types.Type {
 	if n == 1 {
 		return c.fn.result
 	}
-	if tuple, ok := c.fn.result.(*types.Tuple); ok && i < len(tuple.Elems) {
+	if tuple, ok := valueTuple(c.fn.result); ok && i < len(tuple.Elems) {
 		return tuple.Elems[i]
 	}
 	return nil
+}
+
+// valueTuple is the tuple a multi-value return fills: the result itself, or
+// the value of a result that can fail, as in `(f64, f64) | Error`.
+func valueTuple(result types.Type) (*types.Tuple, bool) {
+	if fallible, ok := result.(*types.Result); ok {
+		result = fallible.Value
+	}
+	tuple, ok := result.(*types.Tuple)
+	return tuple, ok
 }
 
 func (c *checker) sendStmt(s *ast.SendStmt) {

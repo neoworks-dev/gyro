@@ -1,0 +1,39 @@
+// A function with no value returns Error?: null is success, so reaching the
+// end of its body, or a bare return, is success too, and `?` hands the
+// error of one to the caller of another.
+
+import { println, Error } from "stdlib"
+
+fn check(n: i32): Error? {
+    if n < 0 {
+        return Error::new("negative")
+    }
+    if n == 0 {
+        return
+    }
+    println("checked #{n}")
+}
+
+fn checkAll(first: i32, second: i32): Error? {
+    defer println("done with #{first} and #{second}")
+    check(first)?
+    check(second)?
+    println("both fine")
+}
+
+fn show(failure: Error?) {
+    if failure != null {
+        println("failed: #{failure.message()}")
+    } else {
+        println("succeeded")
+    }
+}
+
+fn main() {
+    show(check(3))
+    show(check(0))
+    show(check(-3))
+    show(checkAll(1, 2))
+    show(checkAll(1, -2))
+    show(checkAll(-1, 2))
+}

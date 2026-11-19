@@ -1,16 +1,17 @@
-import { println } from "stdlib"
+import { println, Error } from "stdlib"
 
-async fn fetch(url: string): (string, error?) {
-    return "", null
+async fn fetch(url: string): string | Error {
+    return ""
 }
 
 fn plain(): i32 {
     return 1
 }
 
-async fn awaited() {
-    let body, err = await fetch("u")
+async fn awaited(): string | Error {
+    let body = await fetch("u")?
     let s: string = body
+    return s
 }
 
 fn awaitNeedsAnAsyncFn() {
@@ -21,8 +22,9 @@ async fn unawaitedDoesNothing() {
     fetch("u") //~ does nothing until it is awaited
 }
 
-async fn theResultIsAFuture() {
-    let body, err = fetch("u") //~ needs a tuple, not awaitable<(string, error?)>
+async fn theResultIsAFuture(): string | Error {
+    let body = fetch("u")? //~ ? needs a T | Error or an Error?, not awaitable<string | Error>
+    return ""
 }
 
 async fn awaitNeedsAnAsyncCallee() {

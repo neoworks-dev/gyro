@@ -1,7 +1,6 @@
 package lower
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/gyro-lang/gyro/internal/ast"
@@ -16,6 +15,9 @@ import (
 // call itself. It returns the register holding the result, "" for a void
 // call.
 func (f *funcLowerer) lowerCall(call *ast.CallExpr) string {
+	if f.isErrorNew(call) {
+		return f.lowerErrorNew(call)
+	}
 	resolved := f.callInfo(call)
 
 	if resolved.Enum != nil {
@@ -688,59 +690,6 @@ func (f *funcLowerer) ensureCompareFn(t types.Type) string {
 		}},
 		&metals.Const{Dst: "zero", Type: metals.TInt32, Value: "0"},
 		&metals.Return{Val: "zero"},
-	)
-	f.l.module.Funcs = append(f.l.module.Funcs, fn)
-	return name
-}
-
-// ensureErrorMessage synthesizes the dispatch behind err.message(): a
-// switch over the closed %error sum calling each concrete message method.
-func (f *funcLowerer) ensureErrorMessage() string {
-	const name = "error::message"
-	if f.l.lowered[name] {
-		return name
-	}
-	f.l.lowered[name] = true
-	f.l.usesError = true
-
-	fn := &metals.Func{
-		Name:   name,
-		Params: []metals.Param{{Name: "e", Type: &metals.Named{Name: "error"}}},
-		Result: metals.TStr,
-	}
-	sw := &metals.Switch{X: "tag"}
-
-	for _, errType := range f.l.errTypes {
-		index := f.l.errVariant[errType]
-		method := errType.Methods["message"]
-		callee := f.l.ensureFunc(method.Decl, nil)
-		f.l.metalsStruct(errType)
-
-		// Registers are named per variant: one holds a different type in
-		// each case, and a register's type is fixed at first assignment.
-		value, cell, msg := fmt.Sprintf("v%d", index), fmt.Sprintf("cell%d", index), fmt.Sprintf("msg%d", index)
-		body := []metals.Instr{
-			&metals.VariantField{Dst: value, X: "e", Variant: index, Index: 0},
-		}
-		receiver := value
-		if method.Recv == types.InoutRecv {
-			body = append(body,
-				&metals.Slot{Dst: cell, Type: f.l.metalsType(errType)},
-				&metals.Store{Ptr: cell, Val: value},
-			)
-			receiver = cell
-		}
-		body = append(body,
-			&metals.Call{Dst: msg, Callee: callee, Args: []string{receiver}},
-			&metals.Return{Val: msg},
-		)
-		sw.Cases = append(sw.Cases, metals.SwitchCase{Value: index, Body: body})
-	}
-
-	fn.Body = append(fn.Body,
-		&metals.VariantTag{Dst: "tag", X: "e"},
-		sw,
-		&metals.Abort{Message: "an error value carries an unknown variant"},
 	)
 	f.l.module.Funcs = append(f.l.module.Funcs, fn)
 	return name

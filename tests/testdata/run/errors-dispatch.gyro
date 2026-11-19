@@ -1,27 +1,38 @@
-import { println, eprintln } from "stdlib"
+import { println, eprintln, Error } from "stdlib"
 import { format, heap } from "mem"
 
 struct TooBig {
     limit: i32
 }
 
-fn TooBig::message(self): string {
-    return format(heap(), "value above #{self.limit}")
+impl Error for TooBig {
+    fn message(self): string {
+        return format(heap(), "value above #{self.limit}")
+    }
 }
 
-fn check(v: i32): (i32, error?) {
+fn check(v: i32): i32 | Error {
     if v > 10 {
-        return 0, TooBig{ limit: 10 }
+        return TooBig{ limit: 10 }
     }
-    return v, null
+    return v
+}
+
+// An Error? holds an error or nothing, so it is checked like any nullable.
+fn verify(v: i32): Error? {
+    if v > 10 {
+        return TooBig{ limit: 10 }
+    }
 }
 
 fn main() {
-    let ok, err = check(7)
-    println(ok)
-    println(err == null)
+    match check(7) {
+        i32(n): println(n)
+        Error(e): println(e.message())
+    }
+    println(verify(7) == null)
 
-    let _, bad = check(99)
+    let bad = verify(99)
     if bad != null {
         println(bad.message())
         match bad {

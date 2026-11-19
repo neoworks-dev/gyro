@@ -341,6 +341,8 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		return &types.Pointer{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
 	case *ast.OptionalType:
 		return types.NewOptional(c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem)))
+	case *ast.UnionType:
+		return c.resolveUnionType(t)
 	case *ast.ArrayType:
 		return c.resolveArrayType(t)
 	case *ast.TupleType:
@@ -394,6 +396,39 @@ func (c *checker) resolveArrayType(t *ast.ArrayType) types.Type {
 	return &types.Array{Elem: elem, Length: length}
 }
 
+// resolveUnionType reads `T | Error`. It is the only union the language
+// has, so the right side is held to Error and the left to a type that has a
+// value: a result of nothing is the `Error?` of a function that only
+// succeeds or fails.
+func (c *checker) resolveUnionType(t *ast.UnionType) types.Type {
+	left := c.noFormat(t.Left.Pos(), c.resolveType(t.Left))
+	right := c.resolveType(t.Right)
+	if hasUnknown(left) || hasUnknown(right) {
+		return types.Unknown
+	}
+	if !isErrorBasic(right) {
+		c.errorHintf(t.Right.Pos(), []string{"the one union is T | Error, the type of a fallible function's result"},
+			"the right side of | has to be Error, not %s", right)
+		return types.Unknown
+	}
+	if _, nested := left.(*types.Result); nested {
+		c.errorf(t.Offset, "a result is T | Error once; it does not nest")
+		return types.Unknown
+	}
+	if isErrorBasic(left) || types.Identical(left, types.Void) {
+		c.errorHintf(t.Left.Pos(), []string{"a function with no value to return writes Error?"},
+			"%s | Error holds no value; the left side of | has to be the type of one", left)
+		return types.Unknown
+	}
+	return &types.Result{Value: left}
+}
+
+// isErrorTrait reports the bundled Error trait.
+func isErrorTrait(t types.Type) bool {
+	trait, ok := t.(*types.Trait)
+	return ok && trait.Kind == "Error"
+}
+
 func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 	head := t.Path.Segments[0]
 	if head.Name == "<error>" {
@@ -436,6 +471,12 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 	case symNamespace:
 		return c.resolveNamespaceType(t.Path, sym)
 	case symTrait:
+		// Error is a trait a type implements on purpose, and also the
+		// owned value that holds any of them: the one trait that is a type.
+		if isErrorTrait(sym.typ) && len(t.Path.Segments) == 1 && len(head.Args) == 0 {
+			c.recordRef(t.Path, sym.decl)
+			return types.Error
+		}
 		c.errorHintf(head.Offset, []string{
 			"a trait is not a type; a value of some type implementing it is written dyn " + head.Name,
 		}, "%s is a trait, not a type", head.Name)
@@ -533,6 +574,9 @@ func (c *checker) resolveNamespaceType(path *ast.Path, head *symbol) types.Type 
 		return types.Unknown
 	}
 	if entry.kind == symTrait {
+		if isErrorTrait(entry.typ) && len(path.Segments) == 2 && len(segment.Args) == 0 {
+			return types.Error
+		}
 		c.errorHintf(segment.Offset, []string{
 			"a trait is not a type; a value of some type implementing it is written dyn " + path.Segments[0].Name + "::" + segment.Name,
 		}, "%s is a trait, not a type", segment.Name)

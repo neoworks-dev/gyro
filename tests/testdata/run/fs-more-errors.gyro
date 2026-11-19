@@ -2,8 +2,8 @@
 // reason: a directory written to or read as a file, and a file listed as a
 // directory.
 
-import { println } from "stdlib"
-import { open, read_all, write_file, read_dir, remove, exists } from "fs"
+import { println, Array, Error } from "stdlib"
+import { File, open, read_all, write_file, read_dir, remove, exists } from "fs"
 import { heap } from "mem"
 
 fn main() {
@@ -12,23 +12,28 @@ fn main() {
         println(err.message())
     }
 
-    let dir, openErr = open("/tmp")
-    println(openErr == null)
-    let text, readErr = read_all(heap(), dir)
-    println(text.len())
-    if readErr != null {
-        println(readErr.message())
+    // A directory is reachable, so it opens; reading it is what fails.
+    match open("/tmp") {
+        Error(e): println(e.message())
+        File(dir): {
+            println("opened")
+            match read_all(heap(), dir) {
+                string(text): println(text.len())
+                Error(e): println(e.message())
+            }
+        }
     }
 
     const file = "/tmp/gyro-fs-more-errors.txt"
     let wrote = write_file(file, "abc")
     println(wrote == null)
-    let names, listErr = read_dir(heap(), file)
-    println(names.len())
-    if listErr != null {
-        println(listErr.message())
+    match read_dir(heap(), file) {
+        Array<string>(names): {
+            println(names.len())
+            names.free()
+        }
+        Error(e): println(e.message())
     }
-    names.free()
 
     let removed = remove(file)
     println(removed == null)

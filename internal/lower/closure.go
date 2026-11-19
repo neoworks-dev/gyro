@@ -315,6 +315,8 @@ func (w *fvWalker) expr(e ast.Expr) {
 		w.block(e.Block)
 	case *ast.AwaitExpr:
 		w.expr(e.X)
+	case *ast.TryExpr:
+		w.expr(e.X)
 	case *ast.RecvExpr:
 		w.expr(e.Chan)
 	case *ast.ChanLit:

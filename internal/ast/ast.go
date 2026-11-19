@@ -777,6 +777,16 @@ type AwaitExpr struct {
 func (a *AwaitExpr) Pos() int  { return a.Offset }
 func (a *AwaitExpr) exprNode() {}
 
+// TryExpr is `x?`: the value of a `T | Error`, or the enclosing function's
+// return of the error. Offset is the `?`.
+type TryExpr struct {
+	Offset int
+	X      Expr
+}
+
+func (t *TryExpr) Pos() int  { return t.Offset }
+func (t *TryExpr) exprNode() {}
+
 // RecvExpr is the receive operator `<-ch`. Paired with a two-name binding it
 // also reports whether the channel is still open: `var value, ok = <-ch`.
 type RecvExpr struct {
@@ -1002,6 +1012,18 @@ type OptionalType struct {
 
 func (o *OptionalType) Pos() int  { return o.Offset }
 func (o *OptionalType) typeNode() {}
+
+// UnionType is `T | Error`: either a T or an error. The syntax takes any
+// two types so that a misuse is reported where it is written; sema holds
+// the right-hand side to Error, the only union the language has.
+type UnionType struct {
+	Offset int
+	Left   Type
+	Right  Type
+}
+
+func (u *UnionType) Pos() int  { return u.Offset }
+func (u *UnionType) typeNode() {}
 
 // ChanType is `chan<T>`. Channels are language-level rather than a stdlib
 // generic so that `select` and the send and receive operators can be type

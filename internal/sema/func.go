@@ -23,8 +23,7 @@ func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
 		c.errorf(decl.Offset, "main takes no type parameters")
 		return
 	}
-	if len(decl.Results) > 0 {
-		c.errorf(decl.Offset, "main returns nothing")
+	if !c.checkEntryResult(decl) {
 		return
 	}
 	if len(decl.Params) == 0 {
@@ -35,6 +34,29 @@ func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
 			"the entry point is fn main() or fn main(args: string[])",
 		}, "main takes no parameters, or one string[] of arguments")
 	}
+}
+
+// checkEntryResult holds main's result to nothing, an exit code, or an
+// exit code that may be an error. What the program does with the result is
+// code in stdlib, so a main that has one needs stdlib loaded.
+func (c *checker) checkEntryResult(decl *ast.FuncDecl) bool {
+	if len(decl.Results) == 0 {
+		return true
+	}
+	declared := c.resultType(decl.Results)
+	if flexible(declared) {
+		return false
+	}
+	code := declared
+	if result, ok := declared.(*types.Result); ok {
+		code = result.Value
+	}
+	if !types.Identical(code, types.Int32) {
+		c.errorHintf(decl.Offset, []string{"the entry point returns nothing, an i32 exit code, or i32 | Error"},
+			"main returns nothing, i32 or i32 | Error, not %s", describeType(declared))
+		return false
+	}
+	return c.requireStdlib(decl.Offset, "what main returns")
 }
 
 func isStringSlice(t types.Type) bool {

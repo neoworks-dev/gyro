@@ -21,7 +21,7 @@ fn badCapacity() {
 // A two-name binding on a receive means (element, open); a tuple element
 // comes out whole. The value is only there when the channel was open, so
 // definite assignment demands the check.
-fn tupleReceive(results: chan<(string, error?)>) {
+fn tupleReceive(results: chan<(string, string?)>) {
     let result, open = <-results
     if open {
         let body: string = result.0
