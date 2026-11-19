@@ -13,11 +13,9 @@ import (
 )
 
 // prepareCall evaluates a call's callee, receiver and arguments and
-// returns the function that emits the call itself. Splitting the two is
-// what gives defer its semantics: arguments evaluate at registration,
-// the call runs at block exit. Ordinary calls invoke the result
-// immediately. The emitted call returns its destination register, "" for
-// a void call.
+// returns the function that emits the call itself. Every caller invokes
+// the result at once. The emitted call returns its destination register,
+// "" for a void call.
 func (f *funcLowerer) prepareCall(call *ast.CallExpr) func() string {
 	resolved := f.callInfo(call)
 

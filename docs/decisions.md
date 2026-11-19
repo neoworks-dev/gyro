@@ -1030,15 +1030,22 @@ with a `_Static_assert` on each type's size and each member's offset. A
 size assert alone would pass on two structs that pad differently and
 total the same.
 
-### `defer` runs at block exit *(new)*
+### `defer` runs at block exit *(revised)*
 
-**Status: planned.** A defer fires when its enclosing `{ }` ends (Zig's
+**Status: decided.** A defer fires when its enclosing `{ }` ends (Zig's
 model), in reverse order of registration, so a loop body's defers run every
-iteration.
+iteration. The whole call is evaluated at exit, arguments included, against
+the names in scope where it was written.
 
 Rejected Go's function-exit model: `for { let p = alloc<T>(); defer free(p) }`
-would pile allocations up until return, and the leak-warning pass reasons
-about scopes, not functions.
+would pile allocations up until return.
+
+Rejected capturing the arguments at registration, which Gyro did before. It
+copies a value at the `defer` and uses the copy at exit, and with ownership
+([chapter 4](ch04-01-ownership.md)) that copy is either a move, which takes
+the value away from the rest of the block, or a view held to the end of the
+block, which blocks every change to its source. Evaluating at exit needs
+neither, and it is what a reader expects from `defer x.close()`.
 
 ### Definite assignment, no zero values *(new)*
 

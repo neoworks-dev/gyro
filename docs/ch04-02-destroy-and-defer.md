@@ -85,9 +85,11 @@ fn render(screen: inout Screen) {
 
 Two details that are easy to get wrong:
 
-- **Arguments are captured at registration**, not at exit. `defer f(x)`
-  passes the `x` that existed when the `defer` ran, not whatever `x` was
-  reassigned to afterwards.
+- **The whole call runs at exit, arguments included.** `defer f(x)` passes
+  whatever `x` holds when the block ends, not what it held where the
+  `defer` was written. The names in it are still the ones in scope where it
+  was written: a block that shadows `x` and returns does not change which
+  `x` the defer means.
 - **The block is the unit, not the function.** A `defer` inside a loop body
   runs at the end of each iteration.
 
