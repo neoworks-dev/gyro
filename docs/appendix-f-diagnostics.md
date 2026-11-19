@@ -105,6 +105,10 @@ A sample, so the ranges have a shape:
 | E0631 | a value returned or stored past the arena it was allocated from |
 | E0632 | a view written in a loop body stored outside the loop |
 | E0633 | a value used after its arena was freed or reset |
+| E0634 | a plain parameter, a plain `self` or a `const` changed |
+| E0635 | an `inout` argument that is a temporary rather than a variable |
+| E0636 | one value passed twice to a call when one pass is `inout` |
+| E0637 | an `inout` parameter with a default, in an async function, in a runtime intrinsic, or on a function used as a value |
 | E0618 | an unsafe call or union read in a plain `fn` |
 | E0619 | `import safe` of a Gyro module |
 | E0620 | a channel, send, receive, select, async function or await in a program that does not load `stdlib` |

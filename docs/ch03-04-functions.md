@@ -20,6 +20,36 @@ nothing; there is no `void` to write.
 
 Parameters may carry defaults: `fn f(n: i32 = 4)`.
 
+## Parameters that change their argument
+
+A plain parameter only reads its argument. Assigning to it, to a field or an
+element of it, or calling a method on it that takes `inout self`, is an
+error. A parameter written `inout` borrows the caller's variable exclusively
+and may change it in place; the call looks the same either way:
+
+```gyro
+fn double(n: inout i32) {
+    n *= 2
+}
+
+fn swap(a: inout i32, b: inout i32) {
+    let held = a
+    a = b
+    b = held
+}
+
+let level = 21
+double(level)         // level is 42
+```
+
+The argument to an `inout` parameter is a variable that can change: a `let`
+local, a field or element of one, or an `inout` parameter of the caller.
+A `const`, a plain parameter or a temporary is an error, and so is passing
+the same value twice to one call when one of the passes is `inout`, as in
+`swap(a, a)`. A function with an `inout` parameter is called by name, so it
+cannot be stored as a function value; a closure around the call can. The
+rules are in [chapter 4.4](ch04-04-borrowing.md).
+
 A declaration **with no body** is not a stub — it is a foreign function or a
 runtime intrinsic ([chapter 15](ch15-00-c-interop.md)), which is why the
 standard library's own surface is written that way.
@@ -117,5 +147,5 @@ needs a `&` entry in practice, because a view never owns what it points at.
 ## Methods are functions too
 
 A method is a free-standing function whose name is qualified by its type —
-`fn Stack::push(*self, v: i32)`. There is no `impl` block and no `Self`.
+`fn Stack::push(inout self, v: i32)`. There is no `impl` block and no `Self`.
 [Chapter 5.2](ch05-02-methods.md).

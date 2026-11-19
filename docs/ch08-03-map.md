@@ -53,13 +53,13 @@ an address is not the same from run to run.
 | method | notes |
 | --- | --- |
 | `Map<K, V>::new(a: Allocator): Map<K, V>` | records `a`; the table and every bucket come from it |
-| `insert(*self, key: K, value: V)` | replaces on an equal key |
+| `insert(inout self, key: K, value: V)` | replaces on an equal key |
 | `get(self, key: K): V?` | null on a miss |
 | `contains(self, key: K): bool` | |
-| `remove(*self, key: K): bool` | reports whether the key was present |
+| `remove(inout self, key: K): bool` | reports whether the key was present |
 | `len(self): usize`, `is_empty(self): bool` | |
 | `keys(self): Array<K>` | a snapshot from the map's allocator, in deterministic bucket order |
-| `free(*self)` | returns the table and every bucket to the recorded allocator |
+| `free(inout self)` | returns the table and every bucket to the recorded allocator |
 
 `keys()` copies into a fresh `Array<K>` that the caller frees. The order is
 bucket order — deterministic across runs and tiers, but not insertion order

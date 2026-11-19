@@ -348,7 +348,7 @@ var explanations = map[Code]explanation{
 	EInoutAlias: {"value is passed twice, once as inout",
 		"An `inout` parameter is exclusive for as long as the call runs. Passing\nthe same variable, or a part of it, as another argument or as the\nreceiver would let the callee change it through one name and read it\nthrough the other. A number passed plainly is a copy and is not counted.\nTwo elements of one array count as the same place, since which elements\nthey are is not known here."},
 	EInoutParam: {"inout parameter is used wrongly",
-		"An `inout` parameter is passed by address, so it takes no default, an\nasync function may not have one, and a function that has one is only\ncalled by name: a function value or a code pointer carries a signature that\nhas no way to say a parameter is inout. Wrap the call in a closure to pass\nit on."},
+		"An `inout` parameter is passed by address, so it takes no default, an\nasync function or one the runtime provides may not have one, and a\nfunction that has one is only called by name: a function value or a code pointer carries a signature that\nhas no way to say a parameter is inout. Wrap the call in a closure to pass\nit on."},
 	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",
 		"A channel, a send, a receive, closing or iterating a channel, a select, an\nasync function and an await are written in Gyro, and their code is in\nstdlib. The compiler never loads a module the program did not import, so a\nprogram that uses one has to load stdlib itself.\n\nImport something from it, such as println: import { println } from \"stdlib\""},
 	EFormatEscapes: {"format value outlives its statement",

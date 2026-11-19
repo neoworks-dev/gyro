@@ -22,12 +22,11 @@ rows are always required. The middle is where the guessing happens.
 
 ## 2. Sigil overload
 
-`*` is a pointer type (`*Node`), a mutable receiver (`*self`), a dereference
-(`*address`) and a by-reference parameter (`*Array<u32>`), while an extern
+`*` is a pointer type (`*Node`), a dereference (`*address`) and a by-reference parameter (`*Array<u32>`), while an extern
 handle that is a pointer in C is spelled `Window?`. `&` is address-of
 (`&head.value`) and a borrow source in a row (`&self`).
 
-Four meanings of one character, in a language whose selling point is that
+Three meanings of one character, in a language whose selling point is that
 reading is unambiguous.
 
 ## 3. Two loop forms

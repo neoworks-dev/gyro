@@ -77,8 +77,8 @@ export trait Mul { fn mul(self, other: Self): Self }
 export trait Div { fn div(self, other: Self): Self }
 export trait Rem { fn rem(self, other: Self): Self }
 export trait Neg { fn neg(self): Self }
-export trait Iterator<T> { fn next(*self): (T, bool) }
-export trait Index<T> { fn at(*self, index: usize): *T }
+export trait Iterator<T> { fn next(inout self): (T, bool) }
+export trait Index<T> { fn at(inout self, index: usize): *T }
 ```
 
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
@@ -88,15 +88,15 @@ the recorded one ([chapter 8.1](ch08-01-array.md)):
 ```gyro
 export fn Array<T>::new(a: Allocator): Array<T> !{}
 export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{}
-export fn Array<T>::push(*self, value: T) !{}
-export fn Array<T>::pop(*self): (T, bool) !{}
+export fn Array<T>::push(inout self, value: T) !{}
+export fn Array<T>::pop(inout self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
-export fn Array<T>::set(*self, index: usize, value: T) !{}
+export fn Array<T>::set(inout self, index: usize, value: T) !{}
 export fn Array<T>::at(self, index: usize): *T !{}
 export fn Array<T>::len(self): usize !{}
 export fn Array<T>::is_empty(self): bool !{}
 export fn Array<T>::slice(self): T[] !{ &self }
-export fn Array<T>::free(*self) !{}
+export fn Array<T>::free(inout self) !{}
 ```
 
 Text ([chapter 8.2](ch08-02-strings.md)):
@@ -109,12 +109,12 @@ export fn string::runes(self, a: Allocator): rune[] !{}
 export fn String::new(a: Allocator): String !{}
 export fn String::with_capacity(a: Allocator, capacity: usize): String !{}
 export fn String::of(a: Allocator, text: string): String !{}
-export fn String::push(*self, text: string) !{}
-export fn String::push_rune(*self, value: rune) !{}
+export fn String::push(inout self, text: string) !{}
+export fn String::push_rune(inout self, value: rune) !{}
 export fn String::len(self): usize !{}
 export fn String::text(self, a: Allocator): string !{}
 export fn String::to_string(self): string !{}
-export fn String::free(*self) !{}
+export fn String::free(inout self) !{}
 ```
 
 Extension methods on `string`, which have to be imported to be callable:
@@ -136,14 +136,14 @@ export fn join(a: Allocator, parts: string[], sep: string): string !{}
 
 ```gyro
 export fn Map<K, V>::new(a: Allocator): Map<K, V> !{}
-export fn Map<K, V>::insert(*self, key: K, value: V) !{}
+export fn Map<K, V>::insert(inout self, key: K, value: V) !{}
 export fn Map<K, V>::get(self, key: K): V? !{}
 export fn Map<K, V>::contains(self, key: K): bool !{}
-export fn Map<K, V>::remove(*self, key: K): bool !{}
+export fn Map<K, V>::remove(inout self, key: K): bool !{}
 export fn Map<K, V>::len(self): usize !{}
 export fn Map<K, V>::is_empty(self): bool !{}
 export fn Map<K, V>::keys(self): Array<K> !{}
-export fn Map<K, V>::free(*self) !{}
+export fn Map<K, V>::free(inout self) !{}
 ```
 
 Mutexes ([chapter 13.1](ch13-01-threads.md)):
@@ -152,10 +152,10 @@ Mutexes ([chapter 13.1](ch13-01-threads.md)):
 export struct Mutex<T> { head: *MutexHead<T> }
 export struct MutexGuard<T> { head: *MutexHead<T>, epoch: u64 }
 export safe fn Mutex<T>::new(value: T): Mutex<T> !{}
-export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+export safe fn Mutex<T>::lock(inout self): MutexGuard<T> !{}
 export safe fn MutexGuard<T>::get(self): T !{}
-export safe fn MutexGuard<T>::set(*self, value: T) !{}
-export safe fn MutexGuard<T>::unlock(*self) !{}
+export safe fn MutexGuard<T>::set(inout self, value: T) !{}
+export safe fn MutexGuard<T>::unlock(inout self) !{}
 ```
 
 A `Mutex` is a handle to a lock word and the value it guards, as an `Array`
@@ -181,11 +181,11 @@ Atomics ([chapter 13.1](ch13-01-threads.md)):
 ```gyro
 export struct Atomic<T: Eq> { value: T }
 export fn Atomic<T>::new(value: T): Atomic<T> !{}
-export safe fn Atomic<T>::load(*self): T !{}
-export safe fn Atomic<T>::store(*self, value: T) !{}
-export safe fn Atomic<T>::swap(*self, value: T): T !{}
-export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{}
-export safe fn Atomic<T>::fetch_add(*self, value: T): T !{}   // also sub, and, or, xor
+export safe fn Atomic<T>::load(inout self): T !{}
+export safe fn Atomic<T>::store(inout self, value: T) !{}
+export safe fn Atomic<T>::swap(inout self, value: T): T !{}
+export safe fn Atomic<T>::compare_and_swap(inout self, expected: T, desired: T): bool !{}
+export safe fn Atomic<T>::fetch_add(inout self, value: T): T !{}   // also sub, and, or, xor
 export safe fn fence() !{}
 ```
 
@@ -234,9 +234,9 @@ export safe fn quote(a: Allocator, text: string): string !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
-export fn Arena::allocator(*self): Allocator !{}
-export fn Arena::free_all(*self) !{}
-export fn Arena::free(*self) !{}
+export fn Arena::allocator(inout self): Allocator !{}
+export fn Arena::free_all(inout self) !{}
+export fn Arena::free(inout self) !{}
 ```
 
 `format` shows each piece of a `Format` and joins them into a `string`
@@ -307,7 +307,7 @@ export struct File { ... }
 
 export fn open(path: string): (File, error?) !{ io }
 export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
-export fn File::close(*self) !{ io }
+export fn File::close(inout self) !{ io }
 
 export fn write_file(path: string, text: string): error? !{ io }
 export fn append_file(path: string, text: string): error? !{ io }

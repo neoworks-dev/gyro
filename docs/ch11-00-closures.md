@@ -213,7 +213,7 @@ cannot be stored into anything that outlives the frame: a parameter, the
 receiver, a module-level variable. **Storing a closure takes `keep`.**
 
 ```gyro
-fn on_open(handlers: Array<fn(): i32>, n: i32) {
+fn on_open(handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(fn(): i32 { return n })               // error: n lives in this frame
     handlers.push(keep(heap(), fn(): i32 { return n })) // fine
 }

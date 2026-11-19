@@ -460,7 +460,7 @@ Facts that took work to get right and are easy to break:
 - a struct literal keeps a field's origin only if the field's declared type
   can hold a view (`restrictTo`); a value of any non-scalar type keeps its
   arenas.
-- a **store** (`*self` method call, field, element or deref assignment)
+- a **store** (`inout self` method call, field, element or deref assignment)
   merges the stored origin into the target's root variable, and errors if the
   root outlives the frame (parameter, receiver, module variable) or was
   declared outside the loop that wrote the storage. See `borrow_store.go`.
@@ -736,8 +736,9 @@ forgotten with `as`, remembered with `unsafe`'s `cast`), and a callback crossing
 
 **Safety holes:**
 
-- **mutation rules unchecked** — `*self` vs `self`, assigning through a
-  value receiver
+- **a plain parameter can be changed through a pointer or a view of it** —
+  assigning to it, a field or an element of it, or passing it as `inout` is
+  checked (`internal/sema/inout.go`); `&xs` and `xs[0..2]` of one are not
 - **`safe` is a promise nothing checks** — a `safe fn` and an
   `import safe` are the author's word (chapter 4.6)
 - **use-after-free, double free and uninitialized reads undetected** —

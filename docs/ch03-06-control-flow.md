@@ -44,13 +44,13 @@ defer runs at the exit of its enclosing block
 
 Slices, fixed-size arrays, ranges and channels iterate natively. Any other
 type is iterable by **implementing `Iterator<T>`**
-([chapter 10.1](ch10-01-traits.md)): a `next(*self): (T, bool)` that hands
+([chapter 10.1](ch10-01-traits.md)): a `next(inout self): (T, bool)` that hands
 back the following element and whether there was one, where `false` ends the
 loop.
 
 ```gyro
 impl Iterator<i32> for Counter {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.n >= self.limit {
             return 0, false
         }

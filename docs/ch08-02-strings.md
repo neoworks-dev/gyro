@@ -81,12 +81,12 @@ uses.
 | method | notes |
 | --- | --- |
 | `String::new(a)`, `String::with_capacity(a, n)`, `String::of(a, text)` | record `a` |
-| `push(*self, text: string)` | appends bytes |
-| `push_rune(*self, value: rune)` | encodes one code point as UTF-8 |
+| `push(inout self, text: string)` | appends bytes |
+| `push_rune(inout self, value: rune)` | encodes one code point as UTF-8 |
 | `len(self): usize` | bytes |
 | `text(self, a: Allocator): string` | reads the buffer back out into a block from `a` |
 | `to_string(self): string` | same from the process heap, and what printing uses |
-| `free(*self)` | returns the bytes to the recorded allocator |
+| `free(inout self)` | returns the bytes to the recorded allocator |
 
 `String` is ordinary Gyro over `Array<u8>`. `push_rune` is a UTF-8 encoder
 written in the language, and a surrogate or out-of-range value becomes

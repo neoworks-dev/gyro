@@ -24,7 +24,7 @@ export fn Stack::new(capacity: i32): Stack {
     return Stack{ capacity: capacity, items: Array<i32>::new(heap()) }
 }
 
-export fn Stack::push(*self, value: i32) {
+export fn Stack::push(inout self, value: i32) {
     self.items.push(value)
 }
 
@@ -34,7 +34,7 @@ export fn Stack::view(self): i32[] !{ &self } {
     return self.items.slice()
 }
 
-export fn Stack::free(*self) {
+export fn Stack::free(inout self) {
     self.items.free()
 }
 

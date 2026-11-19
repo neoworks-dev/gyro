@@ -29,15 +29,15 @@ println(buf[0])         // 4
 | --- | --- | --- |
 | `Array<T>::new(a: Allocator): Array<T>` | `!{}` | records `a` |
 | `Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T>` | `!{}` | records `a`; the first buffer holds `capacity` elements |
-| `push(*self, value: T)` | `!{}` | may grow the buffer, from the recorded allocator |
-| `pop(*self): (T, bool)` | `!{}` | the flag reports whether there was one |
+| `push(inout self, value: T)` | `!{}` | may grow the buffer, from the recorded allocator |
+| `pop(inout self): (T, bool)` | `!{}` | the flag reports whether there was one |
 | `get(self, index: usize): T` | `!{}` | a **copy** of the element; bounds-checked |
-| `set(*self, index: usize, value: T)` | `!{}` | |
+| `set(inout self, index: usize, value: T)` | `!{}` | |
 | `at(self, index: usize): *T` | `!{}` | the element's own address; bounds-checked |
 | `len(self): usize` | `!{}` | |
 | `is_empty(self): bool` | `!{}` | ordinary Gyro over `len` |
 | `slice(self): T[]` | `!{ &self }` | a view of the array's own elements |
-| `free(*self)` | `!{}` | returns the buffer to the recorded allocator |
+| `free(inout self)` | `!{}` | returns the buffer to the recorded allocator |
 
 `Array<T>` is ordinary Gyro in the bundled `stdlib`, written over the
 `unsafe` module ([chapter 4.7](ch04-07-unsafe.md)) and the allocator
@@ -65,7 +65,7 @@ bump(&xs[0].x) // a pointer into the buffer
 
 It lowers through `at`, so an index reaches the element where it lies.
 That is what separates it from `get`, which answers with a **copy** —
-`xs.get(0).x = 9` mutates a copy and nothing else. Both stay: `get` is
+`xs.get(0).x = 9` would change a copy and nothing else, so it is an error. Both stay: `get` is
 what you want when a copy is what you want, and it is the only one of the
 two that is safe to hold across a `push`.
 

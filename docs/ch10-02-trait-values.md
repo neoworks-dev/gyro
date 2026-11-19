@@ -65,7 +65,7 @@ points at.
 ## Calling
 
 A method of the trait is called on a trait value as on any value:
-`element.paint()`. A `*self` method mutates the value behind the pointer.
+`element.paint()`. An `inout self` method changes the value the trait value views.
 A trait value of a trait that requires another carries the methods of both,
 and a trait value satisfies its own trait as a bound, so it can go to a
 generic function:

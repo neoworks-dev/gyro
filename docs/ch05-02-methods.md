@@ -18,7 +18,7 @@ fn Stack::is_empty(self): bool {
     return self.top == 0
 }
 
-fn Stack::push(*self, v: i32) {
+fn Stack::push(inout self, v: i32) {
     self.top += 1
 }
 ```
@@ -32,9 +32,12 @@ owner's name, as in `fn Stack::new(): Self`.
 
 ## Receivers
 
-- `self` borrows the receiver immutably and **never copies it**, however
-  large the struct is.
-- `*self` takes a pointer and may mutate.
+- `self` borrows the receiver and **never copies it**, however large the
+  struct is. The method may read it and may not change it: assigning to
+  `self` or a field of it, or calling a method that takes `inout self`, is
+  an error.
+- `inout self` borrows the receiver exclusively and may change it in place.
+  The call is written the same, `c.bump()`, on a variable that can change.
 - No receiver at all makes it an **associated function**, called as
   `Stack::new(16)`.
 

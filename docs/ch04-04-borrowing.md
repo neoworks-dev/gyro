@@ -36,6 +36,34 @@ fn keep(xs: Array<i32>!) { ... }             // takes it: the caller's is gone
   argument moves into the call, and the function destroys it, stores it or
   hands it on.
 
+What "change" means is checked. Assigning to a plain parameter, to a field
+or an element of it, or calling a method on it that takes `inout self`, is
+an error, and so is changing a `const`. The argument for an `inout`
+parameter, or the receiver of an `inout self` method, is a variable that can
+change: a `let` local, a field or element of one, or an `inout` parameter of
+the caller. The same value cannot be passed twice to one call when one of
+the passes is `inout`, the receiver counting as a pass:
+
+```gyro
+fn swap(a: inout i32, b: inout i32) { ... }
+fn Counter::bump(inout self) { ... }
+fn Counter::peek(self): i32 { ... }
+
+fn demo(c: Counter) {
+    c.bump()            // error: c is a plain parameter
+    let n = 1
+    swap(n, n)          // error: n is passed twice, once as inout
+    swap(n, 2)          // error: 2 is a temporary, nothing keeps the change
+    swap(n, c.peek())   // error: a temporary again
+}
+```
+
+A plain pass of a number is a copy, so it never counts as a second pass, and
+two elements of one array count as the same value, since which elements they
+are is not known. A pointer or a slice parameter is a view of storage
+somebody else owns: writing through it is not a change to the parameter
+([appendix G](appendix-g-known-gaps.md)).
+
 ## Views
 
 A slice, a `string` and a `dyn` value are views: they look at storage some

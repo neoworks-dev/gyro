@@ -89,7 +89,7 @@ struct Map<K: Eq & Hash, V> {
     count: usize
 }
 
-fn Map<K, V>::insert(*self, key: K, value: V) {
+fn Map<K, V>::insert(inout self, key: K, value: V) {
     // K is Eq and Hash here, because the type says so
 }
 ```
@@ -108,7 +108,7 @@ struct Pair<T> {
     second: T
 }
 
-fn Pair<T>::swap(*self) {
+fn Pair<T>::swap(inout self) {
     let tmp = self.first
     self.first = self.second
     self.second = tmp

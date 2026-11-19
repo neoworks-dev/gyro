@@ -30,7 +30,7 @@ impl Shape for Square {
 ```
 
 A method in a trait is a signature, with a body if it has a default. It
-takes a receiver, `self` or `*self`, like any method. Inside the trait,
+takes a receiver, `self` or `inout self`, like any method. Inside the trait,
 `Self` is the type that implements it, so `Ord` can say
 `fn compare(self, other: Self): i32` and every implementer compares with its
 own kind.
@@ -69,7 +69,7 @@ bounds are the ones the type declared.
 
 ```gyro
 trait Widget: Element {
-    fn click(*self)
+    fn click(inout self)
 }
 ```
 
@@ -171,8 +171,8 @@ named. The compiler gives each a meaning by where it is declared.
 | `Ord: Eq` | `compare(self, other: Self): i32` | `< <= > >=` |
 | `Add`, `Sub`, `Mul`, `Div`, `Rem` | `add`, `sub`, `mul`, `div`, `rem` taking and giving `Self` | `+ - * / %` |
 | `Neg` | `neg(self): Self` | unary `-` |
-| `Iterator<T>` | `next(*self): (T, bool)` | `for..in` |
-| `Index<T>` | `at(*self, index: usize): *T` | `value[i]` |
+| `Iterator<T>` | `next(inout self): (T, bool)` | `for..in` |
+| `Index<T>` | `at(inout self, index: usize): *T` | `value[i]` |
 
 **The built-in types implement the ones that apply to them without any
 impl.** Every number is `Eq`, `Hash`, `Print`, `Ord` and has the operators;
@@ -271,7 +271,7 @@ generic body that calls `a.add(b)` instead of `a + b` works for both.
 
 ```gyro
 impl Iterator<i32> for Countdown {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.from == 0 {
             return 0, false
         }

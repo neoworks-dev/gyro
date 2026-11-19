@@ -199,10 +199,10 @@ and a fixed-size array, and on all three it is a *place*: `xs[i] = v`
 assigns into the container and `&xs[i]` is the element's own address.
 
 **The point is `get` returning a copy.** `Array<T>::get` answers with a
-value, so `xs.get(0).x = 9` mutates a copy and nothing else — it compiles
-clean and does nothing, which the md4c port called out as genuinely
+value, so `xs.get(0).x = 9` mutates a copy and nothing else — it compiled
+clean and did nothing, which the md4c port called out as genuinely
 error-prone where it held two handles into one table and mutated through
-both. `xs[i]` lowers through a new `Array<T>::at(self, index): *T`
+both. Changing a temporary is an error now, so that line is refused. `xs[i]` lowers through a new `Array<T>::at(self, index): *T`
 instead, so an index reaches the element where it lies.
 
 `get` stays. A copy is what you want often enough, and it is the only one
@@ -666,6 +666,54 @@ opts in on purpose. Rejected **making every pointer dereference unsafe**:
 safe code needs to look at one value without owning it, so a pointer made
 with `&` is a tracked view, and only pointers made by unsafe code are
 unchecked.
+
+### A parameter changes its argument only when it says `inout` *(new)*
+
+**Status: done.** A plain parameter, `self` included, borrows: the function
+may read it and may not change it. Assigning to it, to a field or an element
+of it, or calling a method that takes `inout self` on it is an error, and so
+is changing a `const`. A parameter written `inout` borrows exclusively and
+may change the argument in place:
+
+```gyro
+fn sort(xs: inout Array<i32>) { ... }
+fn Counter::bump(inout self) { ... }
+```
+
+The call is written as before, `sort(xs)` and `c.bump()`, with no `&`. The
+argument is a place that can change: a `let` local, a field or element of
+one, or an `inout` parameter of the caller. A `const`, a plain parameter or
+a temporary is an error, and so is passing one value twice to a call when
+one of the passes is `inout`, the receiver included. Two elements of one
+array count as the same value, since which elements they are is not known,
+and a plain pass of a number is not counted, since it is a copy.
+`inout self` replaces `*self` outright, which was a receiver that could
+change and a plain `self` whose writes were silently lost.
+
+`inout` is a keyword only in front of a receiver or a parameter's type, so
+it stays usable as a name. A function with an `inout` parameter is passed by
+address and so is only called by name: it cannot be a function value or a
+code pointer, because those signatures cannot say a parameter is `inout`, and
+it cannot be async or a runtime intrinsic. A trait's method and an impl's
+agree on which parameters are `inout`. Pointers and slices are not changed by
+this: a write through one is a write to what it views, not to the parameter
+holding it, and tracking those is the next step.
+
+The compiler passes the argument's address. A variable the checker narrowed
+from `T?` to `T` has no address for its payload, so there the callee gets a
+cell and what it leaves there is stored back after the call, which nothing
+can observe because the variable is exclusive meanwhile.
+
+Rejected **`&` at the call site**, which Rust and C++ ask for and which makes
+the common call noisy where the declaration already says it. Rejected
+**keeping `*self` beside `inout self`**: two spellings of one receiver, with
+a pointer's name on something that is no pointer. Rejected **`mut`** for the
+word, since a plain parameter that cannot change is not what `mut` would be
+the opposite of; `inout` says that what goes in comes out changed. Rejected
+**passing by value and copying back** as the meaning, which would let a
+function see the old value through an alias while it runs. Rejected **a
+reserved word**, which would take `inout` away from every program that
+names something that way.
 
 ### Gyro's memory model is C's, and stays C's *(new)*
 
@@ -1212,7 +1260,7 @@ parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 - `a.eq(b)`, `a.add(b)` and the other methods of the capability traits exist
   on the built-in types, so a generic body that calls them works for the
   numbers as it does for a declared type.
-- `Index<T>` is `at(*self, index: usize): *T`, the address of element `i`,
+- `Index<T>` is `at(inout self, index: usize): *T`, the address of element `i`,
   because "An index is a place, on every container": `value[i]` lowers through
   it as `Array<T>` lowers through its own `at`.
 - Default bodies need a trait without type parameters, and a trait value needs
@@ -1276,7 +1324,7 @@ and a view of this frame's storage cannot be returned).
 **Rejected: inline storage with a cap.** The `error` mechanism, a buffer
 inside the value. It would make `Array<dyn Element>` a fixed-size-element
 array of whatever the biggest implementer is, reject types by their size,
-and copy the value so that a `*self` method mutated a copy. **Rejected:
+and copy the value so that an `inout self` method mutated a copy. **Rejected:
 boxing into an allocator.** The value is allocated when the trait value is
 made and nobody knows who frees it — hidden ownership, against explicit
 allocation. **Rejected: an implicit conversion from a pointer.** Gyro has
@@ -1315,14 +1363,15 @@ with defaults, which Gyro does not have.
 **Status: done (syntax; sema checks the owner names a type in the module).**
 
 ```gyro
-fn Stack::push(*self, v: i32) { ... }
+fn Stack::push(inout self, v: i32) { ... }
 export fn Stack::new(capacity: i32): Stack { ... }
 ```
 
 Structs stay pure data; behaviour is declared beside it at top level, in any
 file order. Receivers keep the first-round semantics: `self` borrows
 immutably and never copies (a copying receiver would memcpy invisibly per
-call), `*self` is a mutable pointer, no receiver means an associated
+call), `inout self` is the receiver passed by address so that the method
+may change it, no receiver means an associated
 function called `Stack::new(16)`.
 
 Rejected `class` (first round — implied inheritance fights a simple SSA IR),
@@ -1338,7 +1387,7 @@ methods are ordinary methods of the type afterwards.
 are the traits its argument has to implement, joined with `&`, and the body
 may use exactly what they provide. A parameter with no bounds can be stored,
 passed and returned, and nothing else. `struct Pair<T>` and `fn
-Pair<T>::swap(*self)` are legal with no bounds, and a type may bound its
+Pair<T>::swap(inout self)` are legal with no bounds, and a type may bound its
 parameters where it introduces them, `struct Map<K: Eq & Hash, V>`, which its
 methods inherit. Instantiation stamps out concrete code per type argument.
 
@@ -1449,7 +1498,7 @@ the same shape for free.
 
 **Status: done.** `for x in ...` handles slices, arrays, ranges and
 channels natively; any other type qualifies by implementing
-`Iterator<T>`, whose one method is `next(*self): (T, bool)` and where
+`Iterator<T>`, whose one method is `next(inout self): (T, bool)` and where
 `false` ends the loop. Rejected a closed built-in set: user containers could
 never be iterated.
 
@@ -1858,7 +1907,7 @@ a slice result does, and a `!{ &xs }` row on it is legal and required. A
 number read out of an aggregate carries nothing, and only a field whose
 declared type can hold a view carries a view.
 
-**Stores are judged where they happen.** A method taking `*self` is treated as
+**Stores are judged where they happen.** A method taking `inout self` is treated as
 possibly keeping its arguments (`push`, `set`, `insert`, and a method a
 program writes), and so is an assignment to a field, an element or through a
 pointer. The target's root variable takes on the origin of what it was given,
@@ -1882,7 +1931,7 @@ input into a caller's token array a false positive. It is allowed and listed
 in appendix G. **Rejected: following a view through a callee.** A call
 `register(&hs, f)` stores in `register`, where `f` is an ordinary parameter;
 following it needs rows on parameters, which is a different feature.
-**Rejected: treating every `*self` method as a store only when its parameter
+**Rejected: treating every `inout self` method as a store only when its parameter
 type can hold a view.** The receiver's type is what decides, not the
 parameter's, because a container instantiated at a view type has `T` where
 the parameter is declared. **Rejected: a separate check for aggregates beside
@@ -2028,7 +2077,7 @@ be read is the one that does not exist. A declaration with no body is a
 foreign function, and with no row there is nothing to know it by, so it is
 assumed to do `io`. That is what forced every intrinsic in the
 standard library to state a row — `Array<T>::get(self, index: usize): T !{}`
-down to `MutexGuard<T>::unlock(*self) !{}` — which is the right place for
+down to `MutexGuard<T>::unlock(inout self) !{}` — which is the right place for
 the annotation burden to fall: the runtime boundary is where a row is the
 only possible source of truth.
 
@@ -4025,7 +4074,7 @@ instructions that are supposed to be the machine's own.
 by-value record parameter into a slot so that its fields could be assigned.
 It now does so only when the body may change the record or take its address:
 a field or element assigned through the name, a narrowing that could be
-written through, a call with a `*self` method on it, `&` of it or of a part,
+written through, a call with an `inout self` method on it, `&` of it or of a part,
 or any mention inside a closure. The analysis is syntactic and errs towards
 a slot. Rejected: an inliner over METALS, which is the bigger lever and a
 bigger risk than this change needed.
@@ -4786,7 +4835,7 @@ and bound imports opaquely; it is deleted.
 | --- | --- |
 | `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
 | conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
-| mutation rules | when a `*self` method may be called on what, and what `self` may not do |
+| mutation rules | what a view in use across an `inout` call may not be; the rest is checked |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |

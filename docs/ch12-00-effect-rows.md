@@ -283,16 +283,16 @@ module-level variable, outlives the frame. A view into this frame's storage,
 or a closure whose environment is in it, cannot be stored there:
 
 ```gyro
-fn fill(handlers: Array<fn(): i32>, n: i32) {
+fn fill(handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(fn(): i32 { return n }) // error: n lives in this frame
 }
 
-fn fill(a: Allocator, handlers: Array<fn(): i32>, n: i32) {
+fn fill(a: Allocator, handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(keep(a, fn(): i32 { return n })) // fine: kept in a
 }
 ```
 
-The store forms are a method taking `*self` (`push`, `set`, `insert`, and any
+The store forms are a method taking `inout self` (`push`, `set`, `insert`, and any
 method a program writes), and an assignment to a field, an element or
 through a pointer. A view of a parameter may be stored: the row describes a
 function's result, not the places its arguments end up, so a view of

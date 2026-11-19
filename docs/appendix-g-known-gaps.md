@@ -14,8 +14,8 @@ attached — a skip is a program that will fail the day the gap closes
 borrowing and `Box`, and the compiler implements none of it yet (#164).
 Until it does, memory is still freed by hand with `free`, `alloc` hands out
 raw pointers in safe code, and none of the borrowing checks run. The rest
-of the book's examples still use the old spelling in places, `*self` and
-`.free()` among them, and move over as the implementation lands.
+of the book's examples still use the old spelling in places, `.free()`
+among them, and move over as the implementation lands.
 
 ## Blocking real applications
 
@@ -86,7 +86,7 @@ of the book's examples still use the old spelling in places, `*self` and
 
 | feature | state |
 | --- | --- |
-| mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
+| mutation rules | a plain parameter, a plain `self` and a `const` are not changed, an `inout` argument is a variable that can change, and no value is passed twice when one pass is `inout`: all checked ([chapter 4.4](ch04-04-borrowing.md)). A view in use across an `inout` call is not |
 | effect rows | `io` is checked against declared rows; row variables, function values and spawn/channel effects are not ([chapter 12](ch12-00-effect-rows.md)) |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` and `=>` | reserved tokens, unused |
@@ -94,7 +94,12 @@ of the book's examples still use the old spelling in places, `*self` and
 
 ## Safety holes
 
-- **Mutation rules are unchecked.**
+- **A plain parameter can still be changed through a pointer or a view.**
+  Assigning to a plain parameter, to a field or element of it, or passing
+  it as `inout` is an error, but `&xs` and `xs[0..2]` of one make a pointer
+  or a slice that writes through, and neither is tracked yet. Nor is a view
+  of a value kept from being used across an `inout` call that moves what it
+  views.
 - **Use-after-free, double free and uninitialized reads are undetected.**
   The heap frees for real, and a block from `alloc<T>()` is zero-filled,
   so a field read before it is written reads zero rather than aborting. A
