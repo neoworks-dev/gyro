@@ -1,7 +1,7 @@
 import { println } from "stdlib"
 
 fn main() {
-    var sum: i32 = 0
+    let sum: i32 = 0
     for x in [1, 2, 3] {
         sum += x
     }

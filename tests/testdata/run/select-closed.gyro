@@ -5,13 +5,13 @@
 import { println } from "stdlib"
 
 fn main() {
-    var gone = chan<i32>(1)
+    let gone = chan<i32>(1)
     gone.close()
-    var waiting = chan<i32>(1)
-    var ran = false
+    let waiting = chan<i32>(1)
+    let ran = false
     select {
-        var v = <-gone: { ran = true }
-        var w = <-waiting: println("not here")
+        let v = <-gone: { ran = true }
+        let w = <-waiting: println("not here")
     }
     println(ran)
 }

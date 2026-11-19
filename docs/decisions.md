@@ -41,12 +41,21 @@ any type with `message(): string`; folding it into traits is future work.
 
 ## Surface syntax
 
-### Declarations use `var` and `const`; types are inferred
+### Declarations use `let` and `const`; types are inferred *(revised)*
 
-**Status: done.** `var x: i32 = 0`, `var y = 42`, `const MAX: i32 = 100`.
+**Status: done (#161).** `let x: i32 = 0`, `let y = 42`, `const MAX: i32 =
+100`. `let` binds a variable that can be reassigned, and `const` is a
+compile-time constant.
 
-Rejected `let` / `let mut`. `var` and `const` match what the book already
-used, and immutability is not tracked yet.
+The binding keyword was `var` and became `let`. `let` is what JavaScript,
+TypeScript and Rust programmers already type, and `var` read as a relic of
+the language it was taken from. Only the spelling changed: definite
+assignment, shadowing and destructuring work exactly as they did, and `var`
+is an ordinary identifier now.
+
+Rejected **keeping `var`**. Rejected **`let` immutable with `let mut` for a
+variable**, as Rust has it, which is a separate decision about tracking
+immutability and not one a rename should smuggle in.
 
 ### The return type follows a colon
 
@@ -101,7 +110,7 @@ naming it avoids platform-dependent sizing.
 ### Numeric literals are context-typed *(new)*
 
 **Status: planned.** A literal adapts to the type the context requires
-(`var h: u32 = 2166136261` needs no cast); with no context, integers are
+(`let h: u32 = 2166136261` needs no cast); with no context, integers are
 `i32` and floats `f64`. A literal that does not fit is a compile error.
 Typed values never convert implicitly — only literals adapt.
 
@@ -111,7 +120,7 @@ code.
 
 ### The default type is range-checked like any other *(new)*
 
-**Status: done.** `var x = 3000000000` is an error, and so is
+**Status: done.** `let x = 3000000000` is an error, and so is
 `println(1 << 40)`: defaulting decides a type, and a value that does not
 fit the type it is given is rejected wherever the decision is made.
 Before this, `intFits` ran only in `adaptUntyped` — the path a *context*
@@ -120,7 +129,7 @@ type takes — and defaulting went around it, so an i32 could hold
 divergence but a type claiming a value it cannot hold.
 
 The check lives in one place, `defaultExpr`, which every site that
-defaults an expression's type goes through: a `var` without an
+defaults an expression's type goes through: a `let` without an
 annotation, a range endpoint, an array or tuple element with no context,
 a `match` arm, a closure's expression body, an argument wrapped into
 `any`, and an argument that infers a generic parameter. Sites that
@@ -129,7 +138,7 @@ method, a destructured tuple element) keep plain `types.Default`; the
 expression they came from was already checked where it was written.
 
 Rejected silently widening the default to i64 when the value needs it:
-the width of `var x = ...` would then depend on the magnitude of a
+the width of `let x = ...` would then depend on the magnitude of a
 constant, and passing `x` to `fn f(v: i32)` would break for reasons
 invisible at the call. Rejected wrapping to the i32 the type promises,
 Go's answer for `int` conversions but not for constants — Gyro panics on
@@ -322,7 +331,7 @@ apply and falling off the end panics. Printing an `any` prints what is
 inside it.
 
 Packing into a `...any` parameter is the one implicit conversion in the
-language. Assignment still refuses: `var x: any = 42` is an error and
+language. Assignment still refuses: `let x: any = 42` is an error and
 `42 as any` is the fix. The exception is narrow on purpose — the call
 constructs the pack, so the wrap is part of the call form rather than a
 silent coercion between two typed values, and requiring `as any` on every
@@ -571,7 +580,7 @@ the value, so mutating through one would mutate a copy.
 
 ### Every path to a read must have written the name *(new)*
 
-**Status: done.** `var x: i32` with no initializer holds nothing, and reading
+**Status: done.** `let x: i32` with no initializer holds nothing, and reading
 it before every path has written it is a compile error. There are no zero
 values, so the alternative is reading storage that means nothing.
 
@@ -593,11 +602,11 @@ and it marks the local assigned from there on.
 
 The storage is real and sized whether or not anything has been written to it;
 `&x` names a place rather than reading one. Writing through the pointer is
-the ordinary reason to take it, and `var p = &x; *p = 5; println(x)` has to
+the ordinary reason to take it, and `let p = &x; *p = 5; println(x)` has to
 work. The analysis cannot follow what happens through a pointer, so the
 address-of is where it stops tracking.
 
-The cost is a hole: `var p = &x; println(*p)` reads storage nothing wrote,
+The cost is a hole: `let p = &x; println(*p)` reads storage nothing wrote,
 and only the evaluator's runtime check catches it — the native tiers do
 not poison. Accepted on the same terms as dangling slices.
 
@@ -608,7 +617,7 @@ checks are already runtime-checked rather than proved away.
 
 ### A two-name receive is guarded by its flag *(new)*
 
-**Status: done.** `var v, open = <-ch` leaves `v` readable only where `open`
+**Status: done.** `let v, open = <-ch` leaves `v` readable only where `open`
 is true. A closed channel yields no value, not a zero value, so the flag is
 the only thing that says whether the value exists.
 
@@ -640,7 +649,7 @@ ownership where it was, so a block that only reads its allocation is still
 reported.
 
 A `return` is treated as an exit the check sees rather than a place to stop
-looking. Checking only the closing brace missed `var node = alloc<Node>()`
+looking. Checking only the closing brace missed `let node = alloc<Node>()`
 followed by `return 0`, where the allocation is lost on the way out.
 
 Rejected ownership-and-borrows, which is a large sema investment, and
@@ -1015,13 +1024,13 @@ total the same.
 model), in reverse order of registration, so a loop body's defers run every
 iteration.
 
-Rejected Go's function-exit model: `for { var p = alloc<T>(); defer free(p) }`
+Rejected Go's function-exit model: `for { let p = alloc<T>(); defer free(p) }`
 would pile allocations up until return, and the leak-warning pass reasons
 about scopes, not functions.
 
 ### Definite assignment, no zero values *(new)*
 
-**Status: planned.** `var x: i32` without an initializer is legal; reading
+**Status: planned.** `let x: i32` without an initializer is legal; reading
 it before every path has assigned it is a compile error. A receive from a
 closed channel yields no value — reading it without checking `open` is the
 same error.
@@ -1036,7 +1045,7 @@ real bugs).
 **Status: done.** An inner block may redeclare an outer name; declaring
 the same name twice in one block is an error. Standard C/Go behaviour, no
 special rules. A local's initializer resolves before the name binds, so
-`var x = x` reaches the outer x or fails.
+`let x = x` reaches the outer x or fails.
 
 ### Absence is expressed by nullable types, not a bare null
 
@@ -1386,7 +1395,7 @@ outside the stdlib — it is `Mutex::new(0)`.
 
 **Status: done (syntax), planned (semantics).** `(A, B)` is a real type:
 usable in `chan<(string, error?)>`, fields, variables. Values are written `(a, b)`, read by
-destructuring (`var a, b = pair`) or positional access (`pair.0`). No
+destructuring (`let a, b = pair`) or positional access (`pair.0`). No
 one-element tuples; `(expr)` stays grouping. `return a, b` is sugar for
 returning a tuple, so multi-value returns are no longer a special form.
 
@@ -1394,7 +1403,7 @@ This reverses the first round's "no tuple values", which held that `(T,
 error)` was a return-only shape and structured data belongs in named
 structs. What broke it: a channel could not carry a fallible result — every
 worker thread needed a single-use wrapper struct. The iteration protocol
-(`next(): (T, bool)`) and channel receive (`var v, open = <-ch`) fell out of
+(`next(): (T, bool)`) and channel receive (`let v, open = <-ch`) fell out of
 the same shape for free.
 
 ### Match is exhaustive, variants qualified, type-tests share the shape *(new)*
@@ -1635,9 +1644,9 @@ because there were no closures, and it broke the rule that anything outside
 the formal syntax must be imported.
 
 `select` arms use the `comm: body` shape of match — newline-terminated, like
-match arms after the review. Bindings are ordinary `var` declarations. Go's
+match arms after the review. Bindings are ordinary `let` declarations. Go's
 `:=` was explicitly rejected — an assignment is `=`, and anything that binds
-is `var` or `const`.
+is `let` or `const`.
 
 Channels have no direction. `chan.send<T>` was considered; parameter naming
 carries the intent instead. Channel creation stays call-shaped grammar
@@ -2045,7 +2054,7 @@ Still open, deliberately out of v1:
   polymorphism (the row variables above) gives them something to say.
   `spawn` carries `!{ io }` as a stand-in for its task's effects for
   exactly this reason.
-- **Module-level `var` initializers.** They run before `main`, outside any
+- **Module-level `let` initializers.** They run before `main`, outside any
   signature, so no row covers them and they are unconstrained.
 - **Channels and Mutex.** No effect in v1. What concurrency should be in
   the effect vocabulary is undecided — `async` was already rejected as an
@@ -2137,7 +2146,7 @@ written the natural way is rejected. Listed under "Still open".
 ### Constant expressions fold during checking *(new)*
 
 **Status: done.** Untyped literal arithmetic folds over big integers, so
-`var x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
+`let x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
 runtime panics. Operands are typed without the outer context — the folded
 result is what must fit.
 
@@ -2156,11 +2165,11 @@ the count keeps its own type, so an untyped left operand has no
 neighbour to adapt against and the surrounding context is the only
 source. A folded expression is exempt — it emits its value and never its
 operands, and only the folded value has to fit, which is what keeps
-`var x: i8 = -128` legal.
+`let x: i8 = -128` legal.
 
 This closed the recorded checker/interpreter divergence on untyped
 operands: the interpreter now keeps `~` and an untyped shift untyped
-instead of defaulting them to i32 mid-expression, so `var x: i64 = 1 <<
+instead of defaulting them to i32 mid-expression, so `let x: i64 = 1 <<
 40` is an i64 shift in every tier. Rejected: making the interpreter read
 the checker's recorded types for literals, which would have coupled the
 spec tier to `Info` for one narrow case. Corpus:
@@ -4763,18 +4772,18 @@ and bound imports opaquely; it is deleted.
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |
-| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use. Module-level `var` does have identity and lowers to METALS storage |
+| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use. Module-level `let` does have identity and lowers to METALS storage |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
 | narrowing text | `xs[a..b]` narrows a slice, and a `string` is deliberately not among them: its length is in bytes and its content is UTF-8, so a byte range can cut a code point in half. Whether a text window counts bytes, runes or something else is undecided |
 | formatting a float to a precision | `fmt` has no `%e`/`%f`/`%g` and nothing can read a double's bits, so no Gyro program can print a float to a fixed number of digits; the cJSON port needed 358 lines of exact decimal conversion to do what `printf("%.15g")` does |
 | a `const` in a match pattern binds | a bare name is a binding, so `match piece { WQ: "q"  WR: "r" }` matches the first arm for every value — it compiles clean and answers wrong. Either warn when a binding shadows a module-scope `const`, or let a path pattern mean equality |
 | what a match *expression* takes its type from | the first arm decides, so `Value::Text(s): s` beside `_: null` is E0516; a statement `match` writing into a pre-declared local is the workaround |
-| the scope of leak settling | an allocation stored into a field *through a pointer* (`p.child = n`) is not settled, though a struct-literal field is, and tracking does not survive a constructor call, so `var n = new_node()` is untracked entirely. cJSON does real manual memory management and warns zero times, having first been false-positived on the linked-list idiom |
+| the scope of leak settling | an allocation stored into a field *through a pointer* (`p.child = n`) is not settled, though a struct-literal field is, and tracking does not survive a constructor call, so `let n = new_node()` is untracked entirely. cJSON does real manual memory management and warns zero times, having first been false-positived on the linked-list idiom |
 | viewing a literal's bytes | `bytes()` on a string literal allocates, so constant markup written into a byte buffer copies per emission |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
-| receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
+| receive vs tuple destructuring | on `chan<(A, B)>`, `let a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
 | memory reclamation | native binaries free only what the program frees; strings and other implicit allocations leak until an ownership/GC decision exists |
 | use-after-free and uninitialized reads | the runtime frees for real and leaves storage as the allocator returned it, so a binary silently reads garbage. The evaluator poisoned freed cells and unwritten storage and aborted on a read; it is deleted, and a poisoning allocator in `rt.c` is the replacement worth building. It cannot even name a double free today, since `gy_free` hands the block back to libc before a second free could read the poison |
 | type punning is not diagnosed | reading across union members with no common initial sequence, or a struct's storage as bytes, reinterprets whatever is there; catching it needs something that records which member was written |

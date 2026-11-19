@@ -10,13 +10,13 @@ fn main() {
     // 2026-01-01 is 1767225600000 milliseconds after the epoch.
     println(now() > 1767225600000)
 
-    var before = monotonic()
-    var again = monotonic()
+    let before = monotonic()
+    let again = monotonic()
     println(again >= before)
 
     sleep(30)
-    var after = monotonic()
-    var slept = (after - again) / 1000000
+    let after = monotonic()
+    let slept = (after - again) / 1000000
     println(slept >= 30)
     println(slept < 2000)
 

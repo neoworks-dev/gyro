@@ -179,7 +179,7 @@ var explanations = map[Code]explanation{
 	ECaptureForm: {"malformed capture list",
 		"A capture list holds `move name` entries. Copies are implicit, so\n`copy name` is only needed to force a copy of a moved name."},
 	EBindingNeedsType: {"binding needs a type or a value",
-		"There are no zero values: a var without an initializer needs an\nannotation, and a const always needs its value."},
+		"There are no zero values: a let without an initializer needs an\nannotation, and a const always needs its value."},
 	EMatchArmForm: {"malformed match arm",
 		"Arms end at the newline. There is no comma between them."},
 	EDeferNeedsCall: {"defer needs a call",
@@ -226,7 +226,7 @@ var explanations = map[Code]explanation{
 	ELiteralOutOfRange: {"literal does not fit",
 		"An integer literal is checked against the type its context requires.\n" +
 			"With no context the type is i32, and the check still applies:\n" +
-			"`var x = 3000000000` needs `var x: i64 = 3000000000`."},
+			"`let x = 3000000000` needs `let x: i64 = 3000000000`."},
 	EBadOperands: {"operator does not apply",
 		"The operator is not defined for these operand types, or the operands\n" +
 			"do not match each other. Mixed numeric types are converted with `as`:\n" +
@@ -259,7 +259,7 @@ var explanations = map[Code]explanation{
 	EMatchArmsDisagree: {"match arms disagree",
 		"A match is an expression, so every arm produces the same type."},
 	EUnassignedRead: {"value is read before it is assigned",
-		"Gyro has no zero values, so `var x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
+		"Gyro has no zero values, so `let x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
 	EEntryPointSignature: {"main has the wrong signature",
 		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing: a\nfailing program prints and aborts rather than handing back a status."},
 	EVariadicParam: {"variadic parameter is declared wrongly",

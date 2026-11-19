@@ -6,7 +6,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
-// Module-level `var` is the one thing in Gyro that outlives every frame.
+// Module-level `let` is the one thing in Gyro that outlives every frame.
 // It lowers to METALS storage, which is zero-initialized; the initializer
 // runs in a synthesized function called before main's own body, in
 // declaration order across modules in dependency order.
@@ -14,19 +14,19 @@ import (
 // `const` does not come through here. A const has no identity to share,
 // so it stays a getter — see moduleValue.
 
-// moduleGlobal is one lowered module-level var.
+// moduleGlobal is one lowered module-level let.
 type moduleGlobal struct {
 	name string
 	decl *ast.VarDecl
-	// binding is the declared name, which is the var's own name; a
-	// destructuring module-level var does not parse.
+	// binding is the declared name, which is the binding's own name; a
+	// destructuring module-level let does not parse.
 	binding string
 	typ     types.Type
 }
 
 const globalInitName = "__init_globals"
 
-// collectGlobals registers storage for every module-level var, in the
+// collectGlobals registers storage for every module-level let, in the
 // order the program declares them. Doing it up front rather than on first
 // use is what makes the initialization order the source's rather than the
 // order the lowering happened to reach them in.
@@ -50,7 +50,7 @@ func (l *lowerer) registerGlobal(decl *ast.VarDecl) {
 		name := binding.Name
 		declared := l.info.Locals[decl][name]
 		if declared == nil {
-			l.fail("module-level var %s has no recorded type", name)
+			l.fail("module-level let %s has no recorded type", name)
 		}
 		qualified := l.globalName(decl, name)
 		l.globals = append(l.globals, moduleGlobal{
@@ -89,7 +89,7 @@ func (f *funcLowerer) globalPlace(decl *ast.VarDecl, name string) *place {
 		f.emit(&metals.GlobalPtr{Dst: ptr, Name: global.name})
 		return f.pointerPlace(ptr, global.typ)
 	}
-	f.l.fail("@%s: no storage for the module-level var %s", f.fn.Name, name)
+	f.l.fail("@%s: no storage for the module-level let %s", f.fn.Name, name)
 	return nil
 }
 

@@ -154,7 +154,7 @@ type lowerer struct {
 	// has to call an eq a part of them defines.
 	eqs map[string]bool
 
-	// globals is every module-level var, in declaration order; globalOf
+	// globals is every module-level let, in declaration order; globalOf
 	// indexes back from the declaration that introduced them.
 	globals  []moduleGlobal
 	globalOf map[*ast.VarDecl][]int

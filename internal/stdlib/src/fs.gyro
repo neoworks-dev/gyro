@@ -15,8 +15,8 @@ export struct File {
 }
 
 export fn open(path: string): (File, error?) !{ io } {
-    var found = access(path)
-    var file = File{ name: path.substring(heap(), 0, path.len()), closed: false }
+    let found = access(path)
+    let file = File{ name: path.substring(heap(), 0, path.len()), closed: false }
     if found < 0 {
         return file, fail("stat", path, found)
     }
@@ -24,19 +24,19 @@ export fn open(path: string): (File, error?) !{ io } {
 }
 
 export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
-    var fd = open_fd(file.name, O_RDONLY, 0)
+    let fd = open_fd(file.name, O_RDONLY, 0)
     if fd < 0 {
         return "", fail("open", file.name, fd)
     }
 
-    var content = Array<u8>::new(heap())
-    var chunk = Array<u8>::with_capacity(heap(), 4096)
+    let content = Array<u8>::new(heap())
+    let chunk = Array<u8>::with_capacity(heap(), 4096)
     for i in 0..4096 {
         chunk.push(0)
     }
-    var view = chunk.slice()
+    let view = chunk.slice()
     while true {
-        var got = read(fd, view)
+        let got = read(fd, view)
         if got < 0 {
             close(fd)
             content.free()
@@ -51,7 +51,7 @@ export fn read_all(a: Allocator, file: File): (string, error?) !{ io, &a } {
         }
     }
     close(fd)
-    var text = from_utf8(a, content.slice())
+    let text = from_utf8(a, content.slice())
     content.free()
     chunk.free()
     return text, null
@@ -63,11 +63,11 @@ export fn File::close(*self) !{ io } {
 
 // write_to opens, writes and closes in one call.
 fn write_to(path: string, text: string, flags: usize): error? !{ io } {
-    var fd = open_fd(path, flags, 438)
+    let fd = open_fd(path, flags, 438)
     if fd < 0 {
         return fail("open", path, fd)
     }
-    var put = write_text(fd, text)
+    let put = write_text(fd, text)
     close(fd)
     if put < 0 {
         return fail("write", path, put)
@@ -84,7 +84,7 @@ export fn append_file(path: string, text: string): error? !{ io } {
 }
 
 export fn remove(path: string): error? !{ io } {
-    var result = unlink(path)
+    let result = unlink(path)
     if result < 0 {
         return fail("remove", path, result)
     }
@@ -97,7 +97,7 @@ export fn exists(path: string): bool !{ io } {
 
 // The bytes of a name, as a window onto the directory buffer.
 safe fn entry_name(a: Allocator, window: u8[]): string !{ &a } {
-    var length: usize = 0
+    let length: usize = 0
     while length < window.len() && window[length] != 0 {
         length += 1
     }
@@ -107,11 +107,11 @@ safe fn entry_name(a: Allocator, window: u8[]): string !{ &a } {
 // sort orders the names bytewise, the way Go sorts a listing. A shell sort:
 // no allocation, and good enough for a directory.
 fn sort(names: Array<string>) !{} {
-    var gap = names.len() / 2
+    let gap = names.len() / 2
     while gap > 0 {
-        for var i = gap; i < names.len(); i += 1 {
-            var held = names.get(i)
-            var at = i
+        for let i = gap; i < names.len(); i += 1 {
+            let held = names.get(i)
+            let at = i
             while at >= gap && names.get(at - gap).compare(held) > 0 {
                 names.set(at, names.get(at - gap))
                 at -= gap
@@ -123,19 +123,19 @@ fn sort(names: Array<string>) !{} {
 }
 
 export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &a } {
-    var names = Array<string>::new(a)
-    var fd = open_fd(path, O_RDONLY | O_DIRECTORY, 0)
+    let names = Array<string>::new(a)
+    let fd = open_fd(path, O_RDONLY | O_DIRECTORY, 0)
     if fd < 0 {
         return names, fail("open", path, fd)
     }
 
-    var block = Array<u8>::with_capacity(heap(), 32768)
+    let block = Array<u8>::with_capacity(heap(), 32768)
     for i in 0..32768 {
         block.push(0)
     }
-    var buffer = block.slice()
+    let buffer = block.slice()
     while true {
-        var got = syscall_getdents(fd, buffer)
+        let got = syscall_getdents(fd, buffer)
         if got < 0 {
             close(fd)
             block.free()
@@ -146,10 +146,10 @@ export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io, &
         }
         // Each record is { u64 inode, i64 offset, u16 length, u8 type,
         // name... }, the name running to its NUL.
-        var at: usize = 0
+        let at: usize = 0
         while at < (got as usize) {
-            var length = (buffer[at + 16] as usize) | ((buffer[at + 17] as usize) << 8)
-            var name = entry_name(a, buffer[(at + 19)..(at + length)])
+            let length = (buffer[at + 16] as usize) | ((buffer[at + 17] as usize) << 8)
+            let name = entry_name(a, buffer[(at + 19)..(at + length)])
             if name != "." && name != ".." {
                 names.push(name)
             }

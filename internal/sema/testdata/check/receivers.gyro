@@ -20,13 +20,13 @@ fn S::duplicate(self) { //~ E0603 S already has a method duplicate
 }
 
 fn selfOutsideAMethod() {
-    var x = self //~ self is only available inside a method
+    let x = self //~ self is only available inside a method
 }
 
 fn Missing::m(self) { //~ no such type in this module
 }
 
-var notAType = 1
+let notAType = 1
 
 fn notAType::m(self) { //~ not a type
 }

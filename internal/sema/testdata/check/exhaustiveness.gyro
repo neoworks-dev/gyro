@@ -92,7 +92,7 @@ fn typeTest(err: error): i32 {
 }
 
 fn typeTestNeedsAnError(n: i32) {
-    var x = match n {
+    let x = match n {
         RangeError(e): 1 //~ needs an error subject
         _: 0
     }

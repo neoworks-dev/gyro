@@ -8,7 +8,7 @@ import { to_u8 } from "convert"
 
 fn main() {
     println("before")
-    var value, err = to_u8("1", 37)
+    let value, err = to_u8("1", 37)
     println(value)
     println(err == null)
 }

@@ -174,9 +174,9 @@ struct OnlyInts<C: Container<Item = i32>> {
 }
 
 fn main() {
-    var ok = OnlyInts<Tight<i32>>{ Tight<i32>{ 1 } }
-    var no = OnlyInts<Tight<bool>>{ Tight<bool>{ true } } //~ E0535 the associated type Item of Tight<bool> is bool
+    let ok = OnlyInts<Tight<i32>>{ Tight<i32>{ 1 } }
+    let no = OnlyInts<Tight<bool>>{ Tight<bool>{ true } } //~ E0535 the associated type Item of Tight<bool> is bool
     pinned(Good{ n: 1 })
     pinned(Flag{ on: true }) //~ E0535 the associated type Item of Flag is bool, but Container<Item = i32> needs it to be i32
-    var shown: dyn Container //~ E0530 Container cannot be used as dyn
+    let shown: dyn Container //~ E0530 Container cannot be used as dyn
 }

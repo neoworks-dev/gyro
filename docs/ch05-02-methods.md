@@ -57,7 +57,7 @@ scope:
 import { trim, split } from "stdlib"
 import { heap } from "mem"
 
-var clean = line.trim(heap()) // works because `trim` was imported
+let clean = line.trim(heap()) // works because `trim` was imported
 ```
 
 That is what keeps extensions out of universe scope. `line.trim(heap())` works

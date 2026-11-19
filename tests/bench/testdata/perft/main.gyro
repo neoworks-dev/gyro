@@ -38,21 +38,21 @@ const DEPTH: i32 = 3
 fn main() {
     chess::init_all()
 
-    var start = monotonic()
-    var nodes: i64 = 0
+    let start = monotonic()
+    let nodes: i64 = 0
     nodes += count(START)
     nodes += count(KIWIPETE)
     nodes += count(POSITION_3)
     nodes += count(POSITION_4)
     nodes += count(POSITION_5)
     nodes += count(POSITION_6)
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(nodes)
     eprintln("gyro:bench #{stop - start}")
 }
 
 fn count(fen: string): i64 {
-    var board = chess::parse_fen(fen)
+    let board = chess::parse_fen(fen)
     return chess::perft(&board, DEPTH, 0)
 }

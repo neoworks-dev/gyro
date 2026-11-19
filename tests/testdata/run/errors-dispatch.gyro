@@ -17,11 +17,11 @@ fn check(v: i32): (i32, error?) {
 }
 
 fn main() {
-    var ok, err = check(7)
+    let ok, err = check(7)
     println(ok)
     println(err == null)
 
-    var _, bad = check(99)
+    let _, bad = check(99)
     if bad != null {
         println(bad.message())
         match bad {

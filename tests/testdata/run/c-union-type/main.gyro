@@ -21,11 +21,11 @@ safe fn main() {
     println(boxed_size())
 
     // C makes one, Gyro reads its member.
-    var fromC = make_int(42)
+    let fromC = make_int(42)
     println(fromC.i)
 
     // Gyro makes one, C reads its member.
-    var mine = Value{ i: 7 }
+    let mine = Value{ i: 7 }
     println(int_of(mine))
 
     // Gyro writes a member and C reads the same storage.
@@ -34,19 +34,19 @@ safe fn main() {
 
     // An out-parameter: C writes through the address of storage Gyro
     // owns, and Gyro reads the member C wrote.
-    var out = Value{ i: 0 }
+    let out = Value{ i: 0 }
     store_double(&out, 2.5)
     println(out.f)
 
     // A struct holding a union crosses whole, and the field beside it is
     // an ordinary field.
-    var b = boxed(3, 11)
+    let b = boxed(3, 11)
     println(kind_of(&b))
     println(b.kind)
     println(b.value.i)
 
     // ...and Gyro can build one too.
-    var mineBoxed = Boxed{ kind: 4, value: Value{ i: 13 } }
+    let mineBoxed = Boxed{ kind: 4, value: Value{ i: 13 } }
     println(kind_of(&mineBoxed))
     println(mineBoxed.value.i)
 }

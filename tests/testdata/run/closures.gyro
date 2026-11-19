@@ -9,17 +9,17 @@ fn apply(v: i32, f: fn(i32): i32): i32 {
 
 fn main() {
     println(apply(21, fn(x) x * 2))
-    var add = fn(a: i32, b: i32): i32 { return a + b }
+    let add = fn(a: i32, b: i32): i32 { return a + b }
     println(add(2, 3))
 
-    var count = 1
-    var show = fn() { println(count) }
+    let count = 1
+    let show = fn() { println(count) }
     count = 99
     show()
     println(count)
 
-    var total: i32 = 0
-    var bump = fn(): i32 {
+    let total: i32 = 0
+    let bump = fn(): i32 {
         total += 1
         return total
     }

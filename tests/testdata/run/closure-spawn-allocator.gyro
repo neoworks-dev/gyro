@@ -18,14 +18,14 @@ safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
     if data == null {
         return null
     }
-    var counter = cast<Counter>(data)
+    let counter = cast<Counter>(data)
     if mode == Mode::Alloc {
         counter.allocs += 1
     }
     if mode == Mode::Free {
         counter.frees += 1
     }
-    var h = heap()
+    let h = heap()
     return h.proc(h.data, mode, size, align, old, old_size)
 }
 
@@ -36,9 +36,9 @@ fn start(a: Allocator, done: chan<i32>, base: i32) {
 }
 
 fn main() {
-    var counter = Counter{ allocs: 0, frees: 0 }
-    var counted = Allocator{ proc: &counting, data: &counter as anyptr }
-    var done = chan<i32>(1)
+    let counter = Counter{ allocs: 0, frees: 0 }
+    let counted = Allocator{ proc: &counting, data: &counter as anyptr }
+    let done = chan<i32>(1)
 
     // start has returned, so the frame the closure was written in is gone
     // and the thread is running from the copy.

@@ -9,19 +9,19 @@ struct Cell {
 }
 
 unsafe fn accepted(cell: *Cell, maybe: *Cell?, raw: anyptr, none: anyptr?, small: u8, flag: bool) {
-    var _ = syscall0(39)
-    var _ = syscall1(3, -1)
-    var _ = syscall2(1, small, flag)
-    var _ = sys3(0, cell, maybe, raw)
-    var _ = syscall1(0, none)
+    let _ = syscall0(39)
+    let _ = syscall1(3, -1)
+    let _ = syscall2(1, small, flag)
+    let _ = sys3(0, cell, maybe, raw)
+    let _ = syscall1(0, none)
 }
 
 unsafe fn refused(cell: Cell, text: string, bytes: u8[], ratio: f64, count: i32?) {
-    var _ = syscall1(0, cell)    //~ E0536 Cell cannot be a system call argument; it takes an integer, a bool or a pointer
-    var _ = syscall1(0, text)    //~ E0536 string cannot be a system call argument
-    var _ = syscall1(0, bytes)   //~ E0536 u8[] cannot be a system call argument
-    var _ = sys3(0, 1, ratio, 2) //~ E0536 f64 cannot be a system call argument
-    var _ = syscall1(0, count)   //~ E0536 i32? cannot be a system call argument
+    let _ = syscall1(0, cell)    //~ E0536 Cell cannot be a system call argument; it takes an integer, a bool or a pointer
+    let _ = syscall1(0, text)    //~ E0536 string cannot be a system call argument
+    let _ = syscall1(0, bytes)   //~ E0536 u8[] cannot be a system call argument
+    let _ = sys3(0, 1, ratio, 2) //~ E0536 f64 cannot be a system call argument
+    let _ = syscall1(0, count)   //~ E0536 i32? cannot be a system call argument
 }
 
 // Inside a generic function the check waits for the types an
@@ -32,6 +32,6 @@ unsafe fn forward<T>(value: T): isize {
 }
 
 unsafe fn instantiate() {
-    var _ = forward(7)
-    var _ = forward("text") //~ E0505 in the instantiation forward<string> required here
+    let _ = forward(7)
+    let _ = forward("text") //~ E0505 in the instantiation forward<string> required here
 }

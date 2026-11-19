@@ -23,8 +23,8 @@ import { heap } from "mem"
 // The rendered bytes come back one at a time, because the C side has no
 // allocator to hand out a string with.
 fn rendered(length: i32): string {
-    var text = String::new(heap())
-    var i = 0
+    let text = String::new(heap())
+    let i = 0
     while i < length {
         text.push_rune(rendered_at(i) as rune)
         i = i + 1

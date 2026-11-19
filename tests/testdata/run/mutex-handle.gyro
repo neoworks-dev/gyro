@@ -4,22 +4,22 @@
 import { println, Mutex } from "stdlib"
 
 fn main() {
-    var m = Mutex::new(5)
-    var first = m.lock()
+    let m = Mutex::new(5)
+    let first = m.lock()
     println(first.get())
     first.set(6)
     first.unlock()
 
-    var second = m.lock()
+    let second = m.lock()
     println(second.get())
     second.unlock()
 
     // A copy of the mutex is the same mutex.
-    var alias = m
-    var third = alias.lock()
+    let alias = m
+    let third = alias.lock()
     third.set(third.get() * 7)
     third.unlock()
-    var fourth = m.lock()
+    let fourth = m.lock()
     println(fourth.get())
     fourth.unlock()
 }

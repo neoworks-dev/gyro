@@ -15,14 +15,14 @@ same rule narrowing conversions follow
 ([chapter 3.2](ch03-02-data-types.md)).
 
 ```gyro
-var v: any = 42 as any
-var n = v as i32    // 42
-var s = v as string // panics: any holds i32, not string
+let v: any = 42 as any
+let n = v as i32    // 42
+let s = v as string // panics: any holds i32, not string
 ```
 
 The only implicit conversion in the language is **packing**: an argument to
 a `...any` parameter is wrapped without writing `as any`, because the call
-is what constructs the pack. Assignment never wraps — `var x: any = 42` is
+is what constructs the pack. Assignment never wraps — `let x: any = 42` is
 an error and `42 as any` is the fix.
 
 ## Asking instead of asserting
@@ -31,7 +31,7 @@ an error and `42 as any` is the fix.
 on an `error`:
 
 ```gyro
-var text = match v {
+let text = match v {
     i32(n):    format(heap(), "int #{n}")
     string(s): format(heap(), "text #{s}")
     _:         "something else"
@@ -44,7 +44,7 @@ as partial — and falling off the end panics. Write the `_`.
 A type an ordinary path cannot spell is written out in the arm:
 
 ```gyro
-var text = match v {
+let text = match v {
     (i32, string)(pair): format(heap(), "pair #{pair.0}")
     i32[](xs):           format(heap(), "#{xs.len()} numbers")
     i32[3](fixed):       "three numbers"

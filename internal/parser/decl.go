@@ -200,7 +200,7 @@ func (p *Parser) parseDecl() ast.Decl {
 			p.errorf(offset, "an impl is not exported; it belongs to the type it is for")
 		}
 		return decl
-	case token.Var, token.Const:
+	case token.Let, token.Const:
 		decl := p.parseVarDecl()
 		decl.Offset, decl.Exported = offset, exported
 		p.expectTerminator()

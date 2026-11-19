@@ -39,7 +39,7 @@ fn main() {
     println(describe(Shape::Circle(2.5) as any))
     println(describe(1.5 as any))
 
-    var v: any = 42 as any
+    let v: any = 42 as any
     println(v as i32)
     println(v)
     println("#{v}")
@@ -47,6 +47,6 @@ fn main() {
     show("mixed:")
     show("mixed:", 1, "two", false, 3.5, Point{ x: 3, y: 4 })
 
-    var wrapped = ["a" as any, 1 as any]
+    let wrapped = ["a" as any, 1 as any]
     println(wrapped)
 }

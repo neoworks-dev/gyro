@@ -39,7 +39,7 @@ export fn Stack::free(*self) {
 }
 
 fn total(values: i32[]): i32 {
-    var sum = 0
+    let sum = 0
     for value in values {
         sum += value
     }
@@ -47,7 +47,7 @@ fn total(values: i32[]): i32 {
 }
 
 fn main() {
-    var stack = Stack::new(16)
+    let stack = Stack::new(16)
     defer stack.free()
 
     stack.push(2)
@@ -94,7 +94,7 @@ compiler-compiler.
 
 | area | decision |
 | --- | --- |
-| declarations | `var` / `const`, annotation optional, types inferred; no `:=` |
+| declarations | `let` / `const`, annotation optional, types inferred; no `:=` |
 | functions | `fn f(a: i32): i32` — return type after a colon |
 | methods | free-standing `fn Type::name(self)`; an `impl Trait for Type` block is how a type keeps a promise to a trait |
 | traits | `trait`, `impl`, bounded generics (`<T: Eq & Hash>`), `dyn Trait` values, operator traits; `Eq`, `Hash`, `Print` and `Ord` are explicit |

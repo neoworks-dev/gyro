@@ -44,7 +44,7 @@ fn main() {
 
     // A function pointer with static storage, walking add, mul, sub and
     // round to add again.
-    var i = 0
+    let i = 0
     while i < 4 {
         println(stepped(10))
         i = i + 1

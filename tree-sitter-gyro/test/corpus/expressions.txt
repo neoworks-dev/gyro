@@ -3,7 +3,7 @@ nested generics close with two gt tokens
 ==================
 
 fn main() {
-  var r: Result<Vec<i32>, error> = f()
+  let r: Result<Vec<i32>, error> = f()
 }
 
 ---
@@ -34,8 +34,8 @@ right shift is still a shift
 ==================
 
 fn main() {
-  var x = a >> 2
-  var y = b << 3
+  let x = a >> 2
+  let y = b << 3
   x >>= 1
 }
 
@@ -84,7 +84,7 @@ comparison against a negative number
 ==================
 
 fn main() {
-  var ok = x < -1
+  let ok = x < -1
 }
 
 ---
@@ -106,8 +106,8 @@ tuple positional access
 ==================
 
 fn main() {
-  var code = pair.0
-  var deep = pair.0.1
+  let code = pair.0
+  let deep = pair.0.1
 }
 
 ---
@@ -135,7 +135,7 @@ generic call
 ==================
 
 fn main() {
-  var m = max<i32>(3, 7)
+  let m = max<i32>(3, 7)
 }
 
 ---
@@ -161,8 +161,8 @@ generic struct literal and associated function
 ==================
 
 fn main() {
-  var p = Pair<i32>{ 1, 2 }
-  var xs = Array<i32>::new()
+  let p = Pair<i32>{ 1, 2 }
+  let xs = Array<i32>::new()
 }
 
 ---
@@ -199,7 +199,7 @@ named struct literal
 ==================
 
 fn main() {
-  var p = Point{ x: 1, y: 2 }
+  let p = Point{ x: 1, y: 2 }
 }
 
 ---
@@ -267,9 +267,9 @@ char and escape literals
 ==================
 
 fn main() {
-  var c = 'a'
-  var nl = '\n'
-  var u = '\u{1F600}'
+  let c = 'a'
+  let nl = '\n'
+  let u = '\u{1F600}'
 }
 
 ---
@@ -294,9 +294,9 @@ wrapping operators
 ==================
 
 fn main() {
-  var a = x +% y
-  var b = x -% y
-  var c = x *% y
+  let a = x +% y
+  let b = x -% y
+  let c = x *% y
 }
 
 ---
@@ -327,8 +327,8 @@ cast chain
 ==================
 
 fn main() {
-  var w = x as i64
-  var b = (x & 0xff) as u8
+  let w = x as i64
+  let b = (x & 0xff) as u8
 }
 
 ---
@@ -388,10 +388,10 @@ slice narrowing
 ==================
 
 fn main() {
-  var a = xs[1..4]
-  var b = xs[1..]
-  var c = xs[..4]
-  var d = xs[1]
+  let a = xs[1..4]
+  let b = xs[1..]
+  let c = xs[..4]
+  let d = xs[1]
 }
 
 ---
@@ -431,10 +431,10 @@ closures
 ==================
 
 fn main() {
-  var double = fn(a: i32): i32 { return a * 2 }
+  let double = fn(a: i32): i32 { return a * 2 }
   xs.map(fn(x) x * 2)
-  var later = async fn(): i32 { return 1 }
-  var release = fn[move node]() { free(node) }
+  let later = async fn(): i32 { return 1 }
+  let release = fn[move node]() { free(node) }
 }
 
 ---
@@ -499,7 +499,7 @@ match expression
 ==================
 
 fn main() {
-  var name = match n {
+  let name = match n {
     0: "zero"
     1: "one"
     Shape::Circle(r): "circle"
@@ -556,7 +556,7 @@ await binds like a prefix operator
 ==================
 
 async fn main() {
-  var body, err = await get(url)
+  let body, err = await get(url)
 }
 
 ---
@@ -580,11 +580,11 @@ chan literal and receive forms
 ==================
 
 fn main() {
-  var ch = chan<i32>(64)
-  var un = chan<bool>()
+  let ch = chan<i32>(64)
+  let un = chan<bool>()
   ch <- value
-  var v = <-ch
-  var v2, open = <-ch
+  let v = <-ch
+  let v2, open = <-ch
   ch.close()
 }
 
@@ -631,7 +631,7 @@ select statement
 
 fn main() {
   select {
-    var value = <-values: use(value)
+    let value = <-values: use(value)
     quit <- true: return
     else: idle()
   }

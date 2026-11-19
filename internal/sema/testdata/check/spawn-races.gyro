@@ -31,7 +31,7 @@ fn sharedNullablePointer(node: *Node?) {
 // The pointer reaches the spawned closure through an intermediate one, so
 // both of them capture it.
 fn sharedThroughNesting(node: *Node) {
-    var outer = fn() {
+    let outer = fn() {
         spawn(heap(), fn() { //~ W0801 captures node
             node.value = 1
         })
@@ -55,7 +55,7 @@ fn overAChannel(ch: chan<i32>) {
 
 // A move hands the binding over rather than sharing it.
 fn moved() {
-    var node = alloc<Node>(heap())
+    let node = alloc<Node>(heap())
     spawn(heap(), fn[move node]() {
         free(heap(), node)
     })
@@ -69,7 +69,7 @@ fn capturesNothing() {
 
 // Only a spawned closure is reported: an ordinary one runs on this thread.
 fn unspawned(xs: i32[]) {
-    var later = fn() {
+    let later = fn() {
         println(xs.len())
     }
     later()

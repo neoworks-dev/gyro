@@ -36,22 +36,22 @@ fn absent(p: anyptr?): bool {
 }
 
 fn noTarget(p: anyptr) {
-    var v = *p //~ cannot dereference anyptr; it is not a pointer
+    let v = *p //~ cannot dereference anyptr; it is not a pointer
 }
 
 fn noArithmetic(p: anyptr, n: i32) {
-    var q = p + n //~ operator + needs matching numeric operands, got anyptr and i32
+    let q = p + n //~ operator + needs matching numeric operands, got anyptr and i32
 }
 
 // An address is not a number, and a number is not an address. A pointer
 // that came from arithmetic is the thing this language does not have.
 fn notANumber(n: i64, p: anyptr) {
-    var a = n as anyptr //~ as converts between numeric types and rune
-    var b = p as i64    //~ as converts between numeric types and rune
+    let a = n as anyptr //~ as converts between numeric types and rune
+    let b = p as i64    //~ as converts between numeric types and rune
 }
 
 // An any promises the concrete type comes back out, and an address that
 // forgot its own has none to give.
 fn notInAnAny(p: anyptr) {
-    var boxed = p as any //~ an any cannot hold anyptr
+    let boxed = p as any //~ an any cannot hold anyptr
 }

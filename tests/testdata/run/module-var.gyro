@@ -1,4 +1,4 @@
-// A module-level `var` is mutable state outside any frame. It lowers to
+// A module-level `let` is mutable state outside any frame. It lowers to
 // METALS storage, zero-initialized, with the initializer run before
 // main's own body in declaration order.
 
@@ -8,13 +8,13 @@ fn triple(n: i32): i32 {
     return n * 3
 }
 
-var counter: i32 = 0
-// An initializer is ordinary code, so it may call and may read a var
+let counter: i32 = 0
+// An initializer is ordinary code, so it may call and may read a binding
 // declared above it.
-var computed: i32 = triple(4)
-var derived = computed + 1
-var label = "start"
-var flag = false
+let computed: i32 = triple(4)
+let derived = computed + 1
+let label = "start"
+let flag = false
 
 struct Settings {
     retries: i32
@@ -23,7 +23,7 @@ struct Settings {
 
 impl Print for Settings
 
-var settings = Settings{ retries: 2, name: "svc" }
+let settings = Settings{ retries: 2, name: "svc" }
 
 fn bump(): i32 {
     counter += 1
@@ -51,7 +51,7 @@ fn main() {
     println(settings)
 
     // Storage outside a frame has an address like any other.
-    var p = &counter
+    let p = &counter
     *p = 40
     println(counter)
 }

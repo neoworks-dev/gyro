@@ -223,7 +223,7 @@ func (c *checker) checkAssigned(sym *symbol, offset int, name string) {
 	}
 
 	c.errorHintf(offset, []string{
-		"assign it where it is declared: var " + name + ": T = ...",
+		"assign it where it is declared: let " + name + ": T = ...",
 		"or write to it on every path that reaches this read",
 	}, "%s is read before it is assigned", name)
 }

@@ -8,9 +8,9 @@ import { now, monotonic, sleep } from "time"
 fn main() {
     println(now() > 1700000000000)
 
-    var before = monotonic()
+    let before = monotonic()
     sleep(10)
-    var after = monotonic()
+    let after = monotonic()
     println(after > before)
     println(after - before >= 10000000)
 }

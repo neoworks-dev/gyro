@@ -84,13 +84,13 @@ impl Element for Panel {
 
 fn paint_all(elements: Array<dyn Element>) {
     for i in 0..elements.len() {
-        var element = elements.get(i)
+        let element = elements.get(i)
         element.paint()
     }
 }
 
 fn total_width(elements: Array<dyn Element>): i32 {
-    var total = 0
+    let total = 0
     for i in 0..elements.len() {
         total += elements.get(i).width()
     }
@@ -104,17 +104,17 @@ fn announce<T: Element>(item: T) {
 }
 
 fn press(target: dyn Widget) {
-    var widget = target
+    let widget = target
     widget.click()
     widget.click()
 }
 
 fn main() {
-    var title = Label{ text: "Settings" }
-    var save = Button{ label: "Save", clicks: 0 }
-    var layout = Panel{ columns: 3 }
+    let title = Label{ text: "Settings" }
+    let save = Button{ label: "Save", clicks: 0 }
+    let layout = Panel{ columns: 3 }
 
-    var elements = Array<dyn Element>::new(heap())
+    let elements = Array<dyn Element>::new(heap())
     defer elements.free()
     elements.push(&title as dyn Element)
     elements.push(&save as dyn Element)
@@ -132,6 +132,6 @@ fn main() {
     press(&save as dyn Widget)
     paint_all(elements)
 
-    var as_element = &save as dyn Element
+    let as_element = &save as dyn Element
     println(as_element.describe())
 }

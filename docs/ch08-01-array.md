@@ -14,7 +14,7 @@ keeps an array from being freed to one it did not come from.
 import { println, Array } from "stdlib"
 import { heap } from "mem"
 
-var buf = Array<i32>::new(heap())
+let buf = Array<i32>::new(heap())
 defer buf.free()
 
 buf.push(4)
@@ -53,7 +53,7 @@ other value to put there.
 `xs[i]` is a **place**, not a value:
 
 ```gyro
-var xs = Array<Point>::new(heap())
+let xs = Array<Point>::new(heap())
 defer xs.free()
 xs.push(Point{ x: 1, y: 2 })
 
@@ -114,7 +114,7 @@ after construction. An array made in an arena needs none, because the arena
 takes everything back at once:
 
 ```gyro
-var out = Array<i32>::new(heap())
+let out = Array<i32>::new(heap())
 defer out.free()
 ```
 
@@ -122,14 +122,14 @@ An `Array<T>` returned from a function is the caller's to free:
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-    var out = Array<i32>::new(heap())
+    let out = Array<i32>::new(heap())
     for value in values {
         out.push(f(value))
     }
     return out
 }
 
-var doubled = apply([1, 2, 3], fn(x) x * 2)
+let doubled = apply([1, 2, 3], fn(x) x * 2)
 defer doubled.free()
 ```
 

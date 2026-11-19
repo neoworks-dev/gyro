@@ -6,7 +6,7 @@ These are reserved: they are tokens the lexer produces, and none may be used
 as an identifier.
 
 ```text
-var    const   fn      struct  enum
+let    const   fn      struct  enum
 trait  impl
 return  if      elif    else
 while  for     in      match   break
@@ -44,7 +44,7 @@ lists hold only `move name` entries, because copies are implicit and never
 listed ([chapter 11](ch11-00-closures.md)). It is an ordinary identifier,
 and must stay one.
 
-So `var from = 1`, `fn String::from(...)`, `var safe = 1` and `event.type` all parse. If a word only
+So `let from = 1`, `fn String::from(...)`, `let safe = 1` and `event.type` all parse. If a word only
 means something in one place, it belongs here rather than in the token set —
 this has been broken twice.
 

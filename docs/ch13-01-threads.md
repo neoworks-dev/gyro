@@ -41,9 +41,9 @@ thread kills that thread only; on the main thread it ends the process.
 ```gyro
 import { Mutex } from "stdlib"
 
-var total = Mutex::new(0)
+let total = Mutex::new(0)
 
-var guard = total.lock()
+let guard = total.lock()
 defer guard.unlock()
 guard.set(guard.get() + value)
 ```
@@ -70,9 +70,9 @@ it without a lock:
 ```gyro
 import { Atomic } from "stdlib"
 
-var hits = alloc<Atomic<i64>>(heap())
+let hits = alloc<Atomic<i64>>(heap())
 hits.store(0)
-spawn(heap(), fn() { var _ = hits.fetch_add(1) })
+spawn(heap(), fn() { let _ = hits.fetch_add(1) })
 ```
 
 `T` is an integer of 8 to 64 bits, a `bool` or a pointer. `load`, `store`
@@ -101,7 +101,7 @@ the same memory.
 Handing a reference to `spawn` that way **warns**:
 
 ```gyro
-var node = alloc<Node>(heap())
+let node = alloc<Node>(heap())
 spawn(heap(), fn() { node.value = 1 })      // warns: both threads reach node
 
 spawn(heap(), fn[move node]() { ... })      // fine: the binding goes with it

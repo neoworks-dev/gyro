@@ -21,7 +21,7 @@ fn main() {
         println("body #{i}")
     }
 
-    var x = 1
+    let x = 1
     {
         defer println(x)
         x = 2
@@ -31,8 +31,8 @@ fn main() {
     // Every argument is pinned, not just a bare name: a computed one and a
     // receiver too.
     {
-        var a = 10
-        var b = 5
+        let a = 10
+        let b = 5
         defer report("computed", a + b)
         a = 100
         b = 200
@@ -40,7 +40,7 @@ fn main() {
     }
 
     {
-        var c = Counter{ n: 1 }
+        let c = Counter{ n: 1 }
         defer c.show()
         c.n = 99
         println(c.n)

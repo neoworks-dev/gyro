@@ -2,19 +2,19 @@ import { Iterator } from "stdlib"
 
 fn sources(xs: i32[], fixed: i32[4], ch: chan<string>) {
     for x in xs {
-        var a: i32 = x
+        let a: i32 = x
     }
     for x in fixed {
-        var b: i32 = x
+        let b: i32 = x
     }
     for s in ch {
-        var c: string = s
+        let c: string = s
     }
     for i in 0..10 {
-        var d: i32 = i
+        let d: i32 = i
     }
     for i in 0..xs.len() {
-        var e: usize = i
+        let e: usize = i
     }
 }
 
@@ -59,7 +59,7 @@ fn Shaped::next(*self): (i32, bool) {
 
 fn iterators(s: Shaped) {
     for x in (Counter{ 0, 5 }) {
-        var v: i32 = x
+        let v: i32 = x
     }
     for x in s { //~ E0606 Shaped is not iterable
     }
@@ -71,7 +71,7 @@ fn noIterator(b: Bag) {
 }
 
 fn throughBound<I: Iterator<i32>>(it: I): i32 {
-    var total: i32 = 0
+    let total: i32 = 0
     for x in it {
         total += x
     }

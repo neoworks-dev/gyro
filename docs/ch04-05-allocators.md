@@ -11,16 +11,16 @@ function takes an `Allocator`, it allocates; if it does not, it does not.
 import { alloc, heap, Allocator, Arena } from "mem"
 
 fn make_node(a: Allocator, value: i32): *Node {
-    var node = alloc<Node>(a)
+    let node = alloc<Node>(a)
     node.value = value
     return node
 }
 
 fn build_tree(depth: i32): i32 {
-    var arena = Arena::new(heap(), 65536)
+    let arena = Arena::new(heap(), 65536)
     defer arena.free()
 
-    var root = make_node(arena.allocator(), depth)   // the arena's, as written
+    let root = make_node(arena.allocator(), depth)   // the arena's, as written
     ...
 }                                                  // and arena.free() takes them all back
 ```
@@ -100,7 +100,7 @@ each piece, and the choice the caller made reaches all of them:
 
 ```gyro
 fn make_pair(a: Allocator, left: i32, right: i32): *Node {
-    var first = make_node(a, left)
+    let first = make_node(a, left)
     first.next = make_node(a, right)
     return first
 }
@@ -154,8 +154,8 @@ functions that build from an allocator. A value from `heap()` borrows nothing,
 since the heap is never freed as a whole.
 
 ```gyro
-var frame = Arena::new(heap(), 4096)
-var node = alloc<Node>(frame.allocator())
+let frame = Arena::new(heap(), 4096)
+let node = alloc<Node>(frame.allocator())
 frame.free()
 println(node.value) // error: node was allocated from frame, which has been freed
 ```
@@ -201,17 +201,17 @@ safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
     if data == null {
         return null
     }
-    var counter = cast<Counter>(data)
+    let counter = cast<Counter>(data)
     if mode == Mode::Alloc {
         counter.allocs += 1
     }
-    var h = heap()
+    let h = heap()
     return h.proc(h.data, mode, size, align, old, old_size)
 }
 
-var counter = Counter{ allocs: 0 }
-var counted = Allocator{ proc: &counting, data: &counter as anyptr }
-var node = make_node(counted, 1) // counter.allocs is now 1
+let counter = Counter{ allocs: 0 }
+let counted = Allocator{ proc: &counting, data: &counter as anyptr }
+let node = make_node(counted, 1) // counter.allocs is now 1
 ```
 
 The procedure is a `safe fn` because it gives `data` its type back with
@@ -230,10 +230,10 @@ and record it. Everything they own afterwards comes from it: `push` and
 allocator argument to get wrong:
 
 ```gyro
-var arena = Arena::new(heap(), 4096)
+let arena = Arena::new(heap(), 4096)
 defer arena.free()
 
-var words = Array<string>::new(arena.allocator()) // records the arena
+let words = Array<string>::new(arena.allocator()) // records the arena
 words.push("one")                                 // grows from the arena
 words.free()                                      // gives back to the arena
 ```

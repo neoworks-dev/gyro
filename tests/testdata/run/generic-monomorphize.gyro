@@ -23,8 +23,8 @@ fn main() {
     println(pick(1.5, 2.5, false))
     println(pick("yes", "no", false))
 
-    var ints = Pair<i32>{ 3, 4 }
-    var floats = Pair<f64>{ 1.25, 2.5 }
+    let ints = Pair<i32>{ 3, 4 }
+    let floats = Pair<f64>{ 1.25, 2.5 }
     println(ints.sum())
     println(floats.sum())
 }

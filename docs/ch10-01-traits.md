@@ -275,13 +275,13 @@ impl Iterator<i32> for Countdown {
         if self.from == 0 {
             return 0, false
         }
-        var current = self.from
+        let current = self.from
         self.from -= 1
         return current, true
     }
 }
 
-var ticks = Countdown{ from: 3 }
+let ticks = Countdown{ from: 3 }
 for tick in ticks {
     println(tick)
 }

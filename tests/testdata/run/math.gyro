@@ -9,10 +9,10 @@ import { println } from "stdlib"
 import { sqrt, abs, ceil, floor, trunc, round, min, max, copysign } from "math"
 
 fn main() {
-    var zero = 0.0
-    var one = 1.0
-    var nan = zero / zero
-    var infinity = one / zero
+    let zero = 0.0
+    let one = 1.0
+    let nan = zero / zero
+    let infinity = one / zero
 
     println(sqrt(2.0))
     println(sqrt(0.0))

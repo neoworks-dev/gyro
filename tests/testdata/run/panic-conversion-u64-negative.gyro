@@ -6,8 +6,8 @@
 import { println } from "stdlib"
 
 fn main() {
-    var zero = 0.0
-    var value = -1.5
+    let zero = 0.0
+    let value = -1.5
     println("before")
     println(value as u64)
     println("unreachable")

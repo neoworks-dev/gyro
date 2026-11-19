@@ -4,6 +4,6 @@ import { println } from "stdlib"
 
 fn main() {
     println("before")
-    var zero: i32 = 0
+    let zero: i32 = 0
     println(10 / zero)
 }

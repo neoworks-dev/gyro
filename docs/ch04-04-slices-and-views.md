@@ -19,7 +19,7 @@ care which.
 ```gyro
 fn total(values: i32[]): i32 { ... }   // borrows
 
-var buf = Array<i32>::new(heap())
+let buf = Array<i32>::new(heap())
 defer buf.free()
 buf.push(4)
 
@@ -41,7 +41,7 @@ other range, so `xs[1..4]` is elements 1, 2 and 3.
 ```gyro
 fn total(xs: i32[]): i32 { ... }
 
-var xs = [10, 20, 30, 40, 50]
+let xs = [10, 20, 30, 40, 50]
 total(xs[1..4])     // 20 + 30 + 40
 total(xs[2..])      // to the end
 total(xs[..2])      // from the start
@@ -56,7 +56,7 @@ length, so narrowing one moves the pointer and shortens the length. Writing
 through a window is writing to the storage:
 
 ```gyro
-var window = xs[1..4]
+let window = xs[1..4]
 window[0] = 7
 println(xs[1]) // 7
 ```
@@ -129,7 +129,7 @@ fn first(xs: i32[]): i32[] !{ &xs } {
 }
 
 fn worse(): i32[] {
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     return xs // error: that storage ends with this function
 }
 ```
@@ -152,7 +152,7 @@ fn window(xs: i32[]): Window !{ &xs } {
 }
 
 fn remember(out: Array<i32[]>) {
-    var buf = [1, 2, 3]
+    let buf = [1, 2, 3]
     out.push(buf) // error: buf ends with this function, out does not
 }
 ```

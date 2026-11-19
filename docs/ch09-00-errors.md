@@ -10,7 +10,7 @@ fn parse_port(text: string): (i32, error?) {
     return value, null
 }
 
-var port, err = parse_port("8080")
+let port, err = parse_port("8080")
 if err != null {
     eprintln(err.message())
     return
@@ -41,7 +41,7 @@ fn RangeError::message(self): string {
 }
 
 export fn parse_port(text: string): (i32, error?) {
-    var value, err = to_i32(text)
+    let value, err = to_i32(text)
     if err != null {
         return 0, err
     }
@@ -78,7 +78,7 @@ Dropping an error result is a **compile error**. Discarding takes an
 explicit `_`:
 
 ```gyro
-var _, _ = parse_port("not a number")
+let _, _ = parse_port("not a number")
 ```
 
 An un-awaited async call in statement position is an error for the same
@@ -126,13 +126,13 @@ import { to_i32 } from "convert"
 import { heap } from "mem"
 
 fn load_config(path: string): (string, error?) {
-    var handle, err = open(path)
+    let handle, err = open(path)
     if err != null {
         return "", err
     }
     defer handle.close()
 
-    var contents, read_err = read_all(heap(), handle)
+    let contents, read_err = read_all(heap(), handle)
     if read_err != null {
         return "", read_err
     }

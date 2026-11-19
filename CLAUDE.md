@@ -80,7 +80,7 @@ Before considering a change complete, run `go test ./...`, `make check`, and `ma
 
 ## Language invariants (easy to break)
 
-**Names and syntax.** There is no universe scope: names outside the formal syntax must be imported, and there are no predeclared functions. Prefer a library function over a keyword when ordinary Gyro can express the feature. Bindings use `var` or `const`, assignment is `=` (there is no `:=`), `else` requires a block, and chaining uses `elif` — `else if` doesn't parse. Visibility is explicit via `export` (capitalization has no semantic meaning), with no default exports or imports. Trait bounds join with `&`, not `+`.
+**Names and syntax.** There is no universe scope: names outside the formal syntax must be imported, and there are no predeclared functions. Prefer a library function over a keyword when ordinary Gyro can express the feature. Bindings use `let` or `const`, assignment is `=` (there is no `:=`), `else` requires a block, and chaining uses `elif` — `else if` doesn't parse. Visibility is explicit via `export` (capitalization has no semantic meaning), with no default exports or imports. Trait bounds join with `&`, not `+`.
 
 **Contextual keywords.** `move`, `copy`, and `from` are contextual identifiers, not lexer keywords. They must stay usable as ordinary identifiers outside their special grammar positions; don't add them to `internal/token` just because the parser recognizes them somewhere.
 

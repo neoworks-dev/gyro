@@ -114,8 +114,8 @@ struct Stream {
     started: bool
 }
 
-var stdout_stream = Stream{ fd: 1, block: null, len: 0, capacity: 32768, line: false, started: false }
-var stderr_stream = Stream{ fd: 2, block: null, len: 0, capacity: 1024, line: false, started: false }
+let stdout_stream = Stream{ fd: 1, block: null, len: 0, capacity: 32768, line: false, started: false }
+let stderr_stream = Stream{ fd: 2, block: null, len: 0, capacity: 1024, line: false, started: false }
 
 // set_flush_hook tells the C runtime what to call to write standard
 // output out: when the program ends, when it panics, and before a call
@@ -134,9 +134,9 @@ safe fn stream_of(fd: i32): *Stream !{} {
 // interrupted call. A failure, a closed pipe among them, ends the write:
 // there is nowhere to report it.
 safe fn write_raw(fd: isize, from: anyptr, count: usize) !{ io } {
-    var done: usize = 0
+    let done: usize = 0
     while done < count {
-        var put = syscall3(1, fd, offset(from, done), count - done)
+        let put = syscall3(1, fd, offset(from, done), count - done)
         if put == -4 {
             continue
         }
@@ -149,7 +149,7 @@ safe fn write_raw(fd: isize, from: anyptr, count: usize) !{ io } {
 
 // base_of is the stream's block, once it has one.
 safe fn base_of(s: *Stream): anyptr !{} {
-    var block = s.block
+    let block = s.block
     if block == null {
         panic("the output buffer was never made")
         return base_of(s)
@@ -165,7 +165,7 @@ safe fn begin(s: *Stream) !{ io } {
         return
     }
     s.started = true
-    var block = raw_alloc(s.capacity, 16)
+    let block = raw_alloc(s.capacity, 16)
     if block == null {
         panic("the output buffer could not be allocated")
         return
@@ -180,7 +180,7 @@ safe fn begin(s: *Stream) !{ io } {
 
 safe fn flush_stream(s: *Stream) !{ io } {
     if s.len > 0 {
-        var count = s.len
+        let count = s.len
         s.len = 0
         write_raw(s.fd, base_of(s), count)
     }
@@ -219,7 +219,7 @@ safe fn settle(s: *Stream, newline: bool) !{ io } {
 // output.
 safe fn open_stream(fd: i32): *Stream !{ io } {
     lock_output()
-    var s = stream_of(fd)
+    let s = stream_of(fd)
     if fd == 2 {
         flush_stream(&stdout_stream)
     }
@@ -227,9 +227,9 @@ safe fn open_stream(fd: i32): *Stream !{ io } {
 }
 
 safe fn put_text(text: string, fd: i32, newline: bool) !{ io } {
-    var s = open_stream(fd)
-    var bytes = text_bytes(text)
-    var count = bytes.len()
+    let s = open_stream(fd)
+    let bytes = text_bytes(text)
+    let count = bytes.len()
     begin(s)
     if count > 0 {
         if s.len + count > s.capacity {
@@ -256,8 +256,8 @@ safe fn put_text(text: string, fd: i32, newline: bool) !{ io } {
 
 // put_digits writes n in decimal ending just before `end`.
 safe fn put_digits(at: anyptr, end: usize, n: u64) !{} {
-    var place = end
-    var rest = n
+    let place = end
+    let rest = n
     while rest > 0 || place == end {
         place -= 1
         *cast<u8>(offset(at, place)) = 48 + (rest % 10) as u8
@@ -266,10 +266,10 @@ safe fn put_digits(at: anyptr, end: usize, n: u64) !{} {
 }
 
 safe fn put_uint(v: u64, fd: i32, newline: bool) !{ io } {
-    var s = open_stream(fd)
-    var at = room(s, 24)
-    var count: usize = 1
-    var rest = v
+    let s = open_stream(fd)
+    let at = room(s, 24)
+    let count: usize = 1
+    let rest = v
     while rest >= 10 {
         rest /= 10
         count += 1
@@ -287,12 +287,12 @@ safe fn put_int(v: i64, fd: i32, newline: bool) !{ io } {
         put_uint(v as u64, fd, newline)
         return
     }
-    var magnitude = ((0 - (v + 1)) as u64) + 1
-    var s = open_stream(fd)
-    var at = room(s, 24)
+    let magnitude = ((0 - (v + 1)) as u64) + 1
+    let s = open_stream(fd)
+    let at = room(s, 24)
     *cast<u8>(at) = 45
-    var count: usize = 1
-    var rest = magnitude
+    let count: usize = 1
+    let rest = magnitude
     while rest >= 10 {
         rest /= 10
         count += 1
@@ -312,13 +312,13 @@ safe fn put_bool(v: bool, fd: i32, newline: bool) !{ io } {
 }
 
 safe fn put_rune(v: rune, fd: i32, newline: bool) !{ io } {
-    var s = open_stream(fd)
-    var at = room(s, 4)
-    var point = v as u32
+    let s = open_stream(fd)
+    let at = room(s, 4)
+    let point = v as u32
     if point > 1114111 || (point >= 55296 && point <= 57343) {
         point = 65533
     }
-    var count: usize = 4
+    let count: usize = 4
     if point < 128 {
         count = 1
         *cast<u8>(at) = point as u8
@@ -343,8 +343,8 @@ safe fn put_rune(v: rune, fd: i32, newline: bool) !{ io } {
 }
 
 safe fn put_float(v: f64, fd: i32, newline: bool) !{ io } {
-    var s = open_stream(fd)
-    var at = room(s, 48)
+    let s = open_stream(fd)
+    let at = room(s, 48)
     s.len += write_float(v, at)
     settle(s, newline)
     unlock_output()
@@ -412,14 +412,14 @@ export struct Array<T> {
 }
 
 export safe fn Array<T>::new(a: Allocator): Array<T> !{ &a } {
-    var head = alloc<ArrayHead<T>>(a)
+    let head = alloc<ArrayHead<T>>(a)
     head.data = head as anyptr
     head.alloc = a
     return Array<T>{ head: head }
 }
 
 export safe fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{ &a } {
-    var out = Array<T>::new(a)
+    let out = Array<T>::new(a)
     out.head.hint = capacity
     return out
 }
@@ -439,18 +439,18 @@ fn out_of_range(index: usize, count: usize) !{} {
 // array_grow makes room for one more element: eight, or what with_capacity
 // asked for, and then twice what there is.
 safe fn array_grow<T>(head: *ArrayHead<T>) !{} {
-    var grown = head.capacity * 2
+    let grown = head.capacity * 2
     if head.capacity == 0 {
         grown = 8
         if head.hint > 8 {
             grown = head.hint
         }
     }
-    var old: anyptr? = null
+    let old: anyptr? = null
     if head.capacity > 0 {
         old = head.data
     }
-    var block = head.alloc.proc(head.alloc.data, Mode::Resize, grown * size<T>(), 16, old, head.capacity * size<T>())
+    let block = head.alloc.proc(head.alloc.data, Mode::Resize, grown * size<T>(), 16, old, head.capacity * size<T>())
     if block == null {
         panic(format(heap(), "allocation of #{grown * size<T>()} bytes failed"))
     }
@@ -459,11 +459,11 @@ safe fn array_grow<T>(head: *ArrayHead<T>) !{} {
 }
 
 export safe fn Array<T>::push(*self, value: T) !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
-    var at = head.count
+    let at = head.count
     if at == head.capacity {
         array_grow(head)
     }
@@ -475,13 +475,13 @@ export safe fn Array<T>::push(*self, value: T) !{} {
 // value to put there, so the element is read out of a block the allocator
 // zero-filled.
 export safe fn Array<T>::pop(*self): (T, bool) !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
     if head.count == 0 {
-        var blank = alloc<T>(head.alloc)
-        var out = *blank
+        let blank = alloc<T>(head.alloc)
+        let out = *blank
         free(head.alloc, blank)
         return (out, false)
     }
@@ -490,11 +490,11 @@ export safe fn Array<T>::pop(*self): (T, bool) !{} {
 }
 
 export safe fn Array<T>::get(self, index: usize): T !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
-    var count = head.count
+    let count = head.count
     if index >= count {
         out_of_range(index, count)
     }
@@ -502,11 +502,11 @@ export safe fn Array<T>::get(self, index: usize): T !{} {
 }
 
 export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
-    var count = head.count
+    let count = head.count
     if index >= count {
         out_of_range(index, count)
     }
@@ -518,11 +518,11 @@ export safe fn Array<T>::set(*self, index: usize, value: T) !{} {
 // back a value and mutating that mutates nothing. The address is into
 // the array's buffer, so `push` may move it, exactly as in C.
 export safe fn Array<T>::at(self, index: usize): *T !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
-    var count = head.count
+    let count = head.count
     if index >= count {
         out_of_range(index, count)
     }
@@ -530,7 +530,7 @@ export safe fn Array<T>::at(self, index: usize): *T !{} {
 }
 
 export safe fn Array<T>::len(self): usize !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
@@ -538,7 +538,7 @@ export safe fn Array<T>::len(self): usize !{} {
 }
 
 export safe fn Array<T>::slice(self): T[] !{ &self } {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("use after free of an Array")
     }
@@ -546,7 +546,7 @@ export safe fn Array<T>::slice(self): T[] !{ &self } {
 }
 
 export safe fn Array<T>::free(*self) !{} {
-    var head = self.head
+    let head = self.head
     if head.freed {
         panic("double free of an Array")
     }
@@ -570,7 +570,7 @@ export fn Array<T>::is_empty(self): bool !{} {
 // The block is asked for a byte more than it holds, as every block of
 // bytes here is, so that a view of it never points one past its end.
 export safe fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a } {
-    var block = a.proc(a.data, Mode::Alloc, text_size(bytes.len() + 1), 16, null, 0)
+    let block = a.proc(a.data, Mode::Alloc, text_size(bytes.len() + 1), 16, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{text_size(bytes.len() + 1)} bytes failed"))
     }
@@ -581,8 +581,8 @@ export safe fn from_utf8(a: Allocator, bytes: u8[]): string !{ &a } {
 }
 
 export safe fn string::bytes(self, a: Allocator): u8[] !{ &a } {
-    var view = view_bytes(self)
-    var block = a.proc(a.data, Mode::Alloc, view.len() + 1, 16, null, 0)
+    let view = view_bytes(self)
+    let block = a.proc(a.data, Mode::Alloc, view.len() + 1, 16, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{view.len() + 1} bytes failed"))
     }
@@ -601,33 +601,33 @@ fn continuation(byte: u8): bool {
 // one byte: a stray continuation byte, a lead byte missing its followers,
 // an overlong form, a surrogate, or a value past U+10FFFF.
 export safe fn string::runes(self, a: Allocator): rune[] !{ &a } {
-    var view = view_bytes(self)
-    var block = a.proc(a.data, Mode::Alloc, view.len() * 4 + 4, 16, null, 0)
+    let view = view_bytes(self)
+    let block = a.proc(a.data, Mode::Alloc, view.len() * 4 + 4, 16, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{view.len() * 4 + 4} bytes failed"))
     }
-    var count: usize = 0
-    var i: usize = 0
+    let count: usize = 0
+    let i: usize = 0
     while i < view.len() {
-        var lead = view[i] as u32
-        var point: u32 = 65533
-        var size: usize = 1
+        let lead = view[i] as u32
+        let point: u32 = 65533
+        let size: usize = 1
         if lead < 128 {
             point = lead
         } elif (lead & 224) == 192 && i + 1 < view.len() && continuation(view[i + 1]) {
-            var got = ((lead & 31) << 6) | ((view[i + 1] as u32) & 63)
+            let got = ((lead & 31) << 6) | ((view[i + 1] as u32) & 63)
             if got >= 128 {
                 point = got
                 size = 2
             }
         } elif (lead & 240) == 224 && i + 2 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) {
-            var got = ((lead & 15) << 12) | (((view[i + 1] as u32) & 63) << 6) | ((view[i + 2] as u32) & 63)
+            let got = ((lead & 15) << 12) | (((view[i + 1] as u32) & 63) << 6) | ((view[i + 2] as u32) & 63)
             if got >= 2048 && (got < 55296 || got > 57343) {
                 point = got
                 size = 3
             }
         } elif (lead & 248) == 240 && i + 3 < view.len() && continuation(view[i + 1]) && continuation(view[i + 2]) && continuation(view[i + 3]) {
-            var got = ((lead & 7) << 18) | (((view[i + 1] as u32) & 63) << 12) | (((view[i + 2] as u32) & 63) << 6) | ((view[i + 3] as u32) & 63)
+            let got = ((lead & 7) << 18) | (((view[i + 1] as u32) & 63) << 12) | (((view[i + 2] as u32) & 63) << 6) | ((view[i + 3] as u32) & 63)
             if got >= 65536 && got <= 1114111 {
                 point = got
                 size = 4
@@ -664,7 +664,7 @@ export fn String::with_capacity(a: Allocator, capacity: usize): String !{ &a } {
 }
 
 export fn String::of(a: Allocator, text: string): String !{ &a } {
-    var out = String::new(a)
+    let out = String::new(a)
     out.push(text)
     return out
 }
@@ -679,7 +679,7 @@ export fn String::push(*self, text: string) !{} {
 // lengths; a surrogate or an out-of-range value becomes U+FFFD, matching
 // what runes() produces for an invalid sequence.
 export fn String::push_rune(*self, value: rune) !{} {
-    var point = value as u32
+    let point = value as u32
     if point > 1114111 || (point >= 55296 && point <= 57343) {
         point = 65533
     }
@@ -737,7 +737,7 @@ fn slice_at(haystack: u8[], needle: u8[], at: usize): bool {
     if at + needle.len() > haystack.len() {
         return false
     }
-    for var i: usize = 0; i < needle.len(); i += 1 {
+    for let i: usize = 0; i < needle.len(); i += 1 {
         if haystack[at + i] != needle[i] {
             return false
         }
@@ -758,8 +758,8 @@ export fn string::starts_with(self, prefix: string): bool !{} {
 }
 
 export fn string::ends_with(self, suffix: string): bool !{} {
-    var body = view_bytes(self)
-    var tail = view_bytes(suffix)
+    let body = view_bytes(self)
+    let tail = view_bytes(suffix)
     if tail.len() > body.len() {
         return false
     }
@@ -768,12 +768,12 @@ export fn string::ends_with(self, suffix: string): bool !{} {
 
 // index_of returns the byte offset of the first match, or null.
 export fn string::index_of(self, needle: string): usize? !{} {
-    var body = view_bytes(self)
-    var want = view_bytes(needle)
+    let body = view_bytes(self)
+    let want = view_bytes(needle)
     if want.len() > body.len() {
         return null
     }
-    for var at: usize = 0; at + want.len() <= body.len(); at += 1 {
+    for let at: usize = 0; at + want.len() <= body.len(); at += 1 {
         if slice_at(body, want, at) {
             return at
         }
@@ -788,16 +788,16 @@ export fn string::contains(self, needle: string): bool !{} {
 // substring takes the half-open byte range [from, to). It does not
 // validate that the ends fall on rune boundaries.
 export fn string::substring(self, a: Allocator, from: usize, to: usize): string !{ &a } {
-    var body = self.bytes(a)
-    var out = String::new(a)
-    var stop = to
+    let body = self.bytes(a)
+    let out = String::new(a)
+    let stop = to
     if stop > body.len() {
         stop = body.len()
     }
-    for var i = from; i < stop; i += 1 {
+    for let i = from; i < stop; i += 1 {
         out.bytes.push(body[i])
     }
-    var result = out.text(a)
+    let result = out.text(a)
     out.free()
     return result
 }
@@ -807,12 +807,12 @@ fn is_space(byte: u8): bool {
 }
 
 export fn string::trim(self, a: Allocator): string !{ &a } {
-    var body = self.bytes(a)
-    var start: usize = 0
+    let body = self.bytes(a)
+    let start: usize = 0
     while start < body.len() && is_space(body[start]) {
         start += 1
     }
-    var stop = body.len()
+    let stop = body.len()
     while stop > start && is_space(body[stop - 1]) {
         stop -= 1
     }
@@ -822,16 +822,16 @@ export fn string::trim(self, a: Allocator): string !{ &a } {
 // split cuts on every occurrence of sep. An empty sep would not advance,
 // so it yields the whole text unsplit.
 export fn string::split(self, a: Allocator, sep: string): Array<string> !{ &a } {
-    var parts = Array<string>::new(a)
+    let parts = Array<string>::new(a)
     if sep.len() == 0 {
         parts.push(self.substring(a, 0, self.len()))
         return parts
     }
 
-    var body = self.bytes(a)
-    var want = sep.bytes(a)
-    var start: usize = 0
-    var at: usize = 0
+    let body = self.bytes(a)
+    let want = sep.bytes(a)
+    let start: usize = 0
+    let at: usize = 0
     while at + want.len() <= body.len() {
         if slice_at(body, want, at) {
             parts.push(self.substring(a, start, at))
@@ -848,8 +848,8 @@ export fn string::split(self, a: Allocator, sep: string): Array<string> !{ &a } 
 // join stays a function: its receiver would be the slice, not a string,
 // and `string[]` is not a type an extension can name.
 export fn join(a: Allocator, parts: string[], sep: string): string !{ &a } {
-    var out = String::new(a)
-    var first = true
+    let out = String::new(a)
+    let first = true
     for part in parts {
         if !first {
             out.push(sep)
@@ -857,17 +857,17 @@ export fn join(a: Allocator, parts: string[], sep: string): string !{ &a } {
         out.push(part)
         first = false
     }
-    var result = out.text(a)
+    let result = out.text(a)
     out.free()
     return result
 }
 
 export fn string::repeat(self, a: Allocator, times: i32): string !{ &a } {
-    var out = String::new(a)
+    let out = String::new(a)
     for i in 0..times {
         out.push(self)
     }
-    var result = out.text(a)
+    let result = out.text(a)
     out.free()
     return result
 }
@@ -902,7 +902,7 @@ fn bucket_index(hash: u64, buckets: usize): usize {
 }
 
 fn empty_buckets<K, V>(a: Allocator, count: usize): Array<Array<(K, V)>> {
-    var buckets = Array<Array<(K, V)>>::with_capacity(a, count)
+    let buckets = Array<Array<(K, V)>>::with_capacity(a, count)
     for i in 0..count {
         buckets.push(Array<(K, V)>::new(a))
     }
@@ -921,12 +921,12 @@ fn Map<K, V>::bucket_of(self, key: K): Array<(K, V)> {
 // order within a bucket is not part of the contract; the walk order here
 // is still deterministic, so every tier agrees byte for byte.
 fn Map<K, V>::grow(*self) {
-    var wider = empty_buckets<K, V>(self.alloc, self.buckets.len() * 2)
+    let wider = empty_buckets<K, V>(self.alloc, self.buckets.len() * 2)
     for i in 0..self.buckets.len() {
-        var bucket = self.buckets.get(i)
+        let bucket = self.buckets.get(i)
         for at in 0..bucket.len() {
-            var entry = bucket.get(at)
-            var home = wider.get(bucket_index(entry.0.hash(), wider.len()))
+            let entry = bucket.get(at)
+            let home = wider.get(bucket_index(entry.0.hash(), wider.len()))
             home.push(entry)
         }
         bucket.free()
@@ -938,7 +938,7 @@ fn Map<K, V>::grow(*self) {
 // insert adds the pair, replacing the value (and the stored key) when an
 // equal key is already present.
 export fn Map<K, V>::insert(*self, key: K, value: V) !{} {
-    var bucket = self.bucket_of(key)
+    let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
         if bucket.get(i).0 == key {
             bucket.set(i, (key, value))
@@ -954,9 +954,9 @@ export fn Map<K, V>::insert(*self, key: K, value: V) !{} {
 }
 
 export fn Map<K, V>::get(self, key: K): V? !{} {
-    var bucket = self.bucket_of(key)
+    let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
-        var entry = bucket.get(i)
+        let entry = bucket.get(i)
         if entry.0 == key {
             return entry.1
         }
@@ -965,7 +965,7 @@ export fn Map<K, V>::get(self, key: K): V? !{} {
 }
 
 export fn Map<K, V>::contains(self, key: K): bool !{} {
-    var bucket = self.bucket_of(key)
+    let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
         if bucket.get(i).0 == key {
             return true
@@ -977,11 +977,11 @@ export fn Map<K, V>::contains(self, key: K): bool !{} {
 // remove takes the entry out by swapping the last one into its place,
 // and reports whether the key was present.
 export fn Map<K, V>::remove(*self, key: K): bool !{} {
-    var bucket = self.bucket_of(key)
+    let bucket = self.bucket_of(key)
     for i in 0..bucket.len() {
         if bucket.get(i).0 == key {
             bucket.set(i, bucket.get(bucket.len() - 1))
-            var _, _ = bucket.pop()
+            let _, _ = bucket.pop()
             self.count -= 1
             return true
         }
@@ -1001,9 +1001,9 @@ export fn Map<K, V>::is_empty(self): bool !{} {
 // that the caller frees. The order
 // follows the buckets: deterministic, but not insertion order.
 export fn Map<K, V>::keys(self): Array<K> !{} {
-    var out = Array<K>::with_capacity(self.alloc, self.count)
+    let out = Array<K>::with_capacity(self.alloc, self.count)
     for i in 0..self.buckets.len() {
-        var bucket = self.buckets.get(i)
+        let bucket = self.buckets.get(i)
         for at in 0..bucket.len() {
             out.push(bucket.get(at).0)
         }
@@ -1023,7 +1023,7 @@ export fn Map<K, V>::free(*self) !{} {
 // asleep on it. Only the last unlock that finds a 2 pays for a system call,
 // so a lock nobody waits for is two atomic instructions.
 safe fn lock_word(word: *u32) !{} {
-    var seen = atomic_cas(word, 0, 1)
+    let seen = atomic_cas(word, 0, 1)
     if seen == 0 {
         return
     }
@@ -1066,13 +1066,13 @@ export struct Mutex<T> {
 }
 
 export safe fn Mutex<T>::new(value: T): Mutex<T> !{} {
-    var head = alloc<MutexHead<T>>(heap())
+    let head = alloc<MutexHead<T>>(heap())
     head.value = value
     return Mutex<T>{ head: head }
 }
 
 export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{} {
-    var head = self.head
+    let head = self.head
     lock_word(&head.word)
     head.epoch = head.epoch + 1
     return MutexGuard<T>{ head: head, epoch: head.epoch }
@@ -1225,7 +1225,7 @@ struct Chan {
 // sequence word is shared with the sleepers.
 safe fn cond_wait(condition: *Cond, lock: *u32) !{} {
     condition.waiters += 1
-    var seen = atomic_load(&condition.seq)
+    let seen = atomic_load(&condition.seq)
     unlock_word(lock)
     futex_wait(&condition.seq, seen)
     lock_word(lock)
@@ -1240,7 +1240,7 @@ safe fn cond_notify(condition: *Cond, count: u32): u32 !{} {
     if condition.waiters == 0 {
         return 0
     }
-    var _ = atomic_add(&condition.seq, 1)
+    let _ = atomic_add(&condition.seq, 1)
     return count
 }
 
@@ -1256,18 +1256,18 @@ const EVERY: u32 = 2147483647
 
 // chan_new makes a channel of `capacity` elements of `elem` bytes each.
 safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
-    var block = raw_alloc(size<Chan>(), 16)
+    let block = raw_alloc(size<Chan>(), 16)
     if block == null {
         panic("allocation of a channel failed")
     }
-    var ch = cast<Chan>(block)
+    let ch = cast<Chan>(block)
     ch.elem = elem
     ch.capacity = capacity
-    var slots = capacity
+    let slots = capacity
     if slots == 0 {
         slots = 1
     }
-    var buffer = raw_alloc(slots * elem, 16)
+    let buffer = raw_alloc(slots * elem, 16)
     if buffer == null {
         panic("allocation of a channel failed")
     }
@@ -1279,7 +1279,7 @@ safe fn chan_new(capacity: usize, elem: usize): anyptr !{} {
 // ring, with the lock held.
 safe fn chan_put(ch: *Chan, value: anyptr) !{} {
     // head and count are each below the capacity, so one subtraction wraps.
-    var at = ch.head +% ch.count
+    let at = ch.head +% ch.count
     if at >= ch.capacity {
         at -= ch.capacity
     }
@@ -1288,7 +1288,7 @@ safe fn chan_put(ch: *Chan, value: anyptr) !{} {
 }
 
 safe fn chan_take(ch: *Chan, out: anyptr) !{} {
-    var at = ch.head
+    let at = ch.head
     copy_bytes(out, offset(ch.buffer, at *% ch.elem), ch.elem)
     at += 1
     if at == ch.capacity {
@@ -1299,7 +1299,7 @@ safe fn chan_take(ch: *Chan, out: anyptr) !{} {
 }
 
 safe fn chan_send(raw: anyptr, value: anyptr) !{} {
-    var ch = cast<Chan>(raw)
+    let ch = cast<Chan>(raw)
     lock_word(&ch.lock)
     if ch.capacity > 0 {
         while ch.count == ch.capacity && !ch.closed {
@@ -1310,7 +1310,7 @@ safe fn chan_send(raw: anyptr, value: anyptr) !{} {
             panic("send on a closed channel")
         }
         chan_put(ch, value)
-        var wake = cond_notify(&ch.receivers, ONE)
+        let wake = cond_notify(&ch.receivers, ONE)
         unlock_word(&ch.lock)
         cond_wake(&ch.receivers, wake)
         return
@@ -1326,8 +1326,8 @@ safe fn chan_send(raw: anyptr, value: anyptr) !{} {
     copy_bytes(ch.buffer, value, ch.elem)
     ch.full = true
     ch.placed += 1
-    var ticket = ch.placed
-    var wake = cond_notify(&ch.receivers, EVERY)
+    let ticket = ch.placed
+    let wake = cond_notify(&ch.receivers, EVERY)
     if wake > 0 {
         // The receivers have to be able to take the lock to answer.
         unlock_word(&ch.lock)
@@ -1348,7 +1348,7 @@ safe fn chan_send(raw: anyptr, value: anyptr) !{} {
 // When the channel is closed and drained it answers false and leaves `out`
 // as the caller zeroed it.
 safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
-    var ch = cast<Chan>(raw)
+    let ch = cast<Chan>(raw)
     lock_word(&ch.lock)
     if ch.capacity > 0 {
         while ch.count == 0 && !ch.closed {
@@ -1359,7 +1359,7 @@ safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
             return false
         }
         chan_take(ch, out)
-        var wake = cond_notify(&ch.senders, ONE)
+        let wake = cond_notify(&ch.senders, ONE)
         unlock_word(&ch.lock)
         cond_wake(&ch.senders, wake)
         return true
@@ -1377,22 +1377,22 @@ safe fn chan_recv(raw: anyptr, out: anyptr): bool !{} {
     copy_bytes(out, ch.buffer, ch.elem)
     ch.full = false
     ch.taken += 1
-    var wake = cond_notify(&ch.senders, EVERY)
+    let wake = cond_notify(&ch.senders, EVERY)
     unlock_word(&ch.lock)
     cond_wake(&ch.senders, wake)
     return true
 }
 
 safe fn chan_close(raw: anyptr) !{} {
-    var ch = cast<Chan>(raw)
+    let ch = cast<Chan>(raw)
     lock_word(&ch.lock)
     if ch.closed {
         unlock_word(&ch.lock)
         panic("close of a closed channel")
     }
     ch.closed = true
-    var wakeSenders = cond_notify(&ch.senders, EVERY)
-    var wakeReceivers = cond_notify(&ch.receivers, EVERY)
+    let wakeSenders = cond_notify(&ch.senders, EVERY)
+    let wakeReceivers = cond_notify(&ch.receivers, EVERY)
     unlock_word(&ch.lock)
     cond_wake(&ch.senders, wakeSenders)
     cond_wake(&ch.receivers, wakeReceivers)
@@ -1402,7 +1402,7 @@ safe fn chan_close(raw: anyptr) !{} {
 // did. An unbuffered channel can only be sent to while a receiver is
 // asleep waiting and the slot is free.
 safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
-    var ch = cast<Chan>(raw)
+    let ch = cast<Chan>(raw)
     lock_word(&ch.lock)
     if ch.closed {
         unlock_word(&ch.lock)
@@ -1414,7 +1414,7 @@ safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
             return false
         }
         chan_put(ch, value)
-        var wake = cond_notify(&ch.receivers, ONE)
+        let wake = cond_notify(&ch.receivers, ONE)
         unlock_word(&ch.lock)
         cond_wake(&ch.receivers, wake)
         return true
@@ -1426,7 +1426,7 @@ safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
     copy_bytes(ch.buffer, value, ch.elem)
     ch.full = true
     ch.placed += 1
-    var wake = cond_notify(&ch.receivers, EVERY)
+    let wake = cond_notify(&ch.receivers, EVERY)
     unlock_word(&ch.lock)
     cond_wake(&ch.receivers, wake)
     return true
@@ -1437,17 +1437,17 @@ safe fn chan_try_send(raw: anyptr, value: anyptr): bool !{} {
 // which a select takes as a receive that happens: the cell stays as the
 // caller zeroed it.
 safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
-    var ch = cast<Chan>(raw)
+    let ch = cast<Chan>(raw)
     lock_word(&ch.lock)
     if ch.capacity > 0 {
         if ch.count > 0 {
             chan_take(ch, out)
-            var wake = cond_notify(&ch.senders, ONE)
+            let wake = cond_notify(&ch.senders, ONE)
             unlock_word(&ch.lock)
             cond_wake(&ch.senders, wake)
             return true
         }
-        var fired = ch.closed
+        let fired = ch.closed
         unlock_word(&ch.lock)
         return fired
     }
@@ -1455,12 +1455,12 @@ safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
         copy_bytes(out, ch.buffer, ch.elem)
         ch.full = false
         ch.taken += 1
-        var wake = cond_notify(&ch.senders, EVERY)
+        let wake = cond_notify(&ch.senders, EVERY)
         unlock_word(&ch.lock)
         cond_wake(&ch.senders, wake)
         return true
     }
-    var fired = ch.closed
+    let fired = ch.closed
     unlock_word(&ch.lock)
     return fired
 }
@@ -1468,6 +1468,6 @@ safe fn chan_try_recv(raw: anyptr, out: anyptr): bool !{} {
 // select_pause is what a select with nothing ready does before it looks
 // again: it sleeps a moment.
 safe fn select_pause() !{ io } {
-    var span: i64[2] = [0, 200000]
-    var _ = syscall2(35, &span[0], 0)
+    let span: i64[2] = [0, 200000]
+    let _ = syscall2(35, &span[0], 0)
 }

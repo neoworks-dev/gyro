@@ -7,14 +7,14 @@ import { println, Atomic } from "stdlib"
 import { heap, alloc, free, spawn } from "mem"
 
 fn main() {
-    var taken = alloc<Atomic<i64>>(heap())
+    let taken = alloc<Atomic<i64>>(heap())
     defer free(heap(), taken)
     taken.store(0)
-    var values = chan<i64>()
-    var done = chan<bool>()
+    let values = chan<i64>()
+    let done = chan<bool>()
 
     spawn(heap(), fn() {
-        var behind: i64 = 0
+        let behind: i64 = 0
         for i in 1..6 {
             values <- (i as i64)
             // The receiver bumps the count after it has the value, so by the
@@ -28,10 +28,10 @@ fn main() {
         done <- behind == 0
     })
 
-    var sum: i64 = 0
+    let sum: i64 = 0
     for v in values {
         sum += v
-        var _ = taken.fetch_add(1)
+        let _ = taken.fetch_add(1)
     }
     println(sum)
     println(<-done)

@@ -27,22 +27,22 @@ struct Plain {
 }
 
 fn conversions(b: Button, p: *Button, plain: *Plain) {
-    var ok = p as dyn Element
-    var also = &b as dyn Element
-    var no = plain as dyn Element //~ E0527 Plain does not implement Element
-    var value = b as dyn Element  //~ E0531 needs a pointer to the value
+    let ok = p as dyn Element
+    let also = &b as dyn Element
+    let no = plain as dyn Element //~ E0527 Plain does not implement Element
+    let value = b as dyn Element  //~ E0531 needs a pointer to the value
 }
 
 fn calls(e: dyn Element, target: *dyn Element) {
     e.paint()
-    var n: string = e.name()
+    let n: string = e.name()
     e.nonsense()        //~ E0405 dyn Element has no method nonsense
-    var field = e.label //~ E0405 dyn Element has no field or method label
+    let field = e.label //~ E0405 dyn Element has no field or method label
 }
 
 fn inArrays() {
-    var items = Array<dyn Element>::new(heap())
-    var b = Button{ label: "ok" }
+    let items = Array<dyn Element>::new(heap())
+    let b = Button{ label: "ok" }
     items.push(&b as dyn Element)
 }
 
@@ -58,7 +58,7 @@ fn forgetsTheRow(p: *Button): dyn Element {
 }
 
 fn returnsAFrame(): dyn Element {
-    var b = Button{ label: "frame" }
+    let b = Button{ label: "frame" }
     return &b as dyn Element //~ E0610 this returns a view into storage that ends with this function
 }
 
@@ -96,7 +96,7 @@ fn capability(e: dyn Eq) { //~ E0530 Eq cannot be used as dyn
 // table holds only the trait's methods.
 fn noCapabilities(a: dyn Element, b: dyn Element) {
     println(a)        //~ E0527 dyn Element does not implement Print
-    var same = a == b //~ E0527 dyn Element does not implement Eq
+    let same = a == b //~ E0527 dyn Element does not implement Eq
 }
 
 // A call through a table has no body to read the effects of, so it counts for

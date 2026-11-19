@@ -41,7 +41,7 @@ func dumpOf(t *testing.T, src string) string {
 
 // wrap puts an expression in a minimal function so it can be parsed alone.
 func wrap(expr string) string {
-	return "fn t() {\n  var x = " + expr + "\n}\n"
+	return "fn t() {\n  let x = " + expr + "\n}\n"
 }
 
 func TestExpressionPrecedence(t *testing.T) {
@@ -64,7 +64,7 @@ func TestExpressionPrecedence(t *testing.T) {
 
 	for _, test := range tests {
 		got := dumpOf(t, wrap(test.expr))
-		want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+		want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 		if got != want {
 			t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 		}
@@ -83,7 +83,7 @@ func TestCastBindsTighterThanBinaryOperators(t *testing.T) {
 
 	for _, test := range tests {
 		got := dumpOf(t, wrap(test.expr))
-		want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+		want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 		if got != want {
 			t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 		}
@@ -131,7 +131,7 @@ func TestGenericCallVersusComparison(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := dumpOf(t, wrap(test.expr))
-			want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+			want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 			if got != want {
 				t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 			}
@@ -146,7 +146,7 @@ func TestReceiveVersusNegativeComparison(t *testing.T) {
 	spaced := dumpOf(t, wrap("x < -1"))
 	tight := dumpOf(t, wrap("x<-1"))
 
-	want := "File test.gyro Func t Body: Block Var x Value: Binary < Ident x Unary - Lit int literal 1"
+	want := "File test.gyro Func t Body: Block Let x Value: Binary < Ident x Unary - Lit int literal 1"
 	if spaced != want {
 		t.Errorf("`x < -1` got:  %s\nwant: %s", spaced, want)
 	}
@@ -180,7 +180,7 @@ func TestStructLiteralForms(t *testing.T) {
 
 	for _, test := range tests {
 		got := dumpOf(t, wrap(test.expr))
-		want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+		want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 		if got != want {
 			t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 		}
@@ -199,7 +199,7 @@ func TestStructLiteralNotAllowedInConditionHeader(t *testing.T) {
 
 func TestStringInterpolation(t *testing.T) {
 	got := dumpOf(t, wrap(`"a #{b + c} d"`))
-	want := "File test.gyro Func t Body: Block Var x Value: StringLit " +
+	want := "File test.gyro Func t Body: Block Let x Value: StringLit " +
 		`Text "a " Interp: Binary + Ident b Ident c Text " d"`
 	if got != want {
 		t.Errorf("got:  %s\nwant: %s", got, want)
@@ -208,7 +208,7 @@ func TestStringInterpolation(t *testing.T) {
 
 func TestInterpolationErrorsPointAtRealPositions(t *testing.T) {
 	var bag diag.Bag
-	Parse("test.gyro", "fn t() {\n  var x = \"v: #{ + }\"\n}\n", &bag)
+	Parse("test.gyro", "fn t() {\n  let x = \"v: #{ + }\"\n}\n", &bag)
 
 	items := bag.Items()
 	if len(items) == 0 {
@@ -284,7 +284,7 @@ func TestClosures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := dumpOf(t, wrap(test.expr))
-			want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+			want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 			if got != want {
 				t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 			}
@@ -322,8 +322,8 @@ func TestDeclarations(t *testing.T) {
 	}{
 		{
 			name: "multi-value binding",
-			src:  "fn t() {\n  var value, err = f()\n}\n",
-			want: "File test.gyro Func t Body: Block Var value, err Value: Call Fun: Ident f",
+			src:  "fn t() {\n  let value, err = f()\n}\n",
+			want: "File test.gyro Func t Body: Block Let value, err Value: Call Fun: Ident f",
 		},
 		{
 			name: "exported function with a tuple result",
@@ -434,8 +434,8 @@ func TestFromIsContextual(t *testing.T) {
 	}{
 		{"fn String::from(text: string): String {\n}\n",
 			"File test.gyro Func String::from Param text: Type: NamedType string Result: NamedType String Body: Block"},
-		{"fn t() {\n  var from = 1\n}\n",
-			"File test.gyro Func t Body: Block Var from Value: Lit int literal 1"},
+		{"fn t() {\n  let from = 1\n}\n",
+			"File test.gyro Func t Body: Block Let from Value: Lit int literal 1"},
 		{"fn t(from: i32): i32 {\n  return from\n}\n",
 			"File test.gyro Func t Param from: Type: NamedType i32 Result: NamedType i32 Body: Block Return Ident from"},
 	}
@@ -451,8 +451,8 @@ func TestFromIsContextual(t *testing.T) {
 // identifier there. Only the text generated for a foreign module reads it
 // as a declaration, because a union is C's and arrives through an import.
 func TestUnionIsDeclaredOnlyByForeignText(t *testing.T) {
-	if got, want := dumpOf(t, "fn t() {\n  var union = 1\n}\n"),
-		"File test.gyro Func t Body: Block Var union Value: Lit int literal 1"; got != want {
+	if got, want := dumpOf(t, "fn t() {\n  let union = 1\n}\n"),
+		"File test.gyro Func t Body: Block Let union Value: Lit int literal 1"; got != want {
 		t.Errorf("a variable named union\n got: %s\nwant: %s", got, want)
 	}
 
@@ -493,8 +493,8 @@ func TestUnsafeAndSafeAreContextual(t *testing.T) {
 		// Names, wherever a name can be written.
 		{"fn t(unsafe: i32, safe: i32): i32 {\n  return unsafe + safe\n}\n",
 			"File test.gyro Func t Param unsafe: Type: NamedType i32 Param safe: Type: NamedType i32 Result: NamedType i32 Body: Block Return Binary + Ident unsafe Ident safe"},
-		{"fn t() {\n  var safe = 1\n  var unsafe = safe\n}\n",
-			"File test.gyro Func t Body: Block Var safe Value: Lit int literal 1 Var unsafe Value: Ident safe"},
+		{"fn t() {\n  let safe = 1\n  let unsafe = safe\n}\n",
+			"File test.gyro Func t Body: Block Let safe Value: Lit int literal 1 Let unsafe Value: Ident safe"},
 		{"fn safe() {\n}\n", "File test.gyro Func safe Body: Block"},
 		{"fn unsafe() {\n}\n", "File test.gyro Func unsafe Body: Block"},
 		{`import { safe, unsafe } from "m"` + "\n", `File test.gyro Import {safe, unsafe} from "m"`},
@@ -715,19 +715,19 @@ func TestTraitsAndImpls(t *testing.T) {
 		},
 		{
 			name: "type stays an identifier",
-			src:  "fn f(e: Event): i32 {\n  var type = e.type\n  return type\n}\n",
+			src:  "fn f(e: Event): i32 {\n  let type = e.type\n  return type\n}\n",
 			want: "File test.gyro Func f Param e: Type: NamedType Event Result: NamedType i32 Body: Block " +
-				"Var type Value: Selector .type Ident e Return Ident type",
+				"Let type Value: Selector .type Ident e Return Ident type",
 		},
 		{
 			name: "dyn is a type",
-			src:  "var xs: dyn Element\n",
-			want: "File test.gyro Var xs Type: DynType NamedType Element",
+			src:  "let xs: dyn Element\n",
+			want: "File test.gyro Let xs Type: DynType NamedType Element",
 		},
 		{
 			name: "dyn in a cast",
-			src:  "fn f() {\n  var e = p as dyn Element\n}\n",
-			want: "File test.gyro Func f Body: Block Var e Value: Cast Ident p Type: DynType NamedType Element",
+			src:  "fn f() {\n  let e = p as dyn Element\n}\n",
+			want: "File test.gyro Func f Body: Block Let e Value: Cast Ident p Type: DynType NamedType Element",
 		},
 	}
 
@@ -743,7 +743,7 @@ func TestTraitsAndImpls(t *testing.T) {
 func TestDynIsContextual(t *testing.T) {
 	// A name may still be `dyn`; only a name after it makes a trait value.
 	var bag diag.Bag
-	Parse("test.gyro", "fn f() {\n  var dyn = 3\n  var x = dyn + 1\n}\n", &bag)
+	Parse("test.gyro", "fn f() {\n  let dyn = 3\n  let x = dyn + 1\n}\n", &bag)
 	if bag.HasErrors() {
 		t.Fatalf("dyn should be an ordinary identifier here: %v", bag.Items())
 	}
@@ -756,7 +756,7 @@ func TestImplMisuse(t *testing.T) {
 		want string
 	}{
 		{"an owner inside the block", "impl Eq for P {\n  fn P::eq(self) {\n  }\n}\n", "without an owner"},
-		{"only methods", "impl Eq for P {\n  var x = 1\n}\n", "expected a method or an associated type in the impl"},
+		{"only methods", "impl Eq for P {\n  let x = 1\n}\n", "expected a method or an associated type in the impl"},
 		{"a pointer is not a declared type", "impl Eq for *P\n", "declared in this module"},
 		{"arguments are parameter names", "impl Eq for Pair<*T>\n", "type's own parameters"},
 		{"an exported impl", "export impl Eq for P\n", "not exported"},
@@ -765,7 +765,7 @@ func TestImplMisuse(t *testing.T) {
 		{"an impl states no bounds", "impl T for P {\n  type Item: Eq = i32\n}\n", "its bounds are the trait's"},
 		{"an impl gives a type", "impl T for P {\n  type Item\n}\n", "expected ="},
 		{"no argument after a pin", "fn f<C: T<Item = i32, i32>>(c: C) {\n}\n", "cannot follow a pinned associated type"},
-		{"a pin is for bounds", "var x: Box<Item = i32>\n", "expected >"},
+		{"a pin is for bounds", "let x: Box<Item = i32>\n", "expected >"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -817,7 +817,7 @@ func TestTuples(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := dumpOf(t, wrap(test.expr))
-			want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+			want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 			if got != want {
 				t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 			}
@@ -908,7 +908,7 @@ func TestParameterizedPaths(t *testing.T) {
 
 	for _, test := range tests {
 		got := dumpOf(t, wrap(test.expr))
-		want := "File test.gyro Func t Body: Block Var x Value: " + test.want
+		want := "File test.gyro Func t Body: Block Let x Value: " + test.want
 		if got != want {
 			t.Errorf("parsing %q\n got: %s\nwant: %s", test.expr, got, want)
 		}
@@ -917,7 +917,7 @@ func TestParameterizedPaths(t *testing.T) {
 
 func TestWrappingOperators(t *testing.T) {
 	got := dumpOf(t, wrap("hash *% 31 +% byte"))
-	want := "File test.gyro Func t Body: Block Var x Value: Binary +% " +
+	want := "File test.gyro Func t Body: Block Let x Value: Binary +% " +
 		"Binary *% Ident hash Lit int literal 31 Ident byte"
 	if got != want {
 		t.Errorf("got:  %s\nwant: %s", got, want)
@@ -932,30 +932,30 @@ func TestMatchAndSelect(t *testing.T) {
 	}{
 		{
 			name: "match arms end at the newline",
-			src:  "fn t() {\n  var x = match n {\n    0: \"zero\"\n    _: \"other\"\n  }\n}\n",
-			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident n " +
+			src:  "fn t() {\n  let x = match n {\n    0: \"zero\"\n    _: \"other\"\n  }\n}\n",
+			want: "File test.gyro Func t Body: Block Let x Value: Match Subject: Ident n " +
 				`Arm: Pattern: LiteralPattern Lit int literal 0 Body: ExprStmt Lit string literal "zero" ` +
 				`Arm: Pattern: Wildcard Body: ExprStmt Lit string literal "other"`,
 		},
 		{
 			name: "variant patterns are qualified and bind their payload",
-			src:  "fn t() {\n  var x = match s {\n    Shape::Circle(r): r\n    Shape::Point: return 0\n  }\n}\n",
-			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident s " +
+			src:  "fn t() {\n  let x = match s {\n    Shape::Circle(r): r\n    Shape::Point: return 0\n  }\n}\n",
+			want: "File test.gyro Func t Body: Block Let x Value: Match Subject: Ident s " +
 				"Arm: Pattern: VariantPattern Shape::Circle BindingPattern r Body: ExprStmt Ident r " +
 				"Arm: Pattern: VariantPattern Shape::Point Body: Return Lit int literal 0",
 		},
 		{
 			name: "a type test binds the whole value",
-			src:  "fn t() {\n  var x = match err {\n    RangeError(e): e\n    _: null\n  }\n}\n",
-			want: "File test.gyro Func t Body: Block Var x Value: Match Subject: Ident err " +
+			src:  "fn t() {\n  let x = match err {\n    RangeError(e): e\n    _: null\n  }\n}\n",
+			want: "File test.gyro Func t Body: Block Let x Value: Match Subject: Ident err " +
 				"Arm: Pattern: VariantPattern RangeError BindingPattern e Body: ExprStmt Ident e " +
 				"Arm: Pattern: Wildcard Body: ExprStmt Lit null null",
 		},
 		{
-			name: "select arms bind with var, never with :=",
-			src:  "fn t() {\n  select {\n    var v = <-ch: use(v)\n    else: idle()\n  }\n}\n",
+			name: "select arms bind with let, never with :=",
+			src:  "fn t() {\n  select {\n    let v = <-ch: use(v)\n    else: idle()\n  }\n}\n",
 			want: "File test.gyro Func t Body: Block Select " +
-				"Arm: Comm: Var v Value: Recv Ident ch Body: ExprStmt Call Fun: Ident use Arg: Ident v " +
+				"Arm: Comm: Let v Value: Recv Ident ch Body: ExprStmt Call Fun: Ident use Arg: Ident v " +
 				"Else: ExprStmt Call Fun: Ident idle",
 		},
 		{
@@ -978,7 +978,7 @@ func TestMatchAndSelect(t *testing.T) {
 
 func TestMatchArmCommaIsRejected(t *testing.T) {
 	var bag diag.Bag
-	Parse("test.gyro", "fn t() {\n  var x = match n {\n    0: \"zero\",\n    _: \"other\"\n  }\n}\n", &bag)
+	Parse("test.gyro", "fn t() {\n  let x = match n {\n    0: \"zero\",\n    _: \"other\"\n  }\n}\n", &bag)
 
 	if !bag.HasErrors() {
 		t.Fatal("expected the arm comma to be rejected")
@@ -990,22 +990,22 @@ func TestMatchArmCommaIsRejected(t *testing.T) {
 
 func TestForms(t *testing.T) {
 	sources := []string{
-		"fn t() {\n  for var i = 0; i < 10; i += 1 {\n  }\n}\n",
+		"fn t() {\n  for let i = 0; i < 10; i += 1 {\n  }\n}\n",
 		"fn t() {\n  for v in 0..10 {\n  }\n}\n",
 		"fn t() {\n  while a < b {\n    break\n  }\n}\n",
 		"fn t() {\n  defer free(p)\n}\n",
-		"fn t() {\n  var p = alloc<Node>(arena.allocator())\n}\n",
+		"fn t() {\n  let p = alloc<Node>(arena.allocator())\n}\n",
 		"fn t(with: i32): i32 {\n  return with\n}\n",
 		"fn t() {\n  spawn(fn() worker(ch))\n}\n",
-		"fn t() {\n  var x = await f()\n}\n",
-		"fn t() {\n  var c = chan<i32>(64)\n}\n",
-		"fn t() {\n  var c = chan<i32>()\n}\n",
+		"fn t() {\n  let x = await f()\n}\n",
+		"fn t() {\n  let c = chan<i32>(64)\n}\n",
+		"fn t() {\n  let c = chan<i32>()\n}\n",
 		"enum Shape {\n  Circle(f64),\n  Rect(f64, f64),\n  Point,\n}\n",
 		"struct P {\n  private x: i32\n  y: f64\n}\n",
 		"struct P {\n  private: i32\n}\n",
 		"fn t(f: fn(i32): bool) {\n}\n",
 		"fn t(xs: i32[], m: i32[4]) {\n}\n",
-		"fn t() {\n  var p: *ast::Literal = null\n}\n",
+		"fn t() {\n  let p: *ast::Literal = null\n}\n",
 		"fn t() {\n  x >>= 2\n  y <<= 1\n  z %= 3\n}\n",
 	}
 
@@ -1027,7 +1027,7 @@ func TestWithIsNotAStatement(t *testing.T) {
 
 func TestErrorRecoveryReportsAndContinues(t *testing.T) {
 	// A broken first function must not stop the second from being parsed.
-	src := "fn a() {\n  var = 1\n}\n\nfn b() {\n}\n"
+	src := "fn a() {\n  let = 1\n}\n\nfn b() {\n}\n"
 
 	var bag diag.Bag
 	file := Parse("test.gyro", src, &bag)
@@ -1044,14 +1044,14 @@ func TestParserAlwaysTerminates(t *testing.T) {
 	// Malformed input must never leave the parser without forward progress.
 	sources := []string{
 		"fn", "fn t(", "fn t() {", "struct", "match {", "select {",
-		"var", "var x =", "import", "export", "@", "}}}", "((((", "fn t() { ]",
+		"let", "let x =", "import", "export", "@", "}}}", "((((", "fn t() { ]",
 		"enum E { A(", "fn t() { if }", "fn t() { for ; ; }", "chan<",
-		"fn T::", "fn T::m(", "fn t() { var x = (1,", "fn t() { var x = p.",
-		"trait", "trait T {", "trait T: {", "trait T<", "trait T { fn", "trait T { var }",
+		"fn T::", "fn T::m(", "fn t() { let x = (1,", "fn t() { let x = p.",
+		"trait", "trait T {", "trait T: {", "trait T<", "trait T { fn", "trait T { let }",
 		"trait T { fn f(self) {", "impl", "impl T", "impl T for", "impl T for S {",
-		"impl T for S { fn", "impl T for S { var }", "impl T for *S {", "impl T for S<",
+		"impl T for S { fn", "impl T for S { let }", "impl T for *S {", "impl T for S<",
 		"trait T { type", "trait T { type X: }", "impl T for S { type", "impl T for S { type X =", "fn f<T: A<X =", "fn f<T: A<X = >>(",
-		"fn f<T:", "fn f<T: A &", "fn f<T: >", "var x: dyn", "var x: dyn T<", "x as dyn",
+		"fn f<T:", "fn f<T: A &", "fn f<T: >", "let x: dyn", "let x: dyn T<", "x as dyn",
 	}
 
 	for _, src := range sources {
@@ -1102,7 +1102,7 @@ func timeout() <-chan time.Time {
 }
 
 func TestParseLayout(t *testing.T) {
-	src := "fn f<T>(a: Array<T>, b: i32) {\n\tvar x = g<T>(1) < 2 > 3\n\tvar p = P{ x: 1 }\n\tvar xs = [1]\n\tvar m = (1 + 2)\n}\n"
+	src := "fn f<T>(a: Array<T>, b: i32) {\n\tlet x = g<T>(1) < 2 > 3\n\tlet p = P{ x: 1 }\n\tlet xs = [1]\n\tlet m = (1 + 2)\n}\n"
 
 	var bag diag.Bag
 	_, layout := ParseLayout(diag.NewFile("t.gyro", src), &bag)

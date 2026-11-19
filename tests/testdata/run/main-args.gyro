@@ -12,7 +12,7 @@ fn main(args: string[]) {
     }
     println(join(heap(), args, " "))
 
-    var flags = 0
+    let flags = 0
     for arg in args {
         if arg.starts_with("--") {
             flags += 1

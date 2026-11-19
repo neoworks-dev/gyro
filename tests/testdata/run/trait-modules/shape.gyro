@@ -10,7 +10,7 @@ export trait Shape {
 }
 
 export fn total_area<S: Shape>(shapes: S[]): i32 {
-    var total = 0
+    let total = 0
     for shape in shapes {
         total += shape.area()
     }

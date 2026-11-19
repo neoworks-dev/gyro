@@ -43,8 +43,8 @@ fn main() {
 
     // The array is fixed, and the library says so rather than writing past
     // it: 64 fit, and this program has already used eight of them.
-    var accepted = 0
-    var i = 0
+    let accepted = 0
+    let i = 0
     while i < 100 {
         accepted = accepted + push(i)
         i = i + 1

@@ -89,7 +89,7 @@ func TestInfoRecordsCalls(t *testing.T) {
 }
 
 func TestInfoRecordsInstances(t *testing.T) {
-	info := checkInfo(t, "fn pick<T>(a: T, b: T): T {\n  if true {\n    return a\n  }\n  return b\n}\n\nfn t() {\n  var a = pick(1, 2)\n  var b = pick(1.5, 2.5)\n}\n")
+	info := checkInfo(t, "fn pick<T>(a: T, b: T): T {\n  if true {\n    return a\n  }\n  return b\n}\n\nfn t() {\n  let a = pick(1, 2)\n  let b = pick(1.5, 2.5)\n}\n")
 
 	keys := map[string]*FuncInstance{}
 	for _, byKey := range info.Instances {

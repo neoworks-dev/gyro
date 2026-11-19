@@ -6,14 +6,14 @@
 import { println } from "stdlib"
 
 fn main() {
-    var zero = 0.0
-    var one = 1.0
-    var minus_one = 0.0 - 1.0
+    let zero = 0.0
+    let one = 1.0
+    let minus_one = 0.0 - 1.0
 
     println(one / zero)
     println(minus_one / zero)
 
-    var nan = zero / zero
+    let nan = zero / zero
     println(nan)
 
     // Every comparison against NaN is false, equality included.
@@ -30,12 +30,12 @@ fn main() {
     println(nan.compare(nan))
     println(one.compare(one))
 
-    var infinity = one / zero
+    let infinity = one / zero
     println(infinity.compare(nan))
     println(nan.compare(infinity))
 
     // Signed zeros compare equal, the way they do under ==.
-    var minus_zero = zero * minus_one
+    let minus_zero = zero * minus_one
     println(zero.compare(minus_zero))
     println(zero == minus_zero)
 }

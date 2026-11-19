@@ -19,13 +19,13 @@ fn Stack::depth(self): i32 {
 }
 
 fn calls() {
-    var s = Stack::new()
+    let s = Stack::new()
     s.push(1)
-    var d: i32 = s.depth()
+    let d: i32 = s.depth()
 }
 
 fn badCalls() {
-    var s = Stack::new()
+    let s = Stack::new()
     s.push("one")  //~ cannot use string as i32
     s.fly()        //~ Stack has no method fly
     s.new()        //~ associated function
@@ -35,23 +35,23 @@ fn badCalls() {
 
 fn throughPointers(s: *Stack) {
     s.push(1)
-    var v = s.top
+    let v = s.top
 }
 
 // The built-in surface needs no import.
 fn builtins(ch: chan<i32>, xs: i32[], s: string, a: i32, b: i32, e: error): usize {
     ch.close()
     for r in s.runes(heap()) {
-        var x: rune = r
+        let x: rune = r
     }
-    var ordered = a.compare(b)
-    var text = e.message()
-    var n = s.len()
+    let ordered = a.compare(b)
+    let text = e.message()
+    let n = s.len()
     return xs.len()
 }
 
 fn compareNeedsTheSameType(a: i32, b: i64) {
-    var x = a.compare(b) //~ cannot use i64 as i32
+    let x = a.compare(b) //~ cannot use i64 as i32
 }
 
 struct Holder {

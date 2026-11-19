@@ -7,33 +7,33 @@ import { open, read_all, write_file, read_dir, remove, exists } from "fs"
 import { heap } from "mem"
 
 fn main() {
-    var err = write_file("/tmp", "x")
+    let err = write_file("/tmp", "x")
     if err != null {
         println(err.message())
     }
 
-    var dir, openErr = open("/tmp")
+    let dir, openErr = open("/tmp")
     println(openErr == null)
-    var text, readErr = read_all(heap(), dir)
+    let text, readErr = read_all(heap(), dir)
     println(text.len())
     if readErr != null {
         println(readErr.message())
     }
 
     const file = "/tmp/gyro-fs-more-errors.txt"
-    var wrote = write_file(file, "abc")
+    let wrote = write_file(file, "abc")
     println(wrote == null)
-    var names, listErr = read_dir(heap(), file)
+    let names, listErr = read_dir(heap(), file)
     println(names.len())
     if listErr != null {
         println(listErr.message())
     }
     names.free()
 
-    var removed = remove(file)
+    let removed = remove(file)
     println(removed == null)
     println(exists(file))
-    var again = remove(file)
+    let again = remove(file)
     if again != null {
         println(again.message())
     }

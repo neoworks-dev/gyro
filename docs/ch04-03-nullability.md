@@ -7,7 +7,7 @@ type inside the check.
 ```gyro
 fn find(id: i32): *Node? { ... }
 
-var node = find(3)
+let node = find(3)
 // node.value          // error: node may be null
 if node != null {
     println(node.value)  // narrowed to *Node here

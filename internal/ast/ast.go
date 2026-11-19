@@ -330,7 +330,7 @@ type EnumVariant struct {
 	Payload []Type
 }
 
-// VarDecl is a `var` or `const` binding. It appears both at file scope and
+// VarDecl is a `let` or `const` binding. It appears both at file scope and
 // as a statement, so it satisfies both Decl and Stmt.
 type VarDecl struct {
 	Offset   int
@@ -480,7 +480,7 @@ func (s *SendStmt) stmtNode() {}
 
 // SelectStmt waits on several channel operations and runs the arm whose
 // operation becomes ready first. Arms use the same `comm: body` shape as
-// match, and bindings are ordinary `var` declarations rather than a special
+// match, and bindings are ordinary `let` declarations rather than a special
 // short form.
 type SelectStmt struct {
 	Offset int

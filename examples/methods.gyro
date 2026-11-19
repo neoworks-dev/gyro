@@ -76,25 +76,25 @@ export struct Pair<T> {
 }
 
 export fn Pair<T>::swap(*self) {
-    var tmp = self.first
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
 
 fn main() {
-    var older = Version::new(1, 4)
-    var newer = Version::new(1, 9)
+    let older = Version::new(1, 4)
+    let newer = Version::new(1, 9)
 
     println(max(older, newer))
     println(max(3, 7))
     println(older < newer)
 
-    var a = Vector2{ x: 1.0, y: 2.0 }
-    var b = Vector2{ x: 3.0, y: 4.0 }
-    var sum = a + b
+    let a = Vector2{ x: 1.0, y: 2.0 }
+    let b = Vector2{ x: 3.0, y: 4.0 }
+    let sum = a + b
     println(sum.x)
 
-    var pair = Pair<i32>{ 1, 2 }
+    let pair = Pair<i32>{ 1, 2 }
     pair.swap()
     println(pair.first)
 }

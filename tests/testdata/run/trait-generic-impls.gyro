@@ -52,32 +52,32 @@ impl Iterator<T> for Span<T> {
         if self.at >= self.items.len() {
             return self.items[0], false
         }
-        var item = self.items[self.at]
+        let item = self.items[self.at]
         self.at += 1
         return item, true
     }
 }
 
 fn main() {
-    var a = Pair<i32>{ 1, 2 }
-    var b = Pair<i32>{ 10, 20 }
+    let a = Pair<i32>{ 1, 2 }
+    let b = Pair<i32>{ 10, 20 }
     println(a == b)
     println(a == Pair<i32>{ 1, 2 })
     println(Money<i32>{ 5, 1 } + Money<i32>{ 10, 2 })
 
-    var names = Pair<string>{ "x", "y" }
+    let names = Pair<string>{ "x", "y" }
     println(names == Pair<string>{ "x", "y" })
     println(names)
 
-    var floats = Money<f64>{ 0.5, 1.5 } + Money<f64>{ 0.25, 0.25 }
+    let floats = Money<f64>{ 0.5, 1.5 } + Money<f64>{ 0.25, 0.25 }
     println(floats)
 
     println(a.twice())
-    var table = &a as dyn Total
+    let table = &a as dyn Total
     println(table.twice())
 
-    var numbers = [4, 5, 6]
-    var span = Span<i32>{ items: numbers, at: 0 }
+    let numbers = [4, 5, 6]
+    let span = Span<i32>{ items: numbers, at: 0 }
     for n in span {
         println(n)
     }

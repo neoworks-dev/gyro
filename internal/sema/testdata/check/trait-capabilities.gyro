@@ -47,15 +47,15 @@ fn printed(s: Shown, h: Holder, items: Shown[], pair: (Shown, i32), maybe: Shown
 impl Print for Tagged //~ E0529 Print cannot be derived: field at is Point
 
 fn hashing(p: Point) {
-    var h = p.hash()                     //~ E0405 Point has no method hash
-    var m = Map<Point, i32>::new(heap()) //~ E0527 Point does not implement Eq, which Map<K, V> requires of K
+    let h = p.hash()                     //~ E0405 Point has no method hash
+    let m = Map<Point, i32>::new(heap()) //~ E0527 Point does not implement Eq, which Map<K, V> requires of K
     //~^ E0527 Point does not implement Hash
 }
 
 fn arithmetic(a: Point, b: Point) {
-    var sum = a + b    //~ E0527 Point does not implement Add, which the operator + needs
-    var negated = -a   //~ E0527 Point does not implement Neg
-    var scaled = a * 2 //~ E0503 operator * needs matching numeric operands
+    let sum = a + b    //~ E0527 Point does not implement Add, which the operator + needs
+    let negated = -a   //~ E0527 Point does not implement Neg
+    let scaled = a * 2 //~ E0503 operator * needs matching numeric operands
 }
 
 struct Vec2 {
@@ -90,6 +90,6 @@ fn nestedLacks(t: Tagged, u: Tagged): bool {
 
 // Wrapping and bitwise operators are for the numbers alone.
 fn wrapping(a: Point, b: Point) {
-    var x = a +% b //~ E0503 operator +% needs matching integer operands
-    var y = a & b  //~ E0503 operator & needs matching integer operands
+    let x = a +% b //~ E0503 operator +% needs matching integer operands
+    let y = a & b  //~ E0503 operator & needs matching integer operands
 }

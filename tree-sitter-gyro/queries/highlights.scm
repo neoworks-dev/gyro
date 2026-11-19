@@ -105,7 +105,7 @@
 ] @keyword.type
 
 [
-  "var"
+  "let"
   "const"
 ] @keyword
 

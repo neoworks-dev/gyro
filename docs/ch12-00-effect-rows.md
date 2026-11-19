@@ -114,7 +114,7 @@ shown separately; two arriving along the same calls are shown once.
 A closure may write its own row, and its body is checked against it:
 
 ```gyro
-var quiet = fn(n: i32) !{} {
+let quiet = fn(n: i32) !{} {
     println(n) // error: println does io, which the row does not name
 }
 ```
@@ -151,7 +151,7 @@ fn bad(xs: i32[]): i32[] {
 }
 
 fn worse(): i32[] {
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     return xs // error: that storage ends with this function
 }
 ```
@@ -197,7 +197,7 @@ fn caller(xs: i32[], ys: i32[]): i32[] !{ &xs } {
 }
 
 fn bad(ys: i32[]): i32[] !{ &ys } {
-    var local = [1, 2, 3]
+    let local = [1, 2, 3]
     return pick(local, ys) // error: the result views this frame
 }
 ```
@@ -227,8 +227,8 @@ still the frame's:
 struct View { data: i32[] }
 
 fn bad(): i32[] {
-    var xs = [1, 2, 3]
-    var v = View{ data: xs }
+    let xs = [1, 2, 3]
+    let v = View{ data: xs }
     return v.data // error: xs ends with this function
 }
 ```
@@ -303,7 +303,7 @@ and returning it is judged like returning the view:
 
 ```gyro
 fn handlers(n: i32): Array<fn(): i32> {
-    var hs = Array<fn(): i32>::new(heap())
+    let hs = Array<fn(): i32>::new(heap())
     hs.push(fn(): i32 { return n })
     return hs // error: hs holds a closure that borrows this frame
 }
@@ -316,7 +316,7 @@ the loop leaves every element pointing at that slot, whatever the variable is
 for; keep it first, or copy it:
 
 ```gyro
-var hs = Array<fn(): i32>::new(heap())
+let hs = Array<fn(): i32>::new(heap())
 for i in 0..3 {
     hs.push(fn(): i32 { return i })               // error: every element would see the last i
     hs.push(keep(heap(), fn(): i32 { return i })) // fine
@@ -354,7 +354,7 @@ holds the body to what the row says.
   unchecked**
 - *calling* a function value — a closure or an `fn` parameter — contributes
   nothing to the caller ([chapter 11](ch11-00-closures.md))
-- module-level `var` initializers run before `main`, outside any row, over
+- module-level `let` initializers run before `main`, outside any row, over
   the process heap
 - channel operations and `Mutex` carry no effect
 - `spawn` declares `!{ io }`, which covers starting the thread and

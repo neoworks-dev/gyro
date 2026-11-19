@@ -58,18 +58,18 @@ impl Eq for Pair<T>
 impl Print for Pair<T>
 
 fn main() {
-    var coffee = Price{ cents: 350, label: "usd" }
-    var also_coffee = Price{ cents: 350, label: "eur" }
-    var tea = Price{ cents: 300, label: "usd" }
+    let coffee = Price{ cents: 350, label: "usd" }
+    let also_coffee = Price{ cents: 350, label: "eur" }
+    let tea = Price{ cents: 300, label: "usd" }
 
     println(coffee == also_coffee)
     println(coffee == tea)
     println(coffee.hash() == also_coffee.hash())
     println(coffee)
 
-    var a = Line{ item: "latte", price: coffee }
-    var b = Line{ item: "latte", price: also_coffee }
-    var c = Line{ item: "latte", price: tea }
+    let a = Line{ item: "latte", price: coffee }
+    let b = Line{ item: "latte", price: also_coffee }
+    let c = Line{ item: "latte", price: tea }
     println(a == b)
     println(a == c)
     println(a.hash() == b.hash())
@@ -82,9 +82,9 @@ fn main() {
     println(Entry::Sale(tea))
     println(Entry::Empty)
 
-    var maybe: Price? = coffee
-    var maybe_too: Price? = also_coffee
-    var nothing: Price? = null
+    let maybe: Price? = coffee
+    let maybe_too: Price? = also_coffee
+    let nothing: Price? = null
     println(maybe == maybe_too)
     println(maybe == nothing)
     println(nothing == nothing)
@@ -96,11 +96,11 @@ fn main() {
     println(Pair<Price>{ coffee, tea } == Pair<Price>{ tea, coffee })
     println(Pair<i32>{ 1, 2 })
 
-    var row = [coffee, tea]
+    let row = [coffee, tea]
     println(row == [also_coffee, tea])
     println(row == [coffee, coffee])
 
-    var tally = Map<Price, i32>::new(heap())
+    let tally = Map<Price, i32>::new(heap())
     defer tally.free()
     tally.insert(coffee, 1)
     tally.insert(also_coffee, 2)

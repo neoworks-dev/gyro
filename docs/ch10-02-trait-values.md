@@ -7,10 +7,10 @@ different kinds, a list of handlers — a **trait value** stands for it.
 its methods.
 
 ```gyro
-var button = Button{ label: "ok" }
-var label = Label{ text: "hello", size: 12 }
+let button = Button{ label: "ok" }
+let label = Label{ text: "hello", size: 12 }
 
-var elements = Array<dyn Element>::new(heap())
+let elements = Array<dyn Element>::new(heap())
 elements.push(&button as dyn Element)
 elements.push(&label as dyn Element)
 
@@ -46,7 +46,7 @@ fn pass(p: *Button): dyn Element !{ &p } {
 }
 
 fn frame(): dyn Element {
-    var b = Button{ label: "frame" }
+    let b = Button{ label: "frame" }
     return &b as dyn Element // error: a view into storage that ends with this function
 }
 ```

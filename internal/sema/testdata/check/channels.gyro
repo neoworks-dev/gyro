@@ -1,37 +1,37 @@
 import { println } from "stdlib"
 
 fn operations() {
-    var ch = chan<i32>(64)
+    let ch = chan<i32>(64)
     ch <- 1
-    var v: i32 = <-ch
-    var w, open = <-ch
-    var b: bool = open
+    let v: i32 = <-ch
+    let w, open = <-ch
+    let b: bool = open
 }
 
 fn badOperations(ch: chan<i32>, x: i32) {
     ch <- "one" //~ cannot use string as i32 in the send
     x <- 1      //~ send needs a channel
-    var v = <-x //~ receive needs a channel
+    let v = <-x //~ receive needs a channel
 }
 
 fn badCapacity() {
-    var ch = chan<i32>("big") //~ capacity is an integer
+    let ch = chan<i32>("big") //~ capacity is an integer
 }
 
 // A two-name binding on a receive means (element, open); a tuple element
 // comes out whole. The value is only there when the channel was open, so
 // definite assignment demands the check.
 fn tupleReceive(results: chan<(string, error?)>) {
-    var result, open = <-results
+    let result, open = <-results
     if open {
-        var body: string = result.0
+        let body: string = result.0
     }
-    var flag: bool = open
+    let flag: bool = open
 }
 
 fn selectArms(values: chan<i32>, quit: chan<bool>) {
     select {
-        var v = <-values: v.compare(0)
+        let v = <-values: v.compare(0)
         quit <- true: return
         else: return
     }
@@ -39,8 +39,8 @@ fn selectArms(values: chan<i32>, quit: chan<bool>) {
 
 fn selectArmsAreTyped(values: chan<i32>) {
     select {
-        var v = <-values: {
-            var s: string = v //~ cannot use i32 as string
+        let v = <-values: {
+            let s: string = v //~ cannot use i32 as string
         }
     }
 }

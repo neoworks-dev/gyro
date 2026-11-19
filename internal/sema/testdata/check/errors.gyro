@@ -31,12 +31,12 @@ fn dropped() {
 }
 
 fn discarded() {
-    var _, _ = fallible()
+    let _, _ = fallible()
 }
 
 fn handled() {
-    var v, err = fallible()
+    let v, err = fallible()
     if err != null {
-        var m = err.message()
+        let m = err.message()
     }
 }

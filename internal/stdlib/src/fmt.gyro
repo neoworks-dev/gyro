@@ -25,11 +25,11 @@ import { Allocator, heap, format } from "mem"
 //
 // The text is built in blocks from `a`, and the result is a block from it.
 export fn sprintf(a: Allocator, format: string, args: ...any): string !{ &a } {
-    var out = Array<u8>::new(a)
-    var body = format.bytes(a)
-    var next: usize = 0
+    let out = Array<u8>::new(a)
+    let body = format.bytes(a)
+    let next: usize = 0
 
-    var i: usize = 0
+    let i: usize = 0
     while i < body.len() {
         if body[i] != percent {
             out.push(body[i])
@@ -37,7 +37,7 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{ &a } {
             continue
         }
 
-        var spec, after = read_spec(body, i + 1)
+        let spec, after = read_spec(body, i + 1)
         i = after
         if spec.verb == percent {
             out.push(percent)
@@ -51,7 +51,7 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{ &a } {
         next += 1
     }
 
-    var text = from_utf8(a, out.slice())
+    let text = from_utf8(a, out.slice())
     out.free()
     return text
 }
@@ -93,8 +93,8 @@ struct Spec {
 // just past the verb. An unterminated spec ends as a `%` verb, which
 // prints itself.
 fn read_spec(body: u8[], from: usize): (Spec, usize) {
-    var spec = Spec{ verb: percent, width: 0, zero: false, left: false }
-    var i = from
+    let spec = Spec{ verb: percent, width: 0, zero: false, left: false }
+    let i = from
 
     while i < body.len() && (body[i] == minus || body[i] == zero_digit) {
         if body[i] == minus {
@@ -120,17 +120,17 @@ fn read_spec(body: u8[], from: usize): (Spec, usize) {
 // argument unchanged when nothing has to be added, which is why the row
 // says the result may view it.
 fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
-    var width = text.len()
+    let width = text.len()
     if width >= spec.width {
         return text
     }
 
-    var filler = zero_digit
+    let filler = zero_digit
     if !spec.zero || spec.left {
         filler = space
     }
 
-    var out = Array<u8>::new(a)
+    let out = Array<u8>::new(a)
     if spec.left {
         push_text(a, out, text)
     }
@@ -141,7 +141,7 @@ fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
         push_text(a, out, text)
     }
 
-    var result = from_utf8(a, out.slice())
+    let result = from_utf8(a, out.slice())
     out.free()
     return result
 }
@@ -156,14 +156,14 @@ fn pad(a: Allocator, text: string, spec: Spec): string !{ &text } {
 // take the program down.
 fn render(a: Allocator, value: any, verb: u8): string !{} {
     if verb == 120 || verb == 88 {
-        var n, ok = as_unsigned(value)
+        let n, ok = as_unsigned(value)
         if ok {
             return hex(a, n, verb == 88)
         }
         return format(heap(), "#{value}")
     }
     if verb == 99 {
-        var n, ok = as_unsigned(value)
+        let n, ok = as_unsigned(value)
         if ok {
             return format(heap(), "#{(n as u32) as rune}")
         }
@@ -210,20 +210,20 @@ fn hex(a: Allocator, value: u64, upper: bool): string !{} {
 
     // The digits come out least significant first, so they are collected
     // and then walked backwards.
-    var digits = Array<u8>::new(a)
-    var n = value
+    let digits = Array<u8>::new(a)
+    let n = value
     while n > 0 {
         digits.push(hex_digit((n & 15) as u8, upper))
         n = n >> 4
     }
 
-    var out = Array<u8>::new(a)
-    for var i = digits.len(); i > 0; i -= 1 {
+    let out = Array<u8>::new(a)
+    for let i = digits.len(); i > 0; i -= 1 {
         out.push(digits.get(i - 1))
     }
     digits.free()
 
-    var text = from_utf8(a, out.slice())
+    let text = from_utf8(a, out.slice())
     out.free()
     return text
 }

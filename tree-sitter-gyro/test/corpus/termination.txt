@@ -3,8 +3,8 @@ newline ends a statement
 ==================
 
 fn main() {
-  var x = 1
-  var y = 2
+  let x = 1
+  let y = 2
 }
 
 ---
@@ -26,7 +26,7 @@ leading dot continues a method chain
 ==================
 
 fn main() {
-  var total = values
+  let total = values
     .filter(is_even)
     .sum()
 }
@@ -56,7 +56,7 @@ leading logical operator continues
 ==================
 
 fn main() {
-  var ok = user.is_active
+  let ok = user.is_active
     && user.age >= 18
 }
 
@@ -84,7 +84,7 @@ leading star starts a new statement
 ==================
 
 fn main() {
-  var x = a
+  let x = a
   *p = 5
 }
 
@@ -108,7 +108,7 @@ leading minus starts a new statement
 ==================
 
 fn main() {
-  var x = a
+  let x = a
   -1
 }
 
@@ -131,7 +131,7 @@ leading receive starts a new statement
 ==================
 
 fn main() {
-  var x = a
+  let x = a
   <-ch
 }
 
@@ -154,7 +154,7 @@ leading less-than continues
 ==================
 
 fn main() {
-  var ok = a
+  let ok = a
     < b
 }
 
@@ -176,7 +176,7 @@ semicolons separate statements on one line
 ==================
 
 fn main() {
-  var i = 0; i += 1; f(i)
+  let i = 0; i += 1; f(i)
 }
 
 ---
@@ -203,9 +203,9 @@ a comment between statements
 ==================
 
 fn main() {
-  var x = 1
+  let x = 1
   // note
-  var y = 2
+  let y = 2
 }
 
 ---
@@ -228,7 +228,7 @@ a line comment does not hide a continuation
 ==================
 
 fn main() {
-  var x = a
+  let x = a
   // note
   + b
 }
@@ -253,7 +253,7 @@ nested block comments
 
 fn main() {
   /* outer /* inner */ still comment */
-  var x = 1
+  let x = 1
 }
 
 ---

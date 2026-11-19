@@ -47,8 +47,8 @@ impl Eq for Fraction {
 
 impl Ord for Fraction {
     fn compare(self, other: Self): i32 {
-        var left = self.num * other.den
-        var right = other.num * self.den
+        let left = self.num * other.den
+        let right = other.num * self.den
         if left < right {
             return -1
         }
@@ -100,8 +100,8 @@ fn flip<T: Neg>(value: T): T {
 }
 
 fn main() {
-    var a = Vector2{ x: 1, y: 2 }
-    var b = Vector2{ x: 10, y: 20 }
+    let a = Vector2{ x: 1, y: 2 }
+    let b = Vector2{ x: 10, y: 20 }
     println(a + b)
     println(b - a)
     println(-a)
@@ -113,9 +113,9 @@ fn main() {
     println(flip(b))
     println(flip(-7))
 
-    var half = Fraction{ num: 1, den: 2 }
-    var two_fourths = Fraction{ num: 2, den: 4 }
-    var third = Fraction{ num: 1, den: 3 }
+    let half = Fraction{ num: 1, den: 2 }
+    let two_fourths = Fraction{ num: 2, den: 4 }
+    let third = Fraction{ num: 1, den: 3 }
     println(half == two_fourths)
     println(half != third)
     println(third < half)
@@ -125,6 +125,6 @@ fn main() {
     println(half * third)
     println(half / third)
 
-    var late = Clock{ minutes: 130 }
+    let late = Clock{ minutes: 130 }
     println(late % Clock{ minutes: 60 })
 }

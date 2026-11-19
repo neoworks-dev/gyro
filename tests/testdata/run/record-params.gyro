@@ -29,13 +29,13 @@ fn assigns(b: Box): i32 {
 }
 
 fn views(b: Box): i32 {
-    var window = b.data[0..2]
+    let window = b.data[0..2]
     window[0] = 99
     return b.data[0]
 }
 
 fn addresses(b: Box): i32 {
-    var p = &b.b
+    let p = &b.b
     *p = 7
     return b.b
 }
@@ -50,7 +50,7 @@ fn passes(b: Box): i32 {
 }
 
 fn main() {
-    var box = Box{ a: 1, b: 2, data: [10, 20, 30] }
+    let box = Box{ a: 1, b: 2, data: [10, 20, 30] }
     println(read_only(box))
     println(assigns(box))
     println(views(box))

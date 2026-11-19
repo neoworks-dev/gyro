@@ -28,8 +28,8 @@ var cases = []struct {
 	},
 	{
 		name: "binary operators and commas",
-		in:   "fn f() {\n  var x=a+b*c\n  g(a,b , c)\n}\n",
-		want: "fn f() {\n    var x = a + b * c\n    g(a, b, c)\n}\n",
+		in:   "fn f() {\n  let x=a+b*c\n  g(a,b , c)\n}\n",
+		want: "fn f() {\n    let x = a + b * c\n    g(a, b, c)\n}\n",
 	},
 	{
 		name: "no space inside parens and brackets",
@@ -38,8 +38,8 @@ var cases = []struct {
 	},
 	{
 		name: "braces hug struct names and pad their contents",
-		in:   "fn f() {\n  var p = Point{x: 1, y: 2}\n  var e = Empty{ }\n  var q = Stack<i32>{ items: xs }\n}\n",
-		want: "fn f() {\n    var p = Point{ x: 1, y: 2 }\n    var e = Empty{}\n    var q = Stack<i32>{ items: xs }\n}\n",
+		in:   "fn f() {\n  let p = Point{x: 1, y: 2}\n  let e = Empty{ }\n  let q = Stack<i32>{ items: xs }\n}\n",
+		want: "fn f() {\n    let p = Point{ x: 1, y: 2 }\n    let e = Empty{}\n    let q = Stack<i32>{ items: xs }\n}\n",
 	},
 	{
 		name: "signatures and effect rows",
@@ -48,23 +48,23 @@ var cases = []struct {
 	},
 	{
 		name: "unary and binary operators",
-		in:   "fn f() {\n  var a = -x\n  var b = x-y\n  var c = *p * *q\n  var d = &x\n  var e = !ok\n  var f = x < -1\n  var g = <-ch\n  ch <- v\n}\n",
-		want: "fn f() {\n    var a = -x\n    var b = x - y\n    var c = *p * *q\n    var d = &x\n    var e = !ok\n    var f = x < -1\n    var g = <-ch\n    ch <- v\n}\n",
+		in:   "fn f() {\n  let a = -x\n  let b = x-y\n  let c = *p * *q\n  let d = &x\n  let e = !ok\n  let f = x < -1\n  let g = <-ch\n  ch <- v\n}\n",
+		want: "fn f() {\n    let a = -x\n    let b = x - y\n    let c = *p * *q\n    let d = &x\n    let e = !ok\n    let f = x < -1\n    let g = <-ch\n    ch <- v\n}\n",
 	},
 	{
 		name: "generics hug their brackets and comparisons do not",
-		in:   "fn f() {\n  var a = Array<i32>::new(h)\n  var b = x<y\n  var c = Map<string, Vec<i32>>::new(h)\n  var d = a>>2\n}\n",
-		want: "fn f() {\n    var a = Array<i32>::new(h)\n    var b = x < y\n    var c = Map<string, Vec<i32>>::new(h)\n    var d = a >> 2\n}\n",
+		in:   "fn f() {\n  let a = Array<i32>::new(h)\n  let b = x<y\n  let c = Map<string, Vec<i32>>::new(h)\n  let d = a>>2\n}\n",
+		want: "fn f() {\n    let a = Array<i32>::new(h)\n    let b = x < y\n    let c = Map<string, Vec<i32>>::new(h)\n    let d = a >> 2\n}\n",
 	},
 	{
 		name: "ranges, wildcards and casts",
-		in:   "import * as m from \"./m\"\nfn f() {\n  for i in 0 .. 10 {\n    var s = xs[1 .. 3]\n    var n = i as f64\n  }\n}\n",
-		want: "import * as m from \"./m\"\nfn f() {\n    for i in 0..10 {\n        var s = xs[1..3]\n        var n = i as f64\n    }\n}\n",
+		in:   "import * as m from \"./m\"\nfn f() {\n  for i in 0 .. 10 {\n    let s = xs[1 .. 3]\n    let n = i as f64\n  }\n}\n",
+		want: "import * as m from \"./m\"\nfn f() {\n    for i in 0..10 {\n        let s = xs[1..3]\n        let n = i as f64\n    }\n}\n",
 	},
 	{
 		name: "alignment padding is kept",
-		in:   "var t = [\n  1,   2,\n  30,  4,\n]\n",
-		want: "var t = [\n    1,   2,\n    30,  4,\n]\n",
+		in:   "let t = [\n  1,   2,\n  30,  4,\n]\n",
+		want: "let t = [\n    1,   2,\n    30,  4,\n]\n",
 	},
 	{
 		name: "blank lines collapse to one and single ones stay",
@@ -83,8 +83,8 @@ var cases = []struct {
 	},
 	{
 		name: "trailing comments on consecutive lines share a column",
-		in:   "fn f() {\n  var a = 1 // one\n  var bcd = 2   // two\n  var e = 3\n  var f = 4 // four\n}\n",
-		want: "fn f() {\n    var a = 1   // one\n    var bcd = 2 // two\n    var e = 3\n    var f = 4 // four\n}\n",
+		in:   "fn f() {\n  let a = 1 // one\n  let bcd = 2   // two\n  let e = 3\n  let f = 4 // four\n}\n",
+		want: "fn f() {\n    let a = 1   // one\n    let bcd = 2 // two\n    let e = 3\n    let f = 4 // four\n}\n",
 	},
 	{
 		name: "block comments stay where they are",
@@ -93,8 +93,8 @@ var cases = []struct {
 	},
 	{
 		name: "a list across lines gains a trailing comma",
-		in:   "fn f() {\n  g(\n    a,\n    b\n  )\n  var p = Point{\n    x: 1,\n    y: 2\n  }\n  var xs = [\n    1,\n    2 // two\n  ]\n}\n",
-		want: "fn f() {\n    g(\n        a,\n        b,\n    )\n    var p = Point{\n        x: 1,\n        y: 2,\n    }\n    var xs = [\n        1,\n        2, // two\n    ]\n}\n",
+		in:   "fn f() {\n  g(\n    a,\n    b\n  )\n  let p = Point{\n    x: 1,\n    y: 2\n  }\n  let xs = [\n    1,\n    2 // two\n  ]\n}\n",
+		want: "fn f() {\n    g(\n        a,\n        b,\n    )\n    let p = Point{\n        x: 1,\n        y: 2,\n    }\n    let xs = [\n        1,\n        2, // two\n    ]\n}\n",
 	},
 	{
 		name: "parameter lists across lines gain one too",
@@ -108,8 +108,8 @@ var cases = []struct {
 	},
 	{
 		name: "grouping parens and blocks never gain commas",
-		in:   "fn f() {\n  var x = (a\n    + b\n  )\n  if c {\n    g()\n  }\n}\n",
-		want: "fn f() {\n    var x = (a\n        + b\n    )\n    if c {\n        g()\n    }\n}\n",
+		in:   "fn f() {\n  let x = (a\n    + b\n  )\n  if c {\n    g()\n  }\n}\n",
+		want: "fn f() {\n    let x = (a\n        + b\n    )\n    if c {\n        g()\n    }\n}\n",
 	},
 	{
 		name: "continuation lines are indented one level",
@@ -128,8 +128,8 @@ var cases = []struct {
 	},
 	{
 		name: "semicolons",
-		in:   "fn f() {\n  for var i = 0;i < 3;i += 1 {\n    g()\n  }\n}\n",
-		want: "fn f() {\n    for var i = 0; i < 3; i += 1 {\n        g()\n    }\n}\n",
+		in:   "fn f() {\n  for let i = 0;i < 3;i += 1 {\n    g()\n  }\n}\n",
+		want: "fn f() {\n    for let i = 0; i < 3; i += 1 {\n        g()\n    }\n}\n",
 	},
 	{
 		name: "strings are untouched",
@@ -160,7 +160,7 @@ func TestFormat(t *testing.T) {
 
 func TestRefusesSourceThatDoesNotParse(t *testing.T) {
 	var bag diag.Bag
-	_, err := Source("bad.gyro", "fn main( {\n  var x =\n", &bag)
+	_, err := Source("bad.gyro", "fn main( {\n  let x =\n", &bag)
 	if !errors.Is(err, ErrSyntax) {
 		t.Fatalf("want ErrSyntax, got %v", err)
 	}

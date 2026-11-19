@@ -171,7 +171,7 @@ safe fn byte_at(p: *Packet, index: usize): u8 {
 }
 
 fn main() {
-    var p = Packet{ tag: 7, low: 16, high: 32, last: 255 }
+    let p = Packet{ tag: 7, low: 16, high: 32, last: 255 }
     println(byte_at(&p, 2)) // 32
 }
 ```

@@ -1,4 +1,4 @@
-export var hits: i32 = 0
+export let hits: i32 = 0
 
 export fn record() {
     hits += 1

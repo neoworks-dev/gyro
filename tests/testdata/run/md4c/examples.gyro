@@ -16,7 +16,7 @@ export fn source(index: i64): string {
     return SOURCES[index as usize]
 }
 
-var NUMBERS: i64[652] = [
+let NUMBERS: i64[652] = [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
@@ -60,7 +60,7 @@ var NUMBERS: i64[652] = [
     641, 642, 643, 644, 645, 646, 647, 648, 649, 650, 651, 652,
 ]
 
-var SOURCES: string[652] = [
+let SOURCES: string[652] = [
     "\tfoo\tbaz\t\tbim\n",
     "  \tfoo\tbaz\t\tbim\n",
     "    a\ta\n    ὐ\ta\n",

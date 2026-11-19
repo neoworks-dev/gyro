@@ -22,7 +22,7 @@ fn main() {
         _: println("many")
     }
 
-    var name = match "b" {
+    let name = match "b" {
         "a": "first"
         "b": "second"
         _: "other"

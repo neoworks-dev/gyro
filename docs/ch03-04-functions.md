@@ -33,7 +33,7 @@ fn divmod(a: i32, b: i32): (i32, i32) {
     return a / b, a % b
 }
 
-var q, r = divmod(17, 5)
+let q, r = divmod(17, 5)
 ```
 
 A fallible function is this shape with `error?` on the right
@@ -48,7 +48,7 @@ outlive the call.
 
 ```gyro
 fn sum(xs: ...i32): i32 {
-    var total = 0
+    let total = 0
     for x in xs {
         total += x
     }
@@ -85,14 +85,14 @@ does not.
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-    var out = Array<i32>::new(heap())
+    let out = Array<i32>::new(heap())
     for value in values {
         out.push(f(value))
     }
     return out
 }
 
-var doubled = apply([1, 2, 3], fn(x) x * 2)
+let doubled = apply([1, 2, 3], fn(x) x * 2)
 ```
 
 [Chapter 11](ch11-00-closures.md) covers closures, capture, and the

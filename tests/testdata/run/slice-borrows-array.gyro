@@ -14,7 +14,7 @@ fn bump_copy(xs: i32[3]) {
 }
 
 fn sum(xs: i32[]): i32 {
-    var total = 0
+    let total = 0
     for x in xs {
         total += x
     }
@@ -22,7 +22,7 @@ fn sum(xs: i32[]): i32 {
 }
 
 fn main() {
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     bump(xs)
     println(xs[0])
 
@@ -30,7 +30,7 @@ fn main() {
     println(xs[0])
 
     // The same holds through an owning Array's view.
-    var owned = Array<i32>::new(heap())
+    let owned = Array<i32>::new(heap())
     defer owned.free()
     owned.push(4)
     owned.push(5)

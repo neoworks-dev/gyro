@@ -12,7 +12,7 @@ fn send(ch: chan<i32>) {
 }
 
 fn receive(ch: chan<i32>) {
-    var v = <-ch //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
+    let v = <-ch //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
 }
 
 fn close(ch: chan<i32>) {
@@ -26,7 +26,7 @@ fn drain(ch: chan<i32>) {
 
 fn choose(ch: chan<i32>) {
     select {                       //~ E0620 a select is implemented in stdlib; this program does not load stdlib
-        var v = <-ch: v.compare(0) //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
+        let v = <-ch: v.compare(0) //~ E0620 a receive is implemented in stdlib; this program does not load stdlib
     }
 }
 

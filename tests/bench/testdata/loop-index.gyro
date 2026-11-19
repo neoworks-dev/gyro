@@ -8,20 +8,20 @@ import { monotonic } from "time"
 import { heap } from "mem"
 
 fn main() {
-    var values = Array<i64>::new(heap())
+    let values = Array<i64>::new(heap())
     defer values.free()
-    for var i: i64 = 0; i < 1024; i += 1 {
+    for let i: i64 = 0; i < 1024; i += 1 {
         values.push(i)
     }
 
-    var start = monotonic()
-    var total: i64 = 0
-    for var pass = 0; pass < 16384; pass += 1 {
-        for var i: usize = 0; i < values.len(); i += 1 {
+    let start = monotonic()
+    let total: i64 = 0
+    for let pass = 0; pass < 16384; pass += 1 {
+        for let i: usize = 0; i < values.len(); i += 1 {
             total += values.get(i)
         }
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(total)
     eprintln("gyro:bench #{stop - start}")

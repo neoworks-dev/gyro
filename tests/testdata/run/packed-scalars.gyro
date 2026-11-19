@@ -17,7 +17,7 @@ struct Mixed {
 
 fn main() {
     // Fields: the negative ones are what a widening load has to get right.
-    var m = Mixed{ flag: true, small: 0 - 128, wide: 65535, scaled: 0.5, count: 0 - 9 }
+    let m = Mixed{ flag: true, small: 0 - 128, wide: 65535, scaled: 0.5, count: 0 - 9 }
     println(m.flag)
     println(m.small)
     println(m.wide)
@@ -34,54 +34,54 @@ fn main() {
     // even neighbour below it is what all three keep.
     m.scaled = 16777217.0
     println(m.scaled)
-    var literal: f32 = 16777217.0
+    let literal: f32 = 16777217.0
     println(literal)
 
     // A fixed array is packed, and so is a slice of it.
-    var bytes: u8[] = [1, 2, 254]
+    let bytes: u8[] = [1, 2, 254]
     println(bytes[2])
     bytes[0] = 255
     println(bytes[0])
     println(bytes.len())
 
-    var signed: i16[] = [0 - 300, 300]
+    let signed: i16[] = [0 - 300, 300]
     println(signed[0])
     println(signed[1])
 
     // A dynamic Array stores what a slice of it borrows, so its elements
     // are the same bytes at the same stride.
-    var small = Array<i8>::new(heap())
+    let small = Array<i8>::new(heap())
     small.push(0 - 5)
     small.push(120)
     println(small.get(0))
     println(small.get(1))
-    var borrowed = small.slice()
+    let borrowed = small.slice()
     println(borrowed[0])
     small.free()
 
-    var floats = Array<f32>::new(heap())
+    let floats = Array<f32>::new(heap())
     floats.push(0.25)
     println(floats.get(0))
     floats.free()
 
     // A tuple of a narrow element and a flag, which is what a pop answers.
-    var popped = Array<u8>::new(heap())
+    let popped = Array<u8>::new(heap())
     popped.push(200)
-    var got, ok = popped.pop()
+    let got, ok = popped.pop()
     println(got)
     println(ok)
-    var empty, more = popped.pop()
+    let empty, more = popped.pop()
     println(more)
     popped.free()
 
     // An any holds storage too, and unwrapping widens it back.
-    var boxed = m.small as any
+    let boxed = m.small as any
     println(boxed as i8)
-    var tiny = (0.25 as f32) as any
+    let tiny = (0.25 as f32) as any
     println(tiny as f32)
 
     // An optional keeps its payload beside the flag.
-    var maybe: i8? = 0 - 7
+    let maybe: i8? = 0 - 7
     if maybe != null {
         println(maybe)
     }

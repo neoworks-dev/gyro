@@ -8,8 +8,8 @@ import { heap, spawn } from "mem"
 import { monotonic } from "time"
 
 fn main() {
-    var ping = chan<i64>()
-    var pong = chan<i64>()
+    let ping = chan<i64>()
+    let pong = chan<i64>()
     spawn(heap(), fn() {
         for v in ping {
             pong <- v + 1
@@ -17,13 +17,13 @@ fn main() {
         pong.close()
     })
 
-    var start = monotonic()
-    var v: i64 = 0
+    let start = monotonic()
+    let v: i64 = 0
     for i in 0..100000 {
         ping <- v
         v = <-pong
     }
-    var stop = monotonic()
+    let stop = monotonic()
     ping.close()
 
     println(v)

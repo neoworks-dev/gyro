@@ -11,8 +11,8 @@ fn worker(jobs: chan<i64>, answers: chan<i64>) {
 }
 
 fn main() {
-    var jobs = chan<i64>(4)
-    var answers = chan<i64>(100)
+    let jobs = chan<i64>(4)
+    let answers = chan<i64>(100)
     for w in 0..6 {
         spawn(heap(), fn() worker(jobs, answers))
     }
@@ -21,7 +21,7 @@ fn main() {
     }
     jobs.close()
 
-    var total: i64 = 0
+    let total: i64 = 0
     for n in 1..51 {
         total += <-answers
     }

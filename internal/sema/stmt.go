@@ -156,7 +156,7 @@ func isAlwaysTrue(e ast.Expr) bool {
 func (c *checker) exprStmt(s *ast.ExprStmt) {
 	t := c.expr(s.X)
 	if containsError(t) {
-		c.errorf(s.X.Pos(), "the error result is dropped here; discarding one must be written out: var _, _ = ...")
+		c.errorf(s.X.Pos(), "the error result is dropped here; discarding one must be written out: let _, _ = ...")
 		return
 	}
 	if _, ok := t.(*types.Future); ok {

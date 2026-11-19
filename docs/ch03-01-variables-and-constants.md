@@ -1,14 +1,14 @@
 # 3.1. Variables and constants
 
 ```gyro
-var x: i32 = 0
-var y = 42           // inferred
+let x: i32 = 0
+let y = 42           // inferred
 const MAX: i32 = 100 // compile-time constant
-var value, err = f() // tuple destructuring
-var _, err = f()     // `_` discards explicitly
+let value, err = f() // tuple destructuring
+let _, err = f()     // `_` discards explicitly
 ```
 
-Bindings are `var` and `const`; assignment is `=`. **There is no `:=`** —
+Bindings are `let` and `const`; assignment is `=`. **There is no `:=`** —
 one spelling for one thing, everywhere, including inside a `select` arm
 where other languages introduce a second form.
 
@@ -17,12 +17,12 @@ initializer. `const` is a compile-time constant, not a read-only variable.
 
 ## There are no zero values
 
-`var x: i32` with no initializer is legal. Reading `x` before every path to
+`let x: i32` with no initializer is legal. Reading `x` before every path to
 the read has assigned it is a compile error — **definite assignment** — and
 the analysis is flow-sensitive. Nothing springs into existence unwritten.
 
 ```gyro
-var x: i32
+let x: i32
 if cond {
     x = 1
 }
@@ -62,11 +62,11 @@ An inner block may shadow an outer name. Redeclaring a name in the **same**
 block is an error.
 
 ```gyro
-var x = 1
+let x = 1
 if cond {
-    var x = 2 // ok: inner scope
+    let x = 2 // ok: inner scope
 }
-var x = 3 // error: already declared in this block
+let x = 3 // error: already declared in this block
 ```
 
 ## Destructuring
@@ -74,8 +74,8 @@ var x = 3 // error: already declared in this block
 A binding may take several names, which destructures a tuple:
 
 ```gyro
-var value, err = load(path)
-var _, err = load(path) // the value is deliberately dropped
+let value, err = load(path)
+let _, err = load(path) // the value is deliberately dropped
 ```
 
 `_` is not a name — it discards. That matters most for errors: dropping an
@@ -88,8 +88,8 @@ not compile ([chapter 13.2](ch13-02-channels.md)).
 
 ## Module-level bindings
 
-`var` and `const` are legal at module scope. A module-level `const` is a
-compile-time constant; a module-level `var` is program storage whose
+`let` and `const` are legal at module scope. A module-level `const` is a
+compile-time constant; a module-level `let` is program storage whose
 initializer runs before `main`, in declaration order, and across modules in
 dependency order. Those initializers run outside any effect row.
 

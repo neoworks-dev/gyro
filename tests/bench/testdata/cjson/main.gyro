@@ -46,20 +46,20 @@ fn fold(accumulator: u64, item: *cjson::Node?): u64 {
         return accumulator
     }
 
-    var acc = accumulator *% 31 +% (cjson::type_of(item) as u64)
-    var key = item.key
+    let acc = accumulator *% 31 +% (cjson::type_of(item) as u64)
+    let key = item.key
     if key != null {
         acc = acc *% 31 +% (key.len() as u64)
     }
     if cjson::is_number(item) {
         acc = acc *% 31 +% unsigned(cjson::int_of(item))
     }
-    var text = cjson::string_of(item)
+    let text = cjson::string_of(item)
     if text != null {
         acc = acc *% 31 +% (text.len() as u64)
     }
 
-    var child = item.child
+    let child = item.child
     while child != null {
         acc = fold(acc, child)
         child = child.next
@@ -68,18 +68,18 @@ fn fold(accumulator: u64, item: *cjson::Node?): u64 {
 }
 
 fn main() {
-    var start = monotonic()
-    var acc: u64 = 0
-    for var round: i64 = 0; round < ROUNDS; round += 1 {
-        var root = cjson::parse(DOCUMENT)
-        var printed = cjson::print_unformatted(root)
+    let start = monotonic()
+    let acc: u64 = 0
+    for let round: i64 = 0; round < ROUNDS; round += 1 {
+        let root = cjson::parse(DOCUMENT)
+        let printed = cjson::print_unformatted(root)
         if printed != null {
             acc = acc *% 31 +% (printed.len() as u64)
         }
         acc = fold(acc, root)
         cjson::delete(root)
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(acc)
     eprintln("gyro:bench #{stop - start}")

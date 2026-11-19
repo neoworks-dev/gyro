@@ -22,7 +22,7 @@ fn main() {
     for x in (Counter{ n: 0, limit: 3 }) {
         println(x)
     }
-    var total: i32 = 0
+    let total: i32 = 0
     for x in (Counter{ n: 0, limit: 4 }) {
         total += x
     }

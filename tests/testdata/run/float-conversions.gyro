@@ -22,13 +22,13 @@ fn main() {
     println(18446744073709549568.0 as u64)
 
     // Unsigned to float: halved for the top bit, rounded to nearest even.
-    var most: u64 = 18446744073709551615
-    var top: u64 = 9223372036854775808
-    var odd: u64 = 9007199254740993
-    var oddly: u64 = 9007199254740995
-    var small: u8 = 255
-    var negative: i64 = -5
-    var wide: i32 = 16777217
+    let most: u64 = 18446744073709551615
+    let top: u64 = 9223372036854775808
+    let odd: u64 = 9007199254740993
+    let oddly: u64 = 9007199254740995
+    let small: u8 = 255
+    let negative: i64 = -5
+    let wide: i32 = 16777217
     println(most as f64)
     println(top as f64)
     println(odd as f64)

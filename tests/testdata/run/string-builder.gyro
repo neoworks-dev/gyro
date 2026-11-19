@@ -5,7 +5,7 @@ import { println, String } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-    var s = String::of(heap(), "hello")
+    let s = String::of(heap(), "hello")
     defer s.free()
     s.push(", ")
     s.push("world")
@@ -14,7 +14,7 @@ fn main() {
     println(s.len())
 
     // Each encoded length, and the replacement a bad code point becomes.
-    var wide = String::new(heap())
+    let wide = String::new(heap())
     defer wide.free()
     wide.push_rune('a')
     wide.push_rune('é')
@@ -26,7 +26,7 @@ fn main() {
     // to_string means a String prints as its text.
     println(s)
 
-    var empty = String::new(heap())
+    let empty = String::new(heap())
     defer empty.free()
     println(empty.len())
     println("[#{empty.text(heap())}]")

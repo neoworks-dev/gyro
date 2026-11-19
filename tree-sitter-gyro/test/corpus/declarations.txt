@@ -426,8 +426,8 @@ fn load(p: string): (string, error?) {
 }
 
 fn main() {
-  var value, err = load("x")
-  var _, e2 = load("y")
+  let value, err = load("x")
+  let _, e2 = load("y")
 }
 
 ---
@@ -476,7 +476,7 @@ c-style for loop
 ==================
 
 fn main() {
-  for var i = 0; i < 10; i += 1 {
+  for let i = 0; i < 10; i += 1 {
     f(i)
   }
 }
@@ -510,7 +510,7 @@ defer
 ==================
 
 fn main() {
-  var node = alloc<Node>()
+  let node = alloc<Node>()
   defer free(node)
 }
 
@@ -606,7 +606,7 @@ from is contextual
 import { a } from "m"
 
 fn String::from(text: string): String {
-  var from = text
+  let from = text
   return from
 }
 
@@ -820,7 +820,7 @@ unsafe and safe are names elsewhere
 ==================
 
 fn t(unsafe: i32, safe: i32): i32 {
-  var x = unsafe + safe
+  let x = unsafe + safe
   return x
 }
 
@@ -1018,7 +1018,7 @@ type is an ordinary identifier outside a member
 ==================
 
 fn f(e: Event): i32 {
-  var type = e.type
+  let type = e.type
   return type
 }
 
@@ -1152,7 +1152,7 @@ dyn types and casts
 ==================
 
 fn paint(items: Array<dyn Element>, one: *dyn Widget<i32>) {
-  var e = p as dyn Element
+  let e = p as dyn Element
 }
 
 ---

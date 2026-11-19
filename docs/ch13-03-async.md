@@ -7,10 +7,10 @@ closure.
 
 ```gyro
 export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-    var bodies = Array<string>::new(heap())
+    let bodies = Array<string>::new(heap())
 
     for url in urls {
-        var body, err = await get(url)
+        let body, err = await get(url)
         if err != null {
             return bodies, err
         }
@@ -29,7 +29,7 @@ the module itself.
 
 ```gyro
 async fn main() {
-    var bodies, err = await fetch_all(["https://example.com"])
+    let bodies, err = await fetch_all(["https://example.com"])
     defer bodies.free()
     ...
 }
@@ -38,7 +38,7 @@ async fn main() {
 An async closure is written the same way and inhabits the same type:
 
 ```gyro
-var later = async fn(): i32 { return 1 }
+let later = async fn(): i32 { return 1 }
 ```
 
 ## An un-awaited call is an error

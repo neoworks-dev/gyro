@@ -14,11 +14,11 @@ fn positional(): Point {
 }
 
 fn badLiterals() {
-    var a = Point{ x: 1 }             //~ misses the field y
-    var b = Point{ x: 1, y: 2, z: 3 } //~ no field z
-    var c = Point{ x: 1, x: 2, y: 3 } //~ set twice
-    var d = Point{ 1 }                //~ has 2 fields, the literal provides 1
-    var e = Point{ x: "one", y: 2 }   //~ cannot use string as i32
+    let a = Point{ x: 1 }             //~ misses the field y
+    let b = Point{ x: 1, y: 2, z: 3 } //~ no field z
+    let c = Point{ x: 1, x: 2, y: 3 } //~ set twice
+    let d = Point{ 1 }                //~ has 2 fields, the literal provides 1
+    let e = Point{ x: "one", y: 2 }   //~ cannot use string as i32
 }
 
 fn fieldAccess(p: Point): i32 {
@@ -26,6 +26,6 @@ fn fieldAccess(p: Point): i32 {
 }
 
 fn badFieldAccess(p: Point) {
-    var v = p.z         //~ no field or method z
-    var w: string = p.x //~ cannot use i32 as string
+    let v = p.z         //~ no field or method z
+    let w: string = p.x //~ cannot use i32 as string
 }

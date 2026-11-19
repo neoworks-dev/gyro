@@ -8,15 +8,15 @@ fn swap_sum<S: Store<Key = i32, Value = i32>>(s: S): i32 {
 }
 
 fn main() {
-    var slot = Slot<i32>{ 3, 40 }
+    let slot = Slot<i32>{ 3, 40 }
     println(key_of(slot))
     println(value_of(slot))
     println(swap_sum(slot))
 
-    var flag = Flag{ on: true }
+    let flag = Flag{ on: true }
     println(key_of(flag))
     println(value_of(flag))
 
-    var wide = Slot<f64>{ 1, 0.5 }
+    let wide = Slot<f64>{ 1, 0.5 }
     println(value_of(wide))
 }

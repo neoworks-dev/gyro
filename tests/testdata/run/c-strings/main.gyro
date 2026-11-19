@@ -24,7 +24,7 @@ fn main() {
     println(tokens)
 
     // Every word: its keyword id, then its length.
-    var i = 0
+    let i = 0
     while i < tokens {
         println(token_id(i))
         println(token_length(i))
@@ -38,7 +38,7 @@ fn main() {
     println(token_char(0, 9))
 
     // The first word, byte by byte.
-    var at = 0
+    let at = 0
     while at < token_length(0) {
         println(token_char(0, at))
         at = at + 1
@@ -47,7 +47,7 @@ fn main() {
     // "return" backwards, out of the file-scope buffer.
     const reversed = reverse_token(2)
     println(reversed)
-    var back = 0
+    let back = 0
     while back < reversed {
         println(scratch_char(back))
         back = back + 1

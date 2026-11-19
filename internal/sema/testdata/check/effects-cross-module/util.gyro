@@ -8,7 +8,7 @@ export fn shout(message: string) {
 
 // A row states the interface and is taken at its word.
 export fn quiet(n: i32) !{} {
-    var doubled = n * 2
+    let doubled = n * 2
 }
 
 // An intrinsic has no body to read. Without a row it may do anything.

@@ -32,11 +32,11 @@ A newline does *not* terminate the statement when the next line begins with
 Both continuation styles therefore work:
 
 ```gyro
-var total = values
+let total = values
     .filter(is_even)
     .sum()
 
-var ok = user.is_active
+let ok = user.is_active
     && user.age >= 18
 ```
 
@@ -46,11 +46,11 @@ an address, `-x` negates, `<-ch` receives. Those operators must trail the
 line they belong to:
 
 ```gyro
-var total = a +
+let total = a +
     b - // fine: the operators trail
     c
 
-var wrong = a
+let wrong = a
 -b // two statements: `a`, then `-b`
 ```
 

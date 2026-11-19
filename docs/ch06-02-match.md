@@ -5,7 +5,7 @@ ends at the newline, like every other statement. A body may be an
 expression, a block, or a control-flow statement.
 
 ```gyro
-var name = match n {
+let name = match n {
     0: "zero"
     1: "one"
     _: "other"
@@ -47,7 +47,7 @@ Any type may name itself in a test over an `any`, primitives included:
 written out as itself:
 
 ```gyro
-var text = match v {
+let text = match v {
     (i32, string)(pair): format(heap(), "pair #{pair.0}")
     i32[](xs):           format(heap(), "#{xs.len()} numbers")
     i32[3](fixed):       "three numbers"

@@ -12,7 +12,7 @@ fn adder(n: i32): fn(i32): i32 {
 }
 
 fn named(n: i32): fn(i32): i32 {
-    var add = fn(x: i32): i32 { return x + n }
+    let add = fn(x: i32): i32 { return x + n }
     return add //~ E0610 this returns a closure that borrows this frame
     //~^ help: the closure's environment is this frame's, and the caller outlives it
     //~^^ help: copy it out with keep(allocator, f) from mem, or write a closure that captures nothing

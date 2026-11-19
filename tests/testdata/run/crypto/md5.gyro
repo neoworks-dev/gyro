@@ -80,9 +80,9 @@ const ZERO_DIGEST: u8[16] = [
 fn Ctx::transform(*self) {
     // MD5 reads its message words little-endian, which is the reverse of
     // SHA-256.
-    var m: u32[16] = ZERO_SCHEDULE
-    var i: usize = 0
-    var j: usize = 0
+    let m: u32[16] = ZERO_SCHEDULE
+    let i: usize = 0
+    let j: usize = 0
     while i < 16 {
         m[i] = (self.data[j] as u32) | ((self.data[j + 1] as u32) << 8)
             | ((self.data[j + 2] as u32) << 16) | ((self.data[j + 3] as u32) << 24)
@@ -90,10 +90,10 @@ fn Ctx::transform(*self) {
         j += 4
     }
 
-    var a = self.state[0]
-    var b = self.state[1]
-    var c = self.state[2]
-    var d = self.state[3]
+    let a = self.state[0]
+    let b = self.state[1]
+    let c = self.state[2]
+    let d = self.state[3]
 
     a = ff(a, b, c, d, m[0],   7, 0xd76aa478)
     d = ff(d, a, b, c, m[1],  12, 0xe8c7b756)
@@ -195,7 +195,7 @@ export fn Ctx::update(*self, data: u8[]) {
 }
 
 export fn Ctx::final(*self): u8[16] {
-    var i = self.datalen
+    let i = self.datalen
 
     if self.datalen < 56 {
         self.data[i] = 0x80
@@ -212,7 +212,7 @@ export fn Ctx::final(*self): u8[16] {
             i += 1
         }
         self.transform()
-        var z: usize = 0
+        let z: usize = 0
         while z < 56 {
             self.data[z] = 0
             z += 1
@@ -220,7 +220,7 @@ export fn Ctx::final(*self): u8[16] {
     }
 
     self.bitlen += (self.datalen as u64) * 8
-    var n: usize = 0
+    let n: usize = 0
     while n < 8 {
         self.data[56 + n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
         n += 1
@@ -228,11 +228,11 @@ export fn Ctx::final(*self): u8[16] {
     self.transform()
 
     // MD5's digest is little-endian.
-    var hash: u8[16] = ZERO_DIGEST
-    var w: usize = 0
+    let hash: u8[16] = ZERO_DIGEST
+    let w: usize = 0
     while w < 4 {
-        var word = self.state[w]
-        var k: usize = 0
+        let word = self.state[w]
+        let k: usize = 0
         while k < 4 {
             hash[w * 4 + k] = ((word >> ((k * 8) as u32)) & 0xff) as u8
             k += 1
@@ -243,7 +243,7 @@ export fn Ctx::final(*self): u8[16] {
 }
 
 export fn sum(data: u8[]): u8[16] {
-    var ctx = init()
+    let ctx = init()
     ctx.update(data)
     return ctx.final()
 }

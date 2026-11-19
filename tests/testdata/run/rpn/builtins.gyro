@@ -53,7 +53,7 @@ export fn is_constant(word: string): bool {
 // ---------------------------------------------------------------------------
 
 export fn binary(calc: *Calc, word: string): error? {
-    var a, b, err = calc.pop2(word)
+    let a, b, err = calc.pop2(word)
     if err != null {
         return err
     }
@@ -94,9 +94,9 @@ export fn power(calc: *Calc, base: f64, exponent: f64): error? {
         return CalcError{ text: format(heap(), "^ wants an exponent within ±1024, not #{exponent}") }
     }
 
-    var times = abs(exponent) as i32
-    var value = 1.0
-    var i = 0
+    let times = abs(exponent) as i32
+    let value = 1.0
+    let i = 0
     while i < times {
         value *= base
         i += 1
@@ -116,11 +116,11 @@ export fn power(calc: *Calc, base: f64, exponent: f64): error? {
 // ---------------------------------------------------------------------------
 
 export fn compare(calc: *Calc, word: string): error? {
-    var a, b, err = calc.pop2(word)
+    let a, b, err = calc.pop2(word)
     if err != null {
         return err
     }
-    var answer = false
+    let answer = false
     if word == "=" {
         answer = a == b
     } elif word == "<>" {
@@ -151,7 +151,7 @@ export fn compare(calc: *Calc, word: string): error? {
 // ---------------------------------------------------------------------------
 
 export fn unary(calc: *Calc, word: string): error? {
-    var value, err = calc.pop(word)
+    let value, err = calc.pop(word)
     if err != null {
         return err
     }
@@ -199,7 +199,7 @@ export fn stack_word(calc: *Calc, word: string): error? {
         return null
     }
     if word == "dup" {
-        var value, err = calc.pop(word)
+        let value, err = calc.pop(word)
         if err != null {
             return err
         }
@@ -208,11 +208,11 @@ export fn stack_word(calc: *Calc, word: string): error? {
         return null
     }
     if word == "drop" {
-        var _, err = calc.pop(word)
+        let _, err = calc.pop(word)
         return err
     }
     if word == "swap" {
-        var a, b, err = calc.pop2(word)
+        let a, b, err = calc.pop2(word)
         if err != null {
             return err
         }
@@ -221,7 +221,7 @@ export fn stack_word(calc: *Calc, word: string): error? {
         return null
     }
     if word == "over" {
-        var a, b, err = calc.pop2(word)
+        let a, b, err = calc.pop2(word)
         if err != null {
             return err
         }
@@ -232,7 +232,7 @@ export fn stack_word(calc: *Calc, word: string): error? {
     }
 
     // rot takes the third value to the top: a b c becomes b c a.
-    var a, b, c, err = calc.pop3(word)
+    let a, b, c, err = calc.pop3(word)
     if err != null {
         return err
     }

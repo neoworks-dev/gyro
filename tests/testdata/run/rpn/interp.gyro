@@ -24,13 +24,13 @@ import { heap, format } from "mem"
 export const MAX_DEPTH: i32 = 64
 
 export fn run(calc: *Calc, words: string[], depth: i32): error? {
-    var i: usize = 0
+    let i: usize = 0
     while i < words.len() {
-        var word = words[i]
+        let word = words[i]
         i += 1
 
         if word == ":" {
-            var after, err = define_from(calc, words, i)
+            let after, err = define_from(calc, words, i)
             if err != null {
                 return err
             }
@@ -38,7 +38,7 @@ export fn run(calc: *Calc, words: string[], depth: i32): error? {
             continue
         }
         if word == "if" {
-            var after, err = branch(calc, words, i, depth)
+            let after, err = branch(calc, words, i, depth)
             if err != null {
                 return err
             }
@@ -55,16 +55,16 @@ export fn run(calc: *Calc, words: string[], depth: i32): error? {
             if i >= words.len() {
                 return CalcError{ text: format(heap(), "#{word} wants a name") }
             }
-            var argument = words[i]
+            let argument = words[i]
             i += 1
-            var err = named(calc, word, argument, depth)
+            let err = named(calc, word, argument, depth)
             if err != null {
                 return err
             }
             continue
         }
 
-        var err = execute(calc, word, depth)
+        let err = execute(calc, word, depth)
         if err != null {
             return err
         }
@@ -87,16 +87,16 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
     if at >= words.len() {
         return at, CalcError{ text: ": wants a name" }
     }
-    var name = words[at]
-    var i = at + 1
+    let name = words[at]
+    let i = at + 1
     if is_number(name) {
         return i, CalcError{ text: format(heap(), "#{name} is a number and cannot be a word") }
     }
 
-    var body = Array<string>::new(heap())
-    var closed = false
+    let body = Array<string>::new(heap())
+    let closed = false
     while i < words.len() {
-        var part = words[i]
+        let part = words[i]
         i += 1
         if part == ";" {
             closed = true
@@ -120,23 +120,23 @@ fn define_from(calc: *Calc, words: string[], at: usize): (usize, error?) {
 // past the `then`. The condition is already on the stack — `if` pops it —
 // so `3 4 < if ... then` reads the way it is spoken.
 fn branch(calc: *Calc, words: string[], at: usize, depth: i32): (usize, error?) {
-    var condition, err = calc.pop("if")
+    let condition, err = calc.pop("if")
     if err != null {
         return at, err
     }
 
-    var otherwise, end, missing = find_branch(words, at)
+    let otherwise, end, missing = find_branch(words, at)
     if missing != null {
         return at, missing
     }
 
     if condition != 0.0 {
-        var taken = run(calc, words[at..otherwise], depth)
+        let taken = run(calc, words[at..otherwise], depth)
         if taken != null {
             return end + 1, taken
         }
     } elif otherwise != end {
-        var taken = run(calc, words[otherwise + 1..end], depth)
+        let taken = run(calc, words[otherwise + 1..end], depth)
         if taken != null {
             return end + 1, taken
         }
@@ -148,13 +148,13 @@ fn branch(calc: *Calc, words: string[], at: usize, depth: i32): (usize, error?) 
 // `then`, or the `then` twice when there is no else. An `if` inside an arm
 // is skipped rather than matched.
 fn find_branch(words: string[], at: usize): (usize, usize, error?) {
-    var nesting = 0
-    var otherwise = at
-    var seen = false
-    var i = at
+    let nesting = 0
+    let otherwise = at
+    let seen = false
+    let i = at
 
     while i < words.len() {
-        var word = words[i]
+        let word = words[i]
         if word == "if" {
             nesting += 1
         } elif word == "then" {
@@ -186,7 +186,7 @@ fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
         return null
     }
     if word == "save" {
-        var err = save(calc, argument)
+        let err = save(calc, argument)
         if err != null {
             return err
         }
@@ -195,16 +195,16 @@ fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
     }
 
     // Loading is running: what save wrote is a program in this language.
-    var source, err = read_source(argument)
+    let source, err = read_source(argument)
     if err != null {
         return err
     }
-    var lines = source.split(heap(), "\n")
+    let lines = source.split(heap(), "\n")
     defer lines.free()
 
     for line in lines.slice() {
-        var words = words_of(line)
-        var failed = run(calc, words.slice(), depth + 1)
+        let words = words_of(line)
+        let failed = run(calc, words.slice(), depth + 1)
         words.free()
         if failed != null {
             return failed
@@ -220,7 +220,7 @@ fn named(calc: *Calc, word: string, argument: string, depth: i32): error? {
 
 export fn execute(calc: *Calc, word: string, depth: i32): error? {
     if is_number(word) {
-        var value, err = to_f64(word)
+        let value, err = to_f64(word)
         if err != null {
             return err
         }
@@ -234,7 +234,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
         return compare(calc, word)
     }
     if word.starts_with(">") && word.len() > 1 {
-        var value, err = calc.pop(word)
+        let value, err = calc.pop(word)
         if err != null {
             return err
         }
@@ -273,7 +273,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
         return null
     }
 
-    var body = calc.body_of(word)
+    let body = calc.body_of(word)
     if body != null {
         if depth >= MAX_DEPTH {
             return CalcError{ text: format(heap(), "#{word} calls too deep (#{MAX_DEPTH} words)") }
@@ -281,7 +281,7 @@ export fn execute(calc: *Calc, word: string, depth: i32): error? {
         return run(calc, body.slice(), depth + 1)
     }
 
-    var value = calc.recall(word)
+    let value = calc.recall(word)
     if value != null {
         calc.push(value)
         return null

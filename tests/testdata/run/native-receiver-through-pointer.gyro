@@ -13,7 +13,7 @@ fn fill(values: *Array<i32>, upto: i32) {
 }
 
 fn total(values: *Array<i32>): i32 {
-    var sum = 0
+    let sum = 0
     for value in values.slice() {
         sum += value
     }
@@ -26,13 +26,13 @@ fn shout(out: *String, text: string) {
 }
 
 fn main() {
-    var values = Array<i32>::new(heap())
+    let values = Array<i32>::new(heap())
     defer values.free()
     fill(&values, 5)
     println(values.len())
     println(total(&values))
 
-    var message = String::new(heap())
+    let message = String::new(heap())
     defer message.free()
     shout(&message, "hello")
     println(message.text(heap()))

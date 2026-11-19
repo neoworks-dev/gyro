@@ -88,7 +88,7 @@ import { println } from "stdlib"
 
 fn main() {
   shout("hey")
-  var c = Counter{ n: 0 }
+  let c = Counter{ n: 0 }
   println(c.bump())
 }
 `
@@ -164,7 +164,7 @@ export fn double(value: i32): i32 {
 import { Counter, double } from "counters"
 
 fn main() {
-  var c = Counter::new()
+  let c = Counter::new()
   println(c.bump())
   println(double(21))
 }

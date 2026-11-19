@@ -163,7 +163,7 @@ one. Directives there are spelled `;gyro:`.
 43 fixtures. A Gyro file that says what it expects of itself.
 
 ```gyro
-var x: u8 = 300 //~ E0301 does not fit u8
+let x: u8 = 300 //~ E0301 does not fit u8
 return xs       //~ E0609 which the row does not name
 //~^ help: say so in the row: !{ &xs }
 ```
@@ -278,7 +278,7 @@ them. Highlights an agent needs loaded:
 
 ### Syntax
 
-- bindings are `var` and `const`; assignment is `=`; **there is no `:=`**
+- bindings are `let` and `const`; assignment is `=`; **there is no `:=`**
 - `else` takes a block; chaining is `elif`, one way only — `else if` does
   not parse
 - trait bounds join with `&`, not `+`: `<K: Eq & Hash>` (this has been
@@ -299,7 +299,7 @@ them. Highlights an agent needs loaded:
 
 `move`, `copy`, `from` and `dyn` are **not tokens**. They are identifiers the
 parser recognizes only in the one position each can occupy. They must
-stay usable as ordinary names — `var from = 1` and `fn String::from(...)`
+stay usable as ordinary names — `let from = 1` and `fn String::from(...)`
 both parse.
 
 This has bitten twice. If a word only means something in one place, it
@@ -374,7 +374,7 @@ no propagation operator** — no `?`, no exceptions, no unwinding. `error`
 is the one contract still met by shape: any type with `message(): string` is
 one. Folding it into traits is future work.
 
-Dropping an error is an error; discarding takes an explicit `var _, _ =`.
+Dropping an error is an error; discarding takes an explicit `let _, _ =`.
 
 Programmer errors — bounds, divide by zero, null deref, overflow,
 narrowing `as` — panic and abort. Not catchable, not returnable.
@@ -393,7 +393,7 @@ none should be weakened casually.
 
 | analysis             | file         | what it does                                                             |
 | -------------------- | ------------ | ------------------------------------------------------------------------ |
-| definite assignment  | `assign.go`  | flow-sensitive; `var x: i32` tracked until every path to a read wrote it |
+| definite assignment  | `assign.go`  | flow-sensitive; `let x: i32` tracked until every path to a read wrote it |
 | leak warnings        | `leak.go`    | an `alloc<T>(heap())` reaching a block's end unfreed (W0701)                   |
 | spawn races          | `race.go`    | a spawned closure capturing a `*T` or `T[]` (W0801)                      |
 | borrows              | `borrow.go`  | provenance of views, written into effect rows                            |
@@ -836,20 +836,20 @@ fn main(args: string[]) {
         eprintln("usage: wc <file>")
         return
     }
-    var file, err = open(args[1])
+    let file, err = open(args[1])
     if err != null {
         eprintln("cannot open #{args[1]}: #{err.message()}")
         return
     }
     defer file.close()
 
-    var text, readErr = read_all(heap(), file)
+    let text, readErr = read_all(heap(), file)
     if readErr != null { return }
 
-    var lines = text.split(heap(), "\n")
+    let lines = text.split(heap(), "\n")
     defer lines.free()
     for line in lines.slice() {
-        var clean = line.trim(heap())
+        let clean = line.trim(heap())
         if clean.len() == 0 || clean.starts_with("#") { continue }
         println(clean.split(heap(), " ").get(0))
     }

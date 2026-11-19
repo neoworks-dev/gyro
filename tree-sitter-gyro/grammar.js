@@ -320,7 +320,7 @@ module.exports = grammar({
     // annotation, not the arm's colon, matching the compiler's greedy parse.
     variable_declaration: $ => prec.right(seq(
       optional('export'),
-      choice('var', 'const'),
+      choice('let', 'const'),
       field('name', $._binding),
       repeat(seq(',', field('name', $._binding))),
       optional(seq(':', field('type', $._type))),

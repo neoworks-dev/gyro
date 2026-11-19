@@ -39,23 +39,23 @@ fn kind_code(kind: jsmn::Kind): u64 {
 }
 
 fn main() {
-    var js = DOCUMENT.bytes(heap())
-    var tokens = Array<jsmn::Token>::new(heap())
+    let js = DOCUMENT.bytes(heap())
+    let tokens = Array<jsmn::Token>::new(heap())
 
-    var start = monotonic()
-    var acc: u64 = 0
-    for var round: i64 = 0; round < ROUNDS; round += 1 {
-        var parser = jsmn::init()
-        var result = parser.parse(js, tokens, POOL, false)
+    let start = monotonic()
+    let acc: u64 = 0
+    for let round: i64 = 0; round < ROUNDS; round += 1 {
+        let parser = jsmn::init()
+        let result = parser.parse(js, tokens, POOL, false)
         acc = acc *% 31 +% (result as u64)
-        for var i: i64 = 0; i < result; i += 1 {
-            var token = tokens.get(i as usize)
+        for let i: i64 = 0; i < result; i += 1 {
+            let token = tokens.get(i as usize)
             acc = acc *% 31 +% kind_code(token.kind) *% 7
             acc = acc *% 31 +% (token.start as u64) *% 3 +% (token.end as u64)
             acc = acc *% 31 +% (token.size as u64)
         }
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(acc)
     eprintln("gyro:bench #{stop - start}")

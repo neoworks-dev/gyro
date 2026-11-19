@@ -28,18 +28,18 @@ fn oneMissing(xs: i32[], ys: i32[]): i32[] !{ &xs } {
 
 // Frame storage travels through a call.
 fn localThroughACall(ys: i32[]): i32[] !{ &ys } {
-    var local = [1, 2, 3]
+    let local = [1, 2, 3]
     return pick(local, ys) //~ E0610 view into storage that ends with this function
 }
 
 // A local bound to a call keeps what the call viewed.
 fn throughALocal(xs: i32[], ys: i32[]): i32[] !{ &xs } {
-    var v = pick(xs, ys)
+    let v = pick(xs, ys)
     return v
 }
 
 fn throughALocalUnnamed(xs: i32[], ys: i32[]): i32[] {
-    var v = pick(xs, ys)
+    let v = pick(xs, ys)
     return v //~ E0609 this returns a view into xs, which the row does not name
 }
 
@@ -76,12 +76,12 @@ struct View {
 }
 
 fn structHoldsFrameStorage(): i32[] {
-    var xs = [1, 2, 3]
-    var v = View{ data: xs }
+    let xs = [1, 2, 3]
+    let v = View{ data: xs }
     return v.data //~ E0610 view into storage that ends with this function
 }
 
 fn structHoldsACallersStorage(xs: i32[]): i32[] !{ &xs } {
-    var v = View{ data: xs }
+    let v = View{ data: xs }
     return v.data
 }

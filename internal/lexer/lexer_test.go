@@ -285,7 +285,7 @@ func TestNestedBlockComment(t *testing.T) {
 }
 
 func TestKeywords(t *testing.T) {
-	src := "var const fn struct enum trait impl return if elif else while for in " +
+	src := "let const fn struct enum trait impl return if elif else while for in " +
 		"match break continue defer async await chan select import " +
 		"as export self true false null _"
 
@@ -341,29 +341,29 @@ func TestUnescape(t *testing.T) {
 }
 
 func TestPositions(t *testing.T) {
-	file := diag.NewFile("test.gyro", "fn main() {\n  var x = 1\n}\n")
+	file := diag.NewFile("test.gyro", "fn main() {\n  let x = 1\n}\n")
 
 	var bag diag.Bag
 	tokens := Tokens(file, &bag)
 
-	// The `var` on the second line starts at column 3.
+	// The `let` on the second line starts at column 3.
 	var found bool
 	for _, tok := range tokens {
-		if tok.Kind == token.Var {
+		if tok.Kind == token.Let {
 			pos := file.Position(tok.Offset)
 			if pos.Line != 2 || pos.Column != 3 {
-				t.Errorf("var at %d:%d, want 2:3", pos.Line, pos.Column)
+				t.Errorf("let at %d:%d, want 2:3", pos.Line, pos.Column)
 			}
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("no var token produced")
+		t.Fatal("no let token produced")
 	}
 }
 
 func TestScanKeepsComments(t *testing.T) {
-	src := "var x = 1 // one\n/* two\n   lines */ var y = 2 /* a /* nested */ b */\n"
+	src := "let x = 1 // one\n/* two\n   lines */ let y = 2 /* a /* nested */ b */\n"
 
 	var plain, scanned diag.Bag
 	want := Tokens(diag.NewFile("test.gyro", src), &plain)

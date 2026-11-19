@@ -65,7 +65,7 @@ without a `#{}` is a plain `string` in module storage.
 import { println, String } from "stdlib"
 import { heap } from "mem"
 
-var out = String::new(heap())
+let out = String::new(heap())
 defer out.free()
 out.push("hello")
 out.push_rune('!')
@@ -107,9 +107,9 @@ strings' bytes in place:
 import { split, trim, starts_with } from "stdlib"
 import { heap } from "mem"
 
-var clean = line.trim(heap())
+let clean = line.trim(heap())
 if clean.starts_with("#") { continue }
-var parts = clean.split(heap(), " ")
+let parts = clean.split(heap(), " ")
 defer parts.free()
 ```
 

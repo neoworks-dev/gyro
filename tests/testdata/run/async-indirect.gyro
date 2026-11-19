@@ -18,21 +18,21 @@ async fn describe(n: i32): (string, error?) {
 }
 
 async fn main() {
-    var f = work
+    let f = work
     println(await f(21))
 
     // A closure carries an environment; a bare function reference does not,
     // and the thunk has to serve both.
-    var offset: i32 = 100
-    var shifted = async fn(n: i32): i32 { return n + offset }
+    let offset: i32 = 100
+    let shifted = async fn(n: i32): i32 { return n + offset }
     println(await shifted(5))
 
-    var scaled = scale
+    let scaled = scale
     println(await scaled(1.5, 4))
 
     // An aggregate result travels through the hidden sret pointer.
-    var described = describe
-    var text, err = await described(7)
+    let described = describe
+    let text, err = await described(7)
     println(text)
     println(err == null)
 }

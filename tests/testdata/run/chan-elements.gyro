@@ -11,31 +11,31 @@ struct Point {
 }
 
 fn main() {
-    var bytes = chan<u8>(2)
+    let bytes = chan<u8>(2)
     bytes <- 200
     bytes <- 7
     println(<-bytes)
     println(<-bytes)
 
-    var floats = chan<f32>(1)
+    let floats = chan<f32>(1)
     floats <- 1.5
     println(<-floats)
 
-    var points = chan<Point>(1)
+    let points = chan<Point>(1)
     points <- Point{ x: -3, y: 250 }
-    var p = <-points
+    let p = <-points
     println(p.x)
     println(p.y)
 
-    var texts = chan<(string, error?)>(1)
+    let texts = chan<(string, error?)>(1)
     texts <- ("hello", null)
-    var pair, ready = <-texts
+    let pair, ready = <-texts
     if ready {
         println(pair.0)
         println(pair.1 == null)
     }
 
-    var signed = chan<i32>(1)
+    let signed = chan<i32>(1)
     signed <- -1
     println(<-signed)
 }

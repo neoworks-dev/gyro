@@ -51,14 +51,14 @@ as `\#{` to write the sequence literally. Such a literal is a `Format`, not a
 
 ## Numeric literals are context-typed
 
-A numeric literal **takes the type the context requires**. `var h: u32 =
-2166136261` needs no cast, and in `var bytes: u8[] = [104, 105]` the
+A numeric literal **takes the type the context requires**. `let h: u32 =
+2166136261` needs no cast, and in `let bytes: u8[] = [104, 105]` the
 elements are `u8`.
 
 With no context, an integer literal is `i32` and a float literal is `f64`.
-The default is a requirement like any other: `var x = 3000000000` is
+The default is a requirement like any other: `let x = 3000000000` is
 rejected, because the type it would give `x` cannot hold the value. Write
-`var x: i64 = 3000000000`.
+`let x: i64 = 3000000000`.
 
 Context never converts *typed* values — only literals adapt.
 
@@ -66,8 +66,8 @@ The context reaches through an expression built only from literals, so the
 operands adapt too, and only the value that is finally *used* has to fit:
 
 ```gyro
-var x: i8 = -128     // legal, though 128 alone is not an i8
-var y: i64 = 1 << 40 // an i64 shift, not an overflowed i32 one
+let x: i8 = -128     // legal, though 128 alone is not an i8
+let y: i64 = 1 << 40 // an i64 shift, not an overflowed i32 one
 ```
 
 A shift is the case where nothing else can decide, because the count keeps
@@ -75,7 +75,7 @@ its own type: an untyped left operand takes its width from outside. In
 `mask & (0xffffffff >> n)` with a `u32` mask, `0xffffffff` is a `u32`; `~0`
 is likewise all ones at the width of whatever it meets.
 
-Constant expressions fold during checking, so `var x: u8 = 200 + 56` is
+Constant expressions fold during checking, so `let x: u8 = 200 + 56` is
 caught at compile time rather than at run time.
 
 ## Conversions: `as`
@@ -103,11 +103,11 @@ Values are written `(a, b)` and read by destructuring or positional field
 access.
 
 ```gyro
-var pair = (200, null)
-var code = pair.0
-var a, b = pair
+let pair = (200, null)
+let code = pair.0
+let a, b = pair
 
-var results = chan<(string, error?)>()
+let results = chan<(string, error?)>()
 results <- (body, null)
 ```
 

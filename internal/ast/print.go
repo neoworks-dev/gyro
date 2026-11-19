@@ -176,7 +176,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *VarDecl:
-		p.line("%s %s%s", varKeyword(n.Const), exportMark(n.Exported), bindingString(n.Names))
+		p.line("%s %s%s", bindingKeyword(n.Const), exportMark(n.Exported), bindingString(n.Names))
 		p.indent++
 		p.child("Type", n.Type)
 		p.child("Value", n.Value)
@@ -763,11 +763,11 @@ func variadicMark(variadic bool) string {
 	return ""
 }
 
-func varKeyword(isConst bool) string {
+func bindingKeyword(isConst bool) string {
 	if isConst {
 		return "Const"
 	}
-	return "Var"
+	return "Let"
 }
 
 func quoteIfString(lit *BasicLit) string {

@@ -37,7 +37,7 @@ export fn panic(message: string) !{}
 // alloc answers one zero-filled T from a, and panics with the size when a
 // cannot supply it.
 export safe fn alloc<T>(a: Allocator): *T !{ &a } {
-    var block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
+    let block = a.proc(a.data, Mode::Alloc, size<T>(), align<T>(), null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{size<T>()} bytes failed"))
     }
@@ -99,7 +99,7 @@ export struct Arena {
 // thing to build. Sixteen is the largest alignment a block of any type
 // needs, so every block carved out of the buffer can be aligned within it.
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{ &a } {
-    var block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
+    let block = a.proc(a.data, Mode::Alloc, capacity, 16, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{capacity} bytes failed"))
     }
@@ -109,23 +109,23 @@ export fn Arena::new(a: Allocator, capacity: usize): Arena !{ &a } {
 // take carves the next block out of the buffer, aligned, zeroed, or
 // answers null when the arena is full. It does not grow.
 safe fn Arena::take(*self, size: usize, align: usize): anyptr? !{} {
-    var start = self.used
+    let start = self.used
     if align > 1 {
-        var over = start % align
+        let over = start % align
         if over != 0 {
             start += align - over
         }
     }
-    var width = size
+    let width = size
     if width == 0 {
         width = 1
     }
     if start + width > self.capacity {
         return null
     }
-    var block = offset(self.base, start)
+    let block = offset(self.base, start)
     for i in 0..width {
-        var byte = cast<u8>(offset(block, i))
+        let byte = cast<u8>(offset(block, i))
         *byte = 0
     }
     self.used = start + width
@@ -136,7 +136,7 @@ safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: an
     if data == null {
         return null
     }
-    var arena = cast<Arena>(data)
+    let arena = cast<Arena>(data)
     match mode {
         Mode::Alloc: {
             return arena.take(size, align)
@@ -149,11 +149,11 @@ safe fn arena_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old: an
             return null
         }
         Mode::Resize: {
-            var block = arena.take(size, align)
+            let block = arena.take(size, align)
             if block == null || old == null {
                 return block
             }
-            var keep = old_size
+            let keep = old_size
             if size < keep {
                 keep = size
             }
@@ -218,7 +218,7 @@ fn show(piece: any): string !{}
 // text_write copies a string into a block of text_size bytes, at a byte
 // offset into the text.
 safe fn text_write(block: anyptr, at: usize, text: string) !{} {
-    var bytes = text_bytes(text)
+    let bytes = text_bytes(text)
     if bytes.len() > 0 {
         copy_bytes(offset(block, text_size(0) + at), &bytes[0] as anyptr, bytes.len())
     }
@@ -228,13 +228,13 @@ safe fn text_write(block: anyptr, at: usize, text: string) !{} {
 // of `from` bytes when there is one.
 safe fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{} {
     if old == null {
-        var fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
+        let fresh = a.proc(a.data, Mode::Alloc, text_size(to), 8, null, 0)
         if fresh == null {
             panic("format: the allocator is out of memory")
         }
         return fresh
     }
-    var grown = a.proc(a.data, Mode::Resize, text_size(to), 8, old, text_size(from))
+    let grown = a.proc(a.data, Mode::Resize, text_size(to), 8, old, text_size(from))
     if grown == null {
         panic("format: the allocator is out of memory")
     }
@@ -245,14 +245,14 @@ safe fn block_for(a: Allocator, old: anyptr?, from: usize, to: usize): anyptr !{
 // into a string whose bytes come from `a`. The block doubles as the text
 // grows, since the length is not known until the last piece is shown.
 export safe fn format(a: Allocator, value: Format): string !{ &a } {
-    var capacity: usize = 64
-    var block = block_for(a, null, 0, capacity)
-    var used: usize = 0
+    let capacity: usize = 64
+    let block = block_for(a, null, 0, capacity)
+    let used: usize = 0
     for i in 0..value.len() {
-        var text = value.text(i)
-        var needed = used + text.len()
+        let text = value.text(i)
+        let needed = used + text.len()
         if needed > capacity {
-            var wider = capacity * 2
+            let wider = capacity * 2
             while wider < needed {
                 wider *= 2
             }
@@ -279,8 +279,8 @@ export safe fn format(a: Allocator, value: Format): string !{ &a } {
 
 // heap_text is a block from the heap for a string of `len` bytes.
 safe fn heap_text(len: usize): anyptr !{} {
-    var a = heap()
-    var block = a.proc(a.data, Mode::Alloc, text_size(len + 1), 8, null, 0)
+    let a = heap()
+    let block = a.proc(a.data, Mode::Alloc, text_size(len + 1), 8, null, 0)
     if block == null {
         panic("allocation of a string failed")
     }
@@ -293,8 +293,8 @@ safe fn put_byte(block: anyptr, at: usize, byte: u8) !{} {
 
 // digit_count is how many decimal digits n takes.
 fn digit_count(n: u64): usize !{} {
-    var count: usize = 1
-    var rest = n
+    let count: usize = 1
+    let rest = n
     while rest >= 10 {
         rest /= 10
         count += 1
@@ -304,8 +304,8 @@ fn digit_count(n: u64): usize !{} {
 
 // put_digits writes n in decimal ending just before `end`.
 safe fn put_digits(block: anyptr, end: usize, n: u64) !{} {
-    var at = end
-    var rest = n
+    let at = end
+    let rest = n
     while rest > 0 || at == end {
         at -= 1
         put_byte(block, at, 48 + (rest % 10) as u8)
@@ -314,8 +314,8 @@ safe fn put_digits(block: anyptr, end: usize, n: u64) !{} {
 }
 
 safe fn str_uint(v: u64): string !{} {
-    var count = digit_count(v)
-    var block = heap_text(count)
+    let count = digit_count(v)
+    let block = heap_text(count)
     put_digits(block, count, v)
     return text_seal(block, count)
 }
@@ -326,9 +326,9 @@ safe fn str_int(v: i64): string !{} {
     if v >= 0 {
         return str_uint(v as u64)
     }
-    var magnitude = ((0 - (v + 1)) as u64) + 1
-    var count = digit_count(magnitude)
-    var block = heap_text(count + 1)
+    let magnitude = ((0 - (v + 1)) as u64) + 1
+    let count = digit_count(magnitude)
+    let block = heap_text(count + 1)
     put_byte(block, 0, 45)
     put_digits(block, count + 1, magnitude)
     return text_seal(block, count + 1)
@@ -344,11 +344,11 @@ fn str_bool(v: bool): string !{} {
 // str_rune encodes the code point as UTF-8; a surrogate or a value past
 // U+10FFFF is U+FFFD.
 safe fn str_rune(v: rune): string !{} {
-    var point = v as u32
+    let point = v as u32
     if point > 1114111 || (point >= 55296 && point <= 57343) {
         point = 65533
     }
-    var count: usize = 4
+    let count: usize = 4
     if point < 128 {
         count = 1
     } elif point < 2048 {
@@ -356,7 +356,7 @@ safe fn str_rune(v: rune): string !{} {
     } elif point < 65536 {
         count = 3
     }
-    var block = heap_text(count)
+    let block = heap_text(count)
     if count == 1 {
         put_byte(block, 0, point as u8)
     } elif count == 2 {
@@ -404,20 +404,20 @@ fn quoted_width(byte: u8): usize {
 // a tab are escaped with a backslash, any other control byte is \xNN, and
 // everything else, UTF-8 included, passes through. The block comes from a.
 export safe fn quote(a: Allocator, text: string): string !{ &a } {
-    var bytes = text_bytes(text)
-    var width: usize = 2
+    let bytes = text_bytes(text)
+    let width: usize = 2
     for byte in bytes {
         width += quoted_width(byte)
     }
-    var block = a.proc(a.data, Mode::Alloc, text_size(width + 1), 8, null, 0)
+    let block = a.proc(a.data, Mode::Alloc, text_size(width + 1), 8, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{width} bytes failed"))
     }
-    var at: usize = 0
+    let at: usize = 0
     put_byte(block, at, 34)
     at += 1
     for byte in bytes {
-        var kind = quoted_width(byte)
+        let kind = quoted_width(byte)
         if kind == 1 {
             put_byte(block, at, byte)
         } else {
@@ -450,13 +450,13 @@ fn str_str(v: string): string !{} {
 // compare_text orders strings bytewise: the shorter loses when it is a
 // prefix of the longer one.
 safe fn compare_text(a: string, b: string): i32 !{} {
-    var left = text_bytes(a)
-    var right = text_bytes(b)
-    var shared = left.len()
+    let left = text_bytes(a)
+    let right = text_bytes(b)
+    let shared = left.len()
     if right.len() < shared {
         shared = right.len()
     }
-    for var i: usize = 0; i < shared; i += 1 {
+    for let i: usize = 0; i < shared; i += 1 {
         if left[i] < right[i] {
             return -1
         }
@@ -476,7 +476,7 @@ safe fn compare_text(a: string, b: string): i32 !{} {
 // hash_word is the splitmix64 finalizer: an avalanche over one word, so
 // small integers do not land in neighbouring buckets.
 fn hash_word(x: u64): u64 !{} {
-    var h = x
+    let h = x
     h = h ^ (h >> 30)
     h = h *% 0xbf58476d1ce4e5b9
     h = h ^ (h >> 27)
@@ -488,7 +488,7 @@ fn hash_word(x: u64): u64 !{} {
 // hash_float hashes the bits of the number, with the two zeros folded
 // together because they are equal.
 safe fn hash_float(v: f64): u64 !{} {
-    var held = v
+    let held = v
     if held == 0.0 {
         held = 0.0
     }
@@ -497,7 +497,7 @@ safe fn hash_float(v: f64): u64 !{} {
 
 // hash_text is FNV-1a over the bytes.
 safe fn hash_text(v: string): u64 !{} {
-    var h: u64 = 0xcbf29ce484222325
+    let h: u64 = 0xcbf29ce484222325
     for byte in text_bytes(v) {
         h = (h ^ (byte as u64)) *% 0x100000001b3
     }
@@ -516,14 +516,14 @@ safe fn hash_text(v: string): u64 !{} {
 // closure that has to live longer than the function that wrote it. A closure
 // with no environment is returned as it is, and nothing is allocated.
 export safe fn keep<F>(a: Allocator, f: F): F !{ &a } {
-    var env = env_of(f)
+    let env = env_of(f)
     if env == null {
         // Rebuilt rather than returned as it is: returning the parameter
         // would read, to the borrow analysis, as a view of it.
         return with_env(f, null)
     }
-    var size = *cast<usize>(env)
-    var block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
+    let size = *cast<usize>(env)
+    let block = a.proc(a.data, Mode::Alloc, size, 8, null, 0)
     if block == null {
         panic(format(heap(), "allocation of #{size} bytes failed"))
     }
@@ -534,7 +534,7 @@ export safe fn keep<F>(a: Allocator, f: F): F !{ &a } {
 // release gives back the environment keep copied into a. It takes only a
 // closure keep returned, and the allocator it was kept in.
 export safe fn release<F>(a: Allocator, f: F) !{} {
-    var env = env_of(f)
+    let env = env_of(f)
     if env == null {
         return
     }
@@ -576,11 +576,11 @@ safe fn thread_state(): *ThreadState !{} {
 // thread was computing, so whoever awaits it is not left waiting, and ends
 // the thread. On the main thread it does nothing, and the process ends.
 safe fn abort_hook() !{ io } {
-    var state = thread_state()
+    let state = thread_state()
     if !state.worker {
         return
     }
-    var fut = state.future
+    let fut = state.future
     if fut != null {
         state.future = null
         future_complete(fut)
@@ -595,8 +595,8 @@ struct Job {
 
 safe fn run(data: anyptr) !{ io } {
     thread_state().worker = true
-    var job = cast<Job>(data)
-    var body = job.body
+    let job = cast<Job>(data)
+    let body = job.body
     body()
     release(job.a, body)
     free(job.a, job)
@@ -610,7 +610,7 @@ safe fn run(data: anyptr) !{ io } {
 // polymorphism reaches function values.
 export fn spawn(a: Allocator, body: fn()) !{ io } {
     set_abort_hook(&abort_hook)
-    var job = alloc<Job>(a)
+    let job = alloc<Job>(a)
     job.a = a
     job.body = keep(a, body)
     start_thread(&run, job as anyptr)
@@ -636,14 +636,14 @@ safe fn future_new(bytes: usize): anyptr !{ io } {
     set_abort_hook(&abort_hook)
     // Nothing frees a future, as nothing frees a mutex: the cell is raw
     // memory so that the leak analysis does not take it for a mistake.
-    var block = raw_alloc(size<Future>(), 16)
+    let block = raw_alloc(size<Future>(), 16)
     if block == null {
         panic("allocation of a future failed")
     }
-    var fut = cast<Future>(block)
+    let fut = cast<Future>(block)
     fut.size = bytes
     if bytes > 0 {
-        var cell = raw_alloc(bytes, 16)
+        let cell = raw_alloc(bytes, 16)
         if cell == null {
             panic(format(heap(), "allocation of #{bytes} bytes failed"))
         }
@@ -654,13 +654,13 @@ safe fn future_new(bytes: usize): anyptr !{ io } {
 
 // future_enter marks the calling thread as the one computing fut.
 safe fn future_enter(fut: anyptr) !{} {
-    var state = thread_state()
+    let state = thread_state()
     state.worker = true
     state.future = fut
 }
 
 safe fn future_result(fut: anyptr): anyptr !{} {
-    var result = cast<Future>(fut).result
+    let result = cast<Future>(fut).result
     if result == null {
         panic("an async call without a result has none to store")
         return fut
@@ -670,7 +670,7 @@ safe fn future_result(fut: anyptr): anyptr !{} {
 
 // future_complete wakes everyone waiting for fut.
 safe fn future_complete(fut: anyptr) !{} {
-    var cell = cast<Future>(fut)
+    let cell = cast<Future>(fut)
     atomic_store(&cell.done, 1)
     futex_wake(&cell.done, 2147483647)
 }
@@ -684,12 +684,12 @@ safe fn future_leave(fut: anyptr) !{} {
 // future_wait waits for fut and copies its result into out, which is null
 // for an async call that has none.
 safe fn future_wait(fut: anyptr, out: anyptr?) !{} {
-    var cell = cast<Future>(fut)
+    let cell = cast<Future>(fut)
     while atomic_load(&cell.done) == 0 {
         futex_wait(&cell.done, 0)
     }
-    var result = cell.result
-    var dest = out
+    let result = cell.result
+    let dest = out
     if result != null && dest != null {
         copy_bytes(dest, result, cell.size)
     }

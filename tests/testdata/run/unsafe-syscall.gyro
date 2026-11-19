@@ -31,13 +31,13 @@ safe fn pid(): isize {
 }
 
 safe fn write_nothing(fd: i32): isize {
-    var nowhere: anyptr? = null
+    let nowhere: anyptr? = null
     return syscall3(SYS_WRITE, fd, nowhere, 0)
 }
 
 fn main() {
-    var greeting: u8[6] = [104, 101, 108, 108, 111, 10]
-    var wrote = write(1, greeting)
+    let greeting: u8[6] = [104, 101, 108, 108, 111, 10]
+    let wrote = write(1, greeting)
 
     println(wrote)
     println(pid() > 0)

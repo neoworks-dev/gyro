@@ -3,8 +3,8 @@
 import { Mutex } from "stdlib"
 
 fn main() {
-    var m = Mutex::new(1)
-    var guard = m.lock()
+    let m = Mutex::new(1)
+    let guard = m.lock()
     guard.unlock()
     guard.unlock()
 }

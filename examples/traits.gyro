@@ -63,7 +63,7 @@ impl Iterator<i32> for Countdown {
         if self.from == 0 {
             return 0, false
         }
-        var current = self.from
+        let current = self.from
         self.from -= 1
         return current, true
     }
@@ -94,25 +94,25 @@ fn open<C: Container>(c: C): C::Item {
 }
 
 fn main() {
-    var button = Button{ label: "ok" }
-    var label = Label{ text: "hello", size: 12 }
+    let button = Button{ label: "ok" }
+    let label = Label{ text: "hello", size: 12 }
 
     show(button)
     show(label)
 
     // A tree of mixed elements: the pointers are borrowed, so the values they
     // point at have to outlive the array.
-    var tree = Array<dyn Element>::new(heap())
+    let tree = Array<dyn Element>::new(heap())
     defer tree.free()
     tree.push(&button as dyn Element)
     tree.push(&label as dyn Element)
 
     for i in 0..tree.len() {
-        var item = tree.get(i)
+        let item = tree.get(i)
         item.paint()
     }
 
-    var ticks = Countdown{ from: 3 }
+    let ticks = Countdown{ from: 3 }
     for tick in ticks {
         println(tick)
     }

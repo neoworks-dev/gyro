@@ -90,10 +90,10 @@ fn main() {
     greet("World")
     println("Gyro compiler is alive.")
 
-    var x: i32 = 6 * 7
+    let x: i32 = 6 * 7
     println(x) // 42
 
-    var flag = x > 40 // inferred bool
+    let flag = x > 40 // inferred bool
     println(flag)     // true
 
     const MAX: i32 = 100
@@ -102,7 +102,7 @@ fn main() {
 ```
 
 `#{...}` interpolates any Gyro expression into the text `println` writes.
-`var` and `const` bind, `: i32` annotates and is optional where the type is
+`let` and `const` bind, `: i32` annotates and is optional where the type is
 inferable, and `!{ io }` is an effect row — a promise about what the body does,
 checked against the body. Effect rows are optional; a function with no row
 is unconstrained. [Chapter 12](ch12-00-effect-rows.md) is where they get

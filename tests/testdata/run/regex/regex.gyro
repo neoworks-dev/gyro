@@ -137,20 +137,20 @@ fn match_dot(c: u8): bool {
 // ---------------------------------------------------------------------------
 
 export fn compile(pattern: u8[]): Pattern {
-    var nodes = Array<Node>::new(heap())
-    var classes = Array<u8>::new(heap())
+    let nodes = Array<Node>::new(heap())
+    let classes = Array<u8>::new(heap())
     // The C buffer fills from index 1 so that match_class can look one
     // byte back from the start of a class; the spare byte is that lookback.
     classes.push(0)
 
-    var i: i64 = 0
-    var j: i64 = 0
+    let i: i64 = 0
+    let j: i64 = 0
 
     while byte_at(pattern, i) != 0 && j + 1 < MAX_NODES {
-        var c = byte_at(pattern, i)
-        var kind = Kind::Char
-        var ch: u8 = 0
-        var ccl: i64 = 0
+        let c = byte_at(pattern, i)
+        let kind = Kind::Char
+        let ch: u8 = 0
+        let ccl: i64 = 0
 
         if c == '^' as u8 {
             kind = Kind::Begin
@@ -171,7 +171,7 @@ export fn compile(pattern: u8[]): Pattern {
                 return invalid(nodes, classes)
             }
             i += 1
-            var escaped = byte_at(pattern, i)
+            let escaped = byte_at(pattern, i)
             if escaped == 'd' as u8 {
                 kind = Kind::Digit
             } elif escaped == 'D' as u8 {
@@ -189,7 +189,7 @@ export fn compile(pattern: u8[]): Pattern {
                 ch = escaped
             }
         } elif c == '[' as u8 {
-            var begin = classes.len() as i64
+            let begin = classes.len() as i64
             kind = Kind::CharClass
             if byte_at(pattern, i + 1) == '^' as u8 {
                 kind = Kind::InvCharClass
@@ -263,7 +263,7 @@ fn match_range(c: u8, classes: u8[], at: i64): bool {
 }
 
 fn match_metachar(c: u8, classes: u8[], at: i64): bool {
-    var head = byte_at(classes, at)
+    let head = byte_at(classes, at)
     if head == 'd' as u8 {
         return is_digit(c)
     } elif head == 'D' as u8 {
@@ -281,7 +281,7 @@ fn match_metachar(c: u8, classes: u8[], at: i64): bool {
 }
 
 fn match_class(c: u8, classes: u8[], start: i64): bool {
-    var at = start
+    let at = start
     while true {
         if match_range(c, classes, at) {
             return true
@@ -328,16 +328,16 @@ fn match_one(node: Node, classes: u8[], c: u8): bool {
 
 fn match_star(node: Node, nodes: Node[], next: i64, classes: u8[],
     text: u8[], start: i64, length: i64): (bool, i64) {
-    var before = length
-    var count = length
-    var at = start
+    let before = length
+    let count = length
+    let at = start
     while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
         at += 1
         count += 1
     }
 
     while at >= start {
-        var ok, after = match_pattern(nodes, next, classes, text, at, count)
+        let ok, after = match_pattern(nodes, next, classes, text, at, count)
         count = after
         if ok {
             return (true, count)
@@ -350,15 +350,15 @@ fn match_star(node: Node, nodes: Node[], next: i64, classes: u8[],
 
 fn match_plus(node: Node, nodes: Node[], next: i64, classes: u8[],
     text: u8[], start: i64, length: i64): (bool, i64) {
-    var count = length
-    var at = start
+    let count = length
+    let at = start
     while byte_at(text, at) != 0 && match_one(node, classes, byte_at(text, at)) {
         at += 1
         count += 1
     }
 
     while at > start {
-        var ok, after = match_pattern(nodes, next, classes, text, at, count)
+        let ok, after = match_pattern(nodes, next, classes, text, at, count)
         count = after
         if ok {
             return (true, count)
@@ -375,13 +375,13 @@ fn match_question(node: Node, nodes: Node[], next: i64, classes: u8[],
         return (true, length)
     }
 
-    var ok, after = match_pattern(nodes, next, classes, text, start, length)
+    let ok, after = match_pattern(nodes, next, classes, text, start, length)
     if ok {
         return (true, after)
     }
 
     if byte_at(text, start) != 0 && match_one(node, classes, byte_at(text, start)) {
-        var ok2, after2 = match_pattern(nodes, next, classes, text, start + 1, after)
+        let ok2, after2 = match_pattern(nodes, next, classes, text, start + 1, after)
         if ok2 {
             return (true, after2 + 1)
         }
@@ -392,14 +392,14 @@ fn match_question(node: Node, nodes: Node[], next: i64, classes: u8[],
 
 fn match_pattern(nodes: Node[], node: i64, classes: u8[],
     text: u8[], start: i64, length: i64): (bool, i64) {
-    var before = length
-    var count = length
-    var current = node
-    var at = start
+    let before = length
+    let count = length
+    let current = node
+    let at = start
 
     while true {
-        var head = node_at(nodes, current)
-        var following = node_at(nodes, current + 1)
+        let head = node_at(nodes, current)
+        let following = node_at(nodes, current + 1)
 
         if head.kind == Kind::Unused || following.kind == Kind::Question {
             return match_question(head, nodes, current + 2, classes, text, at, count)
@@ -430,11 +430,11 @@ export fn matchp(pattern: Pattern, text: u8[]): (i64, i64) {
     if !pattern.ok {
         return (-1, 0)
     }
-    var nodes = pattern.nodes.slice()
-    var classes = pattern.classes.slice()
+    let nodes = pattern.nodes.slice()
+    let classes = pattern.classes.slice()
 
     if node_at(nodes, 0).kind == Kind::Begin {
-        var ok, length = match_pattern(nodes, 1, classes, text, 0, 0)
+        let ok, length = match_pattern(nodes, 1, classes, text, 0, 0)
         if ok {
             return (0, length)
         }
@@ -444,12 +444,12 @@ export fn matchp(pattern: Pattern, text: u8[]): (i64, i64) {
     // The length that comes back from a failed match is whatever the last
     // attempt left behind, as in C, where it is an out-parameter the
     // caller is not meant to read unless the match succeeded.
-    var at: i64 = 0
-    var index: i64 = -1
-    var length: i64 = 0
+    let at: i64 = 0
+    let index: i64 = -1
+    let length: i64 = 0
     while true {
         index += 1
-        var ok, found = match_pattern(nodes, 0, classes, text, at, length)
+        let ok, found = match_pattern(nodes, 0, classes, text, at, length)
         length = found
         if ok {
             // An empty match at the end of the text is not a match.
@@ -468,7 +468,7 @@ export fn matchp(pattern: Pattern, text: u8[]): (i64, i64) {
 
 // match_text is the one-shot form: compile, match, release.
 export fn match_text(pattern: string, text: string): (i64, i64) {
-    var compiled = compile(pattern.bytes(heap()))
+    let compiled = compile(pattern.bytes(heap()))
     defer compiled.free()
     return matchp(compiled, text.bytes(heap()))
 }

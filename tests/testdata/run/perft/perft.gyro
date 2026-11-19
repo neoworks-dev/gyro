@@ -12,7 +12,7 @@
 //   * C keeps the position in twelve global bitboards plus three
 //     occupancies and three ints, and `copy_board()` / `take_back()` are
 //     macros that memcpy that block onto the C stack and back. Here the
-//     position is a `Board` value struct, so preserving it is `var saved =
+//     position is a `Board` value struct, so preserving it is `let saved =
 //     *board` and restoring it is `*board = saved` — the same 18 words,
 //     moved by the same memcpy, but written as what it is.
 //   * The attack tables are `Array<u64>`, not fixed-size arrays. A fixed
@@ -130,8 +130,8 @@ fn get_bit(bitboard: u64, square: i32): bool {
 // Brian Kernighan's popcount: clearing the lowest set bit runs once per
 // bit that is set, not once per bit in the word.
 fn count_bits(bitboard: u64): i32 {
-    var count = 0
-    var rest = bitboard
+    let count = 0
+    let rest = bitboard
     while rest != 0 {
         count += 1
         rest &= rest - 1
@@ -245,27 +245,27 @@ const CASTLING_RIGHTS: i32[64] = [
 const BISHOP_STRIDE: i32 = 512
 const ROOK_STRIDE: i32 = 4096
 
-var pawn_attacks = Array<u64>::new(heap())   // [side * 64 + square]
-var knight_attacks = Array<u64>::new(heap()) // [square]
-var king_attacks = Array<u64>::new(heap())   // [square]
-var bishop_masks = Array<u64>::new(heap())   // [square]
-var rook_masks = Array<u64>::new(heap())     // [square]
-var bishop_attacks = Array<u64>::new(heap()) // [square * 512 + magic index]
-var rook_attacks = Array<u64>::new(heap())   // [square * 4096 + magic index]
+let pawn_attacks = Array<u64>::new(heap())   // [side * 64 + square]
+let knight_attacks = Array<u64>::new(heap()) // [square]
+let king_attacks = Array<u64>::new(heap())   // [square]
+let bishop_masks = Array<u64>::new(heap())   // [square]
+let rook_masks = Array<u64>::new(heap())     // [square]
+let bishop_attacks = Array<u64>::new(heap()) // [square * 512 + magic index]
+let rook_attacks = Array<u64>::new(heap())   // [square * 4096 + magic index]
 
 // One move buffer for the whole search: ply `p` owns
 // [p * 256, p * 256 + 256). C gives every node its own `int moves[256]`
 // on the stack, which a Gyro local cannot be without a 256-element
 // literal to initialize it from.
-var move_stack = Array<i32>::new(heap())
+let move_stack = Array<i32>::new(heap())
 
 // ---------------------------------------------------------------------------
 // Leaper attack masks
 // ---------------------------------------------------------------------------
 
 fn mask_pawn_attacks(side: i32, square: i32): u64 {
-    var attacks: u64 = 0
-    var board = bit(square)
+    let attacks: u64 = 0
+    let board = bit(square)
 
     if side == WHITE {
         if ((board >> 7) & NOT_A_FILE) != 0 { attacks |= board >> 7 }
@@ -278,8 +278,8 @@ fn mask_pawn_attacks(side: i32, square: i32): u64 {
 }
 
 fn mask_knight_attacks(square: i32): u64 {
-    var attacks: u64 = 0
-    var board = bit(square)
+    let attacks: u64 = 0
+    let board = bit(square)
 
     if ((board >> 17) & NOT_H_FILE) != 0 { attacks |= board >> 17 }
     if ((board >> 15) & NOT_A_FILE) != 0 { attacks |= board >> 15 }
@@ -293,8 +293,8 @@ fn mask_knight_attacks(square: i32): u64 {
 }
 
 fn mask_king_attacks(square: i32): u64 {
-    var attacks: u64 = 0
-    var board = bit(square)
+    let attacks: u64 = 0
+    let board = bit(square)
 
     if (board >> 8) != 0 { attacks |= board >> 8 }
     if ((board >> 9) & NOT_H_FILE) != 0 { attacks |= board >> 9 }
@@ -315,12 +315,12 @@ fn mask_king_attacks(square: i32): u64 {
 // ---------------------------------------------------------------------------
 
 fn mask_bishop_attacks(square: i32): u64 {
-    var attacks: u64 = 0
-    var target_rank = square / 8
-    var target_file = square % 8
+    let attacks: u64 = 0
+    let target_rank = square / 8
+    let target_file = square % 8
 
-    var rank = target_rank + 1
-    var file = target_file + 1
+    let rank = target_rank + 1
+    let file = target_file + 1
     while rank <= 6 && file <= 6 {
         attacks |= bit(rank * 8 + file)
         rank += 1
@@ -351,11 +351,11 @@ fn mask_bishop_attacks(square: i32): u64 {
 }
 
 fn mask_rook_attacks(square: i32): u64 {
-    var attacks: u64 = 0
-    var target_rank = square / 8
-    var target_file = square % 8
+    let attacks: u64 = 0
+    let target_rank = square / 8
+    let target_file = square % 8
 
-    var rank = target_rank + 1
+    let rank = target_rank + 1
     while rank <= 6 {
         attacks |= bit(rank * 8 + target_file)
         rank += 1
@@ -365,7 +365,7 @@ fn mask_rook_attacks(square: i32): u64 {
         attacks |= bit(rank * 8 + target_file)
         rank -= 1
     }
-    var file = target_file + 1
+    let file = target_file + 1
     while file <= 6 {
         attacks |= bit(target_rank * 8 + file)
         file += 1
@@ -379,14 +379,14 @@ fn mask_rook_attacks(square: i32): u64 {
 }
 
 fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
-    var attacks: u64 = 0
-    var target_rank = square / 8
-    var target_file = square % 8
+    let attacks: u64 = 0
+    let target_rank = square / 8
+    let target_file = square % 8
 
-    var rank = target_rank + 1
-    var file = target_file + 1
+    let rank = target_rank + 1
+    let file = target_file + 1
     while rank <= 7 && file <= 7 {
-        var mark = bit(rank * 8 + file)
+        let mark = bit(rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank += 1
@@ -395,7 +395,7 @@ fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
     rank = target_rank - 1
     file = target_file + 1
     while rank >= 0 && file <= 7 {
-        var mark = bit(rank * 8 + file)
+        let mark = bit(rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank -= 1
@@ -404,7 +404,7 @@ fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
     rank = target_rank + 1
     file = target_file - 1
     while rank <= 7 && file >= 0 {
-        var mark = bit(rank * 8 + file)
+        let mark = bit(rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank += 1
@@ -413,7 +413,7 @@ fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
     rank = target_rank - 1
     file = target_file - 1
     while rank >= 0 && file >= 0 {
-        var mark = bit(rank * 8 + file)
+        let mark = bit(rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank -= 1
@@ -423,34 +423,34 @@ fn bishop_attacks_on_the_fly(square: i32, block: u64): u64 {
 }
 
 fn rook_attacks_on_the_fly(square: i32, block: u64): u64 {
-    var attacks: u64 = 0
-    var target_rank = square / 8
-    var target_file = square % 8
+    let attacks: u64 = 0
+    let target_rank = square / 8
+    let target_file = square % 8
 
-    var rank = target_rank + 1
+    let rank = target_rank + 1
     while rank <= 7 {
-        var mark = bit(rank * 8 + target_file)
+        let mark = bit(rank * 8 + target_file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank += 1
     }
     rank = target_rank - 1
     while rank >= 0 {
-        var mark = bit(rank * 8 + target_file)
+        let mark = bit(rank * 8 + target_file)
         attacks |= mark
         if (mark & block) != 0 { break }
         rank -= 1
     }
-    var file = target_file + 1
+    let file = target_file + 1
     while file <= 7 {
-        var mark = bit(target_rank * 8 + file)
+        let mark = bit(target_rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         file += 1
     }
     file = target_file - 1
     while file >= 0 {
-        var mark = bit(target_rank * 8 + file)
+        let mark = bit(target_rank * 8 + file)
         attacks |= mark
         if (mark & block) != 0 { break }
         file -= 1
@@ -498,11 +498,11 @@ fn init_sliders_attacks() {
     // and costs one pass over the mask per variation rather than two
     // instructions.
     for square in 0..64 {
-        var mask = bishop_masks.get(square as usize)
-        var occupancy: u64 = 0
-        var more = true
+        let mask = bishop_masks.get(square as usize)
+        let occupancy: u64 = 0
+        let more = true
         while more {
-            var magic_index = magic_index_of(occupancy, BISHOP_MAGICS[square as usize],
+            let magic_index = magic_index_of(occupancy, BISHOP_MAGICS[square as usize],
                 BISHOP_RELEVANT_BITS[square as usize])
             bishop_attacks.set((square * BISHOP_STRIDE + magic_index) as usize,
                 bishop_attacks_on_the_fly(square, occupancy))
@@ -512,11 +512,11 @@ fn init_sliders_attacks() {
     }
 
     for square in 0..64 {
-        var mask = rook_masks.get(square as usize)
-        var occupancy: u64 = 0
-        var more = true
+        let mask = rook_masks.get(square as usize)
+        let occupancy: u64 = 0
+        let more = true
         while more {
-            var magic_index = magic_index_of(occupancy, ROOK_MAGICS[square as usize],
+            let magic_index = magic_index_of(occupancy, ROOK_MAGICS[square as usize],
                 ROOK_RELEVANT_BITS[square as usize])
             rook_attacks.set((square * ROOK_STRIDE + magic_index) as usize,
                 rook_attacks_on_the_fly(square, occupancy))
@@ -547,13 +547,13 @@ export fn init_all() {
 // ---------------------------------------------------------------------------
 
 fn get_bishop_attacks(square: i32, occupancy: u64): u64 {
-    var index = magic_index_of(occupancy & bishop_masks.get(square as usize),
+    let index = magic_index_of(occupancy & bishop_masks.get(square as usize),
         BISHOP_MAGICS[square as usize], BISHOP_RELEVANT_BITS[square as usize])
     return bishop_attacks.get((square * BISHOP_STRIDE + index) as usize)
 }
 
 fn get_rook_attacks(square: i32, occupancy: u64): u64 {
-    var index = magic_index_of(occupancy & rook_masks.get(square as usize),
+    let index = magic_index_of(occupancy & rook_masks.get(square as usize),
         ROOK_MAGICS[square as usize], ROOK_RELEVANT_BITS[square as usize])
     return rook_attacks.get((square * ROOK_STRIDE + index) as usize)
 }
@@ -597,7 +597,7 @@ fn is_digit(letter: rune): bool {
 // and a square that a piece was just placed on does not get the extra
 // decrement.
 export fn parse_fen(fen: string): Board {
-    var board = Board{
+    let board = Board{
         bitboards: EMPTY_BITBOARDS,
         occupancies: EMPTY_OCCUPANCIES,
         side: WHITE,
@@ -605,14 +605,14 @@ export fn parse_fen(fen: string): Board {
         castle: 0,
     }
 
-    var text = fen.bytes(heap())
-    var at: usize = 0
+    let text = fen.bytes(heap())
+    let at: usize = 0
 
     for rank in 0..8 {
-        var file = 0
+        let file = 0
         while file < 8 {
-            var square = rank * 8 + file
-            var letter = text[at] as rune
+            let square = rank * 8 + file
+            let letter = text[at] as rune
 
             if is_letter(letter) {
                 board.bitboards[piece_from_char(letter) as usize] |= bit(square)
@@ -620,8 +620,8 @@ export fn parse_fen(fen: string): Board {
                 letter = text[at] as rune
             }
             if is_digit(letter) {
-                var offset = (letter as i32) - ('0' as i32)
-                var occupied = false
+                let offset = (letter as i32) - ('0' as i32)
+                let occupied = false
                 for piece in 0..12 {
                     if get_bit(board.bitboards[piece as usize], square) {
                         occupied = true
@@ -651,7 +651,7 @@ export fn parse_fen(fen: string): Board {
     at += 2
 
     while text[at] as rune != ' ' {
-        var right = text[at] as rune
+        let right = text[at] as rune
         if right == 'K' {
             board.castle |= CASTLE_WK
         } elif right == 'Q' {
@@ -666,8 +666,8 @@ export fn parse_fen(fen: string): Board {
     at += 1
 
     if text[at] as rune != '-' {
-        var file = (text[at] as i32) - ('a' as i32)
-        var rank = 8 - ((text[at + 1] as i32) - ('0' as i32))
+        let file = (text[at] as i32) - ('a' as i32)
+        let rank = 8 - ((text[at + 1] as i32) - ('0' as i32))
         board.enpassant = rank * 8 + file
     } else {
         board.enpassant = NO_SQ
@@ -699,7 +699,7 @@ const FLAG_CASTLING: i32 = 0x800000
 
 fn encode_move(source: i32, target: i32, piece: i32, promoted: i32,
     capture: bool, double_push: bool, enpassant: bool, castling: bool): i32 {
-    var move = source | (target << 6) | (piece << 12) | (promoted << 16)
+    let move = source | (target << 6) | (piece << 12) | (promoted << 16)
     if capture { move |= FLAG_CAPTURE }
     if double_push { move |= FLAG_DOUBLE }
     if enpassant { move |= FLAG_ENPASSANT }
@@ -746,7 +746,7 @@ export fn square_name(square: i32): string {
 // *from* the square: a knight attacks the square exactly when a knight
 // sits on one of the squares a knight there would reach.
 export fn is_square_attacked(board: *Board, square: i32, side: i32): bool {
-    var occupancy = board.occupancies[BOTH as usize]
+    let occupancy = board.occupancies[BOTH as usize]
 
     if side == WHITE {
         if (pawn_attacks.get((BLACK * 64 + square) as usize) & board.bitboards[WP as usize]) != 0 {
@@ -800,21 +800,21 @@ export fn is_square_attacked(board: *Board, square: i32, side: i32): bool {
 // Legality — whether the mover leaves its own king in check — is decided
 // by make_move, exactly as upstream does it.
 export fn generate_moves(board: *Board, ply: i32): i32 {
-    var base = ply * MOVES_PER_PLY
-    var count = 0
+    let base = ply * MOVES_PER_PLY
+    let count = 0
 
-    var side = board.side
-    var own = board.occupancies[side as usize]
-    var enemy = board.occupancies[(1 - side) as usize]
-    var occupancy = board.occupancies[BOTH as usize]
+    let side = board.side
+    let own = board.occupancies[side as usize]
+    let enemy = board.occupancies[(1 - side) as usize]
+    let occupancy = board.occupancies[BOTH as usize]
 
     for piece in 0..12 {
-        var bitboard = board.bitboards[piece as usize]
+        let bitboard = board.bitboards[piece as usize]
 
         if side == WHITE && piece == WP {
             while bitboard != 0 {
-                var source = get_ls1b_index(bitboard)
-                var target = source - 8
+                let source = get_ls1b_index(bitboard)
+                let target = source - 8
 
                 if target >= A8 && !get_bit(occupancy, target) {
                     if source >= A7 && source <= H7 {
@@ -833,7 +833,7 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
                     }
                 }
 
-                var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
+                let attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
                 while attacks != 0 {
                     target = get_ls1b_index(attacks)
                     if source >= A7 && source <= H7 {
@@ -850,9 +850,9 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
                 }
 
                 if board.enpassant != NO_SQ {
-                    var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
+                    let enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
                     if enpassant_attacks != 0 {
-                        var enpassant_target = get_ls1b_index(enpassant_attacks)
+                        let enpassant_target = get_ls1b_index(enpassant_attacks)
                         move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
                         count += 1
                     }
@@ -883,8 +883,8 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
 
         if side == BLACK && piece == BP {
             while bitboard != 0 {
-                var source = get_ls1b_index(bitboard)
-                var target = source + 8
+                let source = get_ls1b_index(bitboard)
+                let target = source + 8
 
                 if target <= H1 && !get_bit(occupancy, target) {
                     if source >= A2 && source <= H2 {
@@ -903,7 +903,7 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
                     }
                 }
 
-                var attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
+                let attacks = pawn_attacks.get((side * 64 + source) as usize) & enemy
                 while attacks != 0 {
                     target = get_ls1b_index(attacks)
                     if source >= A2 && source <= H2 {
@@ -920,9 +920,9 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
                 }
 
                 if board.enpassant != NO_SQ {
-                    var enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
+                    let enpassant_attacks = pawn_attacks.get((side * 64 + source) as usize) & bit(board.enpassant)
                     if enpassant_attacks != 0 {
-                        var enpassant_target = get_ls1b_index(enpassant_attacks)
+                        let enpassant_target = get_ls1b_index(enpassant_attacks)
                         move_stack.set((base + count) as usize, encode_move(source, enpassant_target, piece, 0, true, false, true, false))
                         count += 1
                     }
@@ -954,13 +954,13 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
         // Knights, bishops, rooks, queens and kings all read the same way:
         // an attack set masked against the squares the mover does not
         // already occupy, split into quiet moves and captures.
-        var moves_this_piece = (side == WHITE && piece >= WN && piece <= WK)
+        let moves_this_piece = (side == WHITE && piece >= WN && piece <= WK)
             || (side == BLACK && piece >= BN && piece <= BK)
 
         if moves_this_piece {
             while bitboard != 0 {
-                var source = get_ls1b_index(bitboard)
-                var attacks: u64 = 0
+                let source = get_ls1b_index(bitboard)
+                let attacks: u64 = 0
                 if piece == WN || piece == BN {
                     attacks = knight_attacks.get(source as usize)
                 } elif piece == WB || piece == BB {
@@ -975,8 +975,8 @@ export fn generate_moves(board: *Board, ply: i32): i32 {
                 attacks &= ~own
 
                 while attacks != 0 {
-                    var target = get_ls1b_index(attacks)
-                    var capture = get_bit(enemy, target)
+                    let target = get_ls1b_index(attacks)
+                    let capture = get_bit(enemy, target)
                     move_stack.set((base + count) as usize, encode_move(source, target, piece, 0, capture, false, false, false))
                     count += 1
                     attacks &= ~bit(target)
@@ -1004,20 +1004,20 @@ export fn move_at(ply: i32, index: i32): i32 {
 // before the answer, which is what C's copy_board()/take_back() pair
 // inside the same function does.
 export fn make_move(board: *Board, move: i32): bool {
-    var saved = *board
+    let saved = *board
 
-    var source = move_source(move)
-    var target = move_target(move)
-    var piece = move_piece(move)
-    var promoted = move_promoted(move)
-    var side = board.side
+    let source = move_source(move)
+    let target = move_target(move)
+    let piece = move_piece(move)
+    let promoted = move_promoted(move)
+    let side = board.side
 
     board.bitboards[piece as usize] &= ~bit(source)
     board.bitboards[piece as usize] |= bit(target)
 
     if move_is_capture(move) {
-        var start_piece = BP
-        var end_piece = BK
+        let start_piece = BP
+        let end_piece = BK
         if side == BLACK {
             start_piece = WP
             end_piece = WK
@@ -1076,11 +1076,11 @@ export fn make_move(board: *Board, move: i32): bool {
     board.castle &= CASTLING_RIGHTS[source as usize]
     board.castle &= CASTLING_RIGHTS[target as usize]
 
-    var white_occupancy: u64 = 0
+    let white_occupancy: u64 = 0
     for bb in WP..(WK + 1) {
         white_occupancy |= board.bitboards[bb as usize]
     }
-    var black_occupancy: u64 = 0
+    let black_occupancy: u64 = 0
     for bb in BP..(BK + 1) {
         black_occupancy |= board.bitboards[bb as usize]
     }
@@ -1090,7 +1090,7 @@ export fn make_move(board: *Board, move: i32): bool {
 
     board.side ^= 1
 
-    var king = board.bitboards[WK as usize]
+    let king = board.bitboards[WK as usize]
     if side == BLACK {
         king = board.bitboards[BK as usize]
     }
@@ -1113,10 +1113,10 @@ export fn perft(board: *Board, depth: i32, ply: i32): i64 {
         return 1
     }
 
-    var count = generate_moves(board, ply)
-    var nodes: i64 = 0
+    let count = generate_moves(board, ply)
+    let nodes: i64 = 0
     for index in 0..count {
-        var saved = *board
+        let saved = *board
         if make_move(board, move_at(ply, index)) {
             nodes += perft(board, depth - 1, ply + 1)
         }

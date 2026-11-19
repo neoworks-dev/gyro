@@ -5,7 +5,7 @@
 import { println } from "stdlib"
 
 fn main() {
-    var ch = chan<i32>(1)
+    let ch = chan<i32>(1)
     select {
         ch <- 1: println("sent 1")
         else: println("full")

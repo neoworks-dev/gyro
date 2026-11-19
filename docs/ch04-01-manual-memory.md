@@ -18,7 +18,7 @@ allocation is about to be lost.
 import { alloc, free, heap } from "mem"
 
 fn f(): i32 {
-    var node = alloc<Node>(heap())
+    let node = alloc<Node>(heap())
     defer free(heap(), node)
     return node.value
 }
@@ -37,11 +37,11 @@ struct Node {
 }
 
 export fn free_chain(head: *Node) {
-    var current: *Node? = head
+    let current: *Node? = head
     while current != null {
         // `current` is narrowed to *Node inside the check, so the field access
         // needs no unwrapping.
-        var next = current.next
+        let next = current.next
         free(heap(), current)
         current = next
     }
@@ -52,8 +52,8 @@ Field access through a pointer needs no `*`: `node.value` reads through it.
 `*p` is for the value itself, and `*p = 5` assigns through it.
 
 ```gyro
-var head = make_node(1)
-var address = &head.value
+let head = make_node(1)
+let address = &head.value
 println(*address)
 ```
 
@@ -114,7 +114,7 @@ capture list can say:
 
 ```gyro
 export fn defer_release(value: i32): fn() {
-    var node = alloc<Node>(heap())
+    let node = alloc<Node>(heap())
     node.value = value
 
     return fn[move node]() {

@@ -38,8 +38,8 @@ fn signatures(): i32 {
 }
 
 fn badSignature() {
-    var x = add(1, "two")     //~ cannot use string as i32
-    var y: string = add(1, 2) //~ cannot use i32 as string
+    let x = add(1, "two")     //~ cannot use string as i32
+    let y: string = add(1, 2) //~ cannot use i32 as string
 }
 
 // An imported generic instantiates in the importing module.
@@ -52,5 +52,5 @@ struct NoCompare {
 }
 
 fn importedGenericIsChecked(a: NoCompare, b: NoCompare) {
-    var x = max(a, b) //~ E0527 NoCompare does not implement Ord
+    let x = max(a, b) //~ E0527 NoCompare does not implement Ord
 }

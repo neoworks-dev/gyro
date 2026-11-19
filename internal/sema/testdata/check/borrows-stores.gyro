@@ -25,7 +25,7 @@ fn Registry::addPlain(*self) {
 }
 
 fn Registry::look(*self) {
-    var buf = [1, 2, 3]
+    let buf = [1, 2, 3]
     self.window = buf //~ E0630 this stores a view into storage that ends with this function into self, which outlives it
 }
 
@@ -51,7 +51,7 @@ fn insertElement(table: Map<string, fn(): i32>, n: i32) {
 }
 
 fn keepSlice(out: Array<i32[]>) {
-    var buf = [1, 2, 3]
+    let buf = [1, 2, 3]
     out.push(buf) //~ E0630 this stores a view into storage that ends with this function into out, which outlives it
 }
 
@@ -61,33 +61,33 @@ fn keepParam(out: Array<i32[]>, xs: i32[]) {
 
 // A local container carries what it was given, and returning it says so.
 fn localContainer(n: i32): Array<fn(): i32> {
-    var hs = Array<fn(): i32>::new(heap())
+    let hs = Array<fn(): i32>::new(heap())
     hs.push(fn(): i32 { return n })
     return hs //~ E0610 this returns a closure that borrows this frame
 }
 
 fn localContainerKept(a: Allocator, n: i32): Array<fn(): i32> {
-    var hs = Array<fn(): i32>::new(a)
+    let hs = Array<fn(): i32>::new(a)
     hs.push(keep(a, fn(): i32 { return n }))
     return hs
 }
 
 fn localContainerParam(xs: i32[]): Array<i32[]> !{ &xs } {
-    var out = Array<i32[]>::new(heap())
+    let out = Array<i32[]>::new(heap())
     out.push(xs)
     return out
 }
 
 fn localContainerParamUnnamed(xs: i32[]): Array<i32[]> {
-    var out = Array<i32[]>::new(heap())
+    let out = Array<i32[]>::new(heap())
     out.push(xs)
     return out //~ E0609 this returns a view into xs, which the row does not name
 }
 
 // An assignment follows the value into a field.
 fn assignField(n: i32): Registry {
-    var r = Registry{ handlers: Array<fn(): i32>::new(heap()), window: [] }
-    var buf = [1, 2, 3]
+    let r = Registry{ handlers: Array<fn(): i32>::new(heap()), window: [] }
+    let buf = [1, 2, 3]
     r.window = buf
     return r //~ E0610 this returns a view into storage that ends with this function
 }
@@ -96,31 +96,31 @@ fn assignField(n: i32): Registry {
 // frame, so pushing it into something declared outside the loop shares the
 // record between every element.
 fn loopPush(): i32 {
-    var hs = Array<fn(): i32>::new(heap())
+    let hs = Array<fn(): i32>::new(heap())
     for i in 0..3 {
         hs.push(fn(): i32 { return i }) //~ E0632 this stores a closure written in a loop body into hs, which is declared outside the loop
         //~^ help: copy each one out with keep(allocator, f) from mem
     }
-    var total = hs.get(0)()
+    let total = hs.get(0)()
     hs.free()
     return total
 }
 
 fn loopPushKept(a: Allocator): i32 {
-    var hs = Array<fn(): i32>::new(heap())
+    let hs = Array<fn(): i32>::new(heap())
     for i in 0..3 {
         hs.push(keep(a, fn(): i32 { return i }))
     }
-    var total = hs.get(0)()
+    let total = hs.get(0)()
     hs.free()
     return total
 }
 
 // A container made inside the iteration dies with it.
 fn loopLocal(): i32 {
-    var total = 0
+    let total = 0
     for i in 0..3 {
-        var hs = Array<fn(): i32>::new(heap())
+        let hs = Array<fn(): i32>::new(heap())
         hs.push(fn(): i32 { return i })
         total += hs.get(0)()
         hs.free()
@@ -129,12 +129,12 @@ fn loopLocal(): i32 {
 }
 
 fn loopSlice(): usize {
-    var windows = Array<i32[]>::new(heap())
+    let windows = Array<i32[]>::new(heap())
     for i in 0..3 {
-        var buf = [1, 2, 3]
+        let buf = [1, 2, 3]
         windows.push(buf) //~ E0632 this stores a view of storage written in a loop body into windows, which is declared outside the loop
     }
-    var n = windows.len()
+    let n = windows.len()
     windows.free()
     return n
 }

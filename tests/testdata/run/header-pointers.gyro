@@ -16,8 +16,8 @@ safe fn ascending(a: anyptr?, b: anyptr?): i32 {
     if a == null || b == null {
         return 0
     }
-    var left = cast<i32>(a)
-    var right = cast<i32>(b)
+    let left = cast<i32>(a)
+    let right = cast<i32>(b)
     if *left < *right {
         return 0 - 1
     }
@@ -32,7 +32,7 @@ fn descending(a: anyptr?, b: anyptr?): i32 {
 }
 
 fn show(xs: i32[]) {
-    var i: usize = 0
+    let i: usize = 0
     while i < xs.len() {
         println(xs[i])
         i += 1
@@ -41,19 +41,19 @@ fn show(xs: i32[]) {
 
 fn main() {
     // The library writes through the address; the caller reads it back.
-    var exponent: i32 = 0
-    var fraction = frexp(1024.0, &exponent)
+    let exponent: i32 = 0
+    let fraction = frexp(1024.0, &exponent)
     println(fraction)
     println(exponent)
 
     // 0.75 * 2^-3 is 0.09375, so frexp answers the pair back.
-    var small = frexp(0.09375, &exponent)
+    let small = frexp(0.09375, &exponent)
     println(small)
     println(exponent)
 
     // C's loop, this program's decision about order. An i32 is four bytes
     // of storage, so the stride C walks is the one Gyro laid out.
-    var xs = [5, 3, 9, 1, 7]
+    let xs = [5, 3, 9, 1, 7]
     qsort(&xs[0] as anyptr, 5, 4, &ascending)
     show(xs)
 
@@ -61,14 +61,14 @@ fn main() {
     show(xs)
 
     // A `void *` at both ends, and a returned one that is the destination.
-    var copy = [0, 0, 0, 0, 0]
-    var into = memcpy(&copy[0] as anyptr, &xs[0] as anyptr, 20)
+    let copy = [0, 0, 0, 0, 0]
+    let into = memcpy(&copy[0] as anyptr, &xs[0] as anyptr, 20)
     show(copy)
     println(into == (&copy[0] as anyptr))
 
     // A pointer to a pointer: C allocates and writes the address through
     // the `void **` it was handed, into a variable that may hold null.
-    var block: anyptr? = null
+    let block: anyptr? = null
     println(posix_memalign(&block, 16, 64))
     println(block != null)
     free(block)

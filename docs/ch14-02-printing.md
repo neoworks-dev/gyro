@@ -97,7 +97,7 @@ fn log(message: Format) !{ io } {
 }
 
 log("listening on port #{port}")
-var line = format(heap(), "#{i}. #{title}")
+let line = format(heap(), "#{i}. #{title}")
 ```
 
 A plain literal with no `#{}` stays a `string`, as it always was.
@@ -111,7 +111,7 @@ and each of those is an error. Passing it on is fine, which is what lets
 `log` above hand its message to `println`.
 
 A `Format` is not a `string`. Using one where text is wanted, as in
-`var s: string = "#{x}"`, is a type error whose help points at `format`. It
+`let s: string = "#{x}"`, is a type error whose help points at `format`. It
 has two methods for code that writes pieces out itself, `len(self): usize`
 and `piece(self, index: usize): any`.
 

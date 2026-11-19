@@ -10,7 +10,7 @@ while i * i <= n {
     i += 1
 }
 
-for var i = 0; i < 10; i += 1 {}
+for let i = 0; i < 10; i += 1 {}
 for value in 0..10 {}
 for value in collection {}
 ```
@@ -29,7 +29,7 @@ block, so `else if` does not parse. One spelling, one shape.
 C-style header, and `for ... in` over something iterable:
 
 ```gyro
-for var i = 0; i < 10; i += 1 {}
+for let i = 0; i < 10; i += 1 {}
 for i in 0..10 {}
 ```
 
@@ -78,7 +78,7 @@ every other statement. A body may be an expression, a block, or a
 control-flow statement.
 
 ```gyro
-var name = match n {
+let name = match n {
     0: "zero"
     1: "one"
     _: "other"

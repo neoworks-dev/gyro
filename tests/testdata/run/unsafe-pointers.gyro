@@ -47,13 +47,13 @@ safe fn byte_at_address(address: usize): u8 {
 // through an address it is trusted to be handed, so its import does not
 // and the call needs a safe fn around it.
 safe fn length_of(text: string): usize {
-    var bytes = c_string(heap(), text)
+    let bytes = c_string(heap(), text)
     defer bytes.free()
     return strlen(c_data(bytes))
 }
 
 fn main() {
-    var p = alloc<Packet>(heap())
+    let p = alloc<Packet>(heap())
     defer free(heap(), p)
     p.tag = 7
     p.low = 16
@@ -68,7 +68,7 @@ fn main() {
     set_byte(p, 2, 99)
     println(p.high)
 
-    var again = through_integer(p)
+    let again = through_integer(p)
     println(again.tag)
     println(address_of(again) == address_of(p))
     again.low = 17

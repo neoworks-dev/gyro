@@ -250,7 +250,7 @@ var codes = map[string]diag.Code{
 	"a compound assignment takes one target":                                               diag.EAssignmentForm,
 	"a declaration needs a type or a value":                                                diag.EBindingNeedsType,
 	"a const needs its value here":                                                         diag.EBindingNeedsType,
-	"the error result is dropped here; discarding one must be written out: var _, _ = ...": diag.EDroppedError,
+	"the error result is dropped here; discarding one must be written out: let _, _ = ...": diag.EDroppedError,
 	"the parameter %s needs a type; nothing here says what the closure is":                 diag.EClosureParams,
 	"this closure takes %d parameter(s), the context wants %s":                             diag.EClosureParams,
 

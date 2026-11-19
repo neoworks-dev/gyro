@@ -85,7 +85,7 @@ import { heap } from "mem"
 import { c_string, c_data } from "cstring"
 
 safe fn length_of(text: string): usize {
-    var bytes = c_string(heap(), text) // from "cstring", below
+    let bytes = c_string(heap(), text) // from "cstring", below
     defer bytes.free()
     return strlen(c_data(bytes))
 }
@@ -128,7 +128,7 @@ import { c_string, c_data, from_c } from "cstring"
 import safe { SDL_CreateWindow, SDL_GetError } from "pkg:sdl3/SDL3/SDL.h"
 
 safe fn open_window(title: string): *SDL_Window? {
-    var bytes = c_string(heap(), title)
+    let bytes = c_string(heap(), title)
     defer bytes.free()
     return SDL_CreateWindow(c_data(bytes), 800, 600, 0)
 }
@@ -154,17 +154,17 @@ import safe { qsort } from "<stdlib.h>"
 
 safe fn ascending(a: anyptr?, b: anyptr?): i32 {
     if a == null || b == null { return 0 }
-    var left = cast<i32>(a)
-    var right = cast<i32>(b)
+    let left = cast<i32>(a)
+    let right = cast<i32>(b)
     if *left < *right { return 0 - 1 }
     if *left > *right { return 1 }
     return 0
 }
 
-var exponent: i32 = 0
-var fraction = frexp(1024.0, &exponent)    // 0.5, and exponent is 11
+let exponent: i32 = 0
+let fraction = frexp(1024.0, &exponent)    // 0.5, and exponent is 11
 
-var xs = [5, 3, 9, 1, 7]
+let xs = [5, 3, 9, 1, 7]
 qsort(&xs[0] as anyptr, 5, 4, &ascending)  // C's loop, this program's order
 ```
 
@@ -252,8 +252,8 @@ Because there is no boundary here, the restrictions above do not apply.
 import { alloc, free, heap } from "mem"
 import safe { divmod } from "./mathlib.c"
 
-var whole = alloc<i32>(heap())
-var rest = alloc<i32>(heap())
+let whole = alloc<i32>(heap())
+let rest = alloc<i32>(heap())
 defer free(heap(), whole)
 defer free(heap(), rest)
 divmod(47, 10, whole, rest)
@@ -310,10 +310,10 @@ safe fn value_at(address: anyptr): i32 {
     return cast<Cell>(address).value   // remembering: this program's claim
 }
 
-var c = Cell{ value: 7 }
+let c = Cell{ value: 7 }
 keep(0, &c as anyptr)          // forgetting: always true, never fails
 
-var back = held(0)             // C's `void *` arrives as anyptr?
+let back = held(0)             // C's `void *` arrives as anyptr?
 if back != null {
     println(value_at(back))
 }
@@ -355,8 +355,8 @@ fn big(v: i32): i32 {
 
 fn sum(acc: i32, v: i32): i32 { return acc + v }
 
-var kept = count_kept(&big) // C's loop, this program's decision
-var total = fold(&sum, 0)
+let kept = count_kept(&big) // C's loop, this program's decision
+let total = fold(&sum, 0)
 ```
 
 It is not a `fn` with a flag — [chapter 11](ch11-00-closures.md) explains

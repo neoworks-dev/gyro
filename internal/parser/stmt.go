@@ -34,7 +34,7 @@ func (p *Parser) parseBlock() *ast.Block {
 
 func (p *Parser) parseStmt() ast.Stmt {
 	switch p.kind() {
-	case token.Var, token.Const:
+	case token.Let, token.Const:
 		decl := p.parseVarDecl()
 		p.expectTerminator()
 		return decl
@@ -216,7 +216,7 @@ func (p *Parser) parseWhile() ast.Stmt {
 
 // parseSelect parses `select { comm: body ... }`. Arms use the same
 // newline-terminated `comm: body` shape as match arms, and a binding arm is
-// written with an ordinary `var` declaration rather than a dedicated short
+// written with an ordinary `let` declaration rather than a dedicated short
 // form.
 func (p *Parser) parseSelect() ast.Stmt {
 	stmt := &ast.SelectStmt{Offset: p.offset()}
@@ -255,7 +255,7 @@ func (p *Parser) parseSelect() ast.Stmt {
 
 // parseSelectComm parses the channel operation on the left of a select arm.
 func (p *Parser) parseSelectComm() ast.Stmt {
-	if p.at(token.Var) || p.at(token.Const) {
+	if p.at(token.Let) || p.at(token.Const) {
 		return p.parseVarDecl()
 	}
 	return p.parseSimpleStmt(false)
@@ -341,7 +341,7 @@ func (p *Parser) parseForClause() ast.Stmt {
 	switch p.kind() {
 	case token.Terminator, token.LBrace:
 		return nil
-	case token.Var, token.Const:
+	case token.Let, token.Const:
 		return p.parseVarDecl()
 	default:
 		return p.parseSimpleStmt(false)

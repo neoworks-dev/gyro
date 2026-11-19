@@ -6,8 +6,8 @@ import { println, eprintln } from "stdlib"
 import { monotonic } from "time"
 
 fn main() {
-    var start = monotonic()
-    var stop = monotonic()
+    let start = monotonic()
+    let stop = monotonic()
 
     println(0)
     eprintln("gyro:bench #{stop - start}")

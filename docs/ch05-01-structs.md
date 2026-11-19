@@ -69,12 +69,12 @@ struct Pair<T> {
 }
 
 fn Pair<T>::swap(*self) {
-    var tmp = self.first
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
 
-var p = Pair<i32>{ 1, 2 }
+let p = Pair<i32>{ 1, 2 }
 ```
 
 Type arguments infer from the fields where they can, so `Pair{ 1, 2 }` also
@@ -99,8 +99,8 @@ array holds frame storage, and a view of its field is a view of this frame:
 struct View { data: i32[] }
 
 fn bad(): i32[] {
-    var xs = [1, 2, 3]
-    var v = View{ data: xs }
+    let xs = [1, 2, 3]
+    let v = View{ data: xs }
     return v.data // error: xs ends with this function
 }
 ```

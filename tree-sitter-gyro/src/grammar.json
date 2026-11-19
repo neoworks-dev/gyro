@@ -1632,7 +1632,7 @@
             "members": [
               {
                 "type": "STRING",
-                "value": "var"
+                "value": "let"
               },
               {
                 "type": "STRING",

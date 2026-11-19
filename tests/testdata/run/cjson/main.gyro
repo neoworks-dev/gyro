@@ -42,7 +42,7 @@ import { heap, format } from "mem"
 // ---------------------------------------------------------------------------
 
 fn type_name(item: *cjson::Node?): string {
-    var kind = cjson::type_of(item)
+    let kind = cjson::type_of(item)
     if item == null {
         return "none"
     }
@@ -61,7 +61,7 @@ fn type_name(item: *cjson::Node?): string {
 // everything else as \xNN, so a control character or a UTF-8 sequence in a
 // parsed string cannot break the table.
 fn visible(text: string): string {
-    var out = String::new(heap())
+    let out = String::new(heap())
     for byte in text.bytes(heap()) {
         if byte == '\\' as u8 {
             out.push("\\\\")
@@ -73,7 +73,7 @@ fn visible(text: string): string {
             out.push_rune(hex_digit(byte & 15) as rune)
         }
     }
-    var result = out.text(heap())
+    let result = out.text(heap())
     out.free()
     return result
 }
@@ -101,7 +101,7 @@ fn shown(value: string?): string {
 
 // flat is the unformatted print, which every case that shows a tree uses.
 fn flat(item: *cjson::Node?): string {
-    var text = cjson::print_unformatted(item)
+    let text = cjson::print_unformatted(item)
     if text == null {
         return "<print failed>"
     }
@@ -109,7 +109,7 @@ fn flat(item: *cjson::Node?): string {
 }
 
 fn pretty(item: *cjson::Node?): string {
-    var text = cjson::print(item)
+    let text = cjson::print(item)
     if text == null {
         return "<print failed>"
     }
@@ -118,7 +118,7 @@ fn pretty(item: *cjson::Node?): string {
 
 // describe is one line for one node: its kind and whatever is live for it.
 fn describe(item: *cjson::Node?): string {
-    var kind = cjson::type_of(item)
+    let kind = cjson::type_of(item)
     if item == null {
         return "none"
     }
@@ -141,8 +141,8 @@ fn count_nodes(item: *cjson::Node?): i32 {
     if item == null {
         return 0
     }
-    var total: i32 = 1
-    var child = item.child
+    let total: i32 = 1
+    let child = item.child
     while child != null {
         total += count_nodes(child)
         child = child.next
@@ -154,10 +154,10 @@ fn tree_depth(item: *cjson::Node?): i32 {
     if item == null {
         return 0
     }
-    var deepest: i32 = 0
-    var child = item.child
+    let deepest: i32 = 0
+    let child = item.child
     while child != null {
-        var below = tree_depth(child)
+        let below = tree_depth(child)
         if below > deepest {
             deepest = below
         }
@@ -167,11 +167,11 @@ fn tree_depth(item: *cjson::Node?): i32 {
 }
 
 fn repeated(byte: u8, times: i32): string {
-    var out = String::new(heap())
+    let out = String::new(heap())
     for i in 0..times {
         out.push_rune(byte as rune)
     }
-    var result = out.text(heap())
+    let result = out.text(heap())
     out.free()
     return result
 }
@@ -181,7 +181,7 @@ fn repeated(byte: u8, times: i32): string {
 // ---------------------------------------------------------------------------
 
 fn file_case(name: string, text: string) {
-    var item, at = cjson::parse_with_opts(text, false)
+    let item, at = cjson::parse_with_opts(text, false)
     if item == null {
         printf("%-7s %4d bytes -> parse failed at offset %d\n", name, text.len(), at)
         return
@@ -190,8 +190,8 @@ fn file_case(name: string, text: string) {
     printf("%-7s %4d bytes -> %d nodes, depth %d, ends at %d\n",
         name, text.len(), count_nodes(item), tree_depth(item), at)
 
-    var flat_text = flat(item)
-    var again = cjson::parse(flat_text)
+    let flat_text = flat(item)
+    let again = cjson::parse(flat_text)
     printf("  reparse of the unformatted print compares equal: %s\n",
         yes(cjson::compare(item, again, true)))
     cjson::delete(again)
@@ -223,7 +223,7 @@ fn section_files() {
 // ---------------------------------------------------------------------------
 
 fn value_case(text: string) {
-    var item, at = cjson::parse_with_opts(text, false)
+    let item, at = cjson::parse_with_opts(text, false)
     if item == null {
         printf("  %-46s -> rejected at %d\n", visible(text), at)
         return
@@ -250,8 +250,8 @@ fn children_of(item: *cjson::Node?) {
     if item == null {
         return
     }
-    var child = item.child
-    var index: i32 = 0
+    let child = item.child
+    let index: i32 = 0
     while child != null {
         printf("      [%d] %-10s %s\n", index, shown(child.key), describe(child))
         index += 1
@@ -260,7 +260,7 @@ fn children_of(item: *cjson::Node?) {
 }
 
 fn array_case(text: string) {
-    var item, at = cjson::parse_with_opts(text, false)
+    let item, at = cjson::parse_with_opts(text, false)
     if item == null {
         printf("  %-46s -> rejected at %d\n", visible(text), at)
         return
@@ -313,13 +313,13 @@ fn section_objects() {
 // parse_string is not a public entry point: `["..."]` puts the same bytes
 // through the same code.
 fn string_case(literal: string) {
-    var wrapped = format(heap(), "[#{literal}]")
-    var item, at = cjson::parse_with_opts(wrapped, false)
+    let wrapped = format(heap(), "[#{literal}]")
+    let item, at = cjson::parse_with_opts(wrapped, false)
     if item == null {
         printf("  %-52s -> rejected at %d\n", visible(literal), at)
         return
     }
-    var child = item.child
+    let child = item.child
     printf("  %-52s -> \"%s\"\n", visible(literal), shown(cjson::string_of(child)))
     cjson::delete(item)
 }
@@ -345,7 +345,7 @@ fn section_parse_string() {
 // print_string is reached through a string node, which is what
 // print_string_ptr sees.
 fn print_string_case(label: string, text: string) {
-    var item = cjson::create_string(text)
+    let item = cjson::create_string(text)
     printf("  %-24s -> %s\n", label, visible(flat(item)))
     cjson::delete(item)
 }
@@ -353,7 +353,7 @@ fn print_string_case(label: string, text: string) {
 fn section_print_string() {
     println("== print_string")
     print_string_case("empty", "")
-    var ascii = String::new(heap())
+    let ascii = String::new(heap())
     for i in 1..127 {
         ascii.push_rune(i as rune)
     }
@@ -369,13 +369,13 @@ fn section_print_string() {
 // ---------------------------------------------------------------------------
 
 fn number_case(text: string) {
-    var wrapped = format(heap(), "[#{text}]")
-    var item, at = cjson::parse_with_opts(wrapped, false)
+    let wrapped = format(heap(), "[#{text}]")
+    let item, at = cjson::parse_with_opts(wrapped, false)
     if item == null {
         printf("  %-70s -> rejected at %d\n", text, at)
         return
     }
-    var child = item.child
+    let child = item.child
     printf("  %-70s -> int=%-11d print=%s\n", text, cjson::int_of(child), flat(child))
     cjson::delete(item)
 }
@@ -409,7 +409,7 @@ fn section_parse_number() {
 }
 
 fn print_number_case(value: f64) {
-    var item = cjson::create_number(value)
+    let item = cjson::create_number(value)
     printf("  int=%-11d -> %s\n", cjson::int_of(item), flat(item))
     cjson::delete(item)
 }
@@ -453,7 +453,7 @@ fn section_print_number() {
 // ---------------------------------------------------------------------------
 
 fn opts_case(text: string, require_null_terminated: bool) {
-    var item, at = cjson::parse_with_opts(text, require_null_terminated)
+    let item, at = cjson::parse_with_opts(text, require_null_terminated)
     if item == null {
         printf("  %-24s terminated=%-3s -> rejected, stopped at %d\n",
             visible(text), yes(require_null_terminated), at)
@@ -475,18 +475,18 @@ fn section_opts() {
     opts_case("[] empty array XD", false)
     opts_case("\xef\xbb\xbf{}", true)
 
-    var with_bom, a = cjson::parse_with_opts("\xef\xbb\xbf{}", true)
-    var without_bom, b = cjson::parse_with_opts("{}", true)
+    let with_bom, a = cjson::parse_with_opts("\xef\xbb\xbf{}", true)
+    let without_bom, b = cjson::parse_with_opts("{}", true)
     printf("  bom and no bom compare equal: %s\n", yes(cjson::compare(with_bom, without_bom, true)))
     cjson::delete(with_bom)
     cjson::delete(without_bom)
 
     // parse_with_length stops at the length it was given rather than at a
     // terminator, which is what ParseWithLength exists for.
-    var short_item, c = cjson::parse_with_length("[1,2,3]garbage", 7)
+    let short_item, c = cjson::parse_with_length("[1,2,3]garbage", 7)
     printf("  first 7 bytes of \"[1,2,3]garbage\" -> %s\n", flat(short_item))
     cjson::delete(short_item)
-    var cut_item, d = cjson::parse_with_length("[1,2,3]", 4)
+    let cut_item, d = cjson::parse_with_length("[1,2,3]", 4)
     if cut_item == null {
         printf("  first 4 bytes of \"[1,2,3]\" -> rejected at %d\n", d)
     }
@@ -497,8 +497,8 @@ fn section_opts() {
 // ---------------------------------------------------------------------------
 
 fn compare_case(a: string, b: string) {
-    var left, x = cjson::parse_with_opts(a, false)
-    var right, y = cjson::parse_with_opts(b, false)
+    let left, x = cjson::parse_with_opts(a, false)
+    let right, y = cjson::parse_with_opts(b, false)
     printf("  %-58s %-58s sensitive=%-3s insensitive=%s\n",
         visible(a), visible(b),
         yes(cjson::compare(left, right, true)),
@@ -532,8 +532,8 @@ fn section_compare() {
     compare_case("{\"Flse\": false, \"true\": true}", "{\"true\": true, \"false\": false}")
     compare_case("{\"one\": 1, \"two\": 2}", "{\"one\": 1, \"two\": 2, \"three\": 3}")
 
-    var raw_a = cjson::create_raw("[true, false]")
-    var raw_b = cjson::create_raw("[true, false]")
+    let raw_a = cjson::create_raw("[true, false]")
+    let raw_b = cjson::create_raw("[true, false]")
     printf("  two raw nodes with the same text compare equal: %s\n",
         yes(cjson::compare(raw_a, raw_b, true)))
     printf("  a raw node against a null pointer: %s\n", yes(cjson::compare(raw_a, null, true)))
@@ -568,16 +568,16 @@ fn section_minify() {
 
 fn section_add() {
     println("== add")
-    var root = cjson::create_object()
-    var added_null = cjson::add_null_to_object(root, "null")
-    var added_true = cjson::add_true_to_object(root, "true")
-    var added_false = cjson::add_false_to_object(root, "false")
-    var added_bool = cjson::add_bool_to_object(root, "bool", true)
-    var added_number = cjson::add_number_to_object(root, "number", 42.0)
-    var added_string = cjson::add_string_to_object(root, "string", "Hello World!")
-    var added_raw = cjson::add_raw_to_object(root, "raw", "{}")
-    var added_object = cjson::add_object_to_object(root, "object")
-    var added_array = cjson::add_array_to_object(root, "array")
+    let root = cjson::create_object()
+    let added_null = cjson::add_null_to_object(root, "null")
+    let added_true = cjson::add_true_to_object(root, "true")
+    let added_false = cjson::add_false_to_object(root, "false")
+    let added_bool = cjson::add_bool_to_object(root, "bool", true)
+    let added_number = cjson::add_number_to_object(root, "number", 42.0)
+    let added_string = cjson::add_string_to_object(root, "string", "Hello World!")
+    let added_raw = cjson::add_raw_to_object(root, "raw", "{}")
+    let added_object = cjson::add_object_to_object(root, "object")
+    let added_array = cjson::add_array_to_object(root, "array")
 
     printf("  null   -> %s\n", describe(added_null))
     printf("  true   -> %s\n", describe(added_true))
@@ -609,8 +609,8 @@ fn section_add() {
 }
 
 fn add_self(): bool {
-    var object = cjson::create_object()
-    var result = cjson::add_item_to_object(object, "self", object)
+    let object = cjson::create_object()
+    let result = cjson::add_item_to_object(object, "self", object)
     cjson::delete(object)
     return result
 }
@@ -627,7 +627,7 @@ fn lookup_case(object: *cjson::Node?, name: string) {
 
 fn section_lookup() {
     println("== object lookup")
-    var item = cjson::parse("{\"one\":1, \"Two\":2, \"tHree\":3}")
+    let item = cjson::parse("{\"one\":1, \"Two\":2, \"tHree\":3}")
     lookup_case(item, "one")
     lookup_case(item, "One")
     lookup_case(item, "tWo")
@@ -637,7 +637,7 @@ fn section_lookup() {
     lookup_case(item, "four")
     cjson::delete(item)
 
-    var array = cjson::parse("[1]")
+    let array = cjson::parse("[1]")
     printf("  looking a name up in an array: %s\n", describe(cjson::get_object_item(array, "name")))
     printf("  array size %d, item 0 %s, item 2 %s, item -1 %s\n",
         cjson::get_array_size(array),
@@ -649,7 +649,7 @@ fn section_lookup() {
 
 fn section_predicates() {
     println("== predicates")
-    var nodes = Array<*cjson::Node>::new(heap())
+    let nodes = Array<*cjson::Node>::new(heap())
     nodes.push(cjson::create_null())
     nodes.push(cjson::create_true())
     nodes.push(cjson::create_false())
@@ -661,8 +661,8 @@ fn section_predicates() {
 
     printf("  %-8s %-5s %-5s %-5s %-5s %-5s %-5s %-5s %-5s %-5s\n",
         "kind", "inv", "false", "true", "bool", "null", "num", "str", "arr", "obj")
-    for var i: usize = 0; i < nodes.len(); i += 1 {
-        var node = nodes.get(i)
+    for let i: usize = 0; i < nodes.len(); i += 1 {
+        let node = nodes.get(i)
         printf("  %-8s %-5s %-5s %-5s %-5s %-5s %-5s %-5s %-5s %-5s\n",
             type_name(node), yes(cjson::is_invalid(node)), yes(cjson::is_false(node)),
             yes(cjson::is_true(node)), yes(cjson::is_bool(node)), yes(cjson::is_null(node)),
@@ -675,7 +675,7 @@ fn section_predicates() {
         yes(cjson::is_number(null)), yes(cjson::is_string(null)),
         yes(cjson::is_array(null)), yes(cjson::is_object(null)))
 
-    for var i: usize = 0; i < nodes.len(); i += 1 {
+    for let i: usize = 0; i < nodes.len(); i += 1 {
         cjson::delete(nodes.get(i))
     }
     nodes.free()
@@ -683,18 +683,18 @@ fn section_predicates() {
 
 fn section_edit() {
     println("== detach, replace, insert")
-    var array = cjson::parse("[0,1,2,3,4]")
+    let array = cjson::parse("[0,1,2,3,4]")
     printf("  start                  %s\n", flat(array))
 
-    var detached = cjson::detach_item_from_array(array, 2)
+    let detached = cjson::detach_item_from_array(array, 2)
     printf("  detach index 2 -> %-8s %s\n", describe(detached), flat(array))
     cjson::delete(detached)
 
-    var head = cjson::detach_item_from_array(array, 0)
+    let head = cjson::detach_item_from_array(array, 0)
     printf("  detach index 0 -> %-8s %s\n", describe(head), flat(array))
     cjson::delete(head)
 
-    var tail = cjson::detach_item_from_array(array, 2)
+    let tail = cjson::detach_item_from_array(array, 2)
     printf("  detach the end -> %-8s %s\n", describe(tail), flat(array))
     cjson::delete(tail)
 
@@ -703,37 +703,37 @@ fn section_edit() {
     // Each edit is done before the line that reports it: an argument list
     // that both mutates and prints depends on evaluation order, which C
     // leaves unspecified and gcc runs right to left.
-    var inserted_head = cjson::insert_item_in_array(array, 0, cjson::create_string("first"))
+    let inserted_head = cjson::insert_item_in_array(array, 0, cjson::create_string("first"))
     printf("  insert at 0: %-5s        %s\n", yes(inserted_head), flat(array))
-    var inserted_middle = cjson::insert_item_in_array(array, 2, cjson::create_string("middle"))
+    let inserted_middle = cjson::insert_item_in_array(array, 2, cjson::create_string("middle"))
     printf("  insert at 2: %-5s        %s\n", yes(inserted_middle), flat(array))
-    var inserted_tail = cjson::insert_item_in_array(array, 99, cjson::create_string("last"))
+    let inserted_tail = cjson::insert_item_in_array(array, 99, cjson::create_string("last"))
     printf("  insert past the end: %-5s %s\n", yes(inserted_tail), flat(array))
-    var replaced_head = cjson::replace_item_in_array(array, 0, cjson::create_number(100.0))
+    let replaced_head = cjson::replace_item_in_array(array, 0, cjson::create_number(100.0))
     printf("  replace index 0: %-5s    %s\n", yes(replaced_head), flat(array))
-    var replaced_tail = cjson::replace_item_in_array(array, 4, cjson::create_number(400.0))
+    let replaced_tail = cjson::replace_item_in_array(array, 4, cjson::create_number(400.0))
     printf("  replace the end: %-5s    %s\n", yes(replaced_tail), flat(array))
-    var replaced_none = cjson::replace_item_in_array(array, 99, cjson::create_number(0.0))
+    let replaced_none = cjson::replace_item_in_array(array, 99, cjson::create_number(0.0))
     printf("  replace out of range: %-5s %s\n", yes(replaced_none), flat(array))
     cjson::delete_item_from_array(array, 1)
     printf("  delete index 1         %s\n", flat(array))
     cjson::delete(array)
 
-    var object = cjson::parse("{\"a\":1,\"b\":2,\"c\":3}")
+    let object = cjson::parse("{\"a\":1,\"b\":2,\"c\":3}")
     printf("  object                 %s\n", flat(object))
-    var replaced_member = cjson::replace_item_in_object(object, "b", cjson::create_string("two"))
+    let replaced_member = cjson::replace_item_in_object(object, "b", cjson::create_string("two"))
     printf("  replace \"b\": %-5s      %s\n", yes(replaced_member), flat(object))
     cjson::delete_item_from_object(object, "a")
     printf("  delete \"a\"             %s\n", flat(object))
-    var taken = cjson::detach_item_from_object_case_sensitive(object, "c")
+    let taken = cjson::detach_item_from_object_case_sensitive(object, "c")
     printf("  detach \"c\" -> %-12s %s\n", describe(taken), flat(object))
     cjson::delete(taken)
     cjson::delete(object)
 
     // misc_tests: deleting the first element of a nested array must leave
     // the list walkable from either end.
-    var root = cjson::parse("{}")
-    var list = cjson::add_array_to_object(root, "rd")
+    let root = cjson::parse("{}")
+    let list = cjson::add_array_to_object(root, "rd")
     cjson::add_item_to_array(list, cjson::parse("{\"a\":\"123\"}"))
     printf("  one element            %s\n", flat(root))
     cjson::add_item_to_array(list, cjson::parse("{\"b\":\"456\"}"))
@@ -745,9 +745,9 @@ fn section_edit() {
 
 fn section_duplicate() {
     println("== duplicate")
-    var item = cjson::parse("{\"a\":[1,2,{\"b\":\"c\"}],\"d\":null}")
-    var deep = cjson::duplicate(item, true)
-    var shallow = cjson::duplicate(item, false)
+    let item = cjson::parse("{\"a\":[1,2,{\"b\":\"c\"}],\"d\":null}")
+    let deep = cjson::duplicate(item, true)
+    let shallow = cjson::duplicate(item, false)
     printf("  original  %s\n", flat(item))
     printf("  recursive %s\n", flat(deep))
     printf("  shallow   %s\n", flat(shallow))
@@ -761,10 +761,10 @@ fn section_duplicate() {
 
 fn section_limits() {
     println("== limits")
-    var deep = repeated('[' as u8, 1000)
-    var deeper = repeated('[' as u8, 1001)
-    var balanced = format(heap(), "#{repeated('[' as u8, 1000)}#{repeated(']' as u8, 1000)}")
-    var too_balanced = format(heap(), "#{repeated('[' as u8, 1001)}#{repeated(']' as u8, 1001)}")
+    let deep = repeated('[' as u8, 1000)
+    let deeper = repeated('[' as u8, 1001)
+    let balanced = format(heap(), "#{repeated('[' as u8, 1000)}#{repeated(']' as u8, 1000)}")
+    let too_balanced = format(heap(), "#{repeated('[' as u8, 1001)}#{repeated(']' as u8, 1001)}")
 
     printf("  1000 unclosed brackets: %s\n", parse_outcome(deep))
     printf("  1001 unclosed brackets: %s\n", parse_outcome(deeper))
@@ -780,18 +780,18 @@ fn section_limits() {
 }
 
 fn parse_outcome(text: string): string {
-    var item, at = cjson::parse_with_opts(text, false)
+    let item, at = cjson::parse_with_opts(text, false)
     if item == null {
         return format(heap(), "rejected at #{at}")
     }
-    var summary = format(heap(), "#{count_nodes(item)} nodes, depth #{tree_depth(item)}")
+    let summary = format(heap(), "#{count_nodes(item)} nodes, depth #{tree_depth(item)}")
     cjson::delete(item)
     return summary
 }
 
 fn section_numbers_set() {
     println("== set_number_value")
-    var number = cjson::create_number(0.0)
+    let number = cjson::create_number(0.0)
     set_case(number, 1.5)
     set_case(number, -1.5)
     set_case(number, 1.0 + 2147483647.0)

@@ -6,12 +6,12 @@ import { write_file, remove, read_dir } from "fs"
 import { heap } from "mem"
 
 fn main() {
-    var third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
-    var first = write_file("/tmp/gyro-fs-listing-a.txt", "a")
-    var second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
+    let third = write_file("/tmp/gyro-fs-listing-c.txt", "c")
+    let first = write_file("/tmp/gyro-fs-listing-a.txt", "a")
+    let second = write_file("/tmp/gyro-fs-listing-b.txt", "b")
     println(first == null && second == null && third == null)
 
-    var names, err = read_dir(heap(), "/tmp")
+    let names, err = read_dir(heap(), "/tmp")
     if err != null {
         return
     }
@@ -22,8 +22,8 @@ fn main() {
     }
     names.free()
 
-    var one = remove("/tmp/gyro-fs-listing-a.txt")
-    var two = remove("/tmp/gyro-fs-listing-b.txt")
-    var three = remove("/tmp/gyro-fs-listing-c.txt")
+    let one = remove("/tmp/gyro-fs-listing-a.txt")
+    let two = remove("/tmp/gyro-fs-listing-b.txt")
+    let three = remove("/tmp/gyro-fs-listing-c.txt")
     println(one == null && two == null && three == null)
 }

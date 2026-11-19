@@ -11,6 +11,6 @@ async fn fails(n: i32): i32 {
 }
 
 async fn main() {
-    var got = await fails(5)
+    let got = await fails(5)
     println(got)
 }

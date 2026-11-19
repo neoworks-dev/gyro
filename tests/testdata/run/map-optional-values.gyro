@@ -6,7 +6,7 @@ import { println, Map } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-    var seats = Map<string, i32?>::new(heap())
+    let seats = Map<string, i32?>::new(heap())
     defer seats.free()
 
     seats.insert("ada", 3)
@@ -21,7 +21,7 @@ fn main() {
     println(seats.len())
 
     // The miss and the stored null only differ through contains().
-    var stored = seats.get("grace")
+    let stored = seats.get("grace")
     if stored == null && seats.contains("grace") {
         println("grace is present, holding null")
     }

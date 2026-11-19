@@ -6,7 +6,7 @@ import { println } from "stdlib"
 import { to_i8, to_i16, to_i32, to_i64, to_isize, to_u8, to_u16, to_u32, to_u64, to_usize } from "convert"
 
 fn i8_of(text: string, radix: u32) {
-    var value, err = to_i8(text, radix)
+    let value, err = to_i8(text, radix)
     if err != null {
         println(err.message())
         return
@@ -15,7 +15,7 @@ fn i8_of(text: string, radix: u32) {
 }
 
 fn i16_of(text: string) {
-    var value, err = to_i16(text)
+    let value, err = to_i16(text)
     if err != null {
         println(err.message())
         return
@@ -24,7 +24,7 @@ fn i16_of(text: string) {
 }
 
 fn i32_of(text: string) {
-    var value, err = to_i32(text)
+    let value, err = to_i32(text)
     if err != null {
         println(err.message())
         return
@@ -33,7 +33,7 @@ fn i32_of(text: string) {
 }
 
 fn i64_of(text: string) {
-    var value, err = to_i64(text)
+    let value, err = to_i64(text)
     if err != null {
         println(err.message())
         return
@@ -42,7 +42,7 @@ fn i64_of(text: string) {
 }
 
 fn isize_of(text: string) {
-    var value, err = to_isize(text)
+    let value, err = to_isize(text)
     if err != null {
         println(err.message())
         return
@@ -51,7 +51,7 @@ fn isize_of(text: string) {
 }
 
 fn u8_of(text: string, radix: u32) {
-    var value, err = to_u8(text, radix)
+    let value, err = to_u8(text, radix)
     if err != null {
         println(err.message())
         return
@@ -60,7 +60,7 @@ fn u8_of(text: string, radix: u32) {
 }
 
 fn u16_of(text: string, radix: u32) {
-    var value, err = to_u16(text, radix)
+    let value, err = to_u16(text, radix)
     if err != null {
         println(err.message())
         return
@@ -69,7 +69,7 @@ fn u16_of(text: string, radix: u32) {
 }
 
 fn u32_of(text: string) {
-    var value, err = to_u32(text)
+    let value, err = to_u32(text)
     if err != null {
         println(err.message())
         return
@@ -78,7 +78,7 @@ fn u32_of(text: string) {
 }
 
 fn u64_of(text: string) {
-    var value, err = to_u64(text)
+    let value, err = to_u64(text)
     if err != null {
         println(err.message())
         return
@@ -87,7 +87,7 @@ fn u64_of(text: string) {
 }
 
 fn usize_of(text: string) {
-    var value, err = to_usize(text)
+    let value, err = to_usize(text)
     if err != null {
         println(err.message())
         return

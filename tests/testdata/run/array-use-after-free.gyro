@@ -7,7 +7,7 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-    var xs = Array<i32>::new(heap())
+    let xs = Array<i32>::new(heap())
     xs.push(1)
     xs.push(2)
     println(xs.len())

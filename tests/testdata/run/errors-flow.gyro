@@ -14,7 +14,7 @@ fn RangeError::message(self): string {
 }
 
 fn parse_port(text: string): (i32, error?) {
-    var value, err = to_i32(text)
+    let value, err = to_i32(text)
     if err != null {
         return 0, err
     }
@@ -25,7 +25,7 @@ fn parse_port(text: string): (i32, error?) {
 }
 
 fn describe(text: string) {
-    var port, err = parse_port(text)
+    let port, err = parse_port(text)
     if err != null {
         match err {
             RangeError(e): println("range: #{e.value}")

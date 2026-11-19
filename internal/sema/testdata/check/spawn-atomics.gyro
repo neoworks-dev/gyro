@@ -10,7 +10,7 @@ struct Node {
 
 fn sharedAtomic(counter: *Atomic<i64>) {
     spawn(heap(), fn() {
-        var _ = counter.fetch_add(1)
+        let _ = counter.fetch_add(1)
     })
 }
 

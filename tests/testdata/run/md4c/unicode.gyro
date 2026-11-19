@@ -12,12 +12,12 @@
 // search answers the index of the entry holding the code point, taking
 // the start of a range, or -1 when the map does not hold it.
 fn search(codepoint: u32, map: u32[]): i64 {
-    var low: i64 = 0
-    var high = map.len() as i64 - 1
+    let low: i64 = 0
+    let high = map.len() as i64 - 1
     while low <= high {
-        var pivot = (low + high) / 2
-        var pivot_beg = pivot
-        var pivot_end = pivot
+        let pivot = (low + high) / 2
+        let pivot_beg = pivot
+        let pivot_end = pivot
         if (map[pivot_end as usize] & 0x40000000) != 0 {
             pivot_end += 1
         }
@@ -66,31 +66,31 @@ export fn is_punct(codepoint: u32): bool {
 // points and how many of them are meaningful.
 export fn fold(codepoint: u32): (u32, u32, u32, i64) {
     if codepoint <= 127 {
-        var lowered = codepoint
+        let lowered = codepoint
         if lowered >= 65 && lowered <= 90 {
             lowered += 32
         }
         return lowered, 0, 0, 1
     }
 
-    var index = search(codepoint, FOLD_MAP_1)
+    let index = search(codepoint, FOLD_MAP_1)
     if index >= 0 {
-        var first = FOLD_MAP_1_DATA[index as usize]
+        let first = FOLD_MAP_1_DATA[index as usize]
         return adjust(codepoint, FOLD_MAP_1[index as usize], first), 0, 0, 1
     }
 
     index = search(codepoint, FOLD_MAP_2)
     if index >= 0 {
-        var first = FOLD_MAP_2_DATA[(2 * index) as usize]
-        var second = FOLD_MAP_2_DATA[(2 * index + 1) as usize]
+        let first = FOLD_MAP_2_DATA[(2 * index) as usize]
+        let second = FOLD_MAP_2_DATA[(2 * index + 1) as usize]
         return adjust(codepoint, FOLD_MAP_2[index as usize], first), second, 0, 2
     }
 
     index = search(codepoint, FOLD_MAP_3)
     if index >= 0 {
-        var first = FOLD_MAP_3_DATA[(3 * index) as usize]
-        var second = FOLD_MAP_3_DATA[(3 * index + 1) as usize]
-        var third = FOLD_MAP_3_DATA[(3 * index + 2) as usize]
+        let first = FOLD_MAP_3_DATA[(3 * index) as usize]
+        let second = FOLD_MAP_3_DATA[(3 * index + 1) as usize]
+        let third = FOLD_MAP_3_DATA[(3 * index + 2) as usize]
         return adjust(codepoint, FOLD_MAP_3[index as usize], first), second, third, 3
     }
 
@@ -106,7 +106,7 @@ fn adjust(codepoint: u32, entry: u32, folded: u32): u32 {
     if entry == codepoint {
         return folded
     }
-    var base = entry & 0x00ffffff
+    let base = entry & 0x00ffffff
     if base + 1 == folded {
         if (codepoint & 1) == (entry & 1) {
             return codepoint + 1
@@ -116,11 +116,11 @@ fn adjust(codepoint: u32, entry: u32, folded: u32): u32 {
     return folded + (codepoint - base)
 }
 
-var WHITESPACE_MAP: u32[8] = [
+let WHITESPACE_MAP: u32[8] = [
     32,        160,       5760, 1073750016, 2147491850,       8239,       8287,      12288,
 ]
 
-var PUNCT_MAP: u32[613] = [
+let PUNCT_MAP: u32[613] = [
     1073741857, 2147483695, 1073741882, 2147483712, 1073741915, 2147483744, 1073741947, 2147483774,
     1073741985, 2147483817, 1073741995, 2147483820, 1073741998, 2147483825,        180, 1073742006,
     2147483832,        187,        191,        215,        247, 1073742530, 2147484357, 1073742546,
@@ -200,7 +200,7 @@ var PUNCT_MAP: u32[613] = [
     1073871616, 2147613586, 1073871764, 2147613679,     130042,
 ]
 
-var FOLD_MAP_1: u32[302] = [
+let FOLD_MAP_1: u32[302] = [
     1073741889, 2147483738,        181, 1073742016, 2147483862, 1073742040, 2147483870, 1073742080,
     2147483950, 1073742130, 2147483958, 1073742137, 2147483975, 1073742154, 2147484022,        376,
     1073742201, 2147484029,        383,        385,        386,        388,        390,        391,
@@ -241,7 +241,7 @@ var FOLD_MAP_1: u32[302] = [
     1073864552, 2147606382, 1073864562, 2147606398, 1073867008, 2147608865,
 ]
 
-var FOLD_MAP_1_DATA: u32[302] = [
+let FOLD_MAP_1_DATA: u32[302] = [
     97,        122,        956,        224,        246,        248,        254,        257,
     303,        307,        311,        314,        328,        331,        375,        255,
     378,        382,        115,        595,        387,        389,        596,        392,
@@ -282,7 +282,7 @@ var FOLD_MAP_1_DATA: u32[302] = [
     122729,     122735,     122739,     122751,     125218,     125251,
 ]
 
-var FOLD_MAP_2: u32[53] = [
+let FOLD_MAP_2: u32[53] = [
     223,        304,        329,        496,       1415,       7830,       7831,       7832,
     7833,       7834,       7838,       8016, 1073749888, 2147491719, 1073749896, 2147491727,
     1073749904, 2147491735, 1073749912, 2147491743, 1073749920, 2147491751, 1073749928, 2147491759,
@@ -292,7 +292,7 @@ var FOLD_MAP_2: u32[53] = [
     64276,      64277,      64278,      64279,     122773,
 ]
 
-var FOLD_MAP_2_DATA: u32[106] = [
+let FOLD_MAP_2_DATA: u32[106] = [
     115,        115,        105,        775,        700,        110,        106,        780,
     1381,       1410,        104,        817,        116,        776,        119,        778,
     121,        778,         97,        702,        115,        115,        965,        787,
@@ -309,12 +309,12 @@ var FOLD_MAP_2_DATA: u32[106] = [
     115,        115,
 ]
 
-var FOLD_MAP_3: u32[16] = [
+let FOLD_MAP_3: u32[16] = [
     912,        944,       8018,       8020,       8022,       8119,       8135,       8146,
     8147,       8151,       8162,       8163,       8167,       8183,      64259,      64260,
 ]
 
-var FOLD_MAP_3_DATA: u32[48] = [
+let FOLD_MAP_3_DATA: u32[48] = [
     953,        776,        769,        965,        776,        769,        965,        787,
     768,        965,        787,        769,        965,        787,        834,        945,
     834,        953,        951,        834,        953,        953,        776,        768,

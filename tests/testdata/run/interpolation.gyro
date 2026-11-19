@@ -13,7 +13,7 @@ impl Print for Version {
 }
 
 fn main() {
-    var v = Version{ major: 1, minor: 9 }
+    let v = Version{ major: 1, minor: 9 }
     println(v)
     println("running #{v} now")
     println("flag: #{1 < 2}")
