@@ -1110,7 +1110,8 @@ variable back leaves the next iteration where the first one started.
 
 Until ownership is followed through them, an owning type is refused in a
 closure capture, a channel, a pattern binding, a `for` variable and an
-`any`.
+`any`. Each would copy the value without moving it, and refusing it keeps
+the rest sound while the next steps of #164 land.
 
 ### A generic body is judged for moves per instantiation *(new)*
 
@@ -1128,8 +1129,7 @@ is what judges the rest.
 Rejected a `Copy` bound, Rust's answer. Whether a type copies is decided
 by what it is made of ([chapter 4.1](ch04-01-ownership.md)), and a bound
 saying so again would be one more thing to write on every generic that
-copies a number. Each would copy the value without moving it, and
-refusing it keeps the rest sound while the next steps of #164 land.
+copies a number.
 
 ### `defer` runs at block exit *(revised)*
 
