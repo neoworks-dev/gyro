@@ -395,6 +395,54 @@ func TestDefinitionAcrossFiles(t *testing.T) {
 	}
 }
 
+// In a path, the member leads to the associated function or the variant it
+// names, and the type before it to the type.
+func TestDefinitionThroughPaths(t *testing.T) {
+	src := `struct Stack<T> {
+  depth: i32
+}
+
+fn Stack<T>::empty(): Stack<T> {
+  return Stack<T>{ depth: 0 }
+}
+
+enum Color {
+  Red
+  Green
+}
+
+fn main() {
+  let s = Stack<i32>::empty()
+  let c = Color::Green
+}
+`
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", src)
+	c.open(uri, src)
+	if diagnostics := c.waitDiagnostics(uri); len(diagnostics) != 0 {
+		t.Fatalf("the source should check cleanly, got %+v", diagnostics)
+	}
+
+	for probe, target := range map[string]string{
+		"empty()\n  let c": "empty():",
+		"Stack<i32>":       "Stack<T> {",
+		"Green\n}":         "Green\n}\n\nfn",
+		"Color::Green":     "Color {",
+	} {
+		want := positionFor(src, strings.Index(src, target))
+		result := c.call("textDocument/definition", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, src, probe)))
+		var location Location
+		if err := json.Unmarshal(result, &location); err != nil {
+			t.Fatalf("definition of %q: bad location %s: %v", probe, result, err)
+		}
+		if location.Range.Start != want {
+			t.Errorf("definition of %q at %+v, want %+v", probe, location.Range.Start, want)
+		}
+	}
+}
+
 // A bundled module lives in the compiler, so a jump into one lands in a
 // copy under the cache, and that copy is checked as the bundled module it
 // is: cleanly, and with its own imports followed further into the stdlib.

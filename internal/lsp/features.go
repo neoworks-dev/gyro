@@ -106,6 +106,9 @@ func declTarget(a *analysis, hit *anchor) ast.Node {
 	}
 	if hit.expr != nil && a.info != nil {
 		if decl, ok := a.info.Refs[hit.expr]; ok {
+			if owner := pathOwner(a, hit, decl); owner != nil {
+				return owner
+			}
 			return decl
 		}
 		if selector, ok := hit.expr.(*ast.SelectorExpr); ok {
@@ -117,6 +120,36 @@ func declTarget(a *analysis, hit *anchor) ast.Node {
 		}
 	}
 	return hit.decl
+}
+
+// pathOwner is the type a path such as `Array<i32>::with_capacity` names
+// in the segment before its method: a path resolves to its method as a
+// whole, and the type is the struct or enum declared beside the method
+// under the name it gives as its owner.
+func pathOwner(a *analysis, hit *anchor, decl ast.Node) ast.Node {
+	path, ok := hit.expr.(*ast.Path)
+	method, isFunc := decl.(*ast.FuncDecl)
+	if !ok || !isFunc || method.Owner == "" || len(path.Segments) < 2 ||
+		path.Segments[len(path.Segments)-2].Offset != hit.start {
+		return nil
+	}
+	declSite, ok := indexFor(a).declSites[method]
+	if !ok {
+		return nil
+	}
+	for _, candidate := range declSite.module.Tree.Decls {
+		switch d := candidate.(type) {
+		case *ast.StructDecl:
+			if d.Name == method.Owner {
+				return d
+			}
+		case *ast.EnumDecl:
+			if d.Name == method.Owner {
+				return d
+			}
+		}
+	}
+	return nil
 }
 
 // describeDecl renders the declaration a hover should show: a function's
