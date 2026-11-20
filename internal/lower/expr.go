@@ -478,6 +478,9 @@ func (f *funcLowerer) evalUnary(e *ast.UnaryExpr) string {
 				return f.codeValue(decl)
 			}
 		}
+		if f.l.info.Boxed[e.X] {
+			return f.boxAddress(e.X, f.typeOf(e))
+		}
 		target := f.placeOfAddressable(e.X)
 		if target == nil {
 			f.l.fail("@%s: cannot take the address of this expression", f.fn.Name)

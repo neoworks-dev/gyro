@@ -113,6 +113,17 @@ export fn Array<T>::slice(self): T[] !{ &self }
 export fn Array<T>::free(inout self) !{}
 ```
 
+`Box<T>` — owns one `T` in a block of its own, from the allocator it was made
+with, and gives the block back to it when destroyed
+([chapter 4.5](ch04-05-box-and-pointers.md)). A field or method asked of a
+box is the boxed value's, and `&box` points at the value; no method is
+called on the box itself:
+
+```gyro
+export fn Box<T>::new(value: T!, a: Allocator = heap()): Box<T> !{ &a }
+impl Destroy for Box<T>
+```
+
 Text ([chapter 8.2](ch08-02-strings.md)):
 
 ```gyro
@@ -459,6 +470,8 @@ export unsafe fn ptr_to_int(p: anyptr): usize !{}
 export unsafe fn offset(base: anyptr, bytes: usize): anyptr !{}
 export unsafe fn copy_bytes(to: anyptr, from: anyptr, bytes: usize) !{}
 export unsafe fn slice_from_raw<T>(p: anyptr, len: usize): T[] !{}
+export unsafe fn init_at<T>(p: *T, value: T!) !{}
+export unsafe fn destroy_at<T>(p: *T) !{}
 
 export unsafe fn text_size(len: usize): usize !{}
 export unsafe fn text_seal(block: anyptr, len: usize): string !{}
@@ -493,7 +506,7 @@ export unsafe fn syscall6<A, B, C, D, E, F>(number: usize, a: A, b: B, c: C, d: 
 ```
 
 `cast`, `ptr_from_int`, `ptr_to_int`, `offset`, `slice_from_raw`,
-`env_of`/`with_env`, `thread_local`, the `atomic_*` functions, the `futex_*`
+`init_at`, `destroy_at`, `env_of`/`with_env`, `thread_local`, the `atomic_*` functions, the `futex_*`
 functions and the `syscall` functions are answered by lowering; each `syscall` is the METALS `syscall`
 instruction, and its arguments must be integers, `bool`s or pointers.
 `thread_local<T>()` is the calling thread's own `T`, a zeroed cell every
@@ -505,7 +518,8 @@ callers.
 `offset` is a cast, a `ptr.offset` over bytes, and an erase. `text_size` is
 Gyro over the string layout of [appendix E](appendix-e-native-backend.md).
 `ptr_to_int` is a `ptr.addr`, and `ptr_from_int` is a `ptr.from` then a
-`ptr.cast`. `text_seal`, `text_bytes` and the rest are runtime functions:
+`ptr.cast`. `init_at` is a `store` of the value, and `destroy_at` is a call of
+the type's synthesized destroy, or nothing for a plain type. `text_seal`, `text_bytes` and the rest are runtime functions:
 METALS has no instruction that makes a string of an address.
 
 ### `cstring`

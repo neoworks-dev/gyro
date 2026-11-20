@@ -296,7 +296,7 @@ func (l *lowerer) isIntrinsic(decl *ast.FuncDecl) bool {
 // tag, the owner with its type arguments, the function with its own.
 // main stays bare, and runtime intrinsics carry no module tag.
 func (l *lowerer) funcName(decl *ast.FuncDecl, bindings map[string]types.Type) string {
-	if decl == l.mainDecl && len(decl.Results) > 0 {
+	if decl == l.mainDecl && (len(decl.Results) > 0 || l.mainTakesIo()) {
 		return mainRunName
 	}
 	parts := []string{}

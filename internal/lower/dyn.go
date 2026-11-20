@@ -251,7 +251,7 @@ func (f *funcLowerer) lowerDynCall(call *ast.CallExpr, resolved *sema.CallInfo) 
 	}
 	var args []string
 	owed := f.collectWriteBacks(func() {
-		args = f.callArgs(call, resolved.Sig, resolved.Method.Decl)
+		args = f.callArgs(call, resolved, resolved.Method.Decl)
 	})
 
 	data := f.newReg("data")

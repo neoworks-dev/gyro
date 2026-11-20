@@ -186,7 +186,7 @@ func (c *checker) calleeFromIdent(fun *ast.Ident) callee {
 }
 
 func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
-	base := c.expr(fun.X)
+	base := c.throughBox(fun.X, c.expr(fun.X))
 
 	recv := base
 	if pointer, ok := recv.(*types.Pointer); ok {
@@ -877,7 +877,7 @@ func (c *checker) resolvePathee(path *ast.Path) pathee {
 	case symNamespace:
 		return c.namespacePathee(path, sym)
 	case symType:
-		return c.typePathee(path, 0, sym.typ)
+		return c.typePathee(path, 0, sym.typ, sym.decl)
 	case symTypeParam:
 		c.errorf(head.Offset, "%s is a type parameter; it has no members", head.Name)
 		return pathee{bad: true}
@@ -911,7 +911,7 @@ func (c *checker) namespacePathee(path *ast.Path, ns *symbol) pathee {
 
 	switch entry.kind {
 	case symType:
-		return c.typePathee(path, 1, entry.typ)
+		return c.typePathee(path, 1, entry.typ, entry.decl)
 	default:
 		if len(path.Segments) > 2 {
 			c.errorf(path.Segments[2].Offset, "%s::%s is a value; :: reaches into modules and types",
@@ -927,8 +927,9 @@ func (c *checker) namespacePathee(path *ast.Path, ns *symbol) pathee {
 }
 
 // typePathee resolves the part of a path that starts at a type segment:
-// Type, Type::assoc, Enum::Variant.
-func (c *checker) typePathee(path *ast.Path, index int, named types.Type) pathee {
+// Type, Type::assoc, Enum::Variant. decl declares the type, and is what a
+// variant resolves to, since a variant has no declaration of its own.
+func (c *checker) typePathee(path *ast.Path, index int, named types.Type, decl ast.Node) pathee {
 	segment := path.Segments[index]
 	args := c.resolveTypeArgs(segment.Args)
 
@@ -945,17 +946,26 @@ func (c *checker) typePathee(path *ast.Path, index int, named types.Type) pathee
 		return pathee{bad: true}
 	}
 
+	var p pathee
 	switch t := named.(type) {
 	case *types.Struct:
-		return c.structMemberPathee(segment, member, t, args)
+		p = c.structMemberPathee(segment, member, t, args)
 	case *types.Enum:
-		return c.enumMemberPathee(segment, member, t, args)
+		p = c.enumMemberPathee(segment, member, t, args)
+	default:
+		if named == nil || flexible(named) {
+			return pathee{valueType: types.Unknown}
+		}
+		c.errorf(member.Offset, "%s has no members; only structs and enums do", named)
+		return pathee{bad: true}
 	}
-	if named == nil || flexible(named) {
-		return pathee{valueType: types.Unknown}
+	switch {
+	case p.method != nil:
+		c.recordRef(path, p.method.Decl)
+	case p.variant != nil:
+		c.recordRef(path, decl)
 	}
-	c.errorf(member.Offset, "%s has no members; only structs and enums do", named)
-	return pathee{bad: true}
+	return p
 }
 
 func (c *checker) structMemberPathee(segment, member ast.PathSegment, strct *types.Struct, args []types.Type) pathee {

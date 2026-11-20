@@ -24,10 +24,17 @@ let list = Node{ value: 1, next: Box::new(Node{ value: 2, next: null }) }
 `Box::new(value)` takes the value and allocates from the heap, and
 `Box::new(value, a)` from the allocator `a`
 ([chapter 4.6](ch04-06-allocators.md)). Reading through a box needs nothing
-written: `list.next.value` reads the field of the boxed node, once the
-nullable is checked ([chapter 4.3](ch04-03-nullability.md)). A box is
-owning, so it moves like any owning value, and dropping the head of a list
-destroys every node after it.
+written: for a `b: Box<Node>`, `b.value` reads the field of the boxed node,
+`b.value = 3` writes it, and a method of `Node` is called on `b` as it is on
+a `Node`. A box that may be absent is checked before it is used, like any
+nullable ([chapter 4.3](ch04-03-nullability.md)), and the check narrows the
+name that holds it, so a field of a node is walked with a pointer, as below.
+A box is owning, so it moves like any owning value, and dropping the head of
+a list destroys every node after it.
+
+Changing what is in a box changes the box: the value belongs to it, so a
+box that is a plain parameter or a `const` cannot be written through, and a
+value cannot be moved out of one, as it cannot out of a field.
 
 ## A pointer views one value
 

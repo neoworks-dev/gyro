@@ -296,9 +296,9 @@ var codes = map[string]diag.Code{
 	"an extension of %s needs a receiver: write fn %s::%s(self, ...)": diag.ESelfOutsideMethod,
 
 	// The entry point
-	"main takes no type parameters":                          diag.EEntryPointSignature,
-	"main returns nothing, i32 or i32 | Error, not %s":       diag.EEntryPointSignature,
-	"main takes no parameters, or one string[] of arguments": diag.EEntryPointSignature,
+	"main takes no type parameters":                                          diag.EEntryPointSignature,
+	"main returns nothing, i32 or i32 | Error, not %s":                       diag.EEntryPointSignature,
+	"main takes an Io, a string[] of arguments, both in that order, or nothing": diag.EEntryPointSignature,
 
 	// Concurrency
 	"await needs a call to an async fn, not %s":                    diag.EAwaitMisuse,

@@ -378,14 +378,116 @@ func TestDefinitionAcrossFiles(t *testing.T) {
 	c.open(uri, source)
 	c.waitDiagnostics(uri)
 
-	result := c.call("textDocument/definition", fmt.Sprintf(
-		`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, source, "helper()")))
-	var location Location
-	if err := json.Unmarshal(result, &location); err != nil {
-		t.Fatalf("bad location %s: %v", result, err)
+	// The call and the name in the import both lead to the function.
+	for _, probe := range []string{"helper()", "helper }"} {
+		result := c.call("textDocument/definition", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, source, probe)))
+		var location Location
+		if err := json.Unmarshal(result, &location); err != nil {
+			t.Fatalf("bad location %s: %v", result, err)
+		}
+		if location.URI != uriFromPath(libraryPath) {
+			t.Fatalf("definition of %q should be in lib.gyro, got %q", probe, location.URI)
+		}
+		if want := positionFor(library, strings.Index(library, "helper")); location.Range.Start != want {
+			t.Fatalf("definition of %q at %+v, want %+v", probe, location.Range.Start, want)
+		}
 	}
-	if location.URI != uriFromPath(libraryPath) {
-		t.Fatalf("definition should be in lib.gyro, got %q", location.URI)
+}
+
+// In a path, the member leads to the associated function or the variant it
+// names, and the type before it to the type.
+func TestDefinitionThroughPaths(t *testing.T) {
+	src := `struct Stack<T> {
+  depth: i32
+}
+
+fn Stack<T>::empty(): Stack<T> {
+  return Stack<T>{ depth: 0 }
+}
+
+enum Color {
+  Red
+  Green
+}
+
+fn main() {
+  let s = Stack<i32>::empty()
+  let c = Color::Green
+}
+`
+	c := newClient(t)
+	c.initialize()
+	uri, _ := tempURI(t, "main.gyro", src)
+	c.open(uri, src)
+	if diagnostics := c.waitDiagnostics(uri); len(diagnostics) != 0 {
+		t.Fatalf("the source should check cleanly, got %+v", diagnostics)
+	}
+
+	for probe, target := range map[string]string{
+		"empty()\n  let c": "empty():",
+		"Stack<i32>":       "Stack<T> {",
+		"Green\n}":         "Green\n}\n\nfn",
+		"Color::Green":     "Color {",
+	} {
+		want := positionFor(src, strings.Index(src, target))
+		result := c.call("textDocument/definition", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, src, probe)))
+		var location Location
+		if err := json.Unmarshal(result, &location); err != nil {
+			t.Fatalf("definition of %q: bad location %s: %v", probe, result, err)
+		}
+		if location.Range.Start != want {
+			t.Errorf("definition of %q at %+v, want %+v", probe, location.Range.Start, want)
+		}
+	}
+}
+
+// A bundled module lives in the compiler, so a jump into one lands in a
+// copy under the cache, and that copy is checked as the bundled module it
+// is: cleanly, and with its own imports followed further into the stdlib.
+func TestDefinitionIntoStdlib(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	c := newClient(t)
+	c.initialize()
+
+	source := "import { println } from \"stdlib\"\n\nfn main() {\n  println(1)\n}\n"
+	uri, _ := tempURI(t, "main.gyro", source)
+	c.open(uri, source)
+	c.waitDiagnostics(uri)
+
+	definition := func(uri, text, needle string) Location {
+		t.Helper()
+		result := c.call("textDocument/definition", fmt.Sprintf(
+			`{"textDocument":{"uri":%q},"position":%s}`, uri, position(t, text, needle)))
+		var location Location
+		if err := json.Unmarshal(result, &location); err != nil {
+			t.Fatalf("bad location %s: %v", result, err)
+		}
+		return location
+	}
+
+	location := definition(uri, source, "println(1)")
+	path := pathFromURI(location.URI)
+	if filepath.Base(path) != "stdlib.gyro" {
+		t.Fatalf("definition of println in %q, want a copy of stdlib.gyro", location.URI)
+	}
+	copied, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the copy is not on disk: %v", err)
+	}
+	library := string(copied)
+	if want := positionFor(library, strings.Index(library, "println<T")); location.Range.Start != want {
+		t.Fatalf("definition at %+v, want %+v", location.Range.Start, want)
+	}
+
+	c.open(location.URI, library)
+	if diagnostics := c.waitDiagnostics(location.URI); len(diagnostics) != 0 {
+		t.Fatalf("the copy of stdlib should check cleanly, got %+v", diagnostics)
+	}
+	inner := definition(location.URI, library, "heap, Format")
+	if inner.URI != uriFromPath(filepath.Join(filepath.Dir(path), "mem.gyro")) {
+		t.Fatalf("definition of heap inside stdlib in %q, want mem.gyro beside it", inner.URI)
 	}
 }
 
@@ -808,7 +910,7 @@ func TestReferencesAcrossOpenFiles(t *testing.T) {
 		got = append(got, fmt.Sprintf("%s:%d:%d", filepath.Base(pathFromURI(location.URI)),
 			location.Range.Start.Line, location.Range.Start.Character))
 	}
-	want := []string{"lib.gyro:0:10", "main.gyro:3:10", "main.gyro:4:10"}
+	want := []string{"lib.gyro:0:10", "main.gyro:0:9", "main.gyro:3:10", "main.gyro:4:10"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -849,7 +951,7 @@ func TestReferencesInFilesThatAreNotOpen(t *testing.T) {
 		return got
 	}
 
-	if got, want := describe("helper"), []string{"lib.gyro:0:10", "user.gyro:3:14"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	if got, want := describe("helper"), []string{"lib.gyro:0:10", "user.gyro:0:9", "user.gyro:3:14"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("an exported function: got %v, want %v", got, want)
 	}
 	// A local is visible only in its own file, whatever other files call

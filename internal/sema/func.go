@@ -2,10 +2,9 @@ package sema
 
 import (
 	"github.com/gyro-lang/gyro/internal/ast"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
-
-// isStringSlice reports the one parameter shape main may take.
 
 func (c *checker) checkFuncDecl(decl *ast.FuncDecl) {
 	c.checkEntryPoint(decl)
@@ -26,14 +25,25 @@ func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
 	if !c.checkEntryResult(decl) {
 		return
 	}
-	if len(decl.Params) == 0 {
+	params := make([]types.Type, len(decl.Params))
+	for i, param := range decl.Params {
+		params[i] = c.resolveType(param.Type)
+	}
+	if len(params) > 0 && IsIo(params[0]) {
+		params = params[1:]
+	}
+	if len(params) == 0 || len(params) == 1 && isStringSlice(params[0]) {
 		return
 	}
-	if len(decl.Params) > 1 || !isStringSlice(c.resolveType(decl.Params[0].Type)) {
-		c.errorHintf(decl.Offset, []string{
-			"the entry point is fn main() or fn main(args: string[])",
-		}, "main takes no parameters, or one string[] of arguments")
-	}
+	c.errorHintf(decl.Offset, []string{
+		"the entry point is fn main(), fn main(io: Io), fn main(args: string[]) or fn main(io: Io, args: string[])",
+	}, "main takes an Io, a string[] of arguments, both in that order, or nothing")
+}
+
+// IsIo reports stdlib's Io, the value main is handed to do io with.
+func IsIo(t types.Type) bool {
+	strct, ok := t.(*types.Struct)
+	return ok && strct.Name == "Io" && strct.Module == stdlib.Path("stdlib")
 }
 
 // checkEntryResult holds main's result to nothing, an exit code, or an

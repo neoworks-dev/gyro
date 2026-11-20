@@ -13,19 +13,20 @@ attached — a skip is a program that will fail the day the gap closes
 [Chapter 4](ch04-01-ownership.md) describes ownership, destructors,
 borrowing and `Box` (#164). What runs today is `Destroy`, destruction at
 scope exit interleaved with `defer`, destruction on assignment and of
-temporaries, and moves with their use-after-move check and drop flags.
+temporaries, moves with their use-after-move check and drop flags, and
+`Box<T>`.
 
 What does not:
 
-- **No standard-library type is owning yet.** `Array`, `String` and `Map`
+- **Only `Box` of the standard library is owning.** `Array`, `String` and `Map`
   are still freed by hand with `free`, and `alloc` hands out raw pointers
   in safe code. Only a type that implements `Destroy`, or holds one that
   does, is owning. A container of an owning type is refused where its
   methods would copy an element, which is all of them today: `push` and
   `get` are written over a borrowed `T`.
-- **Views until their last use and `Box`** are not built, so none of the
-  view checks of chapter 4.4 run, and a value lives in a variable, a
-  field, an element or a parameter that took it, never in a box.
+- **Views until their last use** are not built, so none of the view checks
+  of chapter 4.4 run, and a `*T` into a box is not kept from outliving the
+  box or from being used after the box moved.
 - **A function that takes a `T!` parameter cannot be a function value**,
   since a function type cannot say which of its parameters take (E0637).
 - **An owning type is refused where ownership is not followed yet**: in a

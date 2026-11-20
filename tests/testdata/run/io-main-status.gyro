@@ -1,0 +1,11 @@
+// A main may take the Io alone, and still return the exit status.
+
+//gyro:exit 4
+
+import { Io } from "stdlib"
+
+fn main(io: Io): i32 {
+    io.println("working")
+    io.eprintln("this goes to standard error")
+    return 4
+}

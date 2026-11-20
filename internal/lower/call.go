@@ -41,7 +41,7 @@ func (f *funcLowerer) lowerCall(call *ast.CallExpr) string {
 	// the coerce step: sema resolves callees outside exprWith, so the
 	// node itself carries no recorded type.
 	fn := f.eval(call.Fun, nil)
-	args := f.callArgs(call, resolved.Sig, nil)
+	args := f.callArgs(call, resolved, nil)
 	if resolved.Sig.Async {
 		return f.startAsyncIndirect(fn, args, resolved.Sig)
 	}
@@ -73,7 +73,8 @@ func (f *funcLowerer) lowerVariant(call *ast.CallExpr, resolved *sema.CallInfo) 
 
 // callArgs lowers the arguments against the concrete signature, filling
 // omitted trailing arguments from the declaration's defaults.
-func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.FuncDecl) []string {
+func (f *funcLowerer) callArgs(call *ast.CallExpr, resolved *sema.CallInfo, decl *ast.FuncDecl) []string {
+	sig := resolved.Sig
 	args := make([]string, 0, len(sig.Params))
 	pack := packIndex(sig)
 	for i := range sig.Params {
@@ -92,9 +93,23 @@ func (f *funcLowerer) callArgs(call *ast.CallExpr, sig *types.Func, decl *ast.Fu
 		if decl == nil || i >= len(decl.Params) || decl.Params[i].Default == nil {
 			f.l.fail("@%s: a call misses argument %d and there is no default", f.fn.Name, i+1)
 		}
-		args = append(args, f.lowerExpr(decl.Params[i].Default, sig.Params[i]))
+		args = append(args, f.defaultArg(decl, resolved.Bindings, sig.Params[i], decl.Params[i].Default))
 	}
 	return args
+}
+
+// defaultArg lowers a parameter's default value as the callee wrote it. The
+// expression was checked with the callee's body, so a generic callee has
+// its types and calls recorded in the instantiation being called, not in
+// the caller's.
+func (f *funcLowerer) defaultArg(decl *ast.FuncDecl, bindings map[string]types.Type, want types.Type, value ast.Expr) string {
+	caller := f.inst
+	f.inst = nil
+	if bindings != nil {
+		f.inst = f.l.info.Instances[decl][sema.InstanceKey(decl, bindings)]
+	}
+	defer func() { f.inst = caller }()
+	return f.lowerExpr(value, want)
 }
 
 // varargPack builds what a C variadic callee is handed: a pointer to the
@@ -211,7 +226,7 @@ func (f *funcLowerer) lowerUserCall(call *ast.CallExpr, resolved *sema.CallInfo,
 			}
 			args = append(args, f.methodReceiver(selector.X, resolved.Method))
 		}
-		args = append(args, f.callArgs(call, resolved.Sig, decl)...)
+		args = append(args, f.callArgs(call, resolved, decl)...)
 	})
 	out := f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 	f.settleWriteBacks(owed)
@@ -287,10 +302,14 @@ func (f *funcLowerer) settleWriteBacks(owed []writeBack) {
 // value for self, through an existing pointer either way.
 func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string {
 	recvType := f.typeOf(recv)
+	elem := f.boxedElem(recv)
 
 	if method.Recv == types.InoutRecv {
 		if _, ok := recvType.(*types.Pointer); ok {
 			return f.lowerExpr(recv, nil)
+		}
+		if elem != nil {
+			return f.boxPointer(recv)
 		}
 		return f.inoutAddress(recv)
 	}
@@ -298,6 +317,9 @@ func (f *funcLowerer) methodReceiver(recv ast.Expr, method *types.Method) string
 	if pointer, ok := recvType.(*types.Pointer); ok {
 		ptr := f.lowerExpr(recv, nil)
 		return f.pointerPlace(ptr, pointer.Elem).load()
+	}
+	if elem != nil {
+		return f.pointerPlace(f.boxPointer(recv), elem).load()
 	}
 	return f.lowerExpr(recv, nil)
 }
@@ -322,7 +344,7 @@ func (f *funcLowerer) lowerNative(call *ast.CallExpr, resolved *sema.CallInfo, d
 			}
 			args = append(args, f.varargPack(call, len(named))...)
 		} else {
-			args = f.callArgs(call, resolved.Sig, decl)
+			args = f.callArgs(call, resolved, decl)
 		}
 		return f.emitCall(decl.Name, args, resolved.Sig.Result, resolved.Sig.Async)
 	}
@@ -346,6 +368,15 @@ func (f *funcLowerer) lowerNative(call *ast.CallExpr, resolved *sema.CallInfo, d
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
 		return f.lowerPrint(call, resolved, decl)
 	}
+	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "Io" && isPrintName(decl.Name) {
+		// Every Io prints through the process's streams for now: the
+		// receiver is evaluated for what it does, and its table is not
+		// asked.
+		if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+			f.lowerExpr(selector.X, nil)
+		}
+		return f.lowerPrint(call, resolved, decl)
+	}
 
 	name := f.l.funcName(decl, resolved.Bindings)
 	f.l.ensureNativeImport(name, decl, resolved.Sig)
@@ -358,7 +389,7 @@ func (f *funcLowerer) lowerNative(call *ast.CallExpr, resolved *sema.CallInfo, d
 		}
 		args = append(args, f.nativeReceiver(selector.X))
 	}
-	args = append(args, f.callArgs(call, resolved.Sig, decl)...)
+	args = append(args, f.callArgs(call, resolved, decl)...)
 	return f.emitCall(name, args, resolved.Sig.Result, resolved.Sig.Async)
 }
 
@@ -370,6 +401,9 @@ func (f *funcLowerer) nativeReceiver(recv ast.Expr) string {
 	if pointer, ok := f.typeOf(recv).(*types.Pointer); ok {
 		ptr := f.lowerExpr(recv, nil)
 		return f.pointerPlace(ptr, pointer.Elem).load()
+	}
+	if elem := f.boxedElem(recv); elem != nil {
+		return f.pointerPlace(f.boxPointer(recv), elem).load()
 	}
 	return f.lowerExpr(recv, nil)
 }
@@ -511,6 +545,21 @@ func (f *funcLowerer) lowerUnsafeIntrinsic(call *ast.CallExpr, resolved *sema.Ca
 	case "atomic_load", "atomic_store", "atomic_swap", "atomic_cas", "atomic_add", "atomic_sub",
 		"atomic_and", "atomic_or", "atomic_xor", "atomic_fence":
 		return f.lowerAtomicIntrinsic(call, resolved, decl.Name), true
+	case "init_at":
+		ptr := f.lowerExpr(call.Args[0].Value, resolved.Sig.Params[0])
+		value := f.lowerExpr(call.Args[1].Value, resolved.Sig.Params[1])
+		f.emit(&metals.Store{Ptr: ptr, Val: value})
+		return "", true
+	case "destroy_at":
+		bound := resolved.Bindings["T"]
+		if bound == nil {
+			f.l.fail("@%s: destroy_at without a bound T", f.fn.Name)
+		}
+		ptr := f.lowerExpr(call.Args[0].Value, resolved.Sig.Params[0])
+		if types.Owning(bound) {
+			f.destroyAt(ptr, bound)
+		}
+		return "", true
 	case "slice_from_raw":
 		bound := resolved.Bindings["T"]
 		if bound == nil {

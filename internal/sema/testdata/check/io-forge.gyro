@@ -1,0 +1,21 @@
+// Safe code cannot make an Io from nothing: its fields are private, and
+// the constructor is unsafe. That is what lets a function without one be
+// read as doing no io. The runtime hands main the only one, and only
+// first.
+
+import { Io } from "stdlib"
+
+fn answer(data: anyptr?, number: usize, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize): isize {
+    return 0
+}
+
+fn forged(): Io {
+    return Io{ data: null, syscall: &answer } //~ E0607 a literal of Io is not allowed here
+}
+
+fn made(): Io {
+    return Io::new(null, &answer) //~ E0618 new is unsafe to call
+}
+
+fn main(args: string[], io: Io) { //~ E0523 main takes an Io, a string[] of arguments, both in that order, or nothing
+}
