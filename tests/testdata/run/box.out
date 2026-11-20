@@ -1,0 +1,29 @@
+in scope
+destroy scoped
+after scope
+moved on
+destroy moved
+after move
+fields
+5
+6
+fields
+10
+maybe
+absent
+42
+consumed passed
+destroy passed
+after consume
+destroy old
+replaced
+one
+two
+three
+end
+destroy one
+destroy two
+destroy three
+destroy new
+destroy maybe
+destroy fields

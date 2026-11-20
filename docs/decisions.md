@@ -1131,6 +1131,55 @@ by what it is made of ([chapter 4.1](ch04-01-ownership.md)), and a bound
 saying so again would be one more thing to write on every generic that
 copies a number.
 
+### `Box<T>` is stdlib code, and the checker looks through it *(new)*
+
+**Status: decided (#164).** `Box<T>` is an ordinary exported struct in
+`stdlib`, a pointer and the allocator it came from, that implements
+`Destroy`: it destroys the value, then frees the block to the same
+allocator. Nothing in the type system knows it is owning; `Destroy` is what
+makes it so, and what lets `types.Owning` and the synthesized `destroy`
+follow `next: Box<Node>?` without a special case. A type that holds a box
+of itself terminates because `destroyFor` registers a type's name before it
+builds the body, and the layout is finite because a box is a pointer.
+
+**`Box::new(value, a)` is one function with a default.** `a: Allocator =
+heap()`, the form chapter 4.6 already uses for `format` and `split`, rather
+than a second name for the allocator case. Lowering has to evaluate a
+default as the callee wrote it: a generic callee's expressions are recorded
+in its instantiation, not the caller's, and the first generic function with
+a default that makes a call is where that mattered.
+
+**Two unsafe functions carry the value in and out.** `init_at(p, value)`
+moves a value into memory that holds none, and `destroy_at(p)` destroys the
+value behind a pointer, lowered to the type's synthesized destroy or to
+nothing for a plain type. `*p = value` is not `init_at`: assigning over an
+owning place destroys what was there, and the block `Box::new` has just
+allocated holds zeros that are not a value of `T`. `Array` does not need
+them yet, since it is not owning.
+
+**A field, a method or `&` asked of a box is the boxed value's**, one level
+deep, as for a pointer. Sema types it through the box and records the box
+expression in `Info.Boxed`; lowering loads the pointer out of the box and
+goes on as it does for a `*T`. It is recorded rather than re-derived because
+`stdlib` itself reads a box's own fields, and there the box is only a
+struct. Outside `stdlib` the box's fields are private and it has no method a
+program calls, so nothing a program writes means the box when it means the
+value. `&box` is a `*T` to the value, and on a `Box<T>?` it is a `*T?`, null
+when the box is absent; both are the pointer inside the box, so a list is
+walked with `&current.next` the way chapter 4.5 shows.
+
+The box owns what it holds, so a write through it is a change to the box: it
+needs a `let`, an `inout` or an owned parameter, as writing a field does,
+and a value cannot be moved out of a box, which is the rule for a field.
+
+Rejected a built-in `Box` type or a `*` that owns: the standard library
+already says what the language needs, a pointer plus `Destroy`. Rejected
+looking through a box in more places (`*box`, indexing, operators): chapter
+4.5 asks for field, method and `&`, and each further one is another place a
+box and its value could be confused. Not built: narrowing a field chain,
+so `list.next.value` stays an error until `list.next` is a name that has
+been checked, and taking the value back out of a box.
+
 ### `defer` runs at block exit *(revised)*
 
 **Status: decided.** A defer fires when its enclosing `{ }` ends (Zig's

@@ -2,7 +2,7 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, futex_wait, futex_wake, offset, raw_alloc, slice_from_raw, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, destroy_at, futex_wait, futex_wake, init_at, offset, raw_alloc, slice_from_raw, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
@@ -728,6 +728,34 @@ export fn String::to_string(self): string !{} {
 
 export fn String::free(inout self) !{} {
     self.bytes.free()
+}
+
+// ---------------------------------------------------------------------------
+// Box
+// ---------------------------------------------------------------------------
+
+// A Box owns one T in a block of its own, which is how a type holds a value
+// of itself: `next: Box<Node>?` is a pointer wide however big a Node is. A
+// field or method asked of a box reaches the T inside, and `&box` points at
+// it (chapter 4.5). The box is owning because it implements Destroy, and a
+// T that is owning is destroyed with it.
+export struct Box<T> {
+    private ptr: *T
+    private alloc: Allocator
+}
+
+// new moves value into a block from a, the heap unless one is passed.
+export safe fn Box<T>::new(value: T!, a: Allocator = heap()): Box<T> !{ &a } {
+    let ptr = alloc<T>(a)
+    init_at(ptr, value)
+    return Box<T>{ ptr: ptr, alloc: a }
+}
+
+impl Destroy for Box<T> {
+    safe fn destroy(inout self) {
+        destroy_at(self.ptr)
+        free(self.alloc, self.ptr)
+    }
 }
 
 // ---------------------------------------------------------------------------

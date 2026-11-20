@@ -79,6 +79,8 @@ import { cast, offset, ptr_from_int, ptr_to_int, slice_from_raw } from "unsafe"
 | `offset(base: anyptr, bytes: usize): anyptr` | the address `bytes` past `base` |
 | `slice_from_raw<T>(p: anyptr, len: usize): T[]` | views `len` values of `T` at an address as a slice |
 | `copy_bytes(to, from: anyptr, bytes: usize)` | copies bytes; the ranges may overlap |
+| `init_at<T>(p: *T, value: T!)` | moves `value` into memory that holds no value, destroying nothing first |
+| `destroy_at<T>(p: *T)` | destroys the `T` behind `p`, leaving the memory without a value |
 | `raw_alloc`, `raw_free`, `raw_resize` | the process heap, which every allocator bottoms out in |
 | `env_of<F>(f: F): anyptr?`, `with_env<F>(f: F, env: anyptr?): F` | read and replace a `fn` value's environment |
 | `syscall0(number: usize): isize` … `syscall6` | makes a Linux system call with zero to six arguments |
