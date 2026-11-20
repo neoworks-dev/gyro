@@ -8,6 +8,7 @@ import (
 	"github.com/gyro-lang/gyro/internal/loader"
 	"github.com/gyro-lang/gyro/internal/metals"
 	"github.com/gyro-lang/gyro/internal/sema"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 )
 
 // analysis is one completed compiler pass over an open document, rooted at
@@ -97,6 +98,11 @@ func (s *Server) check(path, text string, bag *diag.Bag) (*analysis, error) {
 		if !open.isMetals() {
 			overlay[open.path] = open.text
 		}
+	}
+	// A copy of a bundled module is checked as that module, which is what
+	// the stdlib's own rules are written against.
+	if name, ok := stdlib.ModuleAt(path); ok {
+		path = stdlib.Path(name)
 	}
 	program, err := loader.LoadFromSource(loader.Overlay(overlay), path, text, bag)
 	if err != nil {

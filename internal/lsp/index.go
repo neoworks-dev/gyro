@@ -29,8 +29,8 @@ type anchor struct {
 	// localOwner keys Info.Locals for a binding introduced here.
 	localOwner ast.Node
 	// resolved is set for a name the index resolves itself, because no
-	// expression of its own records it: the owner in `fn Stack::push`
-	// and a field name in a struct literal.
+	// expression of its own records it: the owner in `fn Stack::push`,
+	// a field name in a struct literal, and a name in an import.
 	resolved ast.Node
 }
 
@@ -149,6 +149,57 @@ func (idx *index) indexDeclSites(module *loader.Module) {
 	}
 }
 
+// exportedDecl finds the top-level declaration a module offers under name,
+// following `export … from` into the module it re-exports.
+func exportedDecl(module *loader.Module, name string, seen map[*loader.Module]bool) ast.Node {
+	if module.Tree == nil || seen[module] {
+		return nil
+	}
+	seen[module] = true
+	for _, decl := range module.Tree.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			if d.Owner == "" && d.Name == name {
+				return d
+			}
+		case *ast.StructDecl:
+			if d.Name == name {
+				return d
+			}
+		case *ast.EnumDecl:
+			if d.Name == name {
+				return d
+			}
+		case *ast.TraitDecl:
+			if d.Name == name {
+				return d
+			}
+		case *ast.VarDecl:
+			for _, bound := range d.Names {
+				if bound.Name == name {
+					return d
+				}
+			}
+		case *ast.ExportDecl:
+			from := module.Deps[d.Path]
+			if d.Path == "" || from == nil {
+				continue
+			}
+			if d.Star {
+				if found := exportedDecl(from, name, seen); found != nil {
+					return found
+				}
+			}
+			for _, exported := range d.Names {
+				if exported.Alias == name || exported.Alias == "" && exported.Name == name {
+					return exportedDecl(from, exported.Name, seen)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // indexMethodSites records the methods declared inside a trait or an impl
 // block, which are not top-level declarations of their own.
 func (idx *index) indexMethodSites(module *loader.Module, methods []*ast.FuncDecl) {
@@ -201,10 +252,18 @@ func (idx *index) indexRoot() {
 
 	for _, imp := range tree.Imports {
 		for _, name := range imp.Names {
-			idx.anchors = append(idx.anchors, anchor{
+			// A name in an import refers to what the other module declares;
+			// only when that cannot be found does it stand for the import.
+			held := anchor{
 				start: name.Offset, end: name.Offset + len(name.Name),
 				name: name.Name, decl: imp,
-			})
+			}
+			if from := idx.program.Root.Deps[imp.Path]; from != nil {
+				if decl := exportedDecl(from, name.Name, map[*loader.Module]bool{}); decl != nil {
+					held.resolved = decl
+				}
+			}
+			idx.anchors = append(idx.anchors, held)
 			bound := name.Name
 			if name.Alias != "" {
 				bound = name.Alias

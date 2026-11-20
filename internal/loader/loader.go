@@ -77,9 +77,14 @@ func LoadWith(resolver Resolver, rootPath string, bag *diag.Bag) (*Program, erro
 // LoadFromSource is LoadWith for a root whose current text lives with the
 // caller — an editor buffer — instead of on disk.
 func LoadFromSource(resolver Resolver, rootPath string, source string, bag *diag.Bag) (*Program, error) {
-	absolute, err := filepath.Abs(rootPath)
-	if err != nil {
-		return nil, err
+	// A bundled module is named by its identity, not a file, and can be a
+	// root too: that is how an editor checks one it has opened.
+	absolute := rootPath
+	if !stdlib.IsBundled(rootPath) {
+		var err error
+		if absolute, err = filepath.Abs(rootPath); err != nil {
+			return nil, err
+		}
 	}
 
 	state := &loadState{

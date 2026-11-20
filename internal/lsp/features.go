@@ -2,11 +2,13 @@ package lsp
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/loader"
+	"github.com/gyro-lang/gyro/internal/stdlib"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -194,12 +196,16 @@ func (s *Server) handleDefinition(req *request) error {
 	}
 	declSite = refineSite(declSite, target, hit.name)
 
-	if strings.HasPrefix(declSite.module.Path, "@") {
-		// Bundled stdlib modules have no file to jump into.
-		return s.conn.respond(req.ID, nil)
+	file := declSite.module.Path
+	if name, ok := stdlib.NameOf(file); ok {
+		dir, err := stdlib.Dir()
+		if err != nil {
+			return s.conn.respond(req.ID, nil)
+		}
+		file = filepath.Join(dir, name+".gyro")
 	}
 	return s.conn.respond(req.ID, Location{
-		URI:   uriFromPath(declSite.module.Path),
+		URI:   uriFromPath(file),
 		Range: rangeFor(declSite.module.File.Src, declSite.start, declSite.end),
 	})
 }
