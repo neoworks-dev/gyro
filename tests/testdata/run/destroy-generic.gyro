@@ -1,0 +1,42 @@
+// An owning type can be a type argument. A generic body is checked again
+// for each instantiation, and that is where a move is judged: what a
+// body does with a T that is plain, it cannot do with one that owns.
+
+import { println, Destroy } from "stdlib"
+
+struct Noisy {
+    name: string
+}
+
+impl Destroy for Noisy {
+    fn destroy(inout self) {
+        println("destroy #{self.name}")
+    }
+}
+
+struct Holder<T> {
+    item: T
+    count: i32
+}
+
+fn wrap<T>(value: T!): Holder<T> {
+    return Holder<T>{ item: value, count: 1 }
+}
+
+fn swapped<T>(pair: (T, T)!): (T, T) {
+    let first, second = pair
+    return (second, first)
+}
+
+fn main() {
+    let numbers = wrap(7)
+    println("number #{numbers.item}")
+
+    {
+        let held = wrap(Noisy{ name: "held" })
+        println("holding #{held.item.name}")
+    }
+
+    let a, b = swapped((Noisy{ name: "one" }, Noisy{ name: "two" }))
+    println("first #{a.name}")
+}

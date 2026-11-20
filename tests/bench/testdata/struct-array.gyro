@@ -14,25 +14,25 @@ struct Particle {
 }
 
 fn main() {
-    var world = Array<Particle>::new(heap())
+    let world = Array<Particle>::new(heap())
     defer world.free()
-    for var i: i64 = 0; i < 512; i += 1 {
+    for let i: i64 = 0; i < 512; i += 1 {
         world.push(Particle{ x: i, y: -i, vx: 1, vy: 2 })
     }
 
-    var start = monotonic()
-    for var step = 0; step < 16384; step += 1 {
-        for var i: usize = 0; i < world.len(); i += 1 {
-            var p = world.get(i)
+    let start = monotonic()
+    for let step = 0; step < 16384; step += 1 {
+        for let i: usize = 0; i < world.len(); i += 1 {
+            let p = world.get(i)
             p.x += p.vx
             p.y += p.vy
             world.set(i, p)
         }
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
-    var checksum: i64 = 0
-    for var i: usize = 0; i < world.len(); i += 1 {
+    let checksum: i64 = 0
+    for let i: usize = 0; i < world.len(); i += 1 {
         checksum += world.get(i).x + world.get(i).y
     }
 

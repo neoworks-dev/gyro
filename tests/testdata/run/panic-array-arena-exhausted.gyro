@@ -8,10 +8,10 @@ import { println, Array } from "stdlib"
 import { heap, Arena } from "mem"
 
 fn main() {
-    var arena = Arena::new(heap(), 256)
+    let arena = Arena::new(heap(), 256)
     defer arena.free()
 
-    var xs = Array<i64>::new(arena.allocator())
+    let xs = Array<i64>::new(arena.allocator())
     for i in 0..16 {
         xs.push(i as i64)
     }

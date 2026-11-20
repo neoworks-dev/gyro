@@ -1,16 +1,16 @@
 import { println } from "stdlib"
 
 fn main() {
-    var bytes: u8[] = [104, 105]
-    var hash: u32 = 2166136261
+    let bytes: u8[] = [104, 105]
+    let hash: u32 = 2166136261
     for byte in bytes {
         hash = hash *% 16777619 +% (byte as u32)
     }
     println(hash)
 
-    var shifted: i32 = 1 << 10
+    let shifted: i32 = 1 << 10
     println(shifted)
-    var mask: u32 = 96
+    let mask: u32 = 96
     println(mask >> 5)
     println(mask & 32)
     println(mask | 1)

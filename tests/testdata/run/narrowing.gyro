@@ -11,8 +11,8 @@ fn describe(x: i32?): i32 {
 }
 
 fn main() {
-    var present: i32? = 41
-    var absent: i32? = null
+    let present: i32? = 41
+    let absent: i32? = null
     println(describe(present))
     println(describe(absent))
     if present != null && present > 40 {

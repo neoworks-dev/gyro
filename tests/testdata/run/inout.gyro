@@ -1,0 +1,113 @@
+// An inout parameter changes the caller's own variable in place: a number, a
+// record, a receiver, an element of an array, and a variable the checker
+// narrowed from T? to T. The call site looks the same as for a plain
+// parameter, which only reads.
+
+import { println, Array } from "stdlib"
+import { heap } from "mem"
+
+struct Counter {
+    n: i32
+    hits: i32[2]
+}
+
+fn Counter::bump(inout self) {
+    self.n += 1
+}
+
+fn Counter::bump_by(inout self, by: i32) {
+    self.n += by
+    self.hits[0] += 1
+}
+
+fn Counter::peek(self): i32 {
+    return self.n
+}
+
+fn total(c: Counter): i32 {
+    return c.n + c.hits[0] + c.hits[1]
+}
+
+fn reset(c: inout Counter) {
+    c.n = 0
+    c.hits = [0, 0]
+}
+
+fn double(n: inout i32) {
+    n *= 2
+}
+
+fn swap(a: inout i32, b: inout i32) {
+    let held = a
+    a = b
+    b = held
+}
+
+// An inout parameter passes on as inout, and a part of it can be handed over.
+fn twice(c: inout Counter) {
+    c.bump()
+    double(c.n)
+}
+
+fn fill(xs: inout Array<i32>, n: i32) {
+    for i in 0..n {
+        xs.push(i * i)
+    }
+}
+
+fn replace<T>(slot: inout T, value: T) {
+    slot = value
+}
+
+fn main() {
+    // A number.
+    let n = 21
+    double(n)
+    println(n)
+
+    // A receiver, and a record.
+    let c = Counter{ n: 5, hits: [0, 0] }
+    c.bump()
+    c.bump_by(10)
+    println(c.n)
+    println(c.hits[0])
+    twice(c)
+    println(c.peek())
+    reset(c)
+    println(total(c))
+
+    // Two parts of one record are different places.
+    c.n = 6
+    c.hits[1] = 9
+    swap(c.n, c.hits[1])
+    println(c.n)
+    println(c.hits[1])
+
+    // An element of a fixed-size array.
+    let xs = [3, 1, 2]
+    double(xs[1])
+    swap(xs[0], n)
+    println(xs[0])
+    println(xs[1])
+    println(xs[2])
+    println(n)
+
+    // An element of an Array.
+    let ys = Array<i32>::new(heap())
+    defer ys.free()
+    fill(ys, 4)
+    double(ys[3])
+    println(ys[3])
+    println(ys.len())
+
+    // A narrowed variable.
+    let maybe: Counter? = Counter{ n: 7, hits: [0, 0] }
+    if maybe != null {
+        maybe.bump()
+        println(maybe.peek())
+    }
+
+    // A generic one.
+    replace(n, 100)
+    println(n)
+}

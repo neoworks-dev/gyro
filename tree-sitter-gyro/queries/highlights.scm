@@ -12,7 +12,7 @@
     "i8" "i16" "i32" "i64"
     "u8" "u16" "u32" "u64" "usize" "isize"
     "f32" "f64"
-    "rune" "bool" "string" "void" "error" "any" "anyptr"))
+    "rune" "bool" "string" "void" "any" "anyptr"))
 
 (self) @variable.builtin
 
@@ -105,7 +105,7 @@
 ] @keyword.type
 
 [
-  "var"
+  "let"
   "const"
 ] @keyword
 
@@ -114,6 +114,8 @@
 [
   "unsafe"
   "safe"
+  "private"
+  "inout"
 ] @keyword.modifier
 
 "move" @keyword.modifier

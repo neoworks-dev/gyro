@@ -39,7 +39,7 @@ safe fn code_of(e: Event): i32 {
 
 safe fn main() {
     // A literal sets exactly one member, because there is room for one.
-    var e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
+    let e = Event{ key: KeyEvent{ kind: 1, code: 65 } }
     println(e.key.code)
     println(e.kind)
     println(e.tag())
@@ -57,7 +57,7 @@ safe fn main() {
     println(dispatch(&e))
 
     // A union inside a struct, and the field beside it untouched.
-    var queued = Queued{ at: 7, event: Event{ key: KeyEvent{ kind: 1, code: 66 } } }
+    let queued = Queued{ at: 7, event: Event{ key: KeyEvent{ kind: 1, code: 66 } } }
     println(queued.at)
     println(queued.event.key.code)
     println(dispatch(&queued.event))

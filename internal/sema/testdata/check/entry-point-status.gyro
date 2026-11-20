@@ -1,0 +1,7 @@
+// The accepted results of main: an exit code, which may be an error.
+
+import { Error } from "stdlib"
+
+fn main(): i32 | Error {
+    return 0
+}

@@ -14,18 +14,18 @@ struct Grid<K, V> {
 }
 
 fn empty_rows<K, V>(count: usize): Array<Array<K>> {
-    var rows = Array<Array<K>>::with_capacity(heap(), count)
+    let rows = Array<Array<K>>::with_capacity(heap(), count)
     for i in 0..count {
         rows.push(Array<K>::new(heap()))
     }
     return rows
 }
 
-fn Grid<K, V>::widen(*self) {
-    var wider = empty_rows<K, V>(self.rows.len() * 2)
+fn Grid<K, V>::widen(inout self) {
+    let wider = empty_rows<K, V>(self.rows.len() * 2)
     for i in 0..self.rows.len() {
-        var row = self.rows.get(i)
-        var moved = wider.get(i)
+        let row = self.rows.get(i)
+        let moved = wider.get(i)
         for at in 0..row.len() {
             moved.push(row.get(at))
         }
@@ -36,8 +36,8 @@ fn Grid<K, V>::widen(*self) {
 }
 
 fn main() {
-    var grid = Grid<string, i32>{ rows: empty_rows<string, i32>(2), tags: Array<(string, i32)>::new(heap()) }
-    var first = grid.rows.get(0)
+    let grid = Grid<string, i32>{ rows: empty_rows<string, i32>(2), tags: Array<(string, i32)>::new(heap()) }
+    let first = grid.rows.get(0)
     first.push("a")
     first.push("b")
     grid.widen()

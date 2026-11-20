@@ -65,7 +65,7 @@ For `.gyro` files:
   (bundled stubs have no file and return nothing).
 - **Document symbols**: functions (methods as `Type::name`), structs with
   fields, enums with variants, module-level bindings.
-- **Inlay hints**: the inferred type after a `var`/`const` name, a
+- **Inlay hints**: the inferred type after a `let`/`const` name, a
   `for ... in` loop variable, an unannotated closure parameter and a `match`
   binding; the parameter name before a positional argument. A hint is
   dropped when the argument already spells the parameter (`f(count)`), when

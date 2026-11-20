@@ -11,14 +11,14 @@ struct Pair {
     right: i64
 }
 
-fn push_all(into: Array<i32>, count: i32) {
+fn push_all(into: inout Array<i32>, count: i32) {
     for i in 0..count {
         into.push(i * 3)
     }
 }
 
 fn main() {
-    var xs = Array<i32>::new(heap())
+    let xs = Array<i32>::new(heap())
     push_all(xs, 100)
     println(xs.len())
     println(xs.get(0))
@@ -27,16 +27,16 @@ fn main() {
     xs[50] = -1
     println(xs[50])
 
-    var top, found = xs.pop()
+    let top, found = xs.pop()
     println(top)
     println(found)
     println(xs.len())
 
-    var window = xs[10..13]
+    let window = xs[10..13]
     println(window.len())
     println(window[2])
 
-    var pairs = Array<Pair>::with_capacity(heap(), 20)
+    let pairs = Array<Pair>::with_capacity(heap(), 20)
     for i in 0..25 {
         pairs.push(Pair{ left: i, right: 1000 * i as i64 })
     }
@@ -45,8 +45,8 @@ fn main() {
     pairs[3].left = 77
     println(pairs.get(3).left)
 
-    var none = Array<bool>::new(heap())
-    var last, any = none.pop()
+    let none = Array<bool>::new(heap())
+    let last, any = none.pop()
     println(any)
     println(last)
     println(none.is_empty())

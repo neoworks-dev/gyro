@@ -8,6 +8,36 @@ it also lives in the execution corpus as a `//gyro:skip` with its reason
 attached — a skip is a program that will fail the day the gap closes
 ([chapter 17.3](ch17-03-testing.md)).
 
+## Ownership is half built
+
+[Chapter 4](ch04-01-ownership.md) describes ownership, destructors,
+borrowing and `Box` (#164). What runs today is `Destroy`, destruction at
+scope exit interleaved with `defer`, destruction on assignment and of
+temporaries, and moves with their use-after-move check and drop flags.
+
+What does not:
+
+- **No standard-library type is owning yet.** `Array`, `String` and `Map`
+  are still freed by hand with `free`, and `alloc` hands out raw pointers
+  in safe code. Only a type that implements `Destroy`, or holds one that
+  does, is owning. A container of an owning type is refused where its
+  methods would copy an element, which is all of them today: `push` and
+  `get` are written over a borrowed `T`.
+- **Views until their last use and `Box`** are not built, so none of the
+  view checks of chapter 4.4 run, and a value lives in a variable, a
+  field, an element or a parameter that took it, never in a box.
+- **A function that takes a `T!` parameter cannot be a function value**,
+  since a function type cannot say which of its parameters take (E0637).
+- **An owning type is refused where ownership is not followed yet**: in a
+  closure capture, a channel, a pattern binding, a `for` loop variable and
+  an `any` (E0703). A match arm cannot move a
+  variable out either. Each would copy the value without moving it.
+- **A temporary used as a receiver is not destroyed.** `make().method()`
+  leaks the value `make` returned.
+
+The rest of the book's examples still use the old spelling in places,
+`.free()` among them, and move over as the implementation lands.
+
 ## Blocking real applications
 
 - **Small standard-library functions are calls.** The backend has no
@@ -19,7 +49,7 @@ attached — a skip is a program that will fail the day the gap closes
   that keeps short-lived values out of the frame.
 
 - **Memory reclamation.** The allocator model
-  ([chapter 4.5](ch04-05-allocators.md)) is the answer, and
+  ([chapter 4.6](ch04-06-allocators.md)) is the answer, and
   `alloc<T>(a)`, `free(a, p)`, `format(a, ...)` and the containers and text
   functions honour it today, but the runtime's own storage does not yet: a
   future, a channel and the message of an error
@@ -66,7 +96,19 @@ attached — a skip is a program that will fail the day the gap closes
   requires,** and has no implicit conversion from a pointer: it is made with
   `as dyn Trait`.
 - **No `T::new()` through a bound.** A bound provides methods with a receiver.
-- **`error` is not a trait yet,** and keeps its shape-based rule.
+- **A generic type cannot implement `Error`.** An `Error` is a closed sum
+  over the types of the whole program, named one by one, so an implementer
+  has no type parameters of its own.
+- **An `Error` does not run the `Destroy` of what it holds.** It is a value
+  of the program's closed sum and is copied like one, so an error type that
+  owns a resource, and implements `Destroy`, is not released when the `Error`
+  goes away. Error types that own nothing are unaffected, which is every one
+  the standard library declares.
+- **A `T | Error` is taken apart by a match or by `?`, and by nothing else.**
+  It has no `==`, no printing and no hashing, and it is not an `any` payload.
+- **`?` passes the error on as it is.** There is nothing to convert it to
+  another error type, and no way to add context on the way: a function wraps
+  one by matching and returning a new `Error`.
 - **A trait with associated types is not a trait value.** `dyn Container`
   does not exist: the type behind the value is unknown, so its `Item` is too.
 - **No `iter()`.** `for..in` takes an `Iterator<T>`; a collection that hands
@@ -77,7 +119,7 @@ attached — a skip is a program that will fail the day the gap closes
 
 | feature | state |
 | --- | --- |
-| mutation rules | `*self` vs `self`, assigning through a value receiver — unchecked |
+| mutation rules | a plain parameter, a plain `self` and a `const` are not changed, an `inout` argument is a variable that can change, and no value is passed twice when one pass is `inout`: all checked ([chapter 4.4](ch04-04-borrowing.md)). A view in use across an `inout` call is not |
 | effect rows | `io` is checked against declared rows; row variables, function values and spawn/channel effects are not ([chapter 12](ch12-00-effect-rows.md)) |
 | module resolution | done; `.stack/` packages await the Stack package manager |
 | `->` and `=>` | reserved tokens, unused |
@@ -85,7 +127,12 @@ attached — a skip is a program that will fail the day the gap closes
 
 ## Safety holes
 
-- **Mutation rules are unchecked.**
+- **A plain parameter can still be changed through a pointer or a view.**
+  Assigning to a plain parameter, to a field or element of it, or passing
+  it as `inout` is an error, but `&xs` and `xs[0..2]` of one make a pointer
+  or a slice that writes through, and neither is tracked yet. Nor is a view
+  of a value kept from being used across an `inout` call that moves what it
+  views.
 - **Use-after-free, double free and uninitialized reads are undetected.**
   The heap frees for real, and a block from `alloc<T>()` is zero-filled,
   so a field read before it is written reads zero rather than aborting. A
@@ -93,7 +140,7 @@ attached — a skip is a program that will fail the day the gap closes
   a read; it is gone, and with it the only thing that caught either. The
   place for that check now is an allocator: one that quarantines freed
   blocks and poisons them is ordinary Gyro over
-  [chapter 4.5](ch04-05-allocators.md), and is not written yet.
+  [chapter 4.6](ch04-06-allocators.md), and is not written yet.
 - **Type punning is not diagnosed.** Reading across two members of a C union that
   share no common initial sequence, or reading a struct's storage as
   bytes, reinterprets whatever is there. It is undefined in C too, `char *`
@@ -104,10 +151,10 @@ attached — a skip is a program that will fail the day the gap closes
   are both a producer's claim and nothing verifies either
   ([appendix D](appendix-d-metals.md)).
 - **A slice can outlive the memory behind it**, and nothing detects that
-  ([chapter 4.4](ch04-04-slices-and-views.md)).
+  ([chapter 4.4](ch04-04-borrowing.md)).
 - **`safe` is a promise nothing checks.** A `safe fn` may do unsafe
   things, and the compiler takes the author's word that no caller can
-  misuse it ([chapter 4.6](ch04-06-unsafe.md)). `import safe` of a C file is
+  misuse it ([chapter 4.7](ch04-07-unsafe.md)). `import safe` of a C file is
   the same promise about every name the line binds.
 - **Pointer arithmetic on `*T` does not exist yet** (#68). When it does it
   is an `unsafe fn` in the `unsafe` module; `offset` on an `anyptr` is the

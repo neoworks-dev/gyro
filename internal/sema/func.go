@@ -23,8 +23,7 @@ func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
 		c.errorf(decl.Offset, "main takes no type parameters")
 		return
 	}
-	if len(decl.Results) > 0 {
-		c.errorf(decl.Offset, "main returns nothing")
+	if !c.checkEntryResult(decl) {
 		return
 	}
 	if len(decl.Params) == 0 {
@@ -35,6 +34,29 @@ func (c *checker) checkEntryPoint(decl *ast.FuncDecl) {
 			"the entry point is fn main() or fn main(args: string[])",
 		}, "main takes no parameters, or one string[] of arguments")
 	}
+}
+
+// checkEntryResult holds main's result to nothing, an exit code, or an
+// exit code that may be an error. What the program does with the result is
+// code in stdlib, so a main that has one needs stdlib loaded.
+func (c *checker) checkEntryResult(decl *ast.FuncDecl) bool {
+	if len(decl.Results) == 0 {
+		return true
+	}
+	declared := c.resultType(decl.Results)
+	if flexible(declared) {
+		return false
+	}
+	code := declared
+	if result, ok := declared.(*types.Result); ok {
+		code = result.Value
+	}
+	if !types.Identical(code, types.Int32) {
+		c.errorHintf(decl.Offset, []string{"the entry point returns nothing, an i32 exit code, or i32 | Error"},
+			"main returns nothing, i32 or i32 | Error, not %s", describeType(declared))
+		return false
+	}
+	return c.requireStdlib(decl.Offset, "what main returns")
 }
 
 func isStringSlice(t types.Type) bool {
@@ -93,6 +115,8 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		async:    decl.Async,
 		inMethod: decl.Recv != nil,
 		selfType: selfType,
+		// The receiver is the caller's, and a plain `self` only borrows it.
+		selfBorrowed: decl.Recv != nil && !decl.Recv.Inout,
 		// A generic body checked without type arguments cannot answer
 		// whether T is a view; the instantiation can, and does.
 		borrowChecked: !c.lenient,
@@ -125,12 +149,19 @@ func (c *checker) checkFuncBody(decl *ast.FuncDecl, bindings map[string]types.Ty
 		// A struct counts: `s.items.slice()` is a view of s.
 		if sym != nil {
 			sym.param = true
+			sym.inout = param.Inout
+			sym.take = param.Take
+			if param.Take {
+				c.owningLocal(sym, true)
+			}
 		}
 		if sym != nil && isAllocator(paramType) {
 			// What is allocated from a parameter is the caller's to free;
 			// the value borrows the allocator, not the frame.
 			sym.origin = borrowOrigin{arenas: []arenaRef{{sym: sym}}}
-		} else if sym != nil && !scalarType(paramType) {
+		} else if sym != nil && !scalarType(paramType) && !param.Take {
+			// A parameter that took its argument owns it, so handing it on
+			// is a move rather than a view of the caller's storage.
 			sym.origin = borrowOrigin{params: []*symbol{sym}}
 		}
 	}

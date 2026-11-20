@@ -18,7 +18,7 @@ safe fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old:
     if data == null {
         return null
     }
-    var counter = cast<Counter>(data)
+    let counter = cast<Counter>(data)
     match mode {
         Mode::Alloc: {
             counter.allocs += 1
@@ -32,7 +32,7 @@ safe fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old:
             counter.resizes += 1
         }
     }
-    var h = heap()
+    let h = heap()
     return h.proc(h.data, mode, size, align, old, old_size)
 }
 
@@ -41,12 +41,12 @@ fn show(counter: *Counter) {
 }
 
 fn main() {
-    var counter = Counter{ allocs: 0, resizes: 0, frees: 0 }
-    var counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
+    let counter = Counter{ allocs: 0, resizes: 0, frees: 0 }
+    let counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
 
     // new takes the array's header from the allocator: one Alloc, and no
     // buffer yet.
-    var xs = Array<i32>::new(counting)
+    let xs = Array<i32>::new(counting)
     show(&counter)
 
     // The first push takes a buffer of 8 elements, the ninth doubles it to
@@ -62,7 +62,7 @@ fn main() {
     show(&counter)
 
     // with_capacity reserves up front: the one buffer is the only Resize.
-    var ys = Array<i32>::with_capacity(counting, 40)
+    let ys = Array<i32>::with_capacity(counting, 40)
     for i in 0..20 {
         ys.push(i)
     }
@@ -72,17 +72,17 @@ fn main() {
 
     // A Map makes its bucket table and one array per bucket when it is made:
     // nine headers, and one buffer for the table.
-    var ages = Map<string, i32>::new(counting)
+    let ages = Map<string, i32>::new(counting)
     show(&counter)
     ages.free()
 
     // Inside an arena nothing is ever returned one block at a time, and the
     // arena takes everything back at once.
-    var arena = Arena::new(heap(), 8192)
+    let arena = Arena::new(heap(), 8192)
     defer arena.free()
 
-    var zs = Array<i32>::new(arena.allocator())
-    var total = 0
+    let zs = Array<i32>::new(arena.allocator())
+    let total = 0
     for i in 0..100 {
         zs.push(i)
         total += i
@@ -92,7 +92,7 @@ fn main() {
     zs.free()
 
     arena.free_all()
-    var table = Map<string, i32>::new(arena.allocator())
+    let table = Map<string, i32>::new(arena.allocator())
     table.insert("a", 1)
     table.insert("b", 2)
     table.insert("a", 3)

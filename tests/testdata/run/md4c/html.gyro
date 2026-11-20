@@ -22,13 +22,13 @@ const NEED_HTML_ESC: u8 = 1
 const NEED_URL_ESC: u8 = 2
 
 export struct Render {
-    export out: Array<u8>
-    image_nesting_level: i64
+    out: Array<u8>
+    private image_nesting_level: i64
     // Per byte: which of the two escapes it needs, if any.
-    escape_map: Array<u8>
+    private escape_map: Array<u8>
 }
 
-var HEX: u8[16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
+let HEX: u8[16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
 
 // The bytes that stay literal in a URL attribute: the alphanumerics plus
 // ~-_.+!*(),%#@?=;:/$
@@ -43,13 +43,13 @@ fn url_safe(byte: u8): bool {
 }
 
 export fn Render::new(): *Render {
-    var render = alloc<Render>(heap())
+    let render = alloc<Render>(heap())
     render.out = Array<u8>::new(heap())
     render.image_nesting_level = 0
 
-    var map = Array<u8>::new(heap())
-    for var byte: i64 = 0; byte < 256; byte += 1 {
-        var flags: u8 = 0
+    let map = Array<u8>::new(heap())
+    for let byte: i64 = 0; byte < 256; byte += 1 {
+        let flags: u8 = 0
         if byte == 34 || byte == 38 || byte == 39 || byte == 60 || byte == 62 {
             flags = flags | NEED_HTML_ESC
         }
@@ -66,38 +66,38 @@ export fn Render::new(): *Render {
 // Writing out
 // ---------------------------------------------------------------------------
 
-fn Render::verbatim(*self, text: u8[], beg: i64, end: i64) {
-    for var i = beg; i < end; i += 1 {
+fn Render::verbatim(inout self, text: u8[], beg: i64, end: i64) {
+    for let i = beg; i < end; i += 1 {
         self.out.push(text[i as usize])
     }
 }
 
-fn Render::literal(*self, text: string) {
+fn Render::literal(inout self, text: string) {
     for byte in text.bytes(heap()) {
         self.out.push(byte)
     }
 }
 
-fn Render::number(*self, value: i64) {
+fn Render::number(inout self, value: i64) {
     if value == 0 {
         self.out.push(48)
         return
     }
-    var digits = Array<u8>::new(heap())
-    var rest = value
+    let digits = Array<u8>::new(heap())
+    let rest = value
     while rest > 0 {
         digits.push((48 + rest % 10) as u8)
         rest = rest / 10
     }
-    for var i = digits.len() as i64 - 1; i >= 0; i -= 1 {
+    for let i = digits.len() as i64 - 1; i >= 0; i -= 1 {
         self.out.push(digits.get(i as usize))
     }
     digits.free()
 }
 
-fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
-    var run = beg
-    var off = beg
+fn Render::html_escaped(inout self, data: u8[], beg: i64, end: i64) {
+    let run = beg
+    let off = beg
 
     while true {
         while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_HTML_ESC) == 0 {
@@ -110,7 +110,7 @@ fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
             return
         }
 
-        var byte = data[off as usize]
+        let byte = data[off as usize]
         if byte == 34 {
             self.literal("&quot;")
         } elif byte == 38 {
@@ -127,9 +127,9 @@ fn Render::html_escaped(*self, data: u8[], beg: i64, end: i64) {
     }
 }
 
-fn Render::url_escaped(*self, data: u8[], beg: i64, end: i64) {
-    var run = beg
-    var off = beg
+fn Render::url_escaped(inout self, data: u8[], beg: i64, end: i64) {
+    let run = beg
+    let off = beg
 
     while true {
         while off < end && (self.escape_map.get(data[off as usize] as usize) & NEED_URL_ESC) == 0 {
@@ -142,7 +142,7 @@ fn Render::url_escaped(*self, data: u8[], beg: i64, end: i64) {
             return
         }
 
-        var byte = data[off as usize]
+        let byte = data[off as usize]
         if byte == 38 {
             self.literal("&amp;")
         } else {
@@ -162,7 +162,7 @@ const APPEND_VERBATIM: i64 = 0
 const APPEND_HTML: i64 = 1
 const APPEND_URL: i64 = 2
 
-fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
+fn Render::append(inout self, how: i64, data: u8[], beg: i64, end: i64) {
     if how == APPEND_HTML {
         self.html_escaped(data, beg, end)
     } elif how == APPEND_URL {
@@ -174,8 +174,8 @@ fn Render::append(*self, how: i64, data: u8[], beg: i64, end: i64) {
 
 // utf8_codepoint writes one code point, substituting U+FFFD for anything
 // out of range, for a surrogate, and for NUL.
-fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
-    var bytes = Array<u8>::new(heap())
+fn Render::utf8_codepoint(inout self, codepoint: u32, how: i64) {
+    let bytes = Array<u8>::new(heap())
 
     if codepoint <= 0x7f {
         bytes.push(codepoint as u8)
@@ -196,7 +196,7 @@ fn Render::utf8_codepoint(*self, codepoint: u32, how: i64) {
     if codepoint > 0 && codepoint <= 0x10ffff && (codepoint < 0xd800 || codepoint > 0xdfff) {
         self.append(how, bytes.slice(), 0, bytes.len() as i64)
     } else {
-        var replacement = Array<u8>::new(heap())
+        let replacement = Array<u8>::new(heap())
         replacement.push(0xef)
         replacement.push(0xbf)
         replacement.push(0xbd)
@@ -218,18 +218,18 @@ fn hex_value(byte: u8): u32 {
 
 // entity_text renders "&...;" as the code point it names, or verbatim when
 // md4c's table does not know it.
-fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
-    var size = end - beg
+fn Render::entity_text(inout self, data: u8[], beg: i64, end: i64, how: i64) {
+    let size = end - beg
 
     if size > 3 && data[(beg + 1) as usize] == 35 { // '#'
-        var codepoint: u32 = 0
+        let codepoint: u32 = 0
 
         if data[(beg + 2) as usize] == 120 || data[(beg + 2) as usize] == 88 {
-            for var i = beg + 3; i < end - 1; i += 1 {
+            for let i = beg + 3; i < end - 1; i += 1 {
                 codepoint = 16 *% codepoint +% hex_value(data[i as usize])
             }
         } else {
-            for var i = beg + 2; i < end - 1; i += 1 {
+            for let i = beg + 2; i < end - 1; i += 1 {
                 codepoint = 10 *% codepoint +% (data[i as usize] - 48) as u32
             }
         }
@@ -238,11 +238,11 @@ fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
         return
     }
 
-    var name = Array<u8>::new(heap())
-    for var i = beg; i < end; i += 1 {
+    let name = Array<u8>::new(heap())
+    for let i = beg; i < end; i += 1 {
         name.push(data[i as usize])
     }
-    var first, second, known = entity::lookup(from_utf8(heap(), name.slice()))
+    let first, second, known = entity::lookup(from_utf8(heap(), name.slice()))
     name.free()
 
     if known {
@@ -256,18 +256,18 @@ fn Render::entity_text(*self, data: u8[], beg: i64, end: i64, how: i64) {
     self.append(how, data, beg, end)
 }
 
-fn Render::attribute(*self, attr: md::Attribute, how: i64) {
+fn Render::attribute(inout self, attr: md::Attribute, how: i64) {
     if !attr.present() {
         return
     }
-    var size = attr.size()
-    var text = attr.text.slice()
+    let size = attr.size()
+    let text = attr.text.slice()
 
-    var i: i64 = 0
+    let i: i64 = 0
     while attr.offsets.get(i as usize) < size {
-        var kind = attr.types.get(i as usize)
-        var beg = attr.offsets.get(i as usize)
-        var end = attr.offsets.get((i + 1) as usize)
+        let kind = attr.types.get(i as usize)
+        let beg = attr.offsets.get(i as usize)
+        let end = attr.offsets.get((i + 1) as usize)
 
         if kind == md::TextKind::NullChar {
             self.utf8_codepoint(0, APPEND_VERBATIM)
@@ -284,7 +284,7 @@ fn Render::attribute(*self, attr: md::Attribute, how: i64) {
 // The callbacks
 // ---------------------------------------------------------------------------
 
-fn Render::open_ol(*self, detail: md::Detail) {
+fn Render::open_ol(inout self, detail: md::Detail) {
     if detail.start == 1 {
         self.literal("<ol>\n")
         return
@@ -294,7 +294,7 @@ fn Render::open_ol(*self, detail: md::Detail) {
     self.literal("\">\n")
 }
 
-fn Render::open_code(*self, detail: md::Detail) {
+fn Render::open_code(inout self, detail: md::Detail) {
     self.literal("<pre><code")
 
     if detail.lang.present() {
@@ -311,11 +311,11 @@ fn Render::open_code(*self, detail: md::Detail) {
 
 // An info string already spelled "language-..." is not prefixed again.
 fn starts_with_language(lang: md::Attribute): bool {
-    var prefix = "language-"
+    let prefix = "language-"
     if lang.size() < 9 {
         return false
     }
-    var i: i64 = 0
+    let i: i64 = 0
     for byte in prefix.bytes(heap()) {
         if lang.text.get(i as usize) != byte {
             return false
@@ -325,7 +325,7 @@ fn starts_with_language(lang: md::Attribute): bool {
     return true
 }
 
-fn Render::open_a(*self, detail: md::Detail) {
+fn Render::open_a(inout self, detail: md::Detail) {
     self.literal("<a href=\"")
     self.attribute(detail.href, APPEND_URL)
     if detail.title.present() {
@@ -335,13 +335,13 @@ fn Render::open_a(*self, detail: md::Detail) {
     self.literal("\">")
 }
 
-fn Render::open_img(*self, detail: md::Detail) {
+fn Render::open_img(inout self, detail: md::Detail) {
     self.literal("<img src=\"")
     self.attribute(detail.href, APPEND_URL)
     self.literal("\" alt=\"")
 }
 
-fn Render::close_img(*self, detail: md::Detail) {
+fn Render::close_img(inout self, detail: md::Detail) {
     if detail.title.present() {
         self.literal("\" title=\"")
         self.attribute(detail.title, APPEND_HTML)
@@ -349,7 +349,7 @@ fn Render::close_img(*self, detail: md::Detail) {
     self.literal("\">")
 }
 
-fn Render::enter_block(*self, kind: md::BlockKind, detail: md::Detail) {
+fn Render::enter_block(inout self, kind: md::BlockKind, detail: md::Detail) {
     match kind {
         md::BlockKind::Doc: {}
         md::BlockKind::Quote: self.literal("<blockquote>\n")
@@ -364,7 +364,7 @@ fn Render::enter_block(*self, kind: md::BlockKind, detail: md::Detail) {
     }
 }
 
-fn Render::leave_block(*self, kind: md::BlockKind, detail: md::Detail) {
+fn Render::leave_block(inout self, kind: md::BlockKind, detail: md::Detail) {
     match kind {
         md::BlockKind::Doc: {}
         md::BlockKind::Quote: self.literal("</blockquote>\n")
@@ -379,7 +379,7 @@ fn Render::leave_block(*self, kind: md::BlockKind, detail: md::Detail) {
     }
 }
 
-fn Render::open_heading(*self, level: i64, closing: bool) {
+fn Render::open_heading(inout self, level: i64, closing: bool) {
     if closing {
         self.literal("</h")
         self.number(level)
@@ -391,8 +391,8 @@ fn Render::open_heading(*self, level: i64, closing: bool) {
     self.literal(">")
 }
 
-fn Render::enter_span(*self, kind: md::SpanKind, detail: md::Detail) {
-    var inside_image = self.image_nesting_level > 0
+fn Render::enter_span(inout self, kind: md::SpanKind, detail: md::Detail) {
+    let inside_image = self.image_nesting_level > 0
 
     // Inside an image's label the contents become the alt attribute, where
     // no nested tag may appear, so only the plain text of it is kept. The
@@ -413,7 +413,7 @@ fn Render::enter_span(*self, kind: md::SpanKind, detail: md::Detail) {
     }
 }
 
-fn Render::leave_span(*self, kind: md::SpanKind, detail: md::Detail) {
+fn Render::leave_span(inout self, kind: md::SpanKind, detail: md::Detail) {
     if kind == md::SpanKind::Img {
         self.image_nesting_level -= 1
     }
@@ -430,7 +430,7 @@ fn Render::leave_span(*self, kind: md::SpanKind, detail: md::Detail) {
     }
 }
 
-fn Render::text(*self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
+fn Render::text(inout self, kind: md::TextKind, source: u8[], beg: i64, end: i64) {
     match kind {
         md::TextKind::NullChar: self.utf8_codepoint(0, APPEND_VERBATIM)
         md::TextKind::Br: {
@@ -481,15 +481,15 @@ export fn parser_for(render: *Render): md::Parser {
 // render_html is md_html(): parse the input and hand back the HTML. The
 // UTF-8 byte order mark is skipped, which is what md2html asks for.
 export fn render_html(input: u8[]): Array<u8> {
-    var render = Render::new()
-    var size = input.len() as i64
+    let render = Render::new()
+    let size = input.len() as i64
 
     // A slice cannot be narrowed here the way md4c just advances its
     // pointer, so the one input that needs trimming is the one that gets
     // copied.
     if size >= 3 && input[0] == 0xef && input[1] == 0xbb && input[2] == 0xbf {
-        var trimmed = Array<u8>::new(heap())
-        for var i: i64 = 3; i < size; i += 1 {
+        let trimmed = Array<u8>::new(heap())
+        for let i: i64 = 3; i < size; i += 1 {
             trimmed.push(input[i as usize])
         }
         md::parse(trimmed.slice(), parser_for(render))

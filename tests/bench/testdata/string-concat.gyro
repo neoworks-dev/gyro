@@ -7,15 +7,15 @@ import { monotonic } from "time"
 import { heap } from "mem"
 
 fn main() {
-    var start = monotonic()
-    var out = String::new(heap())
+    let start = monotonic()
+    let out = String::new(heap())
     defer out.free()
-    for var i = 0; i < 2000000; i += 1 {
+    for let i = 0; i < 2000000; i += 1 {
         out.push("gyro")
         out.push("-")
     }
-    var text = out.text(heap())
-    var stop = monotonic()
+    let text = out.text(heap())
+    let stop = monotonic()
 
     println(text.len())
     eprintln("gyro:bench #{stop - start}")

@@ -6,8 +6,8 @@
 import { println, print } from "stdlib"
 
 fn main() {
-    var values = [1, 2, 3]
-    var at: usize = 9
+    let values = [1, 2, 3]
+    let at: usize = 9
     println("start")
     print("partial")
     println(values[at])

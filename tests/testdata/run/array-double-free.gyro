@@ -4,7 +4,7 @@ import { println, Array } from "stdlib"
 import { heap } from "mem"
 
 fn main() {
-    var xs = Array<string>::new(heap())
+    let xs = Array<string>::new(heap())
     xs.push("a")
     xs.free()
     println("freed")

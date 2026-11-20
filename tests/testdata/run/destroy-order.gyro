@@ -1,0 +1,104 @@
+// A value is destroyed when its owner goes away: a local at the end of its
+// block, newest first and interleaved with the defers; a value's own
+// destroy before its fields'; the old value of an assignment; a temporary
+// at the end of its statement. A value that moved out is destroyed by its
+// new owner only.
+
+import { println, Destroy } from "stdlib"
+
+struct Noisy {
+    name: string
+}
+
+impl Destroy for Noisy {
+    fn destroy(inout self) {
+        println("destroy #{self.name}")
+    }
+}
+
+struct Pair {
+    left: Noisy
+    right: Noisy
+}
+
+impl Destroy for Pair {
+    fn destroy(inout self) {
+        println("destroy pair")
+    }
+}
+
+// Holds owning fields and has no destroy of its own.
+struct Bag {
+    first: Noisy
+    count: i32
+    second: Noisy
+}
+
+fn make(name: string): Noisy !{ &name } {
+    return Noisy{ name: name }
+}
+
+fn show(n: Noisy) {
+    println("show #{n.name}")
+}
+
+// The returned local moves to the caller; the other is destroyed here.
+fn keep(): Noisy {
+    let kept = make("kept")
+    let dropped = make("dropped")
+    return kept
+}
+
+fn early(leave: bool) {
+    let outer = make("outer")
+    if leave {
+        let inner = make("inner")
+        return
+    }
+    println("stayed")
+}
+
+fn main() {
+    {
+        let a = make("a")
+        defer println("defer between")
+        let b = make("b")
+        println("block body")
+    }
+
+    {
+        let p = Pair{ left: make("left"), right: make("right") }
+        let bag = Bag{ first: make("first"), count: 2, second: make("second") }
+    }
+
+    show(make("temporary"))
+    make("discarded")
+
+    let k = keep()
+    println("kept #{k.name}")
+
+    let r = make("old")
+    r = make("new")
+    println("assigned")
+
+    let moved = make("moved")
+    let taker = moved
+    println("took #{taker.name}")
+
+    for name in ["loop 0", "loop 1"] {
+        let x = make(name)
+    }
+
+    let maybe = make("maybe")
+    if k.name == "kept" {
+        let gone = maybe
+    }
+    println("after the branch")
+
+    early(true)
+    early(false)
+
+    let later: Noisy
+    later = make("later")
+    println("end of main")
+}

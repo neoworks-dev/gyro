@@ -29,7 +29,7 @@ divide by zero panics, and `i32::MIN / -1` panics as overflow.
 Wrapping is available where it is actually wanted, and is spelled out:
 
 ```gyro
-var hash: u32 = 2166136261
+let hash: u32 = 2166136261
 for byte in bytes {
     hash = hash *% 16777619 +% (byte as u32)
 }
@@ -58,7 +58,7 @@ The three-way `compare()` method is different **on purpose**: it is a
 every number and equal to another NaN, and `0.0` and `-0.0` compare equal.
 
 ```gyro
-var nan = 0.0 / 0.0
+let nan = 0.0 / 0.0
 nan <= 1.0       // false — unordered
 nan.compare(1.0) // 1     — total order, NaN is above
 nan.compare(nan) // 0
@@ -106,7 +106,7 @@ C-style `for` header ([chapter 3.6](ch03-06-control-flow.md)).
 
 These are **programmer errors**, not conditions. They print a message with a
 source position and abort. They are neither returnable nor catchable, which
-is what keeps the `(T, error?)` channel meaningful and needs no unwinding
+is what keeps the `T | Error` channel meaningful and needs no unwinding
 machinery.
 
 - integer overflow, including a narrowing `as` that loses the value

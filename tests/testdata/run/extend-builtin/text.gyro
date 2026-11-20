@@ -7,7 +7,7 @@ export fn string::shout(self): string {
 }
 
 export fn string::first_word(self): string {
-    var parts = self.split(heap(), " ")
+    let parts = self.split(heap(), " ")
     defer parts.free()
     return parts.get(0)
 }

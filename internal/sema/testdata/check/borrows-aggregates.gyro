@@ -36,7 +36,7 @@ fn spanFromNumber(span: Span): Span {
 }
 
 fn spanLocal(): Span {
-    var words = [1, 2, 3]
+    let words = [1, 2, 3]
     return Span{ text: "x", start: words.len() }
 }
 
@@ -58,7 +58,7 @@ fn pairOwned(xs: i32[]): (usize, i32) {
 }
 
 fn pairFrame(): (i32[], i32) {
-    var local = [1, 2, 3]
+    let local = [1, 2, 3]
     return local, 1 //~ E0610 this returns a view into storage that ends with this function
 }
 
@@ -76,7 +76,7 @@ fn wrapNumber(n: i32): any {
 }
 
 fn wrapFrame(): any {
-    var local = [1, 2, 3]
+    let local = [1, 2, 3]
     return local as any //~ E0610 this returns a view into storage that ends with this function
 }
 
@@ -104,8 +104,8 @@ fn handlersPlain(): Handlers {
 
 // Through a local, as through a call.
 fn handlersViaLocal(n: i32): Handlers {
-    var open = fn(): i32 { return n }
-    var all = Handlers{ on_open: open, on_close: open }
+    let open = fn(): i32 { return n }
+    let all = Handlers{ on_open: open, on_close: open }
     return all //~ E0610 this returns a closure that borrows this frame
 }
 
@@ -119,20 +119,20 @@ fn spanFromCallUnnamed(s: string): Span {
 
 // A container of views is a view of what they view.
 fn splitUnnamed(s: string): Array<string> {
-    var parts = Array<string>::new(heap())
+    let parts = Array<string>::new(heap())
     parts.push(s)
     return parts //~ E0609 this returns a view into s, which the row does not name
 }
 
 fn splitNamed(s: string): Array<string> !{ &s } {
-    var parts = Array<string>::new(heap())
+    let parts = Array<string>::new(heap())
     parts.push(s)
     return parts
 }
 
 // A container of numbers holds no view.
 fn lengths(s: string): Array<usize> {
-    var out = Array<usize>::new(heap())
+    let out = Array<usize>::new(heap())
     out.push(s.len())
     return out
 }

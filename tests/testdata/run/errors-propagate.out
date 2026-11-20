@@ -1,0 +1,11 @@
+middle read 40
+middle leaves 4
+outer got 82
+outer leaves 4
+ok 82
+middle leaves 0
+outer leaves 0
+failed: zero
+middle leaves -1
+outer leaves -1
+failed: refused: negative

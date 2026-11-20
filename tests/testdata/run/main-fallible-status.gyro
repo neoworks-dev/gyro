@@ -1,0 +1,12 @@
+// An `i32 | Error` main that succeeds exits with its number, and the
+// arguments it took reach it through the entry wrapper.
+
+//gyro:exit 5
+//gyro:args one two
+
+import { println, Error } from "stdlib"
+
+fn main(args: string[]): i32 | Error {
+    println(args.len())
+    return args.len() as i32 + 2
+}

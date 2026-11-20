@@ -1,3 +1,5 @@
+import { Error } from "stdlib"
+
 struct Point {
     x: i32
 }
@@ -27,8 +29,8 @@ fn elementTypes(p: Point, s: string) {
     labelled("x", 1, s, true, p)
 }
 
-fn packing(err: error, maybe: i32?) {
-    labelled("x", err)   //~ E0509 an any cannot hold error
+fn packing(err: Error, maybe: i32?) {
+    labelled("x", err)   //~ E0509 an any cannot hold Error
     labelled("x", maybe) //~ E0509 an any cannot hold i32?
 }
 

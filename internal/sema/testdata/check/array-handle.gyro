@@ -5,7 +5,7 @@ import { heap } from "mem"
 // Gyro with a field, and still behaves as the handle it is: it cannot go in
 // an any, and showing it would show the header.
 fn handle(xs: Array<i32>, text: String) {
-    var a = xs as any //~ E0509 an any cannot hold Array<i32>
+    let a = xs as any //~ E0509 an any cannot hold Array<i32>
     println(xs)       //~ E0527 Array<i32> does not implement Print
     println(text)
     println(xs.len())

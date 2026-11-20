@@ -40,9 +40,10 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		importedFrom:  map[string]string{},
 		reprs:         map[string]string{},
 		hashes:        map[string]bool{},
+		destroys:      map[string]bool{},
 		globalOf:      map[*ast.VarDecl][]int{},
 		lowered:       map[string]bool{},
-		errVariant:    map[*types.Struct]int{},
+		errVariant:    map[types.Type]int{},
 		anyVariant:    map[string]int{},
 		vtables:       map[string]*vtable{},
 		eqs:           map[string]bool{},
@@ -67,6 +68,7 @@ func Lower(prog *loader.Program, info *sema.Info) (module *metals.Module, err er
 		return nil, fmt.Errorf("lower: the program has no fn main in %s", prog.Root.File.Name)
 	}
 
+	l.mainDecl = main
 	l.module = &metals.Module{Name: l.moduleName()}
 	l.collectGlobals()
 	l.ensureFunc(main, nil)
@@ -150,11 +152,14 @@ type lowerer struct {
 	// same reason.
 	hashes map[string]bool
 
+	// destroys records which types already have a synthesized destroy.
+	destroys map[string]bool
+
 	// eqs records the synthesized comparisons, for types whose derived ==
 	// has to call an eq a part of them defines.
 	eqs map[string]bool
 
-	// globals is every module-level var, in declaration order; globalOf
+	// globals is every module-level let, in declaration order; globalOf
 	// indexes back from the declaration that introduced them.
 	globals  []moduleGlobal
 	globalOf map[*ast.VarDecl][]int
@@ -164,13 +169,16 @@ type lowerer struct {
 	queue   []workItem
 	lowered map[string]bool
 
-	// errTypes lists the structs that can inhabit an error value, in
-	// deterministic order; errVariant maps each to its variant index in
-	// the generated %error enum. usesError
-	// records whether %error was ever mentioned.
-	errTypes   []*types.Struct
-	errVariant map[*types.Struct]int
+	// errTypes lists the types that can inhabit an Error, in deterministic
+	// order; errVariant maps each to its variant index in the generated
+	// %error enum. usesError records whether %error was ever mentioned.
+	errTypes   []types.Type
+	errVariant map[types.Type]int
 	usesError  bool
+
+	// mainDecl is the program's main, which lowers under another name when
+	// it returns a result.
+	mainDecl *ast.FuncDecl
 
 	// anyTypes lists the types the program ever wraps in an any, in the
 	// order the wraps were lowered; anyVariant indexes back from a type's
@@ -288,6 +296,9 @@ func (l *lowerer) isIntrinsic(decl *ast.FuncDecl) bool {
 // tag, the owner with its type arguments, the function with its own.
 // main stays bare, and runtime intrinsics carry no module tag.
 func (l *lowerer) funcName(decl *ast.FuncDecl, bindings map[string]types.Type) string {
+	if decl == l.mainDecl && len(decl.Results) > 0 {
+		return mainRunName
+	}
 	parts := []string{}
 	if !l.isIntrinsic(decl) {
 		if module := l.moduleOf[decl]; module != nil {
@@ -354,6 +365,8 @@ func (l *lowerer) metalsType(t types.Type) metals.Type {
 		return &metals.Ptr{Elem: l.metalsType(t.Elem)}
 	case *types.Optional:
 		return &metals.Opt{Elem: l.metalsType(t.Elem)}
+	case *types.Result:
+		return l.metalsResult(t)
 	case *types.Slice:
 		return &metals.SliceOf{Elem: l.metalsType(t.Elem)}
 	case *types.Array:
@@ -527,67 +540,6 @@ func (l *lowerer) metalsEnum(t *types.Enum) metals.Type {
 		}
 	}
 	return &metals.Named{Name: name}
-}
-
-// ---------------------------------------------------------------------------
-// The error enum
-// ---------------------------------------------------------------------------
-
-// collectErrorTypes enumerates every struct in the program that satisfies
-// the structural error contract. Whole-program lowering makes error a
-// closed sum: one variant per concrete error type.
-func (l *lowerer) collectErrorTypes() {
-	for _, module := range l.prog.Modules {
-		for _, decl := range module.Tree.Decls {
-			structDecl, ok := decl.(*ast.StructDecl)
-			if !ok {
-				continue
-			}
-			t := l.info.Structs[structDecl]
-			if t == nil || len(t.TypeParams) > 0 || !isErrorStruct(t) {
-				continue
-			}
-			l.errVariant[t] = len(l.errTypes)
-			l.errTypes = append(l.errTypes, t)
-		}
-	}
-}
-
-// isErrorStruct mirrors sema's structural test: a message(): string
-// method with a receiver and no generics.
-func isErrorStruct(t *types.Struct) bool {
-	method := t.Methods["message"]
-	if method == nil || method.Recv == types.NoRecv || len(method.TypeParams) > 0 {
-		return false
-	}
-	return len(method.Sig.Params) == 0 && types.Identical(method.Sig.Result, types.String)
-}
-
-// finishErrorType emits the %error declaration once anything mentioned it.
-func (l *lowerer) finishErrorType() {
-	if !l.usesError || l.declared["error"] != nil {
-		return
-	}
-	decl := &metals.TypeDecl{Name: "error", Enum: &metals.EnumShape{}}
-	l.declared["error"] = decl
-	l.module.Types = append(l.module.Types, decl)
-	for _, t := range l.errTypes {
-		payload := l.metalsType(t)
-		decl.Enum.Variants = append(decl.Enum.Variants, metals.VariantDecl{
-			Name:    t.Name,
-			Payload: []metals.Type{payload},
-		})
-	}
-}
-
-// errorVariantOf returns the %error variant index for a concrete error
-// struct.
-func (l *lowerer) errorVariantOf(t *types.Struct) int {
-	if index, ok := l.errVariant[t]; ok {
-		return index
-	}
-	l.fail("%s is used as an error but was not collected as one", t)
-	return 0
 }
 
 // ---------------------------------------------------------------------------

@@ -12,11 +12,11 @@ struct Node {
 }
 
 fn noAllocator() {
-    var node = alloc<Node>() //~ E0504 alloc takes 1 argument(s), got 0
+    let node = alloc<Node>() //~ E0504 alloc takes 1 argument(s), got 0
 }
 
 fn notAnAllocator() {
-    var node = alloc<Node>(5) //~ E0501 cannot use an integer literal as Allocator in argument 1 to alloc
+    let node = alloc<Node>(5) //~ E0501 cannot use an integer literal as Allocator in argument 1 to alloc
 }
 
 fn freeNeedsOne(node: *Node) {
@@ -27,24 +27,24 @@ fn freeNeedsOne(node: *Node) {
 // Allocating is not an effect: a !{} function that is handed an allocator
 // allocates and frees without naming anything.
 fn handed(a: Allocator) !{} {
-    var node = alloc<Node>(a)
+    let node = alloc<Node>(a)
     free(a, node)
 }
 
 // A block from the heap is this block's to free, and warns when it is not.
 fn heapOwned() {
-    var node = alloc<Node>(heap()) //~ W0701 the allocation in node reaches the end of its block unfreed
+    let node = alloc<Node>(heap()) //~ W0701 the allocation in node reaches the end of its block unfreed
 }
 
 // A block from any other allocator is that allocator's to reclaim.
 fn arenaOwned() {
-    var arena = Arena::new(heap(), 64)
+    let arena = Arena::new(heap(), 64)
     defer arena.free()
-    var node = alloc<Node>(arena.allocator())
+    let node = alloc<Node>(arena.allocator())
 }
 
 fn handedOwned(a: Allocator) {
-    var node = alloc<Node>(a)
+    let node = alloc<Node>(a)
 }
 
 // panic does not return, so the check narrows p like a return would.

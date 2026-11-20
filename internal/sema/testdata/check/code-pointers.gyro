@@ -28,7 +28,7 @@ fn maybe(f: (code(i32, i32): i32)?): i32 {
 // `code` is contextual: only a `(` after it in a type position makes
 // one, so an ordinary name is still an ordinary name.
 fn contextual(): i32 {
-    var code = 5
+    let code = 5
     return code
 }
 
@@ -43,19 +43,19 @@ fn generic<T>(v: T): T {
 // A generic function and a method are not values on their own, so the
 // address never becomes a question: the operand is what is refused.
 fn noGenericAddress() {
-    var f = &generic //~ generic is generic; it must be called so its type parameters can be inferred
+    let f = &generic //~ generic is generic; it must be called so its type parameters can be inferred
 }
 
 struct Counter {
-    export n: i32
+    n: i32
 }
 
-fn Counter::bump(*self) {
+fn Counter::bump(inout self) {
     self.n = self.n + 1
 }
 
 fn noMethodAddress() {
-    var f = &Counter::bump //~ bump takes a receiver; call it on a value
+    let f = &Counter::bump //~ bump takes a receiver; call it on a value
 }
 
 async fn later(): i32 {
@@ -63,7 +63,7 @@ async fn later(): i32 {
 }
 
 fn noAsyncAddress() {
-    var f = &later //~ later is async, and what runs it is this program's scheduler rather than a caller
+    let f = &later //~ later is async, and what runs it is this program's scheduler rather than a caller
 }
 
 fn many(first: i32, rest: ...i32): i32 {
@@ -71,21 +71,21 @@ fn many(first: i32, rest: ...i32): i32 {
 }
 
 fn noVariadicAddress() {
-    var f = &many //~ many is variadic, and a code pointer carries no argument pack
+    let f = &many //~ many is variadic, and a code pointer carries no argument pack
 }
 
 // A closure is two words and captures; a code pointer is one word and
 // cannot. Neither becomes the other.
 fn notAClosure() {
-    var closure = fn(a: i32, b: i32): i32 { return a + b }
-    var f: code(i32, i32): i32 = closure //~ cannot use fn(i32, i32): i32 as code(i32, i32): i32 in the declaration of f
+    let closure = fn(a: i32, b: i32): i32 { return a + b }
+    let f: code(i32, i32): i32 = closure //~ cannot use fn(i32, i32): i32 as code(i32, i32): i32 in the declaration of f
 }
 
 fn notAFn() {
-    var f: fn(i32, i32): i32 = &add //~ cannot use code(i32, i32): i32 as fn(i32, i32): i32 in the declaration of f
+    let f: fn(i32, i32): i32 = &add //~ cannot use code(i32, i32): i32 as fn(i32, i32): i32 in the declaration of f
 }
 
 // An any promises the concrete type comes back out.
 fn notInAnAny(f: code(i32, i32): i32) {
-    var boxed = f as any //~ an any cannot hold code(i32, i32): i32
+    let boxed = f as any //~ an any cannot hold code(i32, i32): i32
 }

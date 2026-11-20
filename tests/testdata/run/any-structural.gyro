@@ -30,21 +30,21 @@ fn main() {
     println(kind((1, "x") as any))
     println(kind((4, 5) as any))
 
-    var arr = [1, 2, 3]
+    let arr = [1, 2, 3]
     println(kind(arr as any))
     println(kind(borrow(arr)))
     println(kind(["a", "b"] as any))
 
-    var node = Node{ value: 9 }
+    let node = Node{ value: 9 }
     println(kind(&node as any))
     println(kind(5 as any))
     println(kind(true as any))
 
     // Unwrapping with `as` names the same types.
-    var t = (1, "x") as any
-    var pair = t as (i32, string)
+    let t = (1, "x") as any
+    let pair = t as (i32, string)
     println(pair.1)
 
-    var view = borrow(arr)
+    let view = borrow(arr)
     println((view as i32[]).len())
 }

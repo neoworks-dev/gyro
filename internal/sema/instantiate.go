@@ -27,6 +27,8 @@ func (c *checker) substType(t types.Type, s subst) types.Type {
 		return &types.Pointer{Elem: c.substType(t.Elem, s)}
 	case *types.Optional:
 		return types.NewOptional(c.substType(t.Elem, s))
+	case *types.Result:
+		return &types.Result{Value: c.substType(t.Value, s)}
 	case *types.Slice:
 		return &types.Slice{Elem: c.substType(t.Elem, s)}
 	case *types.Array:
@@ -234,6 +236,8 @@ func cacheString(t types.Type) string {
 		return "*" + cacheString(t.Elem)
 	case *types.Optional:
 		return cacheString(t.Elem) + "?"
+	case *types.Result:
+		return cacheString(t.Value) + " | Error"
 	case *types.Slice:
 		return cacheString(t.Elem) + "[]"
 	case *types.Array:
@@ -325,6 +329,9 @@ func unify(pattern, actual types.Type, s subst) bool {
 	case *types.Optional:
 		a, ok := actual.(*types.Optional)
 		return ok && unify(p.Elem, a.Elem, s)
+	case *types.Result:
+		a, ok := actual.(*types.Result)
+		return ok && unify(p.Value, a.Value, s)
 	case *types.Slice:
 		// A fixed-size array lends a view of itself wherever a slice is
 		// wanted, so unification has to see through that too — otherwise
@@ -425,6 +432,8 @@ func containsTypeParam(t types.Type) bool {
 		return containsTypeParam(t.Elem)
 	case *types.Optional:
 		return containsTypeParam(t.Elem)
+	case *types.Result:
+		return containsTypeParam(t.Value)
 	case *types.Slice:
 		return containsTypeParam(t.Elem)
 	case *types.Array:

@@ -16,40 +16,13 @@ func (f *funcLowerer) lowerExpr(e ast.Expr, want types.Type) string {
 		return f.nullConst(want)
 	}
 	reg := f.eval(e, want)
+	f.keepTemporary(e, reg)
 	// A condition-shaped node is bool by construction, and sema's
 	// condition checker does not record the node itself.
 	if isCondShaped(e) {
-		return f.snapshot(reg)
-	}
-	return f.snapshot(f.coerce(reg, f.typeOf(e), want))
-}
-
-// snapshot pins a value that a later instruction will read. An assignment
-// writes a local's register in place, so a deferred call naming one would
-// otherwise run against whatever the local holds at block exit rather
-// than what it held where the defer was written.
-//
-// Only a local's own register needs it: every other register is written
-// once, and a local that lives in a slot was already loaded into a fresh
-// one.
-func (f *funcLowerer) snapshot(reg string) string {
-	if f.deferring == 0 || !f.namesLocal(reg) {
 		return reg
 	}
-	held := f.newReg("held")
-	f.emit(&metals.Copy{Dst: held, X: reg})
-	return held
-}
-
-func (f *funcLowerer) namesLocal(reg string) bool {
-	for _, scope := range f.scopes {
-		for _, entry := range scope.locals {
-			if entry.reg == reg && !entry.slot {
-				return true
-			}
-		}
-	}
-	return false
+	return f.coerce(reg, f.typeOf(e), want)
 }
 
 func isCondShaped(e ast.Expr) bool {
@@ -74,6 +47,9 @@ func (f *funcLowerer) text(value string) string {
 }
 
 func (f *funcLowerer) nullConst(want types.Type) string {
+	if result, ok := want.(*types.Result); ok {
+		return f.makeResult(result, resultValue, f.nullConst(result.Value))
+	}
 	optional, ok := want.(*types.Optional)
 	if !ok {
 		f.l.fail("@%s: null needs an optional context", f.fn.Name)
@@ -118,7 +94,7 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 	case *ast.BinaryExpr:
 		return f.evalBinary(e)
 	case *ast.CallExpr:
-		result := f.prepareCall(e)()
+		result := f.lowerCall(e)
 		if result == "" {
 			f.l.fail("@%s: a void call has no value", f.fn.Name)
 		}
@@ -136,6 +112,8 @@ func (f *funcLowerer) eval(e ast.Expr, want types.Type) string {
 		return f.evalMatch(e, want)
 	case *ast.AwaitExpr:
 		return f.await(e)
+	case *ast.TryExpr:
+		return f.tryExpr(e)
 	case *ast.RecvExpr:
 		pair := f.recvPair(e)
 		out := f.newReg("recvd")
@@ -201,6 +179,7 @@ func isAnyPtrType(t types.Type) bool {
 func (f *funcLowerer) evalIdent(e *ast.Ident) string {
 	if entry := f.lookup(e.Name); entry != nil {
 		value := f.localPlace(entry).load()
+		f.moveOut(e, entry)
 		// Only an optional local can need the narrowing unwrap; callee
 		// idents are never recorded, so ask for the use type lazily.
 		if _, optional := entry.typ.(*types.Optional); optional {
@@ -777,6 +756,9 @@ func (f *funcLowerer) coerce(reg string, from, to types.Type) string {
 			return f.wrapError(reg, from)
 		}
 
+	case *types.Result:
+		return f.wrapResult(reg, from, to)
+
 	case *types.Slice:
 		if _, ok := from.(*types.Array); ok {
 			out := f.newReg("view")
@@ -814,27 +796,6 @@ func (f *funcLowerer) coerce(reg string, from, to types.Type) string {
 // derefWant strips nothing today but keeps the call sites honest about
 // what they pass: the target is used as-is.
 func derefWant(t types.Type) types.Type { return t }
-
-// wrapError boxes a concrete error struct into the %error enum.
-func (f *funcLowerer) wrapError(reg string, from types.Type) string {
-	if isErrorBasic(from) {
-		return reg
-	}
-	strct, ok := from.(*types.Struct)
-	if !ok {
-		f.l.fail("@%s: %s cannot become an error", f.fn.Name, from)
-	}
-	f.l.usesError = true
-	f.l.metalsStruct(strct)
-	out := f.newReg("err")
-	f.emit(&metals.MakeVariant{
-		Dst:      out,
-		TypeName: "error",
-		Variant:  f.l.errorVariantOf(strct),
-		Args:     []string{reg},
-	})
-	return out
-}
 
 // rewrapOptional converts between optionals of different element types
 // at runtime: null stays null, a present value converts.

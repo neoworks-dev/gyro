@@ -1,20 +1,21 @@
 # 13.2. Channels and `select`
 
 ```gyro
-var ch = chan<i32>(64) // buffered; chan<i32>() is unbuffered
+let ch = chan<i32>(64) // buffered; chan<i32>() is unbuffered
 ch <- value            // send, always a statement
-var v = <-ch           // receive
-var v, open = <-ch     // receive, reporting whether the channel is open
+let v = <-ch           // receive
+let v, open = <-ch     // receive, reporting whether the channel is open
 for v in ch {}         // drain until closed
 ch.close()
 ```
 
-A channel element can be any type a value can be, tuples included — which is
-how a worker reports a fallible result without a wrapper struct:
+A channel element can be any type a value can be, tuples and results
+included — which is how a worker reports a fallible result without a wrapper
+struct:
 
 ```gyro
-fn fetch_into(url: string, results: chan<(string, error?)>) {
-    results <- (format(heap(), "stub body for #{url}"), null)
+fn fetch_into(url: string, results: chan<string | Error>) {
+    results <- format(heap(), "stub body for #{url}")
     results.close()
 }
 ```
@@ -32,7 +33,7 @@ never has to guess ([chapter 3.3](ch03-03-operators-and-arithmetic.md)).
 ## The two-name receive
 
 ```gyro
-var v, open = <-ch
+let v, open = <-ch
 ```
 
 `open` reports whether the channel was open. **Reading `v` when `open` came
@@ -41,12 +42,12 @@ value, not a zero value. The flag is what makes the value readable, and the
 check follows `!` and `&&` the same way null narrowing does:
 
 ```gyro
-var v, open = <-ch
+let v, open = <-ch
 if open {
     println(v) // fine
 }
 
-var w, more = <-ch
+let w, more = <-ch
 if !more {
     return
 }
@@ -73,11 +74,11 @@ value yet" from "no value ever".
 
 `select` waits on several operations and runs the arm that becomes ready
 first. Arms are `comm: body`, one per line, like `match`. Bindings are
-ordinary `var` declarations — there is no `:=`.
+ordinary `let` declarations — there is no `:=`.
 
 ```gyro
 select {
-    var value = <-values: use(value)
+    let value = <-values: use(value)
     quit <- true: return
     else: idle() // makes the select non-blocking
 }

@@ -20,7 +20,7 @@ fn bump(p: *i32) {
 }
 
 fn main() {
-    var xs = Array<i32>::new(heap())
+    let xs = Array<i32>::new(heap())
     defer xs.free()
     xs.push(1)
     xs.push(2)
@@ -41,13 +41,13 @@ fn main() {
     println(xs[2])
 
     // The same address twice is the same element.
-    var at = xs.at(0)
+    let at = xs.at(0)
     *at = 100
     println(xs[0])
 
     // A struct element is mutated in place, where `get` would answer with
     // a copy and the assignment would reach nothing.
-    var ps = Array<Point>::new(heap())
+    let ps = Array<Point>::new(heap())
     defer ps.free()
     ps.push(Point{ x: 1, y: 2 })
     ps.push(Point{ x: 3, y: 4 })
@@ -61,7 +61,7 @@ fn main() {
     println(ps[1].x)
 
     // An index computed at run time, and a whole element assigned.
-    var i: usize = 1
+    let i: usize = 1
     ps[i] = Point{ x: 30, y: 40 }
     println(ps[i].x)
     println(ps[1].y)

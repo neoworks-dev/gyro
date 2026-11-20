@@ -80,7 +80,7 @@ Before considering a change complete, run `go test ./...`, `make check`, and `ma
 
 ## Language invariants (easy to break)
 
-**Names and syntax.** There is no universe scope: names outside the formal syntax must be imported, and there are no predeclared functions. Prefer a library function over a keyword when ordinary Gyro can express the feature. Bindings use `var` or `const`, assignment is `=` (there is no `:=`), `else` requires a block, and chaining uses `elif` — `else if` doesn't parse. Visibility is explicit via `export` (capitalization has no semantic meaning), with no default exports or imports. Trait bounds join with `&`, not `+`.
+**Names and syntax.** There is no universe scope: names outside the formal syntax must be imported, and there are no predeclared functions. Prefer a library function over a keyword when ordinary Gyro can express the feature. Bindings use `let` or `const`, assignment is `=` (there is no `:=`), `else` requires a block, and chaining uses `elif` — `else if` doesn't parse. Visibility is explicit via `export` (capitalization has no semantic meaning), with no default exports or imports. Trait bounds join with `&`, not `+`.
 
 **Contextual keywords.** `move`, `copy`, and `from` are contextual identifiers, not lexer keywords. They must stay usable as ordinary identifiers outside their special grammar positions; don't add them to `internal/token` just because the parser recognizes them somewhere.
 
@@ -122,7 +122,7 @@ Error-recovery paths must still return structurally valid internal data. Never r
 
 ## Git
 
-Commit the worktree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. On a feature branch, only commit what that branch is for.
+Commit the working tree first if it's dirty, then write your changes. Short, to-the-point commit title; a body explaining the change when the title doesn't carry it; ask if you're unsure what to write. Only commit what the change is for.
 
 No trailers, ever: no `Co-Authored-By` on a commit, no "Generated with Claude Code" on a PR.
 
@@ -146,13 +146,11 @@ Write issues and their comments the way you'd explain it to a colleague, in comp
 
 One agent at a time, with me giving feedback as it goes. Keep each step small enough for me to read in one sitting, and stop to show me rather than piling up work I then have to catch up on.
 
-`main` is what I've reviewed. It stays checked out in the repo root: never switch branches there.
+Work happens on `main` in the repo root. There are no feature branches and no worktrees. Commit each finished change to `main` locally; I review the commits and push them myself. Never push.
 
-Straight to `main` in the root, no branch: typos, one-liners, and anything that only touches how we work rather than the compiler — this file, `.claude/skills/`, editor config.
+One commit is one thing. Anything found along the way gets written down as an issue and stays out of the commit, unless the change can't finish without it.
 
-Everything else happens on a branch off `main`, in a worktree under `.worktrees/<branch>` (`git worktree add .worktrees/<branch> -b <branch> main`). Name it `<issue-number>-<slug>` when there is an issue (`12-const-match-pattern`), `<slug>` when there isn't. One branch is one thing; anything found along the way gets written down as an issue and stays off the branch, unless the branch can't finish without it.
-
-Before starting on anything, check whether it is already half-built: `git branch` and `git worktree list` for the feature, and read what is on the branch. Sessions end mid-feature, and a branch is where that work is — starting again writes it a second time and loses whatever the first attempt learned. If a branch for it exists, continue on it.
+Before starting on anything, check whether it is already half-built: read `git log` and `git status`. Sessions end mid-change, and starting again writes it a second time.
 
 No pull requests unless I ask for one. Review happens here, on the diff, before the merge.
 
@@ -192,13 +190,13 @@ Two areas is fine when an issue genuinely spans them; three means split it.
 
 ## Done means verified
 
-Work is done when it has been shown to work, not when the code is written. Shown means a corpus case or a Go test (see Testing) that fails without the change and passes with it, with a golden written by hand. `go test ./...`, `make check` and `make vet` pass on the branch either way, and a performance claim needs a `make bench` number.
+Work is done when it has been shown to work, not when the code is written. Shown means a corpus case or a Go test (see Testing) that fails without the change and passes with it, with a golden written by hand. `go test ./...`, `make check` and `make vet` pass either way, and a performance claim needs a `make bench` number.
 
-Then hand it over and stop: what changed in a sentence or two, the evidence, and the branch.
+Then hand it over and stop: what changed in a sentence or two, and the evidence.
 
-## Merging
+## Finishing a change
 
-I review the branch's diff, and it merges into `main` when I say so — never before, and never without evidence. Merge in the root with `git merge --no-ff <branch>`, so the branch stays one unit in the history; if it conflicts, resolve it in the merge commit. Push `main`. Then remove the worktree and delete the branch, and close its issue with `gh bot issue close <n>`.
+When a change is done and shown to work, commit it to `main` and stop. Close its issue with `gh bot issue close <n>` once I've reviewed the commit.
 
 ## Project overrides of shared rules
 

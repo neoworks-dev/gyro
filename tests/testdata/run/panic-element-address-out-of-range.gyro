@@ -12,9 +12,9 @@ fn bump(p: *i32) {
 }
 
 fn main() {
-    var xs = [1, 2, 3, 4]
+    let xs = [1, 2, 3, 4]
     println("before")
-    var at: usize = 4
+    let at: usize = 4
     bump(&xs[at])
     println("unreachable")
 }

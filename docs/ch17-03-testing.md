@@ -55,7 +55,7 @@ spelled `;gyro:`.
 itself.
 
 ```gyro
-var x: u8 = 300 //~ E0301 does not fit u8
+let x: u8 = 300 //~ E0301 does not fit u8
 return xs       //~ E0609 which the row does not name
 //~^ help: say so in the row: !{ &xs }
 ```

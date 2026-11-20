@@ -30,7 +30,7 @@ Several bounds on one parameter are joined with `&`:
 
 ```gyro
 fn count_distinct<K: Eq & Hash>(keys: K[]): usize {
-    var seen = Map<K, bool>::new(heap())
+    let seen = Map<K, bool>::new(heap())
     defer seen.free()
     for key in keys {
         seen.insert(key, true)
@@ -89,7 +89,7 @@ struct Map<K: Eq & Hash, V> {
     count: usize
 }
 
-fn Map<K, V>::insert(*self, key: K, value: V) {
+fn Map<K, V>::insert(inout self, key: K, value: V) {
     // K is Eq and Hash here, because the type says so
 }
 ```
@@ -108,13 +108,13 @@ struct Pair<T> {
     second: T
 }
 
-fn Pair<T>::swap(*self) {
-    var tmp = self.first
+fn Pair<T>::swap(inout self) {
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
 
-var p = Pair<i32>{ 1, 2 }
+let p = Pair<i32>{ 1, 2 }
 ```
 
 Inference does the obvious things: a struct literal infers from its fields

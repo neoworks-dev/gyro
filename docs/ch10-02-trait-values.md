@@ -7,10 +7,10 @@ different kinds, a list of handlers — a **trait value** stands for it.
 its methods.
 
 ```gyro
-var button = Button{ label: "ok" }
-var label = Label{ text: "hello", size: 12 }
+let button = Button{ label: "ok" }
+let label = Label{ text: "hello", size: 12 }
 
-var elements = Array<dyn Element>::new(heap())
+let elements = Array<dyn Element>::new(heap())
 elements.push(&button as dyn Element)
 elements.push(&label as dyn Element)
 
@@ -36,7 +36,7 @@ one that matters.
 **A trait value is a view of the value it was made from, as a slice is a view
 of its array.** Making one takes a pointer, `&button as dyn Element`, and the
 result is only as long-lived as what the pointer points at. The borrow
-analysis follows it like a slice ([chapter 4.4](ch04-04-slices-and-views.md)):
+analysis follows it like a slice ([chapter 4.4](ch04-04-borrowing.md)):
 a function returning one says where it came from, and a view of this
 frame's storage cannot be returned.
 
@@ -46,7 +46,7 @@ fn pass(p: *Button): dyn Element !{ &p } {
 }
 
 fn frame(): dyn Element {
-    var b = Button{ label: "frame" }
+    let b = Button{ label: "frame" }
     return &b as dyn Element // error: a view into storage that ends with this function
 }
 ```
@@ -65,7 +65,7 @@ points at.
 ## Calling
 
 A method of the trait is called on a trait value as on any value:
-`element.paint()`. A `*self` method mutates the value behind the pointer.
+`element.paint()`. An `inout self` method changes the value the trait value views.
 A trait value of a trait that requires another carries the methods of both,
 and a trait value satisfies its own trait as a bound, so it can go to a
 generic function:

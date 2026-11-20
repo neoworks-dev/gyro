@@ -48,6 +48,7 @@ func (c *checker) callExpr(call *ast.CallExpr) types.Type {
 	if target.method != nil {
 		t := c.checkCall(call, target)
 		c.noteCall(call, target)
+		c.checkInoutCall(call, target)
 		if strings.HasPrefix(c.intrinsicCall(call), "syscall") {
 			c.checkSyscallArgs(call)
 		}
@@ -230,6 +231,12 @@ func (c *checker) calleeFromSelector(fun *ast.SelectorExpr) callee {
 	}
 	if method.Recv == types.NoRecv {
 		c.errorf(fun.NameOffset, "%s is an associated function; call it as %s::%s(...)", fun.Name, recv, fun.Name)
+		return callee{bad: true}
+	}
+	if fun.Name == "destroy" && types.Destroys(recv) {
+		c.errorHintf(fun.NameOffset, []string{
+			"a value is destroyed when its owner goes out of scope or is assigned over",
+		}, "destroy is never called by name")
 		return callee{bad: true}
 	}
 	if _, ok := recv.(*types.Chan); ok && fun.Name == "close" {
@@ -458,6 +465,11 @@ func (c *checker) checkCall(call *ast.CallExpr, target callee) types.Type {
 		if !c.checkCallArg(call, target, sig, s, i) {
 			poisoned = true
 		}
+		// Moved as soon as it is passed, so a later argument naming the
+		// same variable sees it gone.
+		if method.TakesAt(i) {
+			c.consume(arg.Value)
+		}
 	}
 	for _, i := range deferred {
 		if !c.checkCallArg(call, target, sig, s, i) {
@@ -645,6 +657,7 @@ func (c *checker) constructVariant(call *ast.CallExpr, target callee) types.Type
 	for i, arg := range call.Args {
 		if i < len(variant.Payload) {
 			c.assignExpr(arg.Value, variant.Payload[i], "the payload of "+variant.Name)
+			c.consume(arg.Value)
 		} else {
 			c.expr(arg.Value)
 		}
@@ -818,7 +831,31 @@ type pathee struct {
 	variantEnum *types.Enum
 	variant     *types.Variant
 
+	// errorNew marks Error::new, which has a signature and no declaration.
+	errorNew bool
+
 	bad bool
+}
+
+// errorNewSig is the signature of Error::new, the one function a trait has:
+// it makes the plain error, which carries a message and nothing else.
+var errorNewSig = &types.Func{Params: []types.Type{types.String}, Required: 1, Result: types.Error}
+
+// traitPathee resolves a path that starts at a trait. Only Error has
+// anything to reach through one, and that is `new`.
+func (c *checker) traitPathee(path *ast.Path, sym *symbol) pathee {
+	head := path.Segments[0]
+	if !isErrorTrait(sym.typ) || len(path.Segments) == 1 {
+		c.errorf(head.Offset, "%s is a trait, not a value", head.Name)
+		return pathee{bad: true}
+	}
+	member := path.Segments[1]
+	if len(path.Segments) > 2 || member.Name != "new" {
+		c.errorf(member.Offset, "%s has no associated function %s", head.Name, member.Name)
+		return pathee{bad: true}
+	}
+	c.recordRef(path, sym.decl)
+	return pathee{valueType: errorNewSig, errorNew: true}
 }
 
 func (c *checker) resolvePathee(path *ast.Path) pathee {
@@ -844,6 +881,8 @@ func (c *checker) resolvePathee(path *ast.Path) pathee {
 	case symTypeParam:
 		c.errorf(head.Offset, "%s is a type parameter; it has no members", head.Name)
 		return pathee{bad: true}
+	case symTrait:
+		return c.traitPathee(path, sym)
 	}
 
 	// A value: only a plain single-segment path makes sense.
@@ -988,6 +1027,9 @@ func (c *checker) pathValue(path *ast.Path) types.Type {
 	switch {
 	case p.bad:
 		return types.Unknown
+	case p.errorNew:
+		c.errorf(path.Offset, "Error::new makes an error, so it is called: Error::new(message)")
+		return types.Unknown
 	case p.valueType != nil:
 		return p.valueType
 	case p.variant != nil:
@@ -1004,6 +1046,9 @@ func (c *checker) pathValue(path *ast.Path) types.Type {
 		}
 		if p.method.Recv != types.NoRecv {
 			c.errorf(path.Offset, "%s takes a receiver; call it on a value", p.method.Name)
+			return types.Unknown
+		}
+		if c.refuseInoutValue(path.Offset, p.method) {
 			return types.Unknown
 		}
 		c.recordRef(path, p.method.Decl)

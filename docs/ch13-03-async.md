@@ -6,19 +6,19 @@ and it appears in the type: `async fn(): i32` is the type of an async
 closure.
 
 ```gyro
-export async fn fetch_all(urls: string[]): (Array<string>, error?) {
-    var bodies = Array<string>::new(heap())
+export async fn fetch_all(urls: string[]): Array<string> | Error {
+    let bodies = Array<string>::new(heap())
 
     for url in urls {
-        var body, err = await get(url)
-        if err != null {
-            return bodies, err
-        }
+        let body = await get(url)?
         bodies.push(body)
     }
-    return bodies, null
+    return bodies
 }
 ```
+
+An `await` and a `?` read in the order they happen: `await get(url)?` awaits
+the call, then takes the value out of its result.
 
 An `async` function and an `await` are implemented in `stdlib`, so a
 program that writes either has to load it: any import from `stdlib` does.
@@ -29,16 +29,20 @@ the module itself.
 
 ```gyro
 async fn main() {
-    var bodies, err = await fetch_all(["https://example.com"])
-    defer bodies.free()
-    ...
+    match await fetch_all(["https://example.com"]) {
+        Array<string>(bodies): {
+            defer bodies.free()
+            ...
+        }
+        Error(e): println("fetch failed: #{e.message()}")
+    }
 }
 ```
 
 An async closure is written the same way and inhabits the same type:
 
 ```gyro
-var later = async fn(): i32 { return 1 }
+let later = async fn(): i32 { return 1 }
 ```
 
 ## An un-awaited call is an error

@@ -45,7 +45,7 @@ fn main() {
 
     // md5_test.c adds its third message in two chunks, to show that a
     // context accepts more than one update.
-    var ctx = md5::init()
+    let ctx = md5::init()
     ctx.update("ABCDEFGHIJKLMNOPQRSTUVWXYZabcde".bytes(heap()))
     ctx.update("fghijklmnopqrstuvwxyz0123456789".bytes(heap()))
     show("md5", "two-chunk", ctx.final())
@@ -58,7 +58,7 @@ fn main() {
     // `final`, 63 and 64 bracket the block that `update` flushes on its
     // own, and 0 and 70 are the ends.
     for length in 0..71 {
-        var message = "a".repeat(heap(), length)
+        let message = "a".repeat(heap(), length)
         both(format(heap(), "#{length}"), message)
     }
 }

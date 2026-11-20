@@ -22,7 +22,7 @@ That goal is why the language has:
 
 None of those is a lint you can switch off. Each is a rule the compiler
 enforces, and [chapter 12](ch12-00-effect-rows.md) and
-[chapter 4](ch04-01-manual-memory.md) are where most of them live.
+[chapter 4](ch04-01-ownership.md) are where most of them live.
 
 ## One way to state a contract: a trait
 
@@ -36,8 +36,8 @@ trait.
 Having a method of the right name is not enough, and neither is being
 structurally the same: what a type promises is what its author wrote down
 ([chapter 10.1](ch10-01-traits.md), and [`decisions.md`](decisions.md), "Traits").
-The one contract still checked by shape is `error`, which is a type with
-`message(): string` ([chapter 9](ch09-00-errors.md)).
+That includes being an error: `Error` is a trait like the rest
+([chapter 9](ch09-00-errors.md)).
 
 ## Nothing is implicit
 
@@ -54,9 +54,10 @@ is the call's own doing.
 
 ## Errors cannot escape by accident
 
-A fallible function returns `(T, error?)` and the caller has to handle it.
-There is no propagation operator, no exceptions and no unwinding, and
-discarding an error takes an explicit `_`, so ignoring one is always visible
+A fallible function returns `T | Error` and the caller has to handle it:
+`?` hands the error to its own caller, and a match takes it apart. There are
+no exceptions and no unwinding, every propagation is marked with a `?`, and
+discarding a result takes an explicit `_`, so ignoring one is always visible
 in the source. Programmer errors — an index out of range, a divide by zero,
 a null dereference, an overflow — are not errors in that sense at all: they
 print a message with a source position and abort.

@@ -1,0 +1,152 @@
+import { println, Destroy, Array } from "stdlib"
+
+// An owning value has one owner. Putting it somewhere that keeps it moves
+// it, and the variable it came from holds nothing until it is assigned
+// again.
+
+struct File {
+    fd: i32
+}
+
+impl Destroy for File {
+    fn destroy(inout self) {
+        println(self.fd)
+    }
+}
+
+struct Holder {
+    file: File
+}
+
+fn open(fd: i32): File {
+    return File{ fd: fd }
+}
+
+fn use(f: File) {
+    println(f.fd)
+}
+
+fn useAfterMove() {
+    let a = open(1)
+    let b = a
+    use(a) //~ E0701 a is used after it was moved
+}
+
+fn movedOnOnePath(c: bool) {
+    let a = open(1)
+    if c {
+        let b = a
+    }
+    use(a) //~ E0701 a is used after it was moved
+}
+
+fn assignedAgain() {
+    let a = open(1)
+    let b = a
+    a = open(2)
+    use(a)
+}
+
+fn returnMoves(): File {
+    let a = open(1)
+    return a
+}
+
+// A plain parameter is borrowed, so its value is not the function's to give.
+fn fromParameter(f: File): File {
+    return f //~ E0702 cannot move f
+}
+
+fn fromField(h: Holder): File {
+    let local = Holder{ file: open(1) }
+    return local.file //~ E0702 cannot move a field
+}
+
+fn inLoop() {
+    let a = open(1)
+    for i in 0..3 {
+        let b = a //~ E0701 a is moved inside a loop
+    }
+}
+
+fn inLoopReassigned() {
+    let a = open(1)
+    for i in 0..3 {
+        let b = a
+        a = open(i)
+    }
+    use(a)
+}
+
+fn inDefer() {
+    let a = open(1)
+    defer use(Holder{ file: a }.file) //~ E0702 a deferred call cannot move a
+}
+
+fn armMovesVariable(c: bool): File {
+    let a = open(1)
+    let b = open(2)
+    return match c {
+        true: a //~ E0702 a match arm cannot move an owning value out of a variable
+        false: open(3)
+    }
+}
+
+fn notByName() {
+    let a = open(1)
+    a.destroy() //~ E0704 destroy is never called by name
+}
+
+// A generic body is judged again for each instantiation, so one that
+// copies a T it only borrowed is refused where T owns.
+fn copyOut<T>(value: T): T {
+    return value //~ E0702 cannot move value
+}
+
+fn typeArgument() {
+    let f = copyOut(open(1)) //~ E0505 in the instantiation copyOut<File> required here
+}
+
+// Each of these would copy the value without moving it.
+
+fn capture() {
+    let a = open(1)
+    let f = fn() {
+        use(a) //~ E0703 File is owning and cannot be used in a closure capture
+    }
+}
+
+fn iteration(files: File[]) {
+    for f in files { //~ E0703 File is owning and cannot be used in a for loop variable
+    }
+}
+
+let global = open(9)
+
+fn fromGlobal(): File {
+    return global //~ E0702 cannot move global
+}
+
+// A parameter written `T!` takes its argument: the caller's variable is
+// moved, and the function owns the value.
+fn take(f: File!) {
+    let kept = f
+}
+
+fn both(f: File!, g: File) {
+}
+
+fn takenThenUsed() {
+    let a = open(1)
+    take(a)
+    use(a) //~ E0701 a is used after it was moved
+}
+
+fn takenTwiceInOneCall() {
+    let a = open(1)
+    both(a, a) //~ E0701 a is used after it was moved
+}
+
+fn takerAsValue() {
+    let f = take //~ E0637 take takes ownership of a parameter, so it can only be called, not used as a value
+}

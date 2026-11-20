@@ -5,9 +5,9 @@ async fn compute(n: i32): i32 {
 }
 
 async fn main() {
-    var doubled = await compute(21)
+    let doubled = await compute(21)
     println(doubled)
 
-    var later = async fn(): i32 { return 7 }
+    let later = async fn(): i32 { return 7 }
     println(await later())
 }

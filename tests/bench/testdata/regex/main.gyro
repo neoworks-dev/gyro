@@ -23,7 +23,7 @@ import { heap } from "mem"
 const ROUNDS: i64 = 5000
 
 fn texts(): Array<u8[]> {
-    var table = Array<u8[]>::new(heap())
+    let table = Array<u8[]>::new(heap())
     table.push("%JxLLcVx8wxrjsj".bytes(heap()))
     table.push("=KbvUQjsj".bytes(heap()))
     table.push("^uDnoZjsj".bytes(heap()))
@@ -36,18 +36,18 @@ fn texts(): Array<u8[]> {
 }
 
 fn main() {
-    var pattern = regex::compile(".?\\w+jsj$".bytes(heap()))
-    var table = texts()
+    let pattern = regex::compile(".?\\w+jsj$".bytes(heap()))
+    let table = texts()
 
-    var start = monotonic()
-    var acc: u64 = 0
-    for var round: i64 = 0; round < ROUNDS; round += 1 {
+    let start = monotonic()
+    let acc: u64 = 0
+    for let round: i64 = 0; round < ROUNDS; round += 1 {
         for text in table.slice() {
-            var offset, length = regex::matchp(pattern, text)
+            let offset, length = regex::matchp(pattern, text)
             acc = acc *% 31 +% ((offset + 1) as u64) *% 7 +% (length as u64)
         }
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(acc)
     eprintln("gyro:bench #{stop - start}")

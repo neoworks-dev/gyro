@@ -55,7 +55,7 @@ fn main() {
     println(apply_rule(Rule{ code: 7, keep: &big }, 2))
 
     // One of the library's own, called from here.
-    var add = adder()
+    let add = adder()
     if add == null {
         println("no adder")
         return

@@ -5,20 +5,20 @@
 // the order they were defined, so `words` and `vars` list them the way
 // they were written rather than the way they hash.
 
-import { println, Array, Map, String, join } from "stdlib"
+import { println, Array, Map, String, Error, join } from "stdlib"
 import { CalcError } from "./error"
 import { heap, format } from "mem"
 
 export struct Calc {
-    stack: Array<f64>
+    private stack: Array<f64>
 
-    vars: Map<string, f64>
-    var_names: Array<string>
+    private vars: Map<string, f64>
+    private var_names: Array<string>
 
-    words: Map<string, Array<string>>
-    word_names: Array<string>
+    private words: Map<string, Array<string>>
+    private word_names: Array<string>
 
-    export done: bool
+    done: bool
 }
 
 export fn Calc::new(): Calc {
@@ -32,12 +32,12 @@ export fn Calc::new(): Calc {
     }
 }
 
-export fn Calc::free(*self) {
+export fn Calc::free(inout self) {
     self.stack.free()
     self.vars.free()
     self.var_names.free()
     for name in self.word_names.slice() {
-        var body = self.words.get(name)
+        let body = self.words.get(name)
         if body != null {
             body.free()
         }
@@ -50,64 +50,64 @@ export fn Calc::free(*self) {
 // The stack
 // ---------------------------------------------------------------------------
 
-export fn Calc::push(*self, value: f64) {
+export fn Calc::push(inout self, value: f64) {
     self.stack.push(value)
 }
 
-export fn Calc::pop(*self, word: string): (f64, error?) {
-    var value, ok = self.stack.pop()
+export fn Calc::pop(inout self, word: string): f64 | Error {
+    let value, ok = self.stack.pop()
     if !ok {
-        return 0.0, CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
+        return CalcError{ text: format(heap(), "#{word} wants a value and the stack is empty") }
     }
-    return value, null
+    return value
 }
 
 // pop2 answers the operands in the order they were written: `a b -` is
 // a - b, not b - a.
-export fn Calc::pop2(*self, word: string): (f64, f64, error?) {
+export fn Calc::pop2(inout self, word: string): (f64, f64) | Error {
     if self.stack.len() < 2 {
-        return 0.0, 0.0, CalcError{
+        return CalcError{
             text: format(heap(), "#{word} wants two values and the stack has #{self.stack.len()}"),
         }
     }
-    var b, _ = self.stack.pop()
-    var a, _ = self.stack.pop()
-    return a, b, null
+    let b, _ = self.stack.pop()
+    let a, _ = self.stack.pop()
+    return a, b
 }
 
 // pop3 is what `rot` wants: the three values in written order.
-export fn Calc::pop3(*self, word: string): (f64, f64, f64, error?) {
+export fn Calc::pop3(inout self, word: string): (f64, f64, f64) | Error {
     if self.stack.len() < 3 {
-        return 0.0, 0.0, 0.0, CalcError{
+        return CalcError{
             text: format(heap(), "#{word} wants three values and the stack has #{self.stack.len()}"),
         }
     }
-    var c, _ = self.stack.pop()
-    var b, _ = self.stack.pop()
-    var a, _ = self.stack.pop()
-    return a, b, c, null
+    let c, _ = self.stack.pop()
+    let b, _ = self.stack.pop()
+    let a, _ = self.stack.pop()
+    return a, b, c
 }
 
 export fn Calc::depth(self): usize {
     return self.stack.len()
 }
 
-export fn Calc::clear(*self) {
+export fn Calc::clear(inout self) {
     while !self.stack.is_empty() {
-        var _, _ = self.stack.pop()
+        let _, _ = self.stack.pop()
     }
 }
 
 // snapshot copies the stack so a failed line can be undone.
 export fn Calc::snapshot(self): Array<f64> {
-    var copy = Array<f64>::with_capacity(heap(), self.stack.len())
+    let copy = Array<f64>::with_capacity(heap(), self.stack.len())
     for value in self.stack.slice() {
         copy.push(value)
     }
     return copy
 }
 
-export fn Calc::restore(*self, saved: Array<f64>) {
+export fn Calc::restore(inout self, saved: Array<f64>) {
     self.stack.free()
     self.stack = saved
 }
@@ -117,10 +117,10 @@ export fn Calc::show(self) {
         println("(empty)")
         return
     }
-    var out = String::new(heap())
+    let out = String::new(heap())
     defer out.free()
 
-    var i: usize = 0
+    let i: usize = 0
     while i < self.stack.len() {
         if i > 0 {
             out.push(" ")
@@ -135,7 +135,7 @@ export fn Calc::show(self) {
 // Variables
 // ---------------------------------------------------------------------------
 
-export fn Calc::store(*self, name: string, value: f64) {
+export fn Calc::store(inout self, name: string, value: f64) {
     if !self.vars.contains(name) {
         self.var_names.push(name)
     }
@@ -156,8 +156,8 @@ export fn Calc::var_list(self): string[] !{ &self } {
 
 // define takes the body: the array is the machine's from here, and the
 // body it replaces is freed rather than left behind.
-export fn Calc::define(*self, name: string, body: Array<string>) {
-    var existing = self.words.get(name)
+export fn Calc::define(inout self, name: string, body: Array<string>) {
+    let existing = self.words.get(name)
     if existing != null {
         existing.free()
     } else {
@@ -176,15 +176,15 @@ export fn Calc::word_list(self): string[] !{ &self } {
 
 // forget drops a definition. The name list has no remove, so it is built
 // again without the name — there are as many names as a person typed.
-export fn Calc::forget(*self, name: string): bool {
-    var body = self.words.get(name)
+export fn Calc::forget(inout self, name: string): bool {
+    let body = self.words.get(name)
     if body == null {
         return false
     }
     body.free()
-    var _ = self.words.remove(name)
+    let _ = self.words.remove(name)
 
-    var kept = Array<string>::new(heap())
+    let kept = Array<string>::new(heap())
     for existing in self.word_names.slice() {
         if existing != name {
             kept.push(existing)
@@ -205,7 +205,7 @@ export fn Calc::list_words(self) {
         return
     }
     for name in self.word_names.slice() {
-        var body = self.words.get(name)
+        let body = self.words.get(name)
         if body != null {
             println(": #{name} #{join(heap(), body.slice(), " ")} ;")
         }
@@ -218,7 +218,7 @@ export fn Calc::list_vars(self) {
         return
     }
     for name in self.var_names.slice() {
-        var value = self.vars.get(name)
+        let value = self.vars.get(name)
         if value != null {
             println("#{name} = #{value}")
         }

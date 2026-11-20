@@ -6,9 +6,9 @@ fn add(a: i32, b: i32): i32 {
 }
 
 fn nothing() {}                      // no annotation means no result
-fn load(p: string): (string, error?) // returns a tuple
+fn load(p: string): string | Error   // can fail
 fn max<T>(a: T, b: T): T             // generic
-async fn fetch(u: string): (string, error?)
+async fn fetch(u: string): string | Error
 fn apply(f: fn(i32): bool) {}        // function-valued parameter
 fn sum(xs: ...i32): i32              // variadic
 fn printf(fmt: string, args: ...any) // variadic over mixed types
@@ -19,6 +19,36 @@ uses and the same one a closure uses. A function with no `:` returns
 nothing; there is no `void` to write.
 
 Parameters may carry defaults: `fn f(n: i32 = 4)`.
+
+## Parameters that change their argument
+
+A plain parameter only reads its argument. Assigning to it, to a field or an
+element of it, or calling a method on it that takes `inout self`, is an
+error. A parameter written `inout` borrows the caller's variable exclusively
+and may change it in place; the call looks the same either way:
+
+```gyro
+fn double(n: inout i32) {
+    n *= 2
+}
+
+fn swap(a: inout i32, b: inout i32) {
+    let held = a
+    a = b
+    b = held
+}
+
+let level = 21
+double(level)         // level is 42
+```
+
+The argument to an `inout` parameter is a variable that can change: a `let`
+local, a field or element of one, or an `inout` parameter of the caller.
+A `const`, a plain parameter or a temporary is an error, and so is passing
+the same value twice to one call when one of the passes is `inout`, as in
+`swap(a, a)`. A function with an `inout` parameter is called by name, so it
+cannot be stored as a function value; a closure around the call can. The
+rules are in [chapter 4.4](ch04-04-borrowing.md).
 
 A declaration **with no body** is not a stub — it is a foreign function or a
 runtime intrinsic ([chapter 15](ch15-00-c-interop.md)), which is why the
@@ -33,11 +63,12 @@ fn divmod(a: i32, b: i32): (i32, i32) {
     return a / b, a % b
 }
 
-var q, r = divmod(17, 5)
+let q, r = divmod(17, 5)
 ```
 
-A fallible function is this shape with `error?` on the right
-([chapter 9](ch09-00-errors.md)).
+A fallible function does not return several values: it returns one result,
+`T | Error`, and `?` takes the `T` out of it ([chapter 9](ch09-00-errors.md)).
+Several values and a failure are a tuple on the left, `(i32, i32) | Error`.
 
 ## Variadic parameters
 
@@ -48,7 +79,7 @@ outlive the call.
 
 ```gyro
 fn sum(xs: ...i32): i32 {
-    var total = 0
+    let total = 0
     for x in xs {
         total += x
     }
@@ -85,14 +116,14 @@ does not.
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-    var out = Array<i32>::new(heap())
+    let out = Array<i32>::new(heap())
     for value in values {
         out.push(f(value))
     }
     return out
 }
 
-var doubled = apply([1, 2, 3], fn(x) x * 2)
+let doubled = apply([1, 2, 3], fn(x) x * 2)
 ```
 
 [Chapter 11](ch11-00-closures.md) covers closures, capture, and the
@@ -104,7 +135,7 @@ A signature may carry an effect row after the result:
 
 ```gyro
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io }
+export fn load(p: string): string | Error !{ io }
 fn first(xs: i32[]): i32[] !{ &xs }
 ```
 
@@ -117,5 +148,5 @@ needs a `&` entry in practice, because a view never owns what it points at.
 ## Methods are functions too
 
 A method is a free-standing function whose name is qualified by its type —
-`fn Stack::push(*self, v: i32)`. There is no `impl` block and no `Self`.
+`fn Stack::push(inout self, v: i32)`. There is no `impl` block and no `Self`.
 [Chapter 5.2](ch05-02-methods.md).

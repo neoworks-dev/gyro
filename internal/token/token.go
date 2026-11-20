@@ -77,7 +77,7 @@ const (
 	operatorEnd
 
 	keywordBegin
-	Var
+	Let
 	Const
 	Fn
 	Struct
@@ -172,7 +172,7 @@ var kindNames = map[Kind]string{
 	LBracket:   "[",
 	RBracket:   "]",
 
-	Var:        "var",
+	Let:        "let",
 	Const:      "const",
 	Fn:         "fn",
 	Struct:     "struct",
@@ -216,7 +216,7 @@ func (k Kind) IsOperator() bool { return k > operatorBegin && k < operatorEnd }
 func (k Kind) IsKeyword() bool  { return k > keywordBegin && k < keywordEnd }
 
 var keywords = map[string]Kind{
-	"var":      Var,
+	"let":      Let,
 	"const":    Const,
 	"fn":       Fn,
 	"struct":   Struct,

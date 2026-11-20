@@ -61,7 +61,7 @@ fn digit(byte: u8): u32 {
 }
 
 fn hex(bytes: u8[], at: usize, width: usize): u32 {
-    var value: u32 = 0
+    let value: u32 = 0
     for i in 0..width {
         value = value * 16 + digit(bytes[at + i])
     }
@@ -70,10 +70,10 @@ fn hex(bytes: u8[], at: usize, width: usize): u32 {
 
 // state reads one end of a test and answers with the offset just past it.
 fn state(bytes: u8[], at: usize): (State, usize) {
-    var count = hex(bytes, at + 14, 2) as usize
-    var addresses = NO_ADDRESSES
-    var values = NO_VALUES
-    var cursor = at + 16
+    let count = hex(bytes, at + 14, 2) as usize
+    let addresses = NO_ADDRESSES
+    let values = NO_VALUES
+    let cursor = at + 16
     for i in 0..count {
         addresses[i] = hex(bytes, cursor, 4) as u16
         values[i] = hex(bytes, cursor + 4, 2) as u8
@@ -113,7 +113,7 @@ fn report_ram(index: i32, address: u16, got: u8, want: u8) {
 // upstream's bus-cycle list; the emulator counts cycles rather than bus
 // accesses, so only the total is comparable.
 fn run(cpu: *m6502::Cpu, index: i32, before: State, after: State, cycles: u32): bool {
-    var ok = true
+    let ok = true
 
     cpu.forget_touches()
     for i in 0..before.n {
@@ -158,7 +158,7 @@ fn run(cpu: *m6502::Cpu, index: i32, before: State, after: State, cycles: u32): 
         ok = false
     }
     for i in 0..after.n {
-        var got = cpu.read(after.addresses[i])
+        let got = cpu.read(after.addresses[i])
         if got != after.values[i] {
             report_ram(index, after.addresses[i], got, after.values[i])
             ok = false
@@ -180,23 +180,23 @@ fn run(cpu: *m6502::Cpu, index: i32, before: State, after: State, cycles: u32): 
 }
 
 fn main() {
-    var cpu = m6502::Cpu::new()
+    let cpu = m6502::Cpu::new()
     defer cpu.free()
 
-    var total = 0
-    var passed = 0
+    let total = 0
+    let passed = 0
 
-    var i: usize = 0
+    let i: usize = 0
     while i < 151 {
-        var bytes = tests::CASES[i].bytes(heap())
-        var cursor: usize = 0
-        var count = 0
-        var ok = 0
+        let bytes = tests::CASES[i].bytes(heap())
+        let cursor: usize = 0
+        let count = 0
+        let ok = 0
 
         while cursor < bytes.len() {
-            var before, at = state(bytes, cursor)
-            var after, next = state(bytes, at)
-            var cycles = hex(bytes, next, 2)
+            let before, at = state(bytes, cursor)
+            let after, next = state(bytes, at)
+            let cycles = hex(bytes, next, 2)
             cursor = next + 2
             count += 1
             if run(&cpu, count, before, after, cycles) {

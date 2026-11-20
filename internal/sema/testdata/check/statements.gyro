@@ -4,13 +4,14 @@ struct Node {
 }
 
 fn assignments() {
-    var x = 1
+    let x = 1
     x = 2
     x += 3
 }
 
-fn badAssignments(s: string) {
-    var x = 1
+fn badAssignments(given: string) {
+    let s = given
+    let x = 1
     x = "two"  //~ cannot use string as i32 in assignment
     x += "two" //~ matching numeric operands
     s += s     //~ matching numeric operands
@@ -38,5 +39,5 @@ fn badDefer() {
 }
 
 fn declarationForms() {
-    var x: i32
+    let x: i32
 }

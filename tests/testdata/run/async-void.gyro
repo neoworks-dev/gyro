@@ -12,7 +12,7 @@ async fn slow(flag: *Atomic<bool>) {
 }
 
 async fn main() {
-    var flag = alloc<Atomic<bool>>(heap())
+    let flag = alloc<Atomic<bool>>(heap())
     defer free(heap(), flag)
     flag.store(false)
     await slow(flag)

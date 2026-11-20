@@ -8,15 +8,15 @@ fn builtinSpellings(a: String, //~ help: the built-in type is spelled string
 
 fn suggestsAnImport() {
     println(1)                 //~ help: import { println } from "stdlib"
-    var xs = Array<i32>::new() //~ help: import { Array } from "stdlib"
+    let xs = Array<i32>::new() //~ help: import { Array } from "stdlib"
 }
 
 fn suggestsAMethod(xs: i32[]) {
-    var n = len(xs) //~ help: len is a method on Format and Array and String and Map, not a free function
+    let n = len(xs) //~ help: len is a method on Format and Array and String and Map, not a free function
 }
 
 fn suggestsASpelling() {
-    var counter = 1
+    let counter = 1
     counter = countr + 1 //~ help: did you mean counter?
 }
 
@@ -30,6 +30,6 @@ fn suggestsATypeSpelling(p: Pont) { //~ help: did you mean Point?
 // A guess is worth printing only when it is close; an unrelated name is
 // noise, so it gets the general fact instead.
 fn unrelatedNamesGetNoGuess() {
-    var counter = 1
-    var v = zqx //~ note: nothing is predeclared
+    let counter = 1
+    let v = zqx //~ note: nothing is predeclared
 }

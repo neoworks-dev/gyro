@@ -24,7 +24,7 @@ fn main() {
     // Before anything has been written to it.
     println(table_is_clear())
     println(fill_table())
-    var i = 0
+    let i = 0
     while i < 4 {
         println(table_entry(i))
         i = i + 1

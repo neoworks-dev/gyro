@@ -84,8 +84,8 @@ func (f *funcLowerer) liftClosureBody(e *ast.ClosureExpr, sig *types.Func, lifte
 		child.fn.Result = f.l.metalsType(sig.Result)
 	}
 	child.addrTaken = map[string]bool{}
-	markAddressTaken(e.Body, child.addrTaken)
-	markAddressTaken(e.BodyExpr, child.addrTaken)
+	child.markAddressTaken(e.Body)
+	child.markAddressTaken(e.BodyExpr)
 	child.blocks = []*[]metals.Instr{&child.fn.Body}
 	child.pushScope()
 
@@ -314,6 +314,8 @@ func (w *fvWalker) expr(e ast.Expr) {
 	case *ast.BlockExpr:
 		w.block(e.Block)
 	case *ast.AwaitExpr:
+		w.expr(e.X)
+	case *ast.TryExpr:
 		w.expr(e.X)
 	case *ast.RecvExpr:
 		w.expr(e.Chan)

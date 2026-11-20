@@ -12,9 +12,9 @@ fn fib(n: i32): i32 {
 }
 
 fn main() {
-    var start = monotonic()
-    var result = fib(34)
-    var stop = monotonic()
+    let start = monotonic()
+    let result = fib(34)
+    let stop = monotonic()
 
     println(result)
     eprintln("gyro:bench #{stop - start}")

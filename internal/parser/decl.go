@@ -200,7 +200,7 @@ func (p *Parser) parseDecl() ast.Decl {
 			p.errorf(offset, "an impl is not exported; it belongs to the type it is for")
 		}
 		return decl
-	case token.Var, token.Const:
+	case token.Let, token.Const:
 		decl := p.parseVarDecl()
 		decl.Offset, decl.Exported = offset, exported
 		p.expectTerminator()
@@ -491,7 +491,7 @@ func (p *Parser) implOwner(t ast.Type) (string, []ast.TypeParam) {
 }
 
 // parseParams parses a parenthesized parameter list. A leading `self` or
-// `*self` becomes the receiver rather than an ordinary parameter.
+// `inout self` becomes the receiver rather than an ordinary parameter.
 func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
 	p.noteList()
 	p.expect(token.LParen)
@@ -521,15 +521,12 @@ func (p *Parser) parseParams() (*ast.Receiver, []ast.Param) {
 }
 
 func (p *Parser) isReceiver() bool {
-	if p.at(token.Self) {
-		return true
-	}
-	return p.at(token.Star) && p.peekAt(1).Kind == token.Self
+	return p.at(token.Self) || p.atInout() && p.peekAt(1).Kind == token.Self
 }
 
 func (p *Parser) parseReceiver() *ast.Receiver {
 	recv := &ast.Receiver{Offset: p.offset()}
-	recv.Pointer = p.accept(token.Star)
+	recv.Inout = p.acceptInout()
 	p.expect(token.Self)
 	return recv
 }
@@ -538,8 +535,19 @@ func (p *Parser) parseParam() ast.Param {
 	param := ast.Param{Offset: p.offset()}
 	param.Name, _ = p.expectIdent()
 	p.expect(token.Colon)
-	param.Variadic = p.accept(token.Ellipsis)
+	param.Inout = p.acceptInout()
+	// A pack is collected into a slice the callee owns, so there is nothing
+	// in the caller for it to change in place: `inout ...T` is left to fail
+	// as the missing type it is.
+	if !param.Inout {
+		param.Variadic = p.accept(token.Ellipsis)
+	}
 	param.Type = p.parseType()
+	// `T!` hands the argument over. It mirrors `T?` but belongs to the
+	// parameter rather than the type: there is no value of type `T!`.
+	if !param.Inout && !param.Variadic {
+		param.Take = p.accept(token.Bang)
+	}
 
 	if p.accept(token.Assign) {
 		p.withStructLits(true, func() {
@@ -576,21 +584,18 @@ func (p *Parser) parseResultList() []ast.Type {
 		}
 		p.expect(token.RParen)
 
-		// A `?` after the parens says they were grouping, because a
-		// result *list* has nothing to be null. It is the one way to
-		// write a nullable code pointer or function type — whose own
-		// spelling ends in a result the marker would otherwise bind to
-		// — and it settles the parenthesized tuple the same way.
-		if p.at(token.Question) && len(results) > 0 {
+		// A `?` or `| Error` after the parens says they were grouping,
+		// because a result *list* has nothing to be null or to fail. The
+		// `?` is the one way to write a nullable code pointer or function
+		// type — whose own spelling ends in a result the marker would
+		// otherwise bind to — and it settles the parenthesized tuple the
+		// same way, as `| Error` does for a tuple that can fail.
+		if (p.at(token.Question) || p.at(token.Pipe)) && len(results) > 0 {
 			var typ ast.Type = results[0]
 			if len(results) != 1 {
 				typ = &ast.TupleType{Offset: offset, Elements: results}
 			}
-			for p.at(token.Question) {
-				typ = &ast.OptionalType{Offset: p.offset(), Elem: typ}
-				p.next()
-			}
-			return []ast.Type{typ}
+			return []ast.Type{p.parseUnionFrom(p.parseOptionalFrom(typ))}
 		}
 		return results
 	}
@@ -663,7 +668,7 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 
 	for !p.at(token.RBrace) && !p.atEOF() {
 		field := ast.Field{Offset: p.offset()}
-		field.Exported = p.accept(token.Export)
+		field.Private = p.acceptPrivate()
 		field.Name, _ = p.expectIdent()
 		p.expect(token.Colon)
 		field.Type = p.parseType()
@@ -691,7 +696,7 @@ func (p *Parser) parseUnionDecl() *ast.UnionDecl {
 
 	for !p.at(token.RBrace) && !p.atEOF() {
 		member := ast.Field{Offset: p.offset()}
-		member.Exported = p.accept(token.Export)
+		member.Private = p.acceptPrivate()
 		member.Name, _ = p.expectIdent()
 		p.expect(token.Colon)
 		member.Type = p.parseType()
@@ -777,4 +782,38 @@ func (p *Parser) parseBinding() ast.Binding {
 	}
 	binding.Name, _ = p.expectIdent()
 	return binding
+}
+
+// atInout reports the `inout` in front of a receiver or a parameter's type.
+// It is contextual, like `private`: only a word that can start a type, or
+// `self`, after it makes it the modifier, so `inout` stays usable as a
+// name, and as a type's name, everywhere else.
+func (p *Parser) atInout() bool {
+	if !p.at(token.Ident) || p.tok().Text != "inout" {
+		return false
+	}
+	switch p.peekAt(1).Kind {
+	case token.Self, token.Ident, token.Star, token.LParen, token.Fn, token.Async, token.Chan:
+		return true
+	}
+	return false
+}
+
+func (p *Parser) acceptInout() bool {
+	if !p.atInout() {
+		return false
+	}
+	p.next()
+	return true
+}
+
+// acceptPrivate consumes the `private` in front of a field. It is contextual,
+// the way `safe` and `unsafe` are: only a field name after it makes it the
+// modifier, so a field may still be called `private`.
+func (p *Parser) acceptPrivate() bool {
+	if p.at(token.Ident) && p.tok().Text == "private" && p.peekAt(1).Kind == token.Ident {
+		p.next()
+		return true
+	}
+	return false
 }

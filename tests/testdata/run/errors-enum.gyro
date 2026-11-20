@@ -1,0 +1,44 @@
+// An enum is an error the same way a struct is, and a type test on the
+// Error binds it whole, so a caller can match on which variant it was.
+
+import { println, Error } from "stdlib"
+import { format, heap } from "mem"
+
+enum Failure {
+    Missing(string),
+    Broken(i32),
+}
+
+impl Error for Failure {
+    fn message(self): string {
+        return match self {
+            Failure::Missing(name): format(heap(), "missing #{name}")
+            Failure::Broken(code): format(heap(), "broken with #{code}")
+        }
+    }
+}
+
+fn find(name: string): string | Error {
+    if name == "a" {
+        return "found a"
+    }
+    if name == "b" {
+        return Failure::Broken(7)
+    }
+    return Failure::Missing(name)
+}
+
+fn main() {
+    for name in ["a", "b", "c"] {
+        match find(name) {
+            string(text): println(text)
+            Error(e): match e {
+                Failure(why): match why {
+                    Failure::Missing(n): println("could not find #{n}")
+                    Failure::Broken(code): println("code #{code}")
+                }
+                _: println(e.message())
+            }
+        }
+    }
+}

@@ -24,7 +24,7 @@ fn misspelledMethod(p: Point): i32 {
 }
 
 fn misspelledLiteralField() {
-    var p = Point{ conut: 1 } //~ help: did you mean count?
+    let p = Point{ conut: 1 } //~ help: did you mean count?
     //~^ E0508 the literal misses the field count
 }
 

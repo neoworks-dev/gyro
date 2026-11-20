@@ -15,7 +15,7 @@ import { cast, offset } from "unsafe"
 // freeing the array ends it. A function that keeps the address past the
 // call keeps a dangling one.
 export fn c_string(a: Allocator, text: string): Array<u8> !{} {
-    var out = Array<u8>::new(a)
+    let out = Array<u8>::new(a)
     for byte in text.bytes(a) {
         out.push(byte)
     }
@@ -27,7 +27,7 @@ export fn c_string(a: Allocator, text: string): Array<u8> !{} {
 // reads it as. It is unsafe because the address is good for as long as
 // the array is, and nothing here says how long that is.
 export unsafe fn c_data(bytes: Array<u8>): *i8 !{} {
-    var view = bytes.slice()
+    let view = bytes.slice()
     return cast<i8>(&view[0] as anyptr)
 }
 
@@ -39,18 +39,18 @@ export unsafe fn from_c(a: Allocator, text: *i8?): string !{} {
     if text == null {
         return ""
     }
-    var bytes = Array<u8>::new(a)
-    var start = text as anyptr
-    var at: usize = 0
+    let bytes = Array<u8>::new(a)
+    let start = text as anyptr
+    let at: usize = 0
     while true {
-        var byte = *cast<u8>(offset(start, at))
+        let byte = *cast<u8>(offset(start, at))
         if byte == 0 {
             break
         }
         bytes.push(byte)
         at += 1
     }
-    var out = from_utf8(a, bytes.slice())
+    let out = from_utf8(a, bytes.slice())
     bytes.free()
     return out
 }

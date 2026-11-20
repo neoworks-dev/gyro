@@ -1,39 +1,41 @@
-import { println } from "stdlib"
+import { println, Error } from "stdlib"
 
-async fn fetch(url: string): (string, error?) {
-    return "", null
+async fn fetch(url: string): string | Error {
+    return ""
 }
 
 fn plain(): i32 {
     return 1
 }
 
-async fn awaited() {
-    var body, err = await fetch("u")
-    var s: string = body
+async fn awaited(): string | Error {
+    let body = await fetch("u")?
+    let s: string = body
+    return s
 }
 
 fn awaitNeedsAnAsyncFn() {
-    var x = await fetch("u") //~ await only works inside an async fn
+    let x = await fetch("u") //~ await only works inside an async fn
 }
 
 async fn unawaitedDoesNothing() {
     fetch("u") //~ does nothing until it is awaited
 }
 
-async fn theResultIsAFuture() {
-    var body, err = fetch("u") //~ needs a tuple, not awaitable<(string, error?)>
+async fn theResultIsAFuture(): string | Error {
+    let body = fetch("u")? //~ ? needs a T | Error or an Error?, not awaitable<string | Error>
+    return ""
 }
 
 async fn awaitNeedsAnAsyncCallee() {
-    var x = await plain() //~ await needs a call to an async fn
+    let x = await plain() //~ await needs a call to an async fn
 }
 
 fn asyncClosure() {
-    var later = async fn(): i32 { return 1 }
+    let later = async fn(): i32 { return 1 }
 }
 
 async fn awaitAnAsyncClosure(): i32 {
-    var later = async fn(): i32 { return 1 }
+    let later = async fn(): i32 { return 1 }
     return await later()
 }

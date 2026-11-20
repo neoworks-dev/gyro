@@ -17,14 +17,14 @@ safe fn counting(data: anyptr?, mode: Mode, size: usize, align: usize,
     if data == null {
         return null
     }
-    var counter = cast<Counter>(data)
+    let counter = cast<Counter>(data)
     if mode == Mode::Alloc {
         counter.allocs += 1
     }
     if mode == Mode::Free {
         counter.frees += 1
     }
-    var h = heap()
+    let h = heap()
     return h.proc(h.data, mode, size, align, old, old_size)
 }
 
@@ -35,7 +35,7 @@ fn map_into(xs: i32[], out: i32[], f: fn(i32): i32) {
 }
 
 fn count_if(xs: i32[], keep_it: fn(i32): bool): i32 {
-    var n = 0
+    let n = 0
     for x in xs {
         if keep_it(x) {
             n += 1
@@ -45,7 +45,7 @@ fn count_if(xs: i32[], keep_it: fn(i32): bool): i32 {
 }
 
 fn fold(xs: i32[], start: i32, f: fn(i32, i32): i32): i32 {
-    var total = start
+    let total = start
     for x in xs {
         total = f(total, x)
     }
@@ -58,14 +58,14 @@ fn adder(a: Allocator, n: i32): fn(i32): i32 {
 }
 
 fn main() {
-    var counter = Counter{ allocs: 0, frees: 0 }
-    var counted = Allocator{ proc: &counting, data: &counter as anyptr }
+    let counter = Counter{ allocs: 0, frees: 0 }
+    let counted = Allocator{ proc: &counting, data: &counter as anyptr }
 
     // Capturing closures passed down: the frame is alive for the whole call.
-    var offset = 100
-    var limit = 2
-    var xs = [1, 2, 3, 4]
-    var doubled = [0, 0, 0, 0]
+    let offset = 100
+    let limit = 2
+    let xs = [1, 2, 3, 4]
+    let doubled = [0, 0, 0, 0]
     map_into(xs, doubled, fn(x) x * 2 + offset)
     println(doubled[0])
     println(doubled[3])
@@ -75,8 +75,8 @@ fn main() {
 
     // A closure's mutations accumulate in its one record, and the local it
     // copied from is left alone.
-    var total = 0
-    var running = fn(x: i32): i32 {
+    let total = 0
+    let running = fn(x: i32): i32 {
         total += x
         return total
     }
@@ -85,7 +85,7 @@ fn main() {
     println(total)
 
     // keep allocates once, from the allocator it is given.
-    var plus = adder(counted, 10)
+    let plus = adder(counted, 10)
     println(plus(1))
     println(plus(32))
     println(counter.allocs)
@@ -94,13 +94,13 @@ fn main() {
     println(counter.frees)
 
     // The copy is its own record: the original keeps its own count.
-    var hits = 0
-    var tally = fn(): i32 {
+    let hits = 0
+    let tally = fn(): i32 {
         hits += 1
         return hits
     }
     tally()
-    var copied = keep(counted, tally)
+    let copied = keep(counted, tally)
     println(copied())
     println(copied())
     println(tally())
@@ -109,19 +109,19 @@ fn main() {
 
     // A closure that captures nothing has no record: nothing is allocated
     // and nothing is freed.
-    var before = counter.allocs
-    var plain = keep(counted, fn(x: i32): i32 { return x * 3 })
+    let before = counter.allocs
+    let plain = keep(counted, fn(x: i32): i32 { return x * 3 })
     println(plain(7))
     println(counter.allocs - before)
-    var frees = counter.frees
+    let frees = counter.frees
     release(counted, plain)
     println(counter.frees - frees)
 
     // An arena takes the copies and takes them all back at once.
-    var arena = Arena::new(heap(), 256)
+    let arena = Arena::new(heap(), 256)
     defer arena.free()
-    var scale = 4
-    var scaled = keep(arena.allocator(), fn(x: i32): i32 { return x * scale })
+    let scale = 4
+    let scaled = keep(arena.allocator(), fn(x: i32): i32 { return x * scale })
     println(scaled(5))
     arena.free_all()
 }

@@ -74,10 +74,10 @@ export fn shout(text: string) {
 }
 
 export struct Counter {
-  export n: i32
+  n: i32
 }
 
-export fn Counter::bump(*self): i32 {
+export fn Counter::bump(inout self): i32 {
   self.n += 1
   return self.n
 }
@@ -88,7 +88,7 @@ import { println } from "stdlib"
 
 fn main() {
   shout("hey")
-  var c = Counter{ n: 0 }
+  let c = Counter{ n: 0 }
   println(c.bump())
 }
 `
@@ -144,14 +144,14 @@ fn main() {
 func TestBundledModulesMayCarryGyroCode(t *testing.T) {
 	const bundled = `
 export struct Counter {
-  export n: i32
+  n: i32
 }
 
 export fn Counter::new(): Counter {
   return Counter{ n: 0 }
 }
 
-export fn Counter::bump(*self): i32 {
+export fn Counter::bump(inout self): i32 {
   self.n += 1
   return self.n
 }
@@ -164,7 +164,7 @@ export fn double(value: i32): i32 {
 import { Counter, double } from "counters"
 
 fn main() {
-  var c = Counter::new()
+  let c = Counter::new()
   println(c.bump())
   println(double(21))
 }

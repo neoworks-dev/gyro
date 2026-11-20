@@ -27,12 +27,12 @@ fn main() {
     println(line_size())
 
     // A struct out of C, read in Gyro.
-    var p = point_at(3, 4)
+    let p = point_at(3, 4)
     println(p.x)
     println(p.y)
 
     // A struct built in Gyro, read by C through a pointer to it.
-    var q = Point{ x: 10, y: 20 }
+    let q = Point{ x: 10, y: 20 }
     println(point_x(&q))
 
     // C writing through a pointer to Gyro's storage.
@@ -41,20 +41,20 @@ fn main() {
     println(p.y)
 
     // Nesting, by value in both directions.
-    var l = line_through(p, q)
+    let l = line_through(p, q)
     println(l.a.x)
     println(l.b.y)
     println(line_span(l))
 
     // Two out-parameters, filled from a struct Gyro holds.
-    var first = Point{ x: 0, y: 0 }
-    var last = Point{ x: 0, y: 0 }
+    let first = Point{ x: 0, y: 0 }
+    let last = Point{ x: 0, y: 0 }
     line_ends(&l, &first, &last)
     println(first.y)
     println(last.x)
 
     // A handle with no shape: held, passed back, and nothing else.
-    var arena = arena_open()
+    let arena = arena_open()
     if arena == null {
         println("no arena")
         return

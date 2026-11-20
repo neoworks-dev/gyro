@@ -5,9 +5,9 @@ A closure is an anonymous function, written with the same `fn` and the same
 the language.
 
 ```gyro
-var double = fn(a: i32): i32 { return a * 2 }
-var greet  = fn() { println("hi") }
-var later  = async fn(): i32 { return 1 }
+let double = fn(a: i32): i32 { return a * 2 }
+let greet  = fn() { println("hi") }
+let later  = async fn(): i32 { return 1 }
 ```
 
 The type a closure inhabits is the function type that already exists:
@@ -35,21 +35,21 @@ A closure captures the locals it uses **by copy**, implicitly. Nothing is
 declared:
 
 ```gyro
-var factor: i32 = 3
-var scale = fn(x: i32): i32 { return x * factor }
+let factor: i32 = 3
+let scale = fn(x: i32): i32 { return x * factor }
 println(scale(5)) // 15
 ```
 
 The capture list exists for exactly one purpose: **transferring ownership**.
 
 ```gyro
-var node = alloc<Node>(heap())
-var release = fn[move node]() { free(heap(), node) } // ownership moves in
+let node = alloc<Node>(heap())
+let release = fn[move node]() { free(heap(), node) } // ownership moves in
 ```
 
 `fn[move node]` moves the binding into the closure, which is what lets the
 leak analysis see an allocation escape
-([chapter 4.2](ch04-02-leaks-and-defer.md)). `move` is contextual — an
+([chapter 4.2](ch04-02-destroy-and-defer.md)). `move` is contextual — an
 ordinary identifier everywhere else.
 
 Copying is safe for a value and not for a reference, and that difference is
@@ -77,7 +77,7 @@ to be copied out of that function's frame ([below](#a-closure-lives-in-its-frame
 
 ```gyro
 fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
-    var out = Array<i32>::new(heap())
+    let out = Array<i32>::new(heap())
     for value in values {
         out.push(f(value))
     }
@@ -85,17 +85,17 @@ fn apply(values: i32[], f: fn(i32): i32): Array<i32> {
 }
 
 fn fold(values: i32[], start: i32, f: fn(i32, i32): i32): i32 {
-    var total = start
+    let total = start
     for value in values {
         total = f(total, value)
     }
     return total
 }
 
-var doubled = apply([1, 2, 3], fn(x) x * 2)
+let doubled = apply([1, 2, 3], fn(x) x * 2)
 defer doubled.free()
 
-var sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
+let sum = fold([1, 2, 3, 4], 0, fn(acc, x) acc + x)
 ```
 
 ## A `fn` is two words; `code(..)` is one
@@ -114,7 +114,7 @@ fn big(v: i32): i32 {
     return 0
 }
 
-var kept = count_kept(&big) // C's loop, this program's decision
+let kept = count_kept(&big) // C's loop, this program's decision
 ```
 
 The two are separate types rather than one type with a flag, because a type
@@ -146,8 +146,8 @@ to that record, and a closure that captures nothing has a null pointer and
 no record at all. A named function taken as a value has none either.
 
 ```gyro
-var factor = 3
-var scale = fn(x: i32): i32 { return x * factor } // the record is in this frame
+let factor = 3
+let scale = fn(x: i32): i32 { return x * factor } // the record is in this frame
 ```
 
 Every copy of the value shares the one record, so a closure's mutations of
@@ -155,7 +155,7 @@ what it captured accumulate across calls.
 
 The consequence is the one a slice of an array literal already has: **the
 closure borrows the frame.** The borrow analysis
-([chapter 4.4](ch04-04-slices-and-views.md)) treats a capturing closure as a
+([chapter 4.4](ch04-04-borrowing.md)) treats a capturing closure as a
 view of the function that wrote it, and a `return` of one is an error:
 
 ```gyro
@@ -195,7 +195,7 @@ After `keep` the closure's storage is `a`'s, and the borrow analysis no longer
 ties it to the frame. The copy is a copy: it has its own record, so mutations
 do not reach the original. A `fn[move node]` capture list moves the binding
 into the record and into the copy, as it does into the record in the frame
-([chapter 4.2](ch04-02-leaks-and-defer.md)). `release` has to be given the
+([chapter 4.2](ch04-02-destroy-and-defer.md)). `release` has to be given the
 allocator the closure was kept in, and only a closure `keep` returned; giving
 it a frame closure frees memory that was never allocated.
 
@@ -213,7 +213,7 @@ cannot be stored into anything that outlives the frame: a parameter, the
 receiver, a module-level variable. **Storing a closure takes `keep`.**
 
 ```gyro
-fn on_open(handlers: Array<fn(): i32>, n: i32) {
+fn on_open(handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(fn(): i32 { return n })               // error: n lives in this frame
     handlers.push(keep(heap(), fn(): i32 { return n })) // fine
 }
@@ -248,5 +248,5 @@ Futures and channels are not part of this; they still use the process heap
 ([appendix G](appendix-g-known-gaps.md)).
 
 A closure that allocates does so from an `Allocator` it captured like any
-other local, or was handed as a parameter ([chapter 4.5](ch04-05-allocators.md)).
+other local, or was handed as a parameter ([chapter 4.6](ch04-06-allocators.md)).
 Nothing is captured on its behalf.

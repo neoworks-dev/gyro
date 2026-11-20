@@ -146,7 +146,7 @@ func (p *Parser) parseCast() ast.Expr {
 	for p.at(token.As) {
 		offset := p.offset()
 		p.next()
-		expr = &ast.CastExpr{Offset: offset, X: expr, Type: p.parseType()}
+		expr = &ast.CastExpr{Offset: offset, X: expr, Type: p.parseOptionalType()}
 	}
 	return expr
 }
@@ -163,7 +163,7 @@ func (p *Parser) parseUnary() ast.Expr {
 		expr := &ast.AwaitExpr{Offset: p.offset()}
 		p.next()
 		expr.X = p.parseUnary()
-		return expr
+		return hoistTry(expr)
 
 	case token.LeftArrow:
 		expr := &ast.RecvExpr{Offset: p.offset()}
@@ -174,11 +174,37 @@ func (p *Parser) parseUnary() ast.Expr {
 	return p.parsePostfix(p.parsePrimary())
 }
 
-// parsePostfix applies calls, indexing and field access to an already
+// hoistTry moves the `?` that ends an await's operand out past the await:
+// `await fetch()?` is `(await fetch())?`, since what fails is the result of
+// the call and not the future that is waiting for it.
+func hoistTry(await *ast.AwaitExpr) ast.Expr {
+	var tries []*ast.TryExpr
+	for {
+		try, ok := await.X.(*ast.TryExpr)
+		if !ok {
+			break
+		}
+		tries = append(tries, try)
+		await.X = try.X
+	}
+
+	var out ast.Expr = await
+	for i := len(tries) - 1; i >= 0; i-- {
+		tries[i].X = out
+		out = tries[i]
+	}
+	return out
+}
+
+// parsePostfix applies calls, indexing, field access and `?` to an already
 // parsed operand.
 func (p *Parser) parsePostfix(expr ast.Expr) ast.Expr {
 	for {
 		switch p.kind() {
+		case token.Question:
+			expr = &ast.TryExpr{Offset: p.offset(), X: expr}
+			p.next()
+
 		case token.LParen:
 			expr = &ast.CallExpr{Offset: expr.Pos(), Fun: expr, Args: p.parseArgs()}
 
@@ -760,7 +786,10 @@ func (p *Parser) parsePattern() ast.Pattern {
 		return p.parseTypeTestPattern(offset, p.parseType())
 
 	case token.Ident:
-		path := p.parsePath()
+		// A type test may name a generic type, `Array<string>(xs)`. There is
+		// no comparison in a pattern for the angle brackets to be mistaken
+		// for, so they need no speculation.
+		path := p.parseTypePathInType()
 
 		// `i32[](xs)`: the path turned out to be a slice or array type's
 		// element rather than the whole pattern.

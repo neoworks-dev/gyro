@@ -63,7 +63,7 @@ fn userCompare(a: WithCompare, b: WithCompare): WithCompare {
 }
 
 fn missingCompare(a: NoCompare, b: NoCompare) {
-    var x = max(a, b) //~ E0527 NoCompare does not implement Ord
+    let x = max(a, b) //~ E0527 NoCompare does not implement Ord
     //~^ help: impl Ord for NoCompare
 }
 
@@ -76,8 +76,8 @@ fn none<T>(): T? {
 }
 
 fn inference(): i32 {
-    var mixed = first(1, "two") //~ cannot use string as i32
-    var uninferable = none()    //~ cannot infer T
+    let mixed = first(1, "two") //~ cannot use string as i32
+    let uninferable = none()    //~ cannot infer T
     return first(1, 2)
 }
 
@@ -86,8 +86,8 @@ fn zero<T>(v: T): T !{ &v } {
 }
 
 fn explicitArguments(): i64 {
-    var a = zero<i32>("s")    //~ cannot use string as i32
-    var b = zero<i32, i32>(1) //~ takes 1 type argument(s), got 2
+    let a = zero<i32>("s")    //~ cannot use string as i32
+    let b = zero<i32, i32>(1) //~ takes 1 type argument(s), got 2
     return zero<i64>(3)
 }
 
@@ -100,7 +100,7 @@ fn plainTakesNoTypeArguments() {
 
 // A generic is a template, not a value: it has no type until it is called.
 fn genericsAreCalledNotReferenced() {
-    var f = zero //~ must be called
+    let f = zero //~ must be called
 }
 
 struct Pair<T> {
@@ -108,28 +108,28 @@ struct Pair<T> {
     second: T
 }
 
-fn Pair<T>::swap(*self) {
-    var tmp = self.first
+fn Pair<T>::swap(inout self) {
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
 
 fn genericStructs() {
-    var p = Pair<i32>{ 1, 2 }
+    let p = Pair<i32>{ 1, 2 }
     p.swap()
-    var x: i32 = p.first
+    let x: i32 = p.first
 }
 
 fn badGenericStructs(q: Pair<i32, bool>) { //~ takes 1 type argument(s), got 2
-    var a = Pair<i32>{ 1, "two" }          //~ cannot use string as i32
-    var b = Pair<i32>{ 1, 2 }
-    var c: string = b.first //~ cannot use i32 as string
+    let a = Pair<i32>{ 1, "two" }          //~ cannot use string as i32
+    let b = Pair<i32>{ 1, 2 }
+    let c: string = b.first //~ cannot use i32 as string
 }
 
 // A literal infers its argument from the fields.
 fn literalInference(s: string): i32 {
-    var words = Pair{ first: s, second: s }
-    var numbers = Pair{ 1, 2 }
+    let words = Pair{ first: s, second: s }
+    let numbers = Pair{ 1, 2 }
     return numbers.first
 }
 
@@ -147,12 +147,12 @@ fn Box<T>::get(self): T !{ &self } {
 
 // The owner's argument comes from the associated function's arguments.
 fn ownerInference(): i32 {
-    var b = Box::new(1)
+    let b = Box::new(1)
     return b.get()
 }
 
 fn ownerInferenceIsChecked(): string {
-    var b = Box::new(1)
+    let b = Box::new(1)
     return b.get() //~ cannot use i32 as string
 }
 

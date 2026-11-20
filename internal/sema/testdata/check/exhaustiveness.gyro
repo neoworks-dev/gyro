@@ -1,5 +1,7 @@
 // A match over an enum names the variants it left out. Open subjects —
-// integers, strings, error — are exempt.
+// integers, strings, Error — are exempt.
+
+import { Error } from "stdlib"
 
 enum Shape {
     Circle(f64),
@@ -73,18 +75,20 @@ struct RangeError {
     value: i32
 }
 
-fn RangeError::message(self): string {
-    return "bad"
+impl Error for RangeError {
+    fn message(self): string {
+        return "bad"
+    }
 }
 
-fn errorsAreOpen(err: error): i32 {
+fn errorsAreOpen(err: Error): i32 {
     return match err {
         RangeError(e): e.value
     }
 }
 
-// A type-test pattern needs an error subject and a type that is one.
-fn typeTest(err: error): i32 {
+// A type-test pattern needs an Error subject and a type that is one.
+fn typeTest(err: Error): i32 {
     return match err {
         RangeError(e): e.value
         _: 0
@@ -92,8 +96,8 @@ fn typeTest(err: error): i32 {
 }
 
 fn typeTestNeedsAnError(n: i32) {
-    var x = match n {
-        RangeError(e): 1 //~ needs an error subject
+    let x = match n {
+        RangeError(e): 1 //~ needs an Error subject
         _: 0
     }
 }
@@ -102,9 +106,44 @@ struct Quiet {
     value: i32
 }
 
-fn quietIsNotAnError(err: error): i32 {
+fn quietIsNotAnError(err: Error): i32 {
     return match err {
-        Quiet(e): e.value //~ no message(): string method
+        Quiet(e): e.value //~ Quiet does not implement Error
         _: 0
+    }
+}
+
+// A T | Error has two cases, and a match names both or ends in `_`.
+fn bothCases(r: i32 | Error): i32 {
+    return match r {
+        i32(n): n
+        Error(e): 0
+    }
+}
+
+fn valueOnly(r: i32 | Error): i32 {
+    return match r { //~ this match leaves Error(e) uncovered
+        i32(n): n
+    }
+}
+
+fn errorOnly(r: i32 | Error): i32 {
+    return match r { //~ this match leaves i32(value) uncovered
+        Error(e): 0
+    }
+}
+
+fn wildcard(r: i32 | Error): i32 {
+    return match r {
+        i32(n): n
+        _: 0
+    }
+}
+
+fn otherType(r: i32 | Error): i32 {
+    return match r {
+        i32(n): n
+        string(s): 0 //~ i32 | Error holds an Error or a i32, so a test for string can never match
+        Error(e): 0
     }
 }

@@ -304,34 +304,34 @@ const NO_TOUCHES: u16[64] = [
 // ---------------------------------------------------------------------------
 
 export struct Cpu {
-    export pc: u16
-    export sp: u8
-    export a: u8
-    export x: u8
-    export y: u8
-    export status: u8
+    pc: u16
+    sp: u8
+    a: u8
+    x: u8
+    y: u8
+    status: u8
 
-    export clockticks: u32
-    export instructions: u32
+    clockticks: u32
+    instructions: u32
 
     // What the addressing mode worked out, and the scratch the instruction
     // handlers share: C keeps all four as globals for the same reason.
-    ea: u16
-    reladdr: u16
-    value: u16
-    result: u16
+    private ea: u16
+    private reladdr: u16
+    private value: u16
+    private result: u16
 
-    opcode: u8
-    penaltyop: bool
-    penaltyaddr: bool
+    private opcode: u8
+    private penaltyop: bool
+    private penaltyaddr: bool
 
-    ram: Array<u8>
-    touched: u16[64]
-    export ntouched: usize
+    private ram: Array<u8>
+    private touched: u16[64]
+    ntouched: usize
 }
 
 export fn Cpu::new(): Cpu {
-    var ram = Array<u8>::with_capacity(heap(), 65536)
+    let ram = Array<u8>::with_capacity(heap(), 65536)
     for i in 0..65536 {
         ram.push(0)
     }
@@ -357,7 +357,7 @@ export fn Cpu::new(): Cpu {
     }
 }
 
-export fn Cpu::free(*self) {
+export fn Cpu::free(inout self) {
     self.ram.free()
 }
 
@@ -367,43 +367,43 @@ export fn Cpu::free(*self) {
 // bytes it disturbed back.
 // ---------------------------------------------------------------------------
 
-export fn Cpu::read(*self, address: u16): u8 {
+export fn Cpu::read(inout self, address: u16): u8 {
     return self.ram[address as usize]
 }
 
-export fn Cpu::write(*self, address: u16, value: u8) {
+export fn Cpu::write(inout self, address: u16, value: u8) {
     self.ram[address as usize] = value
     self.touch(address)
 }
 
 // store writes without recording the address: how a host puts bytes in
 // memory before the machine runs, rather than how the machine writes.
-export fn Cpu::store(*self, address: u16, value: u8) {
+export fn Cpu::store(inout self, address: u16, value: u8) {
     self.ram[address as usize] = value
 }
 
-export fn Cpu::touch(*self, address: u16) {
+export fn Cpu::touch(inout self, address: u16) {
     if self.ntouched < TOUCHED_LIMIT {
         self.touched[self.ntouched] = address
         self.ntouched += 1
     }
 }
 
-export fn Cpu::touched_at(*self, index: usize): u16 {
+export fn Cpu::touched_at(inout self, index: usize): u16 {
     return self.touched[index]
 }
 
-export fn Cpu::forget_touches(*self) {
+export fn Cpu::forget_touches(inout self) {
     self.ntouched = 0
 }
 
-fn Cpu::next_byte(*self): u8 {
-    var byte = self.read(self.pc)
+fn Cpu::next_byte(inout self): u8 {
+    let byte = self.read(self.pc)
     self.pc = self.pc +% 1
     return byte
 }
 
-fn Cpu::read16(*self, address: u16): u16 {
+fn Cpu::read16(inout self, address: u16): u16 {
     return (self.read(address) as u16) | ((self.read(address +% 1) as u16) << 8)
 }
 
@@ -411,25 +411,25 @@ fn Cpu::read16(*self, address: u16): u16 {
 // The stack
 // ---------------------------------------------------------------------------
 
-fn Cpu::push8(*self, value: u8) {
+fn Cpu::push8(inout self, value: u8) {
     self.write(BASE_STACK + (self.sp as u16), value)
     self.sp = self.sp -% 1
 }
 
-fn Cpu::push16(*self, value: u16) {
+fn Cpu::push16(inout self, value: u16) {
     self.write(BASE_STACK + (self.sp as u16), ((value >> 8) & 0xFF) as u8)
     self.write(BASE_STACK + ((self.sp -% 1) as u16), (value & 0xFF) as u8)
     self.sp = self.sp -% 2
 }
 
-fn Cpu::pull8(*self): u8 {
+fn Cpu::pull8(inout self): u8 {
     self.sp = self.sp +% 1
     return self.read(BASE_STACK + (self.sp as u16))
 }
 
-fn Cpu::pull16(*self): u16 {
-    var low = self.read(BASE_STACK + ((self.sp +% 1) as u16)) as u16
-    var high = self.read(BASE_STACK + ((self.sp +% 2) as u16)) as u16
+fn Cpu::pull16(inout self): u16 {
+    let low = self.read(BASE_STACK + ((self.sp +% 1) as u16)) as u16
+    let high = self.read(BASE_STACK + ((self.sp +% 2) as u16)) as u16
     self.sp = self.sp +% 2
     return low | (high << 8)
 }
@@ -438,7 +438,7 @@ fn Cpu::pull16(*self): u16 {
 // Flags
 // ---------------------------------------------------------------------------
 
-fn Cpu::set_flag(*self, flag: u8, on: bool) {
+fn Cpu::set_flag(inout self, flag: u8, on: bool) {
     if on {
         self.status |= flag
     } else {
@@ -446,29 +446,29 @@ fn Cpu::set_flag(*self, flag: u8, on: bool) {
     }
 }
 
-fn Cpu::zerocalc(*self, value: u16) {
+fn Cpu::zerocalc(inout self, value: u16) {
     self.set_flag(FLAG_ZERO, (value & 0x00FF) == 0)
 }
 
-fn Cpu::signcalc(*self, value: u16) {
+fn Cpu::signcalc(inout self, value: u16) {
     self.set_flag(FLAG_SIGN, (value & 0x0080) != 0)
 }
 
-fn Cpu::carrycalc(*self, value: u16) {
+fn Cpu::carrycalc(inout self, value: u16) {
     self.set_flag(FLAG_CARRY, (value & 0xFF00) != 0)
 }
 
 // n is the result, m the accumulator and o the memory operand: the sign
 // of the result differs from both only when the addition overflowed.
-fn Cpu::overflowcalc(*self, n: u16, m: u16, o: u16) {
+fn Cpu::overflowcalc(inout self, n: u16, m: u16, o: u16) {
     self.set_flag(FLAG_OVERFLOW, ((n ^ m) & (n ^ o) & 0x0080) != 0)
 }
 
-fn Cpu::carry(*self): u16 {
+fn Cpu::carry(inout self): u16 {
     return (self.status & FLAG_CARRY) as u16
 }
 
-fn Cpu::saveaccum(*self, value: u16) {
+fn Cpu::saveaccum(inout self, value: u16) {
     self.a = (value & 0x00FF) as u8
 }
 
@@ -476,7 +476,7 @@ fn Cpu::saveaccum(*self, value: u16) {
 // Addressing modes
 // ---------------------------------------------------------------------------
 
-fn Cpu::address(*self, mode: Mode) {
+fn Cpu::address(inout self, mode: Mode) {
     match mode {
         Mode::Imp: {}
         Mode::Acc: {}
@@ -499,36 +499,36 @@ fn Cpu::address(*self, mode: Mode) {
         }
         Mode::Absx: {
             self.ea = self.read16(self.pc)
-            var startpage = self.ea & 0xFF00
+            let startpage = self.ea & 0xFF00
             self.ea = self.ea +% (self.x as u16)
             self.penaltyaddr = startpage != (self.ea & 0xFF00)
             self.pc = self.pc +% 2
         }
         Mode::Absy: {
             self.ea = self.read16(self.pc)
-            var startpage = self.ea & 0xFF00
+            let startpage = self.ea & 0xFF00
             self.ea = self.ea +% (self.y as u16)
             self.penaltyaddr = startpage != (self.ea & 0xFF00)
             self.pc = self.pc +% 2
         }
         Mode::Ind: {
-            var pointer = self.read16(self.pc)
+            let pointer = self.read16(self.pc)
             // The page-boundary wraparound bug: the high byte of the target is
             // read from the same page as the low one.
-            var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
+            let wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
             self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
             self.pc = self.pc +% 2
         }
         Mode::Indx: {
-            var pointer = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF
+            let pointer = ((self.next_byte() as u16) + (self.x as u16)) & 0xFF
             self.ea = (self.read(pointer & 0x00FF) as u16)
                 | ((self.read((pointer +% 1) & 0x00FF) as u16) << 8)
         }
         Mode::Indy: {
-            var pointer = self.next_byte() as u16
-            var wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
+            let pointer = self.next_byte() as u16
+            let wrapped = (pointer & 0xFF00) | ((pointer +% 1) & 0x00FF)
             self.ea = (self.read(pointer) as u16) | ((self.read(wrapped) as u16) << 8)
-            var startpage = self.ea & 0xFF00
+            let startpage = self.ea & 0xFF00
             self.ea = self.ea +% (self.y as u16)
             self.penaltyaddr = startpage != (self.ea & 0xFF00)
         }
@@ -537,14 +537,14 @@ fn Cpu::address(*self, mode: Mode) {
 
 // getvalue is where the mode reappears: an accumulator instruction works
 // on the register, everything else on the effective address.
-fn Cpu::getvalue(*self): u16 {
+fn Cpu::getvalue(inout self): u16 {
     if MODES[self.opcode as usize] == Mode::Acc {
         return self.a as u16
     }
     return self.read(self.ea) as u16
 }
 
-fn Cpu::putvalue(*self, value: u16) {
+fn Cpu::putvalue(inout self, value: u16) {
     if MODES[self.opcode as usize] == Mode::Acc {
         self.a = (value & 0x00FF) as u8
     } else {
@@ -556,18 +556,18 @@ fn Cpu::putvalue(*self, value: u16) {
 // Instructions
 // ---------------------------------------------------------------------------
 
-fn Cpu::adc(*self) {
+fn Cpu::adc(inout self) {
     self.penaltyop = true
     if (self.status & FLAG_DECIMAL) != 0 {
-        var accumulator = self.a as u16
+        let accumulator = self.a as u16
         self.value = self.getvalue()
-        var binary = accumulator + self.value + self.carry()
+        let binary = accumulator + self.value + self.carry()
 
-        var low = (accumulator & 0x0F) + (self.value & 0x0F) + self.carry()
+        let low = (accumulator & 0x0F) + (self.value & 0x0F) + self.carry()
         if low >= 0x0A {
             low = ((low + 0x06) & 0x0F) + 0x10
         }
-        var high = (accumulator & 0xF0) + (self.value & 0xF0) + low
+        let high = (accumulator & 0xF0) + (self.value & 0xF0) + low
         self.set_flag(FLAG_SIGN, (high & 0x80) != 0)
         if high >= 0xA0 {
             high += 0x60
@@ -589,7 +589,7 @@ fn Cpu::adc(*self) {
     self.saveaccum(self.result)
 }
 
-fn Cpu::and(*self) {
+fn Cpu::and(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.result = (self.a as u16) & self.value
@@ -598,7 +598,7 @@ fn Cpu::and(*self) {
     self.saveaccum(self.result)
 }
 
-fn Cpu::asl(*self) {
+fn Cpu::asl(inout self) {
     self.value = self.getvalue()
     self.result = self.value << 1
     self.carrycalc(self.result)
@@ -609,11 +609,11 @@ fn Cpu::asl(*self) {
 
 // branch is the tail every conditional branch shares: taking one costs a
 // cycle, and leaving the page costs another.
-fn Cpu::branch(*self, taken: bool) {
+fn Cpu::branch(inout self, taken: bool) {
     if !taken {
         return
     }
-    var oldpc = self.pc
+    let oldpc = self.pc
     self.pc = self.pc +% self.reladdr
     if (oldpc & 0xFF00) != (self.pc & 0xFF00) {
         self.clockticks += 2
@@ -622,14 +622,14 @@ fn Cpu::branch(*self, taken: bool) {
     }
 }
 
-fn Cpu::bit(*self) {
+fn Cpu::bit(inout self) {
     self.value = self.getvalue()
     self.result = (self.a as u16) & self.value
     self.zerocalc(self.result)
     self.status = (self.status & 0x3F) | ((self.value & 0xC0) as u8)
 }
 
-fn Cpu::brk(*self) {
+fn Cpu::brk(inout self) {
     self.pc = self.pc +% 1
     self.push16(self.pc)
     self.push8(self.status | FLAG_BREAK)
@@ -637,7 +637,7 @@ fn Cpu::brk(*self) {
     self.pc = (self.read(0xFFFE) as u16) | ((self.read(0xFFFF) as u16) << 8)
 }
 
-fn Cpu::cmp(*self, register: u8) {
+fn Cpu::cmp(inout self, register: u8) {
     self.value = self.getvalue()
     self.result = (register as u16) -% self.value
     self.set_flag(FLAG_CARRY, register >= ((self.value & 0x00FF) as u8))
@@ -645,7 +645,7 @@ fn Cpu::cmp(*self, register: u8) {
     self.signcalc(self.result)
 }
 
-fn Cpu::dec(*self) {
+fn Cpu::dec(inout self) {
     self.value = self.getvalue()
     self.result = self.value -% 1
     self.zerocalc(self.result)
@@ -653,7 +653,7 @@ fn Cpu::dec(*self) {
     self.putvalue(self.result)
 }
 
-fn Cpu::eor(*self) {
+fn Cpu::eor(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.result = (self.a as u16) ^ self.value
@@ -662,7 +662,7 @@ fn Cpu::eor(*self) {
     self.saveaccum(self.result)
 }
 
-fn Cpu::inc(*self) {
+fn Cpu::inc(inout self) {
     self.value = self.getvalue()
     self.result = self.value +% 1
     self.zerocalc(self.result)
@@ -670,7 +670,7 @@ fn Cpu::inc(*self) {
     self.putvalue(self.result)
 }
 
-fn Cpu::lda(*self) {
+fn Cpu::lda(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.a = (self.value & 0x00FF) as u8
@@ -678,7 +678,7 @@ fn Cpu::lda(*self) {
     self.signcalc(self.a as u16)
 }
 
-fn Cpu::ldx(*self) {
+fn Cpu::ldx(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.x = (self.value & 0x00FF) as u8
@@ -686,7 +686,7 @@ fn Cpu::ldx(*self) {
     self.signcalc(self.x as u16)
 }
 
-fn Cpu::ldy(*self) {
+fn Cpu::ldy(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.y = (self.value & 0x00FF) as u8
@@ -694,7 +694,7 @@ fn Cpu::ldy(*self) {
     self.signcalc(self.y as u16)
 }
 
-fn Cpu::lsr(*self) {
+fn Cpu::lsr(inout self) {
     self.value = self.getvalue()
     self.result = self.value >> 1
     self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
@@ -705,15 +705,15 @@ fn Cpu::lsr(*self) {
 
 // The undocumented NOPs that read an absolute,X operand pay for a page
 // crossing like the documented instructions do.
-fn Cpu::nop(*self) {
-    var opcode = self.opcode
+fn Cpu::nop(inout self) {
+    let opcode = self.opcode
     if opcode == 0x1C || opcode == 0x3C || opcode == 0x5C || opcode == 0x7C
         || opcode == 0xDC || opcode == 0xFC {
         self.penaltyop = true
     }
 }
 
-fn Cpu::ora(*self) {
+fn Cpu::ora(inout self) {
     self.penaltyop = true
     self.value = self.getvalue()
     self.result = (self.a as u16) | self.value
@@ -722,7 +722,7 @@ fn Cpu::ora(*self) {
     self.saveaccum(self.result)
 }
 
-fn Cpu::pla(*self) {
+fn Cpu::pla(inout self) {
     self.a = self.pull8()
     self.zerocalc(self.a as u16)
     self.signcalc(self.a as u16)
@@ -730,11 +730,11 @@ fn Cpu::pla(*self) {
 
 // Bit 4 is only ever a bit in a pushed byte and bit 5 is always set, so
 // what the register takes from the stack is neither.
-fn Cpu::pull_status(*self) {
+fn Cpu::pull_status(inout self) {
     self.status = (self.pull8() | FLAG_CONSTANT) & ~FLAG_BREAK
 }
 
-fn Cpu::rol(*self) {
+fn Cpu::rol(inout self) {
     self.value = self.getvalue()
     self.result = (self.value << 1) | self.carry()
     self.carrycalc(self.result)
@@ -743,7 +743,7 @@ fn Cpu::rol(*self) {
     self.putvalue(self.result)
 }
 
-fn Cpu::ror(*self) {
+fn Cpu::ror(inout self) {
     self.value = self.getvalue()
     self.result = (self.value >> 1) | (self.carry() << 7)
     self.set_flag(FLAG_CARRY, (self.value & 1) != 0)
@@ -752,14 +752,14 @@ fn Cpu::ror(*self) {
     self.putvalue(self.result)
 }
 
-fn Cpu::sbc(*self) {
+fn Cpu::sbc(inout self) {
     self.penaltyop = true
     if (self.status & FLAG_DECIMAL) != 0 {
-        var accumulator = self.a as u16
-        var carry = self.carry()
-        var operand = self.getvalue()
+        let accumulator = self.a as u16
+        let carry = self.carry()
+        let operand = self.getvalue()
         self.value = operand ^ 0x00FF
-        var binary = accumulator + self.value + carry
+        let binary = accumulator + self.value + carry
 
         self.carrycalc(binary)
         self.overflowcalc(binary, accumulator, self.value)
@@ -768,11 +768,11 @@ fn Cpu::sbc(*self) {
 
         // The decimal adjustment borrows through zero, which is what the
         // 0x8000 tests are reading.
-        var low = (accumulator & 0x0F) -% (operand & 0x0F) +% carry -% 1
+        let low = (accumulator & 0x0F) -% (operand & 0x0F) +% carry -% 1
         if (low & 0x8000) != 0 {
             low = ((low -% 0x06) & 0x0F) -% 0x10
         }
-        var high = (accumulator & 0xF0) -% (operand & 0xF0) +% low
+        let high = (accumulator & 0xF0) -% (operand & 0xF0) +% low
         if (high & 0x8000) != 0 {
             high = high -% 0x60
         }
@@ -788,7 +788,7 @@ fn Cpu::sbc(*self) {
     self.saveaccum(self.result)
 }
 
-fn Cpu::transfer(*self, value: u8): u8 {
+fn Cpu::transfer(inout self, value: u8): u8 {
     self.zerocalc(value as u16)
     self.signcalc(value as u16)
     return value
@@ -796,13 +796,13 @@ fn Cpu::transfer(*self, value: u8): u8 {
 
 // An undocumented opcode is two instructions in one, and the pair pays
 // the page-crossing penalty only once.
-fn Cpu::undocumented_penalty(*self) {
+fn Cpu::undocumented_penalty(inout self) {
     if self.penaltyop && self.penaltyaddr {
         self.clockticks = self.clockticks -% 1
     }
 }
 
-fn Cpu::execute(*self, op: Op) {
+fn Cpu::execute(inout self, op: Op) {
     match op {
         Op::Adc: self.adc()
         Op::And: self.and()
@@ -938,7 +938,7 @@ fn Cpu::execute(*self, op: Op) {
 // ---------------------------------------------------------------------------
 
 // step executes one instruction and answers with the cycles it took.
-export fn Cpu::step(*self): u32 {
+export fn Cpu::step(inout self): u32 {
     self.opcode = self.next_byte()
     self.status |= FLAG_CONSTANT
 
@@ -958,28 +958,28 @@ export fn Cpu::step(*self): u32 {
 }
 
 // exec runs until at least the given number of cycles have passed.
-export fn Cpu::exec(*self, tickcount: u32): u32 {
-    var total: u32 = 0
+export fn Cpu::exec(inout self, tickcount: u32): u32 {
+    let total: u32 = 0
     while total < tickcount {
         total += self.step()
     }
     return total
 }
 
-export fn Cpu::reset(*self) {
+export fn Cpu::reset(inout self) {
     self.pc = self.read16(0xFFFC)
     self.sp = 0xFD
     self.status |= FLAG_CONSTANT | FLAG_INTERRUPT
 }
 
-export fn Cpu::nmi(*self) {
+export fn Cpu::nmi(inout self) {
     self.push16(self.pc)
     self.push8(self.status & ~FLAG_BREAK)
     self.set_flag(FLAG_INTERRUPT, true)
     self.pc = self.read16(0xFFFA)
 }
 
-export fn Cpu::irq(*self) {
+export fn Cpu::irq(inout self) {
     if (self.status & FLAG_INTERRUPT) != 0 {
         return
     }

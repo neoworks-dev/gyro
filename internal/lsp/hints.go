@@ -302,6 +302,8 @@ func (c *hintCollector) collectExpr(expr ast.Expr) {
 		c.collectBlock(e.Block)
 	case *ast.AwaitExpr:
 		c.collectExpr(e.X)
+	case *ast.TryExpr:
+		c.collectExpr(e.X)
 	case *ast.RecvExpr:
 		c.collectExpr(e.Chan)
 	case *ast.ChanLit:
@@ -373,6 +375,8 @@ func exprStart(expr ast.Expr) int {
 	case *ast.BinaryExpr:
 		return leftmost(e.Offset, e.X)
 	case *ast.CastExpr:
+		return leftmost(e.Offset, e.X)
+	case *ast.TryExpr:
 		return leftmost(e.Offset, e.X)
 	case *ast.RangeExpr:
 		return leftmost(e.Offset, e.Lo)

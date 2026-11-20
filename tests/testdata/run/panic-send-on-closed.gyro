@@ -3,7 +3,7 @@
 import { println } from "stdlib"
 
 fn main() {
-    var ch = chan<i32>(1)
+    let ch = chan<i32>(1)
     ch.close()
     ch <- 1
 }

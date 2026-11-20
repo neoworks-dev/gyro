@@ -20,11 +20,12 @@ same name does not displace one of these.
 | `hash()` | types that are `Hash`: those, and tuples, and structs and enums that implement it | `u64` |
 | `eq(other)` | types that are `Eq` | `bool` |
 | `add`, `sub`, `mul`, `div`, `rem`, `neg` | the numeric primitives | the same type |
-| `message()` | `error` | `string` |
+| `message()` | `Error` | `string` |
 
 The last two rows are the methods of the capability traits below, present on
 the built-in types so a generic body may call `a.add(b)` where `a + b` would
-do. `to_string` is not on the list: a type that implements `Print` with a
+do; `message` is the method of `Error`, which the owned `Error` has for
+whatever it holds. `to_string` is not on the list: a type that implements `Print` with a
 block has its own, and no built-in type does, since a number's text is made
 by the runtime.
 
@@ -37,12 +38,12 @@ containers: `xs[i]` on a slice, on a fixed-size array, and on an `Array<T>`,
 and any type that implements `Index<T>`. Every one is a **place**, so
 `xs[i] = v` and `&xs[i]` work. Narrowing — `xs[lo..hi]`
 — reaches all three too, and answers with a slice
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 Positional tuple access — `pair.0` — is syntax, not a method.
 
-`void` and `error` cannot be extended: nothing has type void, and `error` is
-a contract rather than a type.
+`void` and `any` cannot be extended: nothing has type void, and an `any`'s
+behaviour belongs to the type inside it.
 
 ## The standard library
 
@@ -77,9 +78,22 @@ export trait Mul { fn mul(self, other: Self): Self }
 export trait Div { fn div(self, other: Self): Self }
 export trait Rem { fn rem(self, other: Self): Self }
 export trait Neg { fn neg(self): Self }
-export trait Iterator<T> { fn next(*self): (T, bool) }
-export trait Index<T> { fn at(*self, index: usize): *T }
+export trait Error { fn message(self): string }
+export trait Iterator<T> { fn next(inout self): (T, bool) }
+export trait Index<T> { fn at(inout self, index: usize): *T }
+export trait Destroy { fn destroy(inout self) }
 ```
+
+`Destroy` runs when a value goes away and is never called by name
+([chapter 4.2](ch04-02-destroy-and-defer.md)).
+
+`Error` is the one capability trait that is also a type. A type implements it
+with `impl Error for Type`, and nothing implements it by shape. Named in a
+type position it is the owned value that holds any implementer, which `T | Error`
+and `Error?` are written over, and `Error::new(message: string): Error` makes
+the plain one ([chapter 9](ch09-00-errors.md)). The module also holds
+`finish_main`, which the entry point calls with the result of a `main` that
+returns one; it is not exported and a program does not call it.
 
 `Array<T>` — owns its buffer, grows, freed explicitly. It is made with an
 `Allocator` from `mem` and records it, and `push` and `free` go through
@@ -88,15 +102,15 @@ the recorded one ([chapter 8.1](ch08-01-array.md)):
 ```gyro
 export fn Array<T>::new(a: Allocator): Array<T> !{}
 export fn Array<T>::with_capacity(a: Allocator, capacity: usize): Array<T> !{}
-export fn Array<T>::push(*self, value: T) !{}
-export fn Array<T>::pop(*self): (T, bool) !{}
+export fn Array<T>::push(inout self, value: T) !{}
+export fn Array<T>::pop(inout self): (T, bool) !{}
 export fn Array<T>::get(self, index: usize): T !{}
-export fn Array<T>::set(*self, index: usize, value: T) !{}
+export fn Array<T>::set(inout self, index: usize, value: T) !{}
 export fn Array<T>::at(self, index: usize): *T !{}
 export fn Array<T>::len(self): usize !{}
 export fn Array<T>::is_empty(self): bool !{}
 export fn Array<T>::slice(self): T[] !{ &self }
-export fn Array<T>::free(*self) !{}
+export fn Array<T>::free(inout self) !{}
 ```
 
 Text ([chapter 8.2](ch08-02-strings.md)):
@@ -109,12 +123,12 @@ export fn string::runes(self, a: Allocator): rune[] !{}
 export fn String::new(a: Allocator): String !{}
 export fn String::with_capacity(a: Allocator, capacity: usize): String !{}
 export fn String::of(a: Allocator, text: string): String !{}
-export fn String::push(*self, text: string) !{}
-export fn String::push_rune(*self, value: rune) !{}
+export fn String::push(inout self, text: string) !{}
+export fn String::push_rune(inout self, value: rune) !{}
 export fn String::len(self): usize !{}
 export fn String::text(self, a: Allocator): string !{}
 export fn String::to_string(self): string !{}
-export fn String::free(*self) !{}
+export fn String::free(inout self) !{}
 ```
 
 Extension methods on `string`, which have to be imported to be callable:
@@ -136,14 +150,14 @@ export fn join(a: Allocator, parts: string[], sep: string): string !{}
 
 ```gyro
 export fn Map<K, V>::new(a: Allocator): Map<K, V> !{}
-export fn Map<K, V>::insert(*self, key: K, value: V) !{}
+export fn Map<K, V>::insert(inout self, key: K, value: V) !{}
 export fn Map<K, V>::get(self, key: K): V? !{}
 export fn Map<K, V>::contains(self, key: K): bool !{}
-export fn Map<K, V>::remove(*self, key: K): bool !{}
+export fn Map<K, V>::remove(inout self, key: K): bool !{}
 export fn Map<K, V>::len(self): usize !{}
 export fn Map<K, V>::is_empty(self): bool !{}
 export fn Map<K, V>::keys(self): Array<K> !{}
-export fn Map<K, V>::free(*self) !{}
+export fn Map<K, V>::free(inout self) !{}
 ```
 
 Mutexes ([chapter 13.1](ch13-01-threads.md)):
@@ -152,10 +166,10 @@ Mutexes ([chapter 13.1](ch13-01-threads.md)):
 export struct Mutex<T> { head: *MutexHead<T> }
 export struct MutexGuard<T> { head: *MutexHead<T>, epoch: u64 }
 export safe fn Mutex<T>::new(value: T): Mutex<T> !{}
-export safe fn Mutex<T>::lock(*self): MutexGuard<T> !{}
+export safe fn Mutex<T>::lock(inout self): MutexGuard<T> !{}
 export safe fn MutexGuard<T>::get(self): T !{}
-export safe fn MutexGuard<T>::set(*self, value: T) !{}
-export safe fn MutexGuard<T>::unlock(*self) !{}
+export safe fn MutexGuard<T>::set(inout self, value: T) !{}
+export safe fn MutexGuard<T>::unlock(inout self) !{}
 ```
 
 A `Mutex` is a handle to a lock word and the value it guards, as an `Array`
@@ -181,11 +195,11 @@ Atomics ([chapter 13.1](ch13-01-threads.md)):
 ```gyro
 export struct Atomic<T: Eq> { value: T }
 export fn Atomic<T>::new(value: T): Atomic<T> !{}
-export safe fn Atomic<T>::load(*self): T !{}
-export safe fn Atomic<T>::store(*self, value: T) !{}
-export safe fn Atomic<T>::swap(*self, value: T): T !{}
-export safe fn Atomic<T>::compare_and_swap(*self, expected: T, desired: T): bool !{}
-export safe fn Atomic<T>::fetch_add(*self, value: T): T !{}   // also sub, and, or, xor
+export safe fn Atomic<T>::load(inout self): T !{}
+export safe fn Atomic<T>::store(inout self, value: T) !{}
+export safe fn Atomic<T>::swap(inout self, value: T): T !{}
+export safe fn Atomic<T>::compare_and_swap(inout self, expected: T, desired: T): bool !{}
+export safe fn Atomic<T>::fetch_add(inout self, value: T): T !{}   // also sub, and, or, xor
 export safe fn fence() !{}
 ```
 
@@ -196,7 +210,7 @@ ones take integers). The operations are written in Gyro over `unsafe`'s
 
 ### `mem`
 
-The allocator model is [chapter 4.5](ch04-05-allocators.md). `alloc`,
+The allocator model is [chapter 4.6](ch04-06-allocators.md). `alloc`,
 `free`, `heap` and `Arena` are ordinary Gyro over the procedure an
 `Allocator` carries; `size`, `align` and `panic` are the intrinsics under
 them. The raw memory they stand on, the process heap, `copy_bytes`, `offset`
@@ -209,8 +223,8 @@ and a closure's environment, belongs to the `unsafe` module below, which
 export enum Mode { Alloc, Free, FreeAll, Resize }
 
 export struct Allocator {
-    export proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
-    export data: anyptr?
+    proc: code(anyptr?, Mode, usize, usize, anyptr?, usize): anyptr?
+    data: anyptr?
 }
 
 export fn heap(): Allocator !{}
@@ -234,9 +248,9 @@ export safe fn quote(a: Allocator, text: string): string !{}
 
 export struct Arena { ... }
 export fn Arena::new(a: Allocator, capacity: usize): Arena !{}
-export fn Arena::allocator(*self): Allocator !{}
-export fn Arena::free_all(*self) !{}
-export fn Arena::free(*self) !{}
+export fn Arena::allocator(inout self): Allocator !{}
+export fn Arena::free_all(inout self) !{}
+export fn Arena::free(inout self) !{}
 ```
 
 `format` shows each piece of a `Format` and joins them into a `string`
@@ -305,14 +319,14 @@ export fn sprintf(a: Allocator, format: string, args: ...any): string !{}
 ```gyro
 export struct File { ... }
 
-export fn open(path: string): (File, error?) !{ io }
-export fn read_all(a: Allocator, file: File): (string, error?) !{ io }
-export fn File::close(*self) !{ io }
+export fn open(path: string): File | Error !{ io }
+export fn read_all(a: Allocator, file: File): string | Error !{ io }
+export fn File::close(inout self) !{ io }
 
-export fn write_file(path: string, text: string): error? !{ io }
-export fn append_file(path: string, text: string): error? !{ io }
-export fn remove(path: string): error? !{ io }
-export fn read_dir(a: Allocator, path: string): (Array<string>, error?) !{ io }
+export fn write_file(path: string, text: string): Error? !{ io }
+export fn append_file(path: string, text: string): Error? !{ io }
+export fn remove(path: string): Error? !{ io }
+export fn read_dir(a: Allocator, path: string): Array<string> | Error !{ io }
 export fn exists(path: string): bool !{ io }
 ```
 
@@ -393,10 +407,10 @@ Numbers from text, written in Gyro. One function for each integer width,
 `to_i8` through `to_usize`, and `to_f64`:
 
 ```gyro
-export fn to_i32(text: string, radix: u32 = 10): (i32, error?) !{}
-export fn to_u8(text: string, radix: u32 = 10): (u8, error?) !{}
-export fn to_f64(text: string): (f64, error?) !{}
-export struct ParseError { export text: string }
+export fn to_i32(text: string, radix: u32 = 10): i32 | Error !{}
+export fn to_u8(text: string, radix: u32 = 10): u8 | Error !{}
+export fn to_f64(text: string): f64 | Error !{}
+export struct ParseError { export text: string }   // implements Error
 ```
 
 An integer is an optional sign, then digits of the radix, which is 2 to 36
@@ -435,7 +449,7 @@ or falls into the subnormals or to zero and loses digits, ends as
 ### `unsafe`
 
 The operations the compiler cannot check, each an `unsafe fn`
-([chapter 4.6](ch04-06-unsafe.md)). Calling one needs an `unsafe fn` or a
+([chapter 4.7](ch04-07-unsafe.md)). Calling one needs an `unsafe fn` or a
 `safe fn` around it.
 
 ```gyro
@@ -538,7 +552,7 @@ The module also exports the system call numbers and flag values it uses.
 ### `net`
 
 ```gyro
-export async fn get(url: string): (string, error?) !{ io }
+export async fn get(url: string): string | Error !{ io }
 ```
 
 ## What is runtime-backed and what is Gyro

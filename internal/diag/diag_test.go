@@ -36,7 +36,7 @@ func TestDiagnosticPrintsNotesUnderTheMessage(t *testing.T) {
 }
 
 func TestItemsSortByPosition(t *testing.T) {
-	file := NewFile("test.gyro", "fn t() {\n  var x = 1\n}\n")
+	file := NewFile("test.gyro", "fn t() {\n  let x = 1\n}\n")
 	var bag Bag
 	bag.Errorf(file.Position(15), "second")
 	bag.Errorf(file.Position(2), "first")
@@ -79,8 +79,8 @@ func TestRenderDrawsACodeFrame(t *testing.T) {
 // primary's source would quote line 2 of main.gyro under a path reading
 // util.gyro: the wrong source under a correct-looking location.
 func TestRenderResolvesARelatedSpanAgainstItsOwnFile(t *testing.T) {
-	main := NewFile("main.gyro", "import { v } from \"./util\"\nvar v = 2\n")
-	util := NewFile("util.gyro", "// a comment\nexport var v = 1\n")
+	main := NewFile("main.gyro", "import { v } from \"./util\"\nlet v = 2\n")
+	util := NewFile("util.gyro", "// a comment\nexport let v = 1\n")
 	var bag Bag
 	bag.Track(main)
 	bag.Track(util)
@@ -98,11 +98,11 @@ func TestRenderResolvesARelatedSpanAgainstItsOwnFile(t *testing.T) {
 	want := `error[E0403]: v is already declared in this scope
  --> main.gyro:2:5
   |
-2 | var v = 2
+2 | let v = 2
   |     ^
  --> util.gyro:2:8
   |
-2 | export var v = 1
+2 | export let v = 1
   |        --- previous declaration here
 
 `
@@ -114,7 +114,7 @@ func TestRenderResolvesARelatedSpanAgainstItsOwnFile(t *testing.T) {
 // A frame the bag never saw the source for states its location instead of
 // quoting a line out of whichever file was at hand.
 func TestRenderDegradesAnUntrackedRelatedSpan(t *testing.T) {
-	main := NewFile("main.gyro", "var v = 2\n")
+	main := NewFile("main.gyro", "let v = 2\n")
 	var bag Bag
 	bag.Track(main)
 	bag.Add(Diagnostic{
@@ -131,7 +131,7 @@ func TestRenderDegradesAnUntrackedRelatedSpan(t *testing.T) {
 	want := `error[E0403]: v is already declared in this scope
  --> main.gyro:1:5
   |
-1 | var v = 2
+1 | let v = 2
   |     ^
  --> gone.gyro:7:3 previous declaration here
 

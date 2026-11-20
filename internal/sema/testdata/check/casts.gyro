@@ -11,6 +11,6 @@ fn runeToInteger(r: rune): u32 {
 }
 
 fn nonNumeric(s: string, b: bool) {
-    var x = s as i32 //~ as converts between numeric types and rune
-    var y = b as i32 //~ as converts between numeric types and rune
+    let x = s as i32 //~ as converts between numeric types and rune
+    let y = b as i32 //~ as converts between numeric types and rune
 }

@@ -13,10 +13,10 @@ fn main() {
     greet("World")
     println("Gyro compiler is alive.")
 
-    var x: i32 = 6 * 7
+    let x: i32 = 6 * 7
     println(x) // 42
 
-    var flag = x > 40 // inferred bool
+    let flag = x > 40 // inferred bool
     println(flag)     // true
 
     const MAX: i32 = 100

@@ -80,7 +80,7 @@ func (c *checker) buildStruct(decl *ast.StructDecl) {
 			shell.Fields = append(shell.Fields, types.Field{
 				Name:     field.Name,
 				Type:     c.noFormat(field.Type.Pos(), c.resolveType(field.Type)),
-				Exported: field.Exported,
+				Exported: decl.Exported && !field.Private,
 			})
 		}
 	})
@@ -92,7 +92,7 @@ func (c *checker) buildUnion(decl *ast.UnionDecl) {
 		shell.Members = append(shell.Members, types.Field{
 			Name:     member.Name,
 			Type:     c.resolveType(member.Type),
-			Exported: member.Exported,
+			Exported: decl.Exported && !member.Private,
 		})
 	}
 }
@@ -163,8 +163,8 @@ func recvKind(decl *ast.FuncDecl) types.RecvKind {
 	if decl.Recv == nil {
 		return types.NoRecv
 	}
-	if decl.Recv.Pointer {
-		return types.PointerRecv
+	if decl.Recv.Inout {
+		return types.InoutRecv
 	}
 	return types.ValueRecv
 }
@@ -173,6 +173,9 @@ func (c *checker) buildFuncSig(decl *ast.FuncDecl) *types.Func {
 	sig := &types.Func{Async: decl.Async, Required: len(decl.Params)}
 	for i, param := range decl.Params {
 		typ := c.resolveType(param.Type)
+		if param.Inout {
+			c.checkInoutParam(decl, param)
+		}
 		if param.Variadic {
 			// The body sees the pack as the slice it is, so the signature
 			// carries T[] and only the Variadic flag records the form.
@@ -199,6 +202,21 @@ func (c *checker) checkVariadicParam(decl *ast.FuncDecl, i int, param ast.Param)
 	}
 	if param.Default != nil {
 		c.errorf(param.Offset, "a variadic parameter takes no default; it is empty when nothing is passed")
+	}
+}
+
+// checkInoutParam enforces what an inout parameter is: the caller's own
+// variable, for as long as the call runs. It has no default to stand in for
+// a variable, and an async function may outlive the call that started it.
+func (c *checker) checkInoutParam(decl *ast.FuncDecl, param ast.Param) {
+	if param.Default != nil {
+		c.errorf(param.Offset, "an inout parameter takes no default; the caller names the variable it changes")
+	}
+	if decl.Async {
+		c.errorf(param.Offset, "an async function cannot take an inout parameter; it may run after the caller's variable is gone")
+	}
+	if decl.Body == nil && decl.Trait == nil {
+		c.errorf(param.Offset, "a function the runtime provides cannot take an inout parameter; it has no variable to change")
 	}
 }
 
@@ -323,6 +341,8 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		return &types.Pointer{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
 	case *ast.OptionalType:
 		return types.NewOptional(c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem)))
+	case *ast.UnionType:
+		return c.resolveUnionType(t)
 	case *ast.ArrayType:
 		return c.resolveArrayType(t)
 	case *ast.TupleType:
@@ -346,7 +366,11 @@ func (c *checker) resolveType(typ ast.Type) types.Type {
 		code.Result = c.resultType(t.Results)
 		return code
 	case *ast.ChanType:
-		return &types.Chan{Elem: c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))}
+		elem := c.noFormat(t.Elem.Pos(), c.resolveType(t.Elem))
+		if c.rejectOwning(t.Elem.Pos(), elem, "a channel") {
+			elem = types.Unknown
+		}
+		return &types.Chan{Elem: elem}
 	case *ast.DynType:
 		return c.resolveDyn(t)
 	}
@@ -370,6 +394,39 @@ func (c *checker) resolveArrayType(t *ast.ArrayType) types.Type {
 		c.expr(t.Length)
 	}
 	return &types.Array{Elem: elem, Length: length}
+}
+
+// resolveUnionType reads `T | Error`. It is the only union the language
+// has, so the right side is held to Error and the left to a type that has a
+// value: a result of nothing is the `Error?` of a function that only
+// succeeds or fails.
+func (c *checker) resolveUnionType(t *ast.UnionType) types.Type {
+	left := c.noFormat(t.Left.Pos(), c.resolveType(t.Left))
+	right := c.resolveType(t.Right)
+	if hasUnknown(left) || hasUnknown(right) {
+		return types.Unknown
+	}
+	if !isErrorBasic(right) {
+		c.errorHintf(t.Right.Pos(), []string{"the one union is T | Error, the type of a fallible function's result"},
+			"the right side of | has to be Error, not %s", right)
+		return types.Unknown
+	}
+	if _, nested := left.(*types.Result); nested {
+		c.errorf(t.Offset, "a result is T | Error once; it does not nest")
+		return types.Unknown
+	}
+	if isErrorBasic(left) || types.Identical(left, types.Void) {
+		c.errorHintf(t.Left.Pos(), []string{"a function with no value to return writes Error?"},
+			"%s | Error holds no value; the left side of | has to be the type of one", left)
+		return types.Unknown
+	}
+	return &types.Result{Value: left}
+}
+
+// isErrorTrait reports the bundled Error trait.
+func isErrorTrait(t types.Type) bool {
+	trait, ok := t.(*types.Trait)
+	return ok && trait.Kind == "Error"
 }
 
 func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
@@ -414,6 +471,12 @@ func (c *checker) resolveNamedType(t *ast.NamedType) types.Type {
 	case symNamespace:
 		return c.resolveNamespaceType(t.Path, sym)
 	case symTrait:
+		// Error is a trait a type implements on purpose, and also the
+		// owned value that holds any of them: the one trait that is a type.
+		if isErrorTrait(sym.typ) && len(t.Path.Segments) == 1 && len(head.Args) == 0 {
+			c.recordRef(t.Path, sym.decl)
+			return types.Error
+		}
 		c.errorHintf(head.Offset, []string{
 			"a trait is not a type; a value of some type implementing it is written dyn " + head.Name,
 		}, "%s is a trait, not a type", head.Name)
@@ -511,6 +574,9 @@ func (c *checker) resolveNamespaceType(path *ast.Path, head *symbol) types.Type 
 		return types.Unknown
 	}
 	if entry.kind == symTrait {
+		if isErrorTrait(entry.typ) && len(path.Segments) == 2 && len(segment.Args) == 0 {
+			return types.Error
+		}
 		c.errorHintf(segment.Offset, []string{
 			"a trait is not a type; a value of some type implementing it is written dyn " + path.Segments[0].Name + "::" + segment.Name,
 		}, "%s is a trait, not a type", segment.Name)

@@ -1,7 +1,8 @@
 // net — there is no network yet: get always fails.
 
+import { Error } from "stdlib"
 import { SysError } from "sys"
 
-export async fn get(url: string): (string, error?) !{ io } {
-    return "", SysError{ text: "this runtime has no network" }
+export async fn get(url: string): string | Error !{ io } {
+    return SysError{ text: "this runtime has no network" }
 }

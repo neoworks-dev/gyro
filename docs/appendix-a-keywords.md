@@ -6,7 +6,7 @@ These are reserved: they are tokens the lexer produces, and none may be used
 as an identifier.
 
 ```text
-var    const   fn      struct  enum
+let    const   fn      struct  enum
 trait  impl
 return  if      elif    else
 while  for     in      match   break
@@ -25,7 +25,7 @@ trait or an impl, and the owner inside a method.
 
 ## Contextual identifiers
 
-`move`, `copy`, `from`, `unsafe`, `safe`, `dyn` and `type` are **not** keywords. Each is
+`move`, `copy`, `from`, `unsafe`, `safe`, `private`, `inout`, `dyn` and `type` are **not** keywords. Each is
 recognized by the parser in a position of its own and is an ordinary
 identifier everywhere else:
 
@@ -35,6 +35,8 @@ identifier everywhere else:
 | `from` | between an import list and its path: `import { x } from "m"` |
 | `unsafe`, `safe` | in front of `fn` (after `export`, before `async`): `unsafe fn f()`, `safe fn f()` |
 | `safe` | in front of an import list or `*`: `import safe { x } from "m.c"` |
+| `private` | in front of a struct field's name: `private top: i32` |
+| `inout` | in front of `self`, or of a parameter's type: `fn push(inout self)`, `xs: inout Array<i32>` |
 | `dyn` | in a type, in front of a trait's name: `dyn Element` |
 | `type` | the first word of a member of a trait or an impl: `type Item`, `type Item = T` |
 
@@ -43,7 +45,7 @@ lists hold only `move name` entries, because copies are implicit and never
 listed ([chapter 11](ch11-00-closures.md)). It is an ordinary identifier,
 and must stay one.
 
-So `var from = 1`, `fn String::from(...)`, `var safe = 1` and `event.type` all parse. If a word only
+So `let from = 1`, `fn String::from(...)`, `let safe = 1` and `event.type` all parse. If a word only
 means something in one place, it belongs here rather than in the token set —
 this has been broken twice.
 
@@ -60,7 +62,7 @@ method on a built-in type:
 | --- | --- |
 | `println`, `print`, `eprintln` | imported from `stdlib` |
 | `alloc`, `free`, `size`, `align`, `allocator`, `heap`, `Arena` | imported from `mem` |
-| `cast`, `offset`, `ptr_from_int` | imported from `unsafe`, all of them `unsafe fn` ([chapter 4.6](ch04-06-unsafe.md)) |
+| `cast`, `offset`, `ptr_from_int` | imported from `unsafe`, all of them `unsafe fn` ([chapter 4.7](ch04-07-unsafe.md)) |
 | `spawn` | imported from `mem` — a function taking a closure, not grammar |
 | `Array`, `String`, `Map`, `Mutex` | imported types |
 | `len`, `runes`, `bytes`, `close`, `compare`, `hash`, `eq`, `message` | the built-in method surface |

@@ -38,6 +38,9 @@ func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 		return coverage{}
 
 	case *ast.BindingPattern:
+		if c.rejectOwning(p.Offset, subject, "a pattern binding") {
+			subject = types.Unknown
+		}
 		c.declareValue(p.Name, p.Offset, p, subject)
 		return coverage{irrefutable: true}
 
@@ -45,8 +48,11 @@ func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 		return c.variantPattern(p, subject)
 
 	case *ast.TypeTestPattern:
+		if result, ok := subject.(*types.Result); ok {
+			return c.resultPattern(p, p.Type, p.Payload, result)
+		}
 		if !flexible(subject) && !isAnyBasic(subject) {
-			c.errorf(p.Offset, "a type test on %s needs an any subject", subject)
+			c.errorf(p.Offset, "a type test on %s needs an any or a T | Error subject", subject)
 			return coverage{}
 		}
 		return c.anyTestPattern(p, p.Type, p.Payload)
@@ -56,9 +62,13 @@ func (c *checker) pattern(p ast.Pattern, subject types.Type) coverage {
 
 func (c *checker) variantPattern(p *ast.VariantPattern, subject types.Type) coverage {
 	// On an any, a pattern names the type it must hold — including the
-	// primitives, which no scope lookup would find.
+	// primitives, which no scope lookup would find. A `T | Error` is the
+	// same kind of subject with two types it can hold.
 	if isAnyBasic(subject) {
 		return c.anyTestPattern(p, &ast.NamedType{Offset: p.Offset, Path: p.Path}, p.Payload)
+	}
+	if result, ok := subject.(*types.Result); ok {
+		return c.resultPattern(p, &ast.NamedType{Offset: p.Offset, Path: p.Path}, p.Payload, result)
 	}
 
 	resolved := c.resolvePathee(p.Path)
@@ -71,8 +81,9 @@ func (c *checker) variantPattern(p *ast.VariantPattern, subject types.Type) cove
 		return c.enumVariantPattern(p, resolved, subject)
 	}
 
-	if strct, ok := resolved.typ.(*types.Struct); ok {
-		c.typeTestPattern(p, strct, subject)
+	switch held := resolved.typ.(type) {
+	case *types.Struct, *types.Enum:
+		c.typeTestPattern(p, held, subject)
 		return coverage{}
 	}
 
@@ -158,30 +169,32 @@ func (c *checker) anyTestPattern(node ast.Node, typ ast.Type, payload []ast.Patt
 	}
 	// Lowering needs the tested type even when the pattern binds nothing,
 	// since that is what selects the variant to compare against.
-	c.recordLocal(node, AnyTestLocal, held)
+	c.recordLocal(node, TypeTestLocal, held)
 	c.pattern(payload[0], held)
 	return coverage{}
 }
 
-// AnyTestLocal is the slot an any type test records its tested type under,
-// for lowering to read back. It is not a name any source can write, so it
-// cannot collide with a binding the pattern declares.
-const AnyTestLocal = "<any test>"
+// TypeTestLocal is the slot a type test records its tested type under, for
+// lowering to read back: the pattern itself is only a path. It is not a
+// name any source can write, so it cannot collide with a binding the
+// pattern declares.
+const TypeTestLocal = "<type test>"
 
-// typeTestPattern is `RangeError(e)` on an error value: it matches when
-// the concrete type is RangeError and binds the whole struct.
-func (c *checker) typeTestPattern(p *ast.VariantPattern, strct *types.Struct, subject types.Type) {
+// typeTestPattern is `RangeError(e)` on an Error: it matches when the
+// concrete type is RangeError and binds the whole value.
+func (c *checker) typeTestPattern(p *ast.VariantPattern, held types.Type, subject types.Type) {
 	if !flexible(subject) && !isErrorBasic(subject) {
-		c.errorf(p.Offset, "a type test needs an error subject whose concrete type is unknown; this subject is %s", subject)
+		c.errorf(p.Offset, "a type test needs an Error subject whose concrete type is unknown; this subject is %s", subject)
 	}
-	if !c.satisfiesError(strct) && !flexible(subject) {
-		c.errorf(p.Offset, "%s has no message(): string method, so an error can never hold one", strct.Name)
+	if !c.satisfiesError(held) && !flexible(subject) {
+		c.errorf(p.Offset, "%s does not implement Error, so an Error can never hold one", held)
 	}
 
 	if len(p.Payload) != 1 {
-		c.errorf(p.Offset, "a type test binds the whole value: %s(name)", strct.Name)
+		c.errorf(p.Offset, "a type test binds the whole value: %s(name)", held)
 		c.bindPayloadLeniently(p)
 		return
 	}
-	c.pattern(p.Payload[0], strct)
+	c.recordLocal(p, TypeTestLocal, held)
+	c.pattern(p.Payload[0], held)
 }

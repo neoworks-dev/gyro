@@ -5,8 +5,8 @@ struct Pair<T> {
     second: T
 }
 
-fn Pair<T>::swap(*self) {
-    var tmp = self.first
+fn Pair<T>::swap(inout self) {
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
@@ -22,11 +22,11 @@ fn main() {
     println(max(3, 7))
     println(max(2.5, 1.5))
 
-    var pair = Pair<i32>{ 1, 2 }
+    let pair = Pair<i32>{ 1, 2 }
     pair.swap()
     println(pair.first)
 
-    var words = Pair{ first: "a", second: "b" }
+    let words = Pair{ first: "a", second: "b" }
     words.swap()
     println(words.first)
 }

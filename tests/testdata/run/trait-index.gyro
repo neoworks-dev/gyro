@@ -11,7 +11,7 @@ struct Grid {
 }
 
 impl Index<i32> for Grid {
-    fn at(*self, index: usize): *i32 {
+    fn at(inout self, index: usize): *i32 {
         return &self.cells[index]
     }
 }
@@ -21,22 +21,22 @@ struct Bag<T> {
 }
 
 impl Index<T> for Bag<T> {
-    fn at(*self, index: usize): *T {
+    fn at(inout self, index: usize): *T {
         return self.items.at(index)
     }
 }
 
 fn main() {
-    var g = Grid{ cells: [0, 0, 0, 0, 0, 0], width: 3 }
+    let g = Grid{ cells: [0, 0, 0, 0, 0, 0], width: 3 }
     g[4] = 9
     g[1] += 2
     println(g[4])
     println(g[1])
-    var p = &g[4]
+    let p = &g[4]
     *p = 11
     println(g[4])
 
-    var b = Bag<string>{ items: Array<string>::new(heap()) }
+    let b = Bag<string>{ items: Array<string>::new(heap()) }
     defer b.items.free()
     b.items.push("a")
     b.items.push("b")

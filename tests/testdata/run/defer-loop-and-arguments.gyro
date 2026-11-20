@@ -1,5 +1,6 @@
-// A loop body is a block, so its defers run every iteration. Arguments are
-// evaluated where the defer is written, not where it runs.
+// A loop body is a block, so its defers run every iteration. The whole
+// call runs at block exit, arguments included, so it sees what its names
+// hold then rather than where the defer is written.
 
 import { println } from "stdlib"
 
@@ -15,24 +16,35 @@ fn report(label: string, value: i32) {
     println("#{label} #{value}")
 }
 
+// The return leaves from a block whose y shadows the one the defer names,
+// and the defer still means its own.
+fn shadowed() {
+    let y = 1
+    defer println("outer y #{y}")
+    {
+        let y = 2
+        println("inner y #{y}")
+        return
+    }
+}
+
 fn main() {
     for i in 0..2 {
         defer println("exit #{i}")
         println("body #{i}")
     }
 
-    var x = 1
+    let x = 1
     {
         defer println(x)
         x = 2
         println(x)
     }
 
-    // Every argument is pinned, not just a bare name: a computed one and a
-    // receiver too.
+    // A computed argument and a receiver are evaluated at exit too.
     {
-        var a = 10
-        var b = 5
+        let a = 10
+        let b = 5
         defer report("computed", a + b)
         a = 100
         b = 200
@@ -40,9 +52,11 @@ fn main() {
     }
 
     {
-        var c = Counter{ n: 1 }
+        let c = Counter{ n: 1 }
         defer c.show()
         c.n = 99
         println(c.n)
     }
+
+    shadowed()
 }

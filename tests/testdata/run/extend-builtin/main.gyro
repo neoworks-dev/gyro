@@ -9,7 +9,7 @@ fn main() {
     println("hello".shout())
     println("the quick fox".first_word())
 
-    var n: i32 = 21
+    let n: i32 = 21
     println(n.double())
     println(n.clamp(0, 10))
     println(n.clamp(30, 40))

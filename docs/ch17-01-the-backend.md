@@ -73,7 +73,7 @@ The book pins these:
 - a narrowing `as` that loses the value panics
 - bounds and null panics carry source positions
 - `defer` runs at block exit in reverse order — per loop iteration included,
-  with arguments captured at registration
+  with the whole call, arguments included, evaluated there
 - closures capture by copy
 - structs have value semantics
 - printing is derived, with `to_string` overriding it

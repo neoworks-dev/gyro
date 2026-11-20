@@ -1,5 +1,7 @@
 // Arity, argument types and returns.
 
+import { Error } from "stdlib"
+
 fn one(a: i32) {
 }
 
@@ -35,13 +37,17 @@ fn returnsNothing() {
     return 3 //~ returns nothing
 }
 
-fn returnsTuple(): (i32, error?) {
+fn returnsTuple(): (i32, string?) {
     return 0, null
 }
 
-fn returnsSwappedTuple(): (i32, error?) {
+fn returnsSwappedTuple(): (i32, string?) {
     return null, 0 //~ cannot use null as i32 in return
-    //~^ cannot use an integer literal as error? in return
+    //~^ cannot use an integer literal as string? in return
+}
+
+fn returnsFallibleTuple(): (i32, string) | Error {
+    return 0, "zero"
 }
 
 fn returnsTooMany(): i32 {

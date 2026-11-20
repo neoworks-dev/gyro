@@ -95,6 +95,8 @@ const (
 	EAssocPin            Code = "E0534"
 	EAssocMismatch       Code = "E0535"
 	ESyscallArgument     Code = "E0536"
+	EBadResultType       Code = "E0537"
+	ETryMisuse           Code = "E0538"
 
 	// Statements
 	EAwaitMisuse     Code = "E0601"
@@ -132,6 +134,17 @@ const (
 	EArenaEscape      Code = "E0631"
 	ELoopSharedStore  Code = "E0632"
 	EArenaUseAfterEnd Code = "E0633"
+
+	// Changing a value
+	EReadOnlyPlace Code = "E0634"
+	EInoutPlace    Code = "E0635"
+	EInoutAlias    Code = "E0636"
+	EInoutParam    Code = "E0637"
+	// Ownership
+	EUseAfterMove      Code = "E0701"
+	ECannotMove        Code = "E0702"
+	EOwningUnsupported Code = "E0703"
+	EDestroyByName     Code = "E0704"
 
 	// Memory. Warnings, because an arena and a process-lifetime allocation
 	// are both deliberate and neither frees.
@@ -179,7 +192,7 @@ var explanations = map[Code]explanation{
 	ECaptureForm: {"malformed capture list",
 		"A capture list holds `move name` entries. Copies are implicit, so\n`copy name` is only needed to force a copy of a moved name."},
 	EBindingNeedsType: {"binding needs a type or a value",
-		"There are no zero values: a var without an initializer needs an\nannotation, and a const always needs its value."},
+		"There are no zero values: a let without an initializer needs an\nannotation, and a const always needs its value."},
 	EMatchArmForm: {"malformed match arm",
 		"Arms end at the newline. There is no comma between them."},
 	EDeferNeedsCall: {"defer needs a call",
@@ -226,7 +239,7 @@ var explanations = map[Code]explanation{
 	ELiteralOutOfRange: {"literal does not fit",
 		"An integer literal is checked against the type its context requires.\n" +
 			"With no context the type is i32, and the check still applies:\n" +
-			"`var x = 3000000000` needs `var x: i64 = 3000000000`."},
+			"`let x = 3000000000` needs `let x: i64 = 3000000000`."},
 	EBadOperands: {"operator does not apply",
 		"The operator is not defined for these operand types, or the operands\n" +
 			"do not match each other. Mixed numeric types are converted with `as`:\n" +
@@ -259,9 +272,9 @@ var explanations = map[Code]explanation{
 	EMatchArmsDisagree: {"match arms disagree",
 		"A match is an expression, so every arm produces the same type."},
 	EUnassignedRead: {"value is read before it is assigned",
-		"Gyro has no zero values, so `var x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
+		"Gyro has no zero values, so `let x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
 	EEntryPointSignature: {"main has the wrong signature",
-		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing: a\nfailing program prints and aborts rather than handing back a status."},
+		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing, an i32\nexit code, or `i32 | Error`: an error ends the program with its message on\nstandard error and status 1."},
 	EVariadicParam: {"variadic parameter is declared wrongly",
 		"A parameter written `name: ...T` collects the remaining arguments and\nis a T[] slice inside the body. Only the last parameter may be one, and\nit takes no default: a call that passes nothing for it gives it an empty\nslice."},
 	EBadSpread: {"spread argument is misplaced",
@@ -269,7 +282,7 @@ var explanations = map[Code]explanation{
 	ENoAddress: {"this function has no single address",
 		"`&f` on a declared function is a `code(...)`: the function's address\nand nothing beside it. An async function is run by this program's\nscheduler rather than by whoever holds the address, and a variadic one\ncarries an argument pack a bare address cannot."},
 	ETraitNotImplemented: {"type does not implement the trait",
-		"A bound, an operator or a printer asked for a trait the type does not\nimplement. The built-in types implement the capability traits Eq, Hash, Print,\nOrd, Add, Sub, Mul, Div, Rem and Neg on their own. A type a program declares\nimplements one only by saying so: `impl Eq for Point` takes the\nimplementation built from the fields, and `impl Ord for Point { ... }`\nsupplies the methods. Inside a generic, a parameter has the traits it is\nbounded by and no others."},
+		"A bound, an operator or a printer asked for a trait the type does not\nimplement. The built-in types implement the capability traits Eq, Hash, Print,\nOrd, Add, Sub, Mul, Div, Rem and Neg on their own, and Error is implemented\nonly on purpose. A type a program declares\nimplements one only by saying so: `impl Eq for Point` takes the\nimplementation built from the fields, and `impl Ord for Point { ... }`\nsupplies the methods. Inside a generic, a parameter has the traits it is\nbounded by and no others."},
 	EImplMismatch: {"impl does not match its trait",
 		"An impl provides every method the trait declares without a body, no\nmethod the trait does not declare, and each with the trait's signature, Self\nread as the type the impl is for. It also needs the impls of the traits the\ntrait requires."},
 	EImplConflict: {"impl cannot be written",
@@ -288,10 +301,14 @@ var explanations = map[Code]explanation{
 		"A bound such as `Container<Item = i32>` is satisfied only by a type whose\nimpl gave `Item` as exactly `i32`."},
 	ESyscallArgument: {"value cannot be a system call argument",
 		"The kernel reads each argument of a system call from one register, so\nan argument is an integer, a bool or a pointer, nullable or not. A string,\na slice, a struct or a float does not fit in one; pass the pointer to its\ndata and its length instead. Inside a generic function the check waits for\nthe concrete types each instantiation brings."},
+	EBadResultType: {"result type is malformed",
+		"`T | Error` is the type of a function that can fail, and the only union\nthe language has: the right side is Error and the left is the type of the\nvalue. A function with no value to return writes `Error?` instead, and\nreaching the end of its body is success."},
+	ETryMisuse: {"? is used where it cannot work",
+		"`x?` takes the value of a `T | Error` or an `Error?` and, when there is\nan error, returns it from the function it is written in. So the operand\nhas to be one of those, and the function has to return `T | Error` or\n`Error?` itself, with nowhere else for the error to go."},
 	EMatchNotExhaustive: {"match is not exhaustive",
 		"A match over an enum covers every variant or ends in `_`. Enumerating\nthe variants is what makes adding one later break the matches that have\nto change, so the omission is reported rather than deferred to a panic\nat runtime."},
 	EDroppedError: {"error result is dropped",
-		"A fallible call returns (value, error?). Dropping the error is\nallowed but never silent: write the discard out."},
+		"A fallible call returns `T | Error`, or `Error?` when it has no value.\nDropping the result is never silent: take the value and send the error\nback with `?`, handle it in a match, or discard it with `var _ = ...`."},
 	EClosureParams: {"closure parameters do not work out",
 		"A closure's parameters take their types from the context; where\nnothing says what the closure is, annotate them."},
 	EDivisionByZero: {"division by zero",
@@ -335,6 +352,22 @@ var explanations = map[Code]explanation{
 		"A value allocated from arena.allocator() sits in the arena and goes\nwith it. When the arena is local to this function it ends with the\nfunction, so returning the value, or storing it into something that\noutlives the function, hands out memory that is gone.\n\nTake the allocator as a parameter and the arena belongs to the caller.\nA value from heap() is not in an arena."},
 	EArenaUseAfterEnd: {"value used after its arena was freed or reset",
 		"Freeing an arena returns the buffer, and free_all hands the same bytes\nout again, so everything allocated from it before is gone. Reading such a\nvalue after the call reads memory that is freed or reused.\n\nThis follows the function's own statements in order; it does not see a\nloop carrying a value from one iteration to the next, or a free inside a\ncallee.\n\nAn allocator is not a value allocated from the arena: after free_all it\ncan allocate again."},
+	EReadOnlyPlace: {"value cannot be changed",
+		"A plain parameter borrows its argument: the function may read it and\nmay not change it, and neither may it change a field or an element of it\nor call a method that takes `inout self` on it. The same goes for a plain\n`self`, and for a `const`, which never changes.\n\nWrite the parameter `inout` to change the caller's value, or copy it into\na let and change the copy. A method that changes its receiver takes\n`inout self`."},
+	EInoutPlace: {"inout argument is not a variable that can change",
+		"An `inout` parameter changes the caller's own value, so the argument is\na variable, a field or element of one, or an inout parameter of the caller\nitself. A temporary has nowhere to keep the change, and a `const` or a\nplain parameter of the caller may not be changed."},
+	EInoutAlias: {"value is passed twice, once as inout",
+		"An `inout` parameter is exclusive for as long as the call runs. Passing\nthe same variable, or a part of it, as another argument or as the\nreceiver would let the callee change it through one name and read it\nthrough the other. A number passed plainly is a copy and is not counted.\nTwo elements of one array count as the same place, since which elements\nthey are is not known here."},
+	EInoutParam: {"inout parameter is used wrongly",
+		"An `inout` parameter is passed by address, so it takes no default, an\nasync function or one the runtime provides may not have one, and a\nfunction that has one is only called by name: a function value or a code pointer carries a signature that\nhas no way to say a parameter is inout. Wrap the call in a closure to pass\nit on."},
+	EUseAfterMove: {"value used after it was moved",
+		"An owning value has one owner. Putting it in a variable, a field, an\nelement or a return moves it, and the variable it came from holds nothing\nafterwards, exactly as if it had never been assigned. Assigning the\nvariable again makes it usable again.\n\nA loop body that moves a variable from outside the loop has to assign it\nagain before the next iteration, which would otherwise find it empty."},
+	ECannotMove: {"value cannot be moved out of where it is",
+		"Only a local variable can give its value away, because only a variable\ncan be left empty: a parameter is borrowed from the caller, a field or an\nelement would leave a hole in the value holding it, and a pointer does not\nown what it points at. A deferred call cannot move, since it runs after\nevery other use of the variable."},
+	EOwningUnsupported: {"owning value used where ownership is not followed yet",
+		"A closure capture, a channel, a pattern binding and a for loop\nvariable would each copy an owning value without moving it, and\ndestroying both copies would destroy it twice. Until ownership is\nfollowed through them, an owning type is refused there."},
+	EDestroyByName: {"destroy called by name",
+		"A value is destroyed when its owner goes out of scope or is assigned\nover, and only then. Calling destroy by hand would destroy it a second\ntime when that happens."},
 	EStdlibNotLoaded: {"construct implemented in stdlib, which is not loaded",
 		"A channel, a send, a receive, closing or iterating a channel, a select, an\nasync function and an await are written in Gyro, and their code is in\nstdlib. The compiler never loads a module the program did not import, so a\nprogram that uses one has to load stdlib itself.\n\nImport something from it, such as println: import { println } from \"stdlib\""},
 	EFormatEscapes: {"format value outlives its statement",

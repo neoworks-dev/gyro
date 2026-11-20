@@ -4,7 +4,7 @@
 import { println } from "stdlib"
 
 fn pick(n: i32): string {
-    var label = match n {
+    let label = match n {
         0: return "early zero"
         _: "other"
     }

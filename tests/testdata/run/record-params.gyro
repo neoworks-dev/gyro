@@ -1,7 +1,7 @@
 // A record arrives by value. A function that only reads it never copies it;
-// one that writes a field, takes an address, narrows a field into a view or
-// calls a method on *self changes its own copy, and the caller's is left
-// as it was.
+// one that wants to write a field, take an address, narrow a field into a
+// view or call a method on inout self does so on a copy of its own, and the
+// caller's is left as it was.
 
 import { println } from "stdlib"
 
@@ -11,7 +11,7 @@ struct Box {
     data: i32[3]
 }
 
-fn Box::add(*self, n: i32) {
+fn Box::add(inout self, n: i32) {
     self.a += n
 }
 
@@ -24,25 +24,29 @@ fn read_only(b: Box): i32 {
 }
 
 fn assigns(b: Box): i32 {
-    b.a += 10
-    return b.a
+    let own = b
+    own.a += 10
+    return own.a
 }
 
 fn views(b: Box): i32 {
-    var window = b.data[0..2]
+    let own = b
+    let window = own.data[0..2]
     window[0] = 99
-    return b.data[0]
+    return own.data[0]
 }
 
 fn addresses(b: Box): i32 {
-    var p = &b.b
+    let own = b
+    let p = &own.b
     *p = 7
-    return b.b
+    return own.b
 }
 
 fn methods(b: Box): i32 {
-    b.add(5)
-    return b.a
+    let own = b
+    own.add(5)
+    return own.a
 }
 
 fn passes(b: Box): i32 {
@@ -50,7 +54,7 @@ fn passes(b: Box): i32 {
 }
 
 fn main() {
-    var box = Box{ a: 1, b: 2, data: [10, 20, 30] }
+    let box = Box{ a: 1, b: 2, data: [10, 20, 30] }
     println(read_only(box))
     println(assigns(box))
     println(views(box))

@@ -20,12 +20,13 @@
 
 # Memory
 
-- [4.1. Manual memory](ch04-01-manual-memory.md)
-- [4.2. Leaks and `defer`](ch04-02-leaks-and-defer.md)
+- [4.1. Ownership](ch04-01-ownership.md)
+- [4.2. `Destroy` and `defer`](ch04-02-destroy-and-defer.md)
 - [4.3. Nullability](ch04-03-nullability.md)
-- [4.4. Slices, arrays and views](ch04-04-slices-and-views.md)
-- [4.5. Allocators](ch04-05-allocators.md)
-- [4.6. Unsafe code](ch04-06-unsafe.md)
+- [4.4. Borrowing](ch04-04-borrowing.md)
+- [4.5. `Box` and pointers](ch04-05-box-and-pointers.md)
+- [4.6. Allocators](ch04-06-allocators.md)
+- [4.7. Unsafe code](ch04-07-unsafe.md)
 
 # Structuring data
 

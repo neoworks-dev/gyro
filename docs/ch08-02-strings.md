@@ -2,7 +2,7 @@
 
 `string` is a **borrowed view** of UTF-8 bytes. `String` is the owning
 builder. The relationship is the one `T[]` has with `Array<T>`
-([chapter 4.4](ch04-04-slices-and-views.md)), and the same rules follow from
+([chapter 4.4](ch04-04-borrowing.md)), and the same rules follow from
 it: a `string` never owns, so a function handing one back has to say where
 the view came from.
 
@@ -65,7 +65,7 @@ without a `#{}` is a plain `string` in module storage.
 import { println, String } from "stdlib"
 import { heap } from "mem"
 
-var out = String::new(heap())
+let out = String::new(heap())
 defer out.free()
 out.push("hello")
 out.push_rune('!')
@@ -81,12 +81,12 @@ uses.
 | method | notes |
 | --- | --- |
 | `String::new(a)`, `String::with_capacity(a, n)`, `String::of(a, text)` | record `a` |
-| `push(*self, text: string)` | appends bytes |
-| `push_rune(*self, value: rune)` | encodes one code point as UTF-8 |
+| `push(inout self, text: string)` | appends bytes |
+| `push_rune(inout self, value: rune)` | encodes one code point as UTF-8 |
 | `len(self): usize` | bytes |
 | `text(self, a: Allocator): string` | reads the buffer back out into a block from `a` |
 | `to_string(self): string` | same from the process heap, and what printing uses |
-| `free(*self)` | returns the bytes to the recorded allocator |
+| `free(inout self)` | returns the bytes to the recorded allocator |
 
 `String` is ordinary Gyro over `Array<u8>`. `push_rune` is a UTF-8 encoder
 written in the language, and a surrogate or out-of-range value becomes
@@ -107,9 +107,9 @@ strings' bytes in place:
 import { split, trim, starts_with } from "stdlib"
 import { heap } from "mem"
 
-var clean = line.trim(heap())
+let clean = line.trim(heap())
 if clean.starts_with("#") { continue }
-var parts = clean.split(heap(), " ")
+let parts = clean.split(heap(), " ")
 defer parts.free()
 ```
 

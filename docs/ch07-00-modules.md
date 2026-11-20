@@ -18,7 +18,8 @@ export { a } from "./m" // re-export
 export * from "./m"
 ```
 
-Struct fields carry their own `export` ([chapter 5.1](ch05-01-structs.md)).
+An exported struct exports its fields, except those written `private`
+([chapter 5.1](ch05-01-structs.md)).
 
 A trait is exported and imported like a type, by name. An `impl` is not
 exported: it belongs to the type it is for, and every module that sees the
@@ -46,7 +47,7 @@ renaming is possible, but it has to be written as `as`.
 
 `from` is contextual, the way `move` and `copy` are: it separates an import
 list from its path and is an ordinary identifier everywhere else, so
-`String::from` and `var from = 1` both parse.
+`String::from` and `let from = 1` both parse.
 
 ## No universe scope
 
@@ -86,7 +87,7 @@ before checking anything, and that has consequences you can rely on:
 
 ## Module-level state
 
-A module-level `const` is a compile-time constant. A module-level `var` is
+A module-level `const` is a compile-time constant. A module-level `let` is
 program storage, zero-initialized, whose initializer runs before `main` — in
 declaration order within a module, and in dependency order across modules,
 so a module's storage is written after everything it imports has written its

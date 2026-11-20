@@ -2,97 +2,77 @@
 // the radix it is given. A failure is an error carrying the text, never a
 // wrapped number.
 
-import { println } from "stdlib"
+import { println, Error } from "stdlib"
 import { to_i8, to_i16, to_i32, to_i64, to_isize, to_u8, to_u16, to_u32, to_u64, to_usize } from "convert"
 
 fn i8_of(text: string, radix: u32) {
-    var value, err = to_i8(text, radix)
-    if err != null {
-        println(err.message())
-        return
+    match to_i8(text, radix) {
+        i8(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn i16_of(text: string) {
-    var value, err = to_i16(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_i16(text) {
+        i16(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn i32_of(text: string) {
-    var value, err = to_i32(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_i32(text) {
+        i32(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn i64_of(text: string) {
-    var value, err = to_i64(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_i64(text) {
+        i64(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn isize_of(text: string) {
-    var value, err = to_isize(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_isize(text) {
+        isize(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn u8_of(text: string, radix: u32) {
-    var value, err = to_u8(text, radix)
-    if err != null {
-        println(err.message())
-        return
+    match to_u8(text, radix) {
+        u8(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn u16_of(text: string, radix: u32) {
-    var value, err = to_u16(text, radix)
-    if err != null {
-        println(err.message())
-        return
+    match to_u16(text, radix) {
+        u16(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn u32_of(text: string) {
-    var value, err = to_u32(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_u32(text) {
+        u32(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn u64_of(text: string) {
-    var value, err = to_u64(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_u64(text) {
+        u64(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn usize_of(text: string) {
-    var value, err = to_usize(text)
-    if err != null {
-        println(err.message())
-        return
+    match to_usize(text) {
+        usize(value): println(value)
+        Error(e): println(e.message())
     }
-    println(value)
 }
 
 fn main() {

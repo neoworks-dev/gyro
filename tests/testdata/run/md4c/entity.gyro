@@ -14,11 +14,11 @@ export const COUNT: i64 = 2125
 // is one at all. `name` is the whole entity text, "&amp;" and not
 // "amp".
 export fn lookup(name: string): (u32, u32, bool) {
-    var low: i64 = 0
-    var high: i64 = COUNT - 1
+    let low: i64 = 0
+    let high: i64 = COUNT - 1
     while low <= high {
-        var pivot = (low + high) / 2
-        var order = name.compare(NAMES[pivot as usize])
+        let pivot = (low + high) / 2
+        let order = name.compare(NAMES[pivot as usize])
         if order < 0 {
             high = pivot - 1
         } elif order > 0 {
@@ -30,7 +30,7 @@ export fn lookup(name: string): (u32, u32, bool) {
     return 0, 0, false
 }
 
-var NAMES: string[2125] = [
+let NAMES: string[2125] = [
     "&AElig;", "&AMP;", "&Aacute;", "&Abreve;", "&Acirc;", "&Acy;",
     "&Afr;", "&Agrave;", "&Alpha;", "&Amacr;", "&And;", "&Aogon;",
     "&Aopf;", "&ApplyFunction;", "&Aring;", "&Ascr;", "&Assign;", "&Atilde;",
@@ -388,7 +388,7 @@ var NAMES: string[2125] = [
     "&zwnj;",
 ]
 
-var CODEPOINTS: u32[4250] = [
+let CODEPOINTS: u32[4250] = [
     198,      0,     38,      0,    193,      0,    258,      0,    194,      0,   1040,      0,
     120068,      0,    192,      0,    913,      0,    256,      0,  10835,      0,    260,      0,
     120120,      0,   8289,      0,    197,      0, 119964,      0,   8788,      0,    195,      0,

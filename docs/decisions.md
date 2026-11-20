@@ -31,22 +31,32 @@ that it keeps it:
 - equality, hashing and ordering — `Eq`, `Hash` and `Ord`
 - the operators — `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`
 - indexing — `Index<T>`
+- failure — `Error`
 
 This is one rule applied everywhere, replacing the duck typing that was
 the unifying rule from the second round: "does the type have the method".
-The reasoning is in "Traits". The one exception is `error`, which is still
-any type with `message(): string`; folding it into traits is future work.
+The reasoning is in "Traits", and "Errors" records `Error`, the last
+contract that was met by shape.
 
 ---
 
 ## Surface syntax
 
-### Declarations use `var` and `const`; types are inferred
+### Declarations use `let` and `const`; types are inferred *(revised)*
 
-**Status: done.** `var x: i32 = 0`, `var y = 42`, `const MAX: i32 = 100`.
+**Status: done (#161).** `let x: i32 = 0`, `let y = 42`, `const MAX: i32 =
+100`. `let` binds a variable that can be reassigned, and `const` is a
+compile-time constant.
 
-Rejected `let` / `let mut`. `var` and `const` match what the book already
-used, and immutability is not tracked yet.
+The binding keyword was `var` and became `let`. `let` is what JavaScript,
+TypeScript and Rust programmers already type, and `var` read as a relic of
+the language it was taken from. Only the spelling changed: definite
+assignment, shadowing and destructuring work exactly as they did, and `var`
+is an ordinary identifier now.
+
+Rejected **keeping `var`**. Rejected **`let` immutable with `let mut` for a
+variable**, as Rust has it, which is a separate decision about tracking
+immutability and not one a rename should smuggle in.
 
 ### The return type follows a colon
 
@@ -80,7 +90,7 @@ resolution as Rust.
 ### Primitives carry explicit widths; `usize`, `isize` and `rune` exist *(revised)*
 
 **Status: done (the names resolve), planned (their semantics).** `i8`–`i64`, `u8`–`u64`, `f32`, `f64`,
-`bool`, `string`, `void`, `error` — plus, from the review:
+`bool`, `string`, `void` — plus, from the review:
 
 - **`usize`**: pointer-width unsigned. `len()` returns it, `[]` indexes with
   it, `T[N]` sizes are it. The classic unsigned-underflow footgun is blunted
@@ -101,7 +111,7 @@ naming it avoids platform-dependent sizing.
 ### Numeric literals are context-typed *(new)*
 
 **Status: planned.** A literal adapts to the type the context requires
-(`var h: u32 = 2166136261` needs no cast); with no context, integers are
+(`let h: u32 = 2166136261` needs no cast); with no context, integers are
 `i32` and floats `f64`. A literal that does not fit is a compile error.
 Typed values never convert implicitly — only literals adapt.
 
@@ -111,7 +121,7 @@ code.
 
 ### The default type is range-checked like any other *(new)*
 
-**Status: done.** `var x = 3000000000` is an error, and so is
+**Status: done.** `let x = 3000000000` is an error, and so is
 `println(1 << 40)`: defaulting decides a type, and a value that does not
 fit the type it is given is rejected wherever the decision is made.
 Before this, `intFits` ran only in `adaptUntyped` — the path a *context*
@@ -120,7 +130,7 @@ type takes — and defaulting went around it, so an i32 could hold
 divergence but a type claiming a value it cannot hold.
 
 The check lives in one place, `defaultExpr`, which every site that
-defaults an expression's type goes through: a `var` without an
+defaults an expression's type goes through: a `let` without an
 annotation, a range endpoint, an array or tuple element with no context,
 a `match` arm, a closure's expression body, an argument wrapped into
 `any`, and an argument that infers a generic parameter. Sites that
@@ -129,7 +139,7 @@ method, a destructured tuple element) keep plain `types.Default`; the
 expression they came from was already checked where it was written.
 
 Rejected silently widening the default to i64 when the value needs it:
-the width of `var x = ...` would then depend on the magnitude of a
+the width of `let x = ...` would then depend on the magnitude of a
 constant, and passing `x` to `fn f(v: i32)` would break for reasons
 invisible at the call. Rejected wrapping to the i32 the type promises,
 Go's answer for `int` conversions but not for constants — Gyro panics on
@@ -190,10 +200,10 @@ and a fixed-size array, and on all three it is a *place*: `xs[i] = v`
 assigns into the container and `&xs[i]` is the element's own address.
 
 **The point is `get` returning a copy.** `Array<T>::get` answers with a
-value, so `xs.get(0).x = 9` mutates a copy and nothing else — it compiles
-clean and does nothing, which the md4c port called out as genuinely
+value, so `xs.get(0).x = 9` mutates a copy and nothing else — it compiled
+clean and did nothing, which the md4c port called out as genuinely
 error-prone where it held two handles into one table and mutated through
-both. `xs[i]` lowers through a new `Array<T>::at(self, index): *T`
+both. Changing a temporary is an error now, so that line is refused. `xs[i]` lowers through a new `Array<T>::at(self, index): *T`
 instead, so an index reaches the element where it lies.
 
 `get` stays. A copy is what you want often enough, and it is the only one
@@ -317,12 +327,12 @@ first-class — variable, field, slice element, channel element. `x as any`
 wraps and never fails; `v as i32` unwraps and panics on disagreement, the
 same rule a narrowing conversion follows. `match` tests instead of
 asserting, spelled exactly like the type test that already exists on an
-`error`, and an `any` is an open subject there, so exhaustiveness does not
+`Error`, and an `any` is an open subject there, so exhaustiveness does not
 apply and falling off the end panics. Printing an `any` prints what is
 inside it.
 
 Packing into a `...any` parameter is the one implicit conversion in the
-language. Assignment still refuses: `var x: any = 42` is an error and
+language. Assignment still refuses: `let x: any = 42` is an error and
 `42 as any` is the fix. The exception is narrow on purpose — the call
 constructs the pack, so the wrap is part of the call form rather than a
 silent coercion between two typed values, and requiring `as any` on every
@@ -335,8 +345,8 @@ all four tiers", with METALS `dyn` as the substrate. That was wrong, and
 the reason is that Gyro compiles whole programs: the set of types any
 `as any` in the program mentions is known at compile time, so `any` lowers
 to a synthesized closed enum with one variant per wrapped type. This is not
-a new mechanism — `error` is already lowered exactly this way, as a closed
-sum over every concrete error struct in the program. Wrapping is `variant`,
+a new mechanism — `Error` is already lowered exactly this way, as a closed
+sum over every concrete error type in the program. Wrapping is `variant`,
 the match test is `variant.tag`, unwrapping is a tag check plus
 `variant.field`, and printing is a `switch` calling each type's existing
 derived repr. No new IR instruction, no runtime type tags, no boxing, no
@@ -348,7 +358,7 @@ METALS boundary. Gyro's `any` is not that and does not use it.
 
 What this costs, recorded because it is real: an `any` value is as wide as
 the widest type the program ever wraps, since the payload is inline rather
-than boxed — the same trade `error` already makes. Boxing aggregates was
+than boxed — the same trade `Error` already makes. Boxing aggregates was
 considered and rejected: it would make every `...any` call allocate, and
 allocation on `printf` is a worse deal than a wide value.
 
@@ -388,6 +398,26 @@ it.
 
 Rejected Go's capitalization rule outright — it makes visibility a property
 of spelling, which is invisible at the use site and impossible to grep for.
+
+### An exported struct exports its fields *(revised)*
+
+**Status: done (#162).** `export` on a struct makes the type and every field
+visible to importers, and a field written `private` stays inside the module
+that declares it. A struct that is not exported keeps all of its fields to
+its module. `private` is contextual, the way `safe` is, so a field may still
+be named `private`.
+
+It replaces the rule that every field needed its own `export`, which made
+the common case pay. Most structs are plain data whose fields are all meant
+to be read, and they had to repeat `export` on every line. The rare type
+that protects an invariant, such as a `Port` whose number has to be in
+range, is the one that should write something, and with a `private` field
+it still can only be built through its own functions.
+
+Rejected **keeping a field `export`** as the opt-in, which was the old rule.
+Rejected **all or nothing**, an exported struct with every field visible and
+no way to hide one: a type could then no longer protect what its
+constructor checked, and the literal rule below would protect nothing.
 
 ### `main` is the one blessed name *(new)*
 
@@ -489,61 +519,159 @@ files, which defeats grep and adds a second export mechanism for no gain.
 
 ## Errors
 
-### Errors are values returned in a `(T, error?)` tuple
+### A fallible function returns `T | Error`, and `?` passes the error on *(revised)*
 
-**Status: done (syntax), sema (the check).** The error slot is explicitly
-nullable: `null` means no error. Signatures reading `(T, error)` in older
-drafts were wrong — a non-nullable `error` slot has no way to say "it
-worked".
+**Status: done.** A function that can fail returns `T | Error`. A function
+with no value to return writes `Error?`, where null is success and reaching
+the end of the body is success, so `return null` is never written. Failure is
+`return err` or `return Error::new("message")`. `x?` is the `T` of a
+`T | Error`, or returns the error from the enclosing function, which has to
+return `U | Error` or `Error?` itself; on an `Error?` it returns the error
+when there is one. `?` on anything else is E0538.
 
-No exceptions, no unwinding, no propagation operator. The caller must handle
-the error, and discarding it requires writing `_` explicitly, so ignoring a
-failure is always visible in the source.
+This replaces the `(T, error?)` tuple, which the book held for two rounds and
+which cost the language its feel. Every call site took four lines to check
+and pass the error on. The tuple also forced a value for `T` on the failure
+path, so the code wrote `return 0, err` with a zero nobody reads, which is a
+zero value in disguise in a language that has none. The decision was taken on
+2026-11-19 while reviewing the language, and the property the tuple was
+protecting survives: every propagation is a visible `?` in the source, there
+are no exceptions and no unwinding.
 
-Rejected `throws`/`try`, which the book's decorator page used: unwinding
-tables and landing pads are a large backend cost, and implicit propagation
-is exactly what this design is trying to prevent.
+`|` is only allowed with `Error` on the right. Any other union spelling is
+E0537, and so is `T | Error?`, `Error | Error` and a nested result: the
+syntax takes two types so that the mistake is reported where it is written,
+and the checker holds the right side to `Error`. `|` binds looser than `?` in
+a type, so the nullable marker stays on the type it follows, and a cast takes
+a type without a union, because `x as u8 | y` is the bitwise operator.
 
-### `error` is satisfied structurally *(revised)*
+Rejected:
 
-**Status: planned.** Any type with a `message(): string` method is an
-error — nothing is declared. Library code defines error types carrying their
-own data and callers match on the concrete kind with a type-test pattern:
-`RangeError(e)`.
+- **Keeping the tuple and adding `?` to it.** `?` has to take the value out of
+  something and leave the error behind, and a tuple of a value and a nullable
+  error has a value on both paths. The zero on the failure path is the
+  complaint, and a `?` over the tuple would keep it.
+- **Zig's `!T`.** The error is half of what a function says, and `!T` makes
+  the half a prefix mark on the type. It also reads as the effect row, which
+  already owns `!` after the result (`!{ io }`), so `fn f(): !i32 !{ io }`
+  puts two bangs with two meanings on one line.
+- **`T or error`.** A keyword in the type grammar for one use, where `|` is
+  already a token, and it leaves open what `or` means anywhere else. `|` also
+  says what the type is: a value or an error, one of two.
+- **A general union.** `T | U` for any two types has to say what is inside, how
+  to match it, and what it does to every analysis. The one union the language
+  needs is `T | Error`, and a second would be a feature nobody has asked for.
+- **A `Result<T, E>` enum in the standard library.** Two error styles in the
+  wild, and a generic error parameter to thread through every signature. It
+  was rejected once already, below.
 
-Originally `error` was a built-in *interface* implemented via
-`impl error for RangeError`; that declaration form died with traits, and the
-structural rule replaced it. A built-in error struct was considered and
-rejected earlier: it cannot carry typed payloads, leaving callers to parse
-strings. `(T, string?)` was rejected for the same reason.
+A multi-value return composes with it: `(f64, f64) | Error` is a tuple that
+can fail, and `return a, b` fills it. A parenthesized result list followed by
+`|` or `?` is read as the tuple type, the way `?` alone already made it a
+grouping.
 
-### There is no `Result` *(new)*
+The standard library moved over with it: `fs`, `convert`, `net` and `sys`
+return `T | Error` and `Error?`, and the dropped-result check (E0517) now asks
+for `?`, a match or `let _ =`.
 
-**Status: planned.** One error mechanism: `(T, error?)` tuples, everywhere.
-The concurrency example briefly used `Ok`/`Err` copied from Rust; both the
-type and the mutex poisoning it modelled are gone. Poisoning cannot exist in
-Gyro at all — it is Rust's answer to a panic *unwinding* past a held lock,
-and Gyro panics abort the process. `Mutex::lock()` returns the guard
-directly.
+### `await f()?` is `(await f())?`
+
+**Status: done.** `await` binds like a prefix operator, so `await f().field`
+awaits the whole selector. A `?` at the end of an await's operand would then
+apply to the future, which is not a result. The parser moves it out past the
+await, so `?` always reads the value the call produced. Only a `?` that ends
+the operand moves; one in the middle of a chain stays where it is written.
+
+### `Error` is a trait, and also the type that holds one *(revised)*
+
+**Status: done.** `Error` is an ordinary capability trait declared in the
+bundled `stdlib`, with one method, `message(self): string`. A type implements
+it on purpose, with `impl Error for T`; having the method is not enough, which
+removes the last contract the language checked by shape. The impl is for a
+struct or enum with no type parameters of its own, so the closed sum below
+can name it.
+
+`Error` is also a concrete type, the owned value that holds any implementer.
+The name is both because the two are one idea, and position says which: the
+trait is named after `impl`, `:` in a bound and `dyn`, and the type everywhere
+else. `Error::new(message)` makes the plain error, which carries a message and
+nothing else; it is the one function a trait has.
+
+**Representation.** An `Error` is the closed sum whole-program lowering already
+built for the old `error`: an enum with one variant for the plain error and
+one for each struct or enum in the program that implements the trait. It is
+owned, so it can be returned up the stack without pointing into a frame that
+is gone, and it allocates nothing. `message()` on it is a `switch` over the
+variants, synthesized in lowering. A `T | Error` is a two-variant enum, the
+value or the `Error`, generated for each `T` that is used. Nothing in METALS,
+the runtime or the backend is new.
+
+Rejected:
+
+- **Inline storage with a size cap**, a vtable pointer and a fixed buffer, as
+  the old text here described. A cap that rejects an error type by its size is
+  the wrong rule for a type people write for other reasons, and the closed sum
+  has no cap to explain: the cost is that `Error` is as wide as the widest
+  implementer.
+- **A `dyn Error`.** A trait value borrows what it points at, and an error
+  usually outlives the frame that made it, so returning one would name an
+  allocator or dangle. `dyn Error` still exists as a borrowed view, like any
+  trait value; a function does not return it.
+- **Boxing each error into an allocator.** The value would be allocated when
+  the error is made and nobody knows who frees it: hidden ownership, against
+  explicit allocation.
+- **A built-in error struct with only a message.** It cannot carry typed
+  payloads, and callers parse strings. `Error::new` is the plain case and a
+  type implementing the trait is the rest.
+
+A type test on an `Error`, `RangeError(e)`, binds the whole value as before,
+and the tested type is now recorded by the checker, since the pattern is only
+a path and two modules may name types alike. A type test also works for an
+enum that implements the trait.
+
+### Handling a result without `?` is a match on its two cases *(provisional)*
+
+**Status: provisional.** The book did not say how a result is taken apart
+without `?`, and this is the choice made to ship `?`. A `match` over a
+`T | Error` takes type-test arms, `i32(n)` for the value and `Error(e)` for
+the error, the same arms an `any` takes. The match is exhaustive when both are
+covered or it ends in `_`, and the diagnostic names the missing case. A type
+test may name a generic type, `Array<string>(xs)`, which the pattern parser now
+reads. An `Error?` is a nullable and is checked with `!= null`, which narrows
+it, as every nullable is.
+
+The alternatives were narrowing with an `is` operator, which is a new
+expression form, and extending `!= null` to results, which has no null to
+compare against. A match reuses the only machinery that already takes a type
+apart, at the cost of repeating the type in the arm. If a better form turns up
+it replaces this one outright.
+
+### `main` may return an exit status, or an error *(new)*
+
+**Status: done.** `main` returns nothing, an `i32` or an `i32 | Error`. An
+`i32` is the exit status. An error is written to standard error, as its
+message and a newline, and the status is 1. Making the `i32` mandatory is a
+separate, later change.
+
+It is implemented once, in Gyro: lowering gives a `main` that returns
+something the name `main::run`, exports a generated `main` that calls it and
+hands the result to `finish_main` in `stdlib`, and `finish_main` is an
+ordinary function that matches the result, prints and exits. Nothing is added
+to the C runtime, and METALS' entry still returns nothing, which is what the
+backend and the corpus of hand-written METALS expect. A `main` that returns a
+value needs `stdlib` loaded, and the checker says so (E0620) rather than
+loading it.
+
+### There is no `Result` type *(revised)*
+
+**Status: done.** One error mechanism: `T | Error`. The concurrency example
+briefly used `Ok`/`Err` copied from Rust; both the type and the mutex
+poisoning it modelled are gone. Poisoning cannot exist in Gyro at all — it is
+Rust's answer to a panic *unwinding* past a held lock, and Gyro panics abort
+the process. `Mutex::lock()` returns the guard directly.
 
 Rejected keeping Result as an ordinary stdlib enum: two competing error
 styles in the wild for no gain.
-
-### Trait objects use inline storage with a size cap
-
-**Status: planned.** Specific to `error`, whose value is a vtable pointer
-plus a fixed inline buffer. Small error types are returned by value with no
-allocation. A type exceeding the cap is a compile error naming the size, and
-the author boxes it explicitly.
-
-The alternative — a hidden heap allocation on every error path — contradicts
-explicit `alloc`/`free`.
-
-This is not how a trait value (`dyn Trait`) is represented. A trait value
-borrows ("Trait values are a pointer and a table"); inline storage was
-considered for them and rejected there, because a cap that rejects types
-by size is the wrong rule for a general-purpose value and because it copies
-the value, so mutating through one would mutate a copy.
 
 ---
 
@@ -551,7 +679,7 @@ the value, so mutating through one would mutate a copy.
 
 ### Every path to a read must have written the name *(new)*
 
-**Status: done.** `var x: i32` with no initializer holds nothing, and reading
+**Status: done.** `let x: i32` with no initializer holds nothing, and reading
 it before every path has written it is a compile error. There are no zero
 values, so the alternative is reading storage that means nothing.
 
@@ -573,11 +701,11 @@ and it marks the local assigned from there on.
 
 The storage is real and sized whether or not anything has been written to it;
 `&x` names a place rather than reading one. Writing through the pointer is
-the ordinary reason to take it, and `var p = &x; *p = 5; println(x)` has to
+the ordinary reason to take it, and `let p = &x; *p = 5; println(x)` has to
 work. The analysis cannot follow what happens through a pointer, so the
 address-of is where it stops tracking.
 
-The cost is a hole: `var p = &x; println(*p)` reads storage nothing wrote,
+The cost is a hole: `let p = &x; println(*p)` reads storage nothing wrote,
 and only the evaluator's runtime check catches it — the native tiers do
 not poison. Accepted on the same terms as dangling slices.
 
@@ -588,7 +716,7 @@ checks are already runtime-checked rather than proved away.
 
 ### A two-name receive is guarded by its flag *(new)*
 
-**Status: done.** `var v, open = <-ch` leaves `v` readable only where `open`
+**Status: done.** `let v, open = <-ch` leaves `v` readable only where `open`
 is true. A closed channel yields no value, not a zero value, so the flag is
 the only thing that says whether the value exists.
 
@@ -600,36 +728,96 @@ The guard rides the same `&&` / `||` / `!` plumbing as null narrowing, so
 
 ## Memory
 
-### Manual allocation with a checked safety net
+### Values own what they hold *(revised)*
 
-**Status: done.** `alloc<T>()` returns `*T`, `free(p)` releases it, `defer`
-runs a call at scope exit. A sema pass tracks allocations and **warns** when
-one can reach the end of its block unfreed and unescaped.
+**Status: decided, being built (#164).** Every value has one owner, and an
+owning value is destroyed when its owner goes out of scope, through the
+`Destroy` trait. Assigning an owning value moves it, and a type with no
+destructor anywhere in it copies automatically. Parameters borrow unless
+their type is written `T!`, which takes ownership, and `inout` borrows
+exclusively so the function may change the argument. A view blocks its
+source from being moved or changed until its last use. `Box<T>` owns one
+value, `&x` makes a pointer that views one value, and raw pointers only come
+out of unsafe code. Allocators stay values, with the heap as the default,
+and a value made from an arena views the arena. Chapter 4 is the
+specification.
 
-Warnings rather than errors, so arenas and process-lifetime allocations are
-not blocked.
+It replaces manual allocation with a leak analysis that only warned. That
+model could not keep a slice from outliving its array or a pointer from
+being used after `free`, and it could not free a heap-formatted `string` at
+all, since a view had no way to give its block back. The decision was taken
+on 2026-11-19 while reviewing the language for safety.
 
-Escaping is read broadly on purpose: a return, a send, a call argument, a
-struct or array literal field, and a `move` capture all settle the question,
-because a callee may keep what it is handed and following it is exactly what
-this pass cannot do. The bias is toward silence — a missed leak costs less
-than a warning on correct code, which teaches people to ignore the category.
+Rejected **garbage collection**, which needs a runtime and breaks the C
+memory model below. Rejected **Rust's convention, move by default and `&`
+to borrow**, because most functions only read and the common case should
+cost nothing at the call. Rejected **lifetime annotations**: Gyro compiles
+whole programs, so a returned view is inferred from its one view parameter,
+with `from a` only when there are several. Rejected **a view lasting until
+the end of its block**, which is simpler to check and refuses correct code
+that a view's last use would allow. Rejected **`move xs`, `take`, `sink` and
+`own`** as the spelling for taking ownership, in favour of `T!`, which reads
+as the counterpart of `T?`. Rejected **an opt-in `Copy` trait**, since
+whether a type copies follows from what it is made of. Rejected **deleting
+`defer`**, which is still the shortest way to undo something on every exit.
+Rejected **a destructor as a method with a special name**, so that a type
+opts in on purpose. Rejected **making every pointer dereference unsafe**:
+safe code needs to look at one value without owning it, so a pointer made
+with `&` is a tracked view, and only pointers made by unsafe code are
+unchecked.
 
-Only a bare name settles. `node.value` reads through the pointer and leaves
-ownership where it was, so a block that only reads its allocation is still
-reported.
+### A parameter changes its argument only when it says `inout` *(new)*
 
-A `return` is treated as an exit the check sees rather than a place to stop
-looking. Checking only the closing brace missed `var node = alloc<Node>()`
-followed by `return 0`, where the allocation is lost on the way out.
+**Status: done.** A plain parameter, `self` included, borrows: the function
+may read it and may not change it. Assigning to it, to a field or an element
+of it, or calling a method that takes `inout self` on it is an error, and so
+is changing a `const`. A parameter written `inout` borrows exclusively and
+may change the argument in place:
 
-Rejected ownership-and-borrows, which is a large sema investment, and
-garbage collection, which needs a runtime and conflicts with `@gpu`.
+```gyro
+fn sort(xs: inout Array<i32>) { ... }
+fn Counter::bump(inout self) { ... }
+```
+
+The call is written as before, `sort(xs)` and `c.bump()`, with no `&`. The
+argument is a place that can change: a `let` local, a field or element of
+one, or an `inout` parameter of the caller. A `const`, a plain parameter or
+a temporary is an error, and so is passing one value twice to a call when
+one of the passes is `inout`, the receiver included. Two elements of one
+array count as the same value, since which elements they are is not known,
+and a plain pass of a number is not counted, since it is a copy.
+`inout self` replaces `*self` outright, which was a receiver that could
+change and a plain `self` whose writes were silently lost.
+
+`inout` is a keyword only in front of a receiver or a parameter's type, so
+it stays usable as a name. A function with an `inout` parameter is passed by
+address and so is only called by name: it cannot be a function value or a
+code pointer, because those signatures cannot say a parameter is `inout`, and
+it cannot be async or a runtime intrinsic. A trait's method and an impl's
+agree on which parameters are `inout`. Pointers and slices are not changed by
+this: a write through one is a write to what it views, not to the parameter
+holding it, and tracking those is the next step.
+
+The compiler passes the argument's address. A variable the checker narrowed
+from `T?` to `T` has no address for its payload, so there the callee gets a
+cell and what it leaves there is stored back after the call, which nothing
+can observe because the variable is exclusive meanwhile.
+
+Rejected **`&` at the call site**, which Rust and C++ ask for and which makes
+the common call noisy where the declaration already says it. Rejected
+**keeping `*self` beside `inout self`**: two spellings of one receiver, with
+a pointer's name on something that is no pointer. Rejected **`mut`** for the
+word, since a plain parameter that cannot change is not what `mut` would be
+the opposite of; `inout` says that what goes in comes out changed. Rejected
+**passing by value and copying back** as the meaning, which would let a
+function see the old value through an alias while it runs. Rejected **a
+reserved word**, which would take `inout` away from every program that
+names something that way.
 
 ### Gyro's memory model is C's, and stays C's *(new)*
 
-**Status: decided.** Gyro is and remains unmanaged: manual `alloc`/`free`,
-addresses that never move, no collector. This is now a commitment, not an
+**Status: decided, amended by #164.** Gyro is and remains unmanaged: no collector,
+and addresses that never move. Freeing is now done by destructors rather than by hand, which changes when memory is released and not how it is laid out. This is a commitment, not an
 accident of v1 — the goal it buys is full C compatibility: **any existing
 C program, unmodified, can be imported directly into a Gyro program**
 (`import { parse } from "./cJSON.c"`), a C struct and a Gyro struct can
@@ -700,7 +888,7 @@ and a function allocates exactly when it is handed one as a parameter.
 back, `heap()` is the process heap, and `Arena::new(a, capacity)` takes
 its buffer from `a` and remembers it, so `Arena::free` returns the buffer
 to the allocator it came from without being told which. Running out of
-memory panics with the size. [Chapter 4.5](ch04-05-allocators.md) is the
+memory panics with the size. [Chapter 4.5](ch04-06-allocators.md) is the
 specification.
 
 **Why explicit.** The first design made the allocator a hidden trailing
@@ -989,19 +1177,79 @@ with a `_Static_assert` on each type's size and each member's offset. A
 size assert alone would pass on two structs that pad differently and
 total the same.
 
-### `defer` runs at block exit *(new)*
+### A temporary is destroyed at the end of its statement *(new)*
 
-**Status: planned.** A defer fires when its enclosing `{ }` ends (Zig's
+**Status: decided.** An owning value nothing takes, such as a call's
+result passed to a parameter that borrows it, is destroyed at the end of
+the statement that made it, or at the end of the branch it was made in
+when that comes first: the right side of `&&`, a match arm. A value an
+expression statement discards is destroyed right away.
+
+The branch rule is what keeps it to one path: a temporary made only when
+`&&`'s left side is true does not exist on the other path, so the end of
+the statement would have to ask a flag first. Ending it with its branch
+needs none, and nothing outside the branch can see it anyway.
+
+Rejected destroying a temporary right after the call that used it. A view
+the call returned into it, a field read through it, would outlive it
+within the same statement.
+
+### Moves are checked by definite assignment *(new)*
+
+**Status: decided.** A move takes the variable out of the assigned set,
+and a later read is the same error as a read before any write, worded for
+the move. A move on one branch leaves the variable unassigned after the
+merge, and a hidden flag decides at run time whether the end of the scope
+still destroys it.
+
+A loop body that moves a variable from outside the loop has to assign it
+again before the next iteration. That is checked at the back edge, so the
+analysis stays a single pass with no fixpoint: a body that hands every such
+variable back leaves the next iteration where the first one started.
+
+Until ownership is followed through them, an owning type is refused in a
+closure capture, a channel, a pattern binding, a `for` variable and an
+`any`. Each would copy the value without moving it, and refusing it keeps
+the rest sound while the next steps of #164 land.
+
+### A generic body is judged for moves per instantiation *(new)*
+
+**Status: decided.** A type parameter is plain while a generic body is
+checked on its own, and the body is checked again for every
+instantiation, which is where an owning type argument meets it. A body
+that copies a `T` it only borrowed, `return value` for a plain parameter,
+is refused there and only there: `copy_out<i32>` is fine, `copy_out<File>`
+is not.
+
+This is the check Gyro already makes of everything else a generic body
+does: a body may use only what its bounds provide, and the instantiation
+is what judges the rest.
+
+Rejected a `Copy` bound, Rust's answer. Whether a type copies is decided
+by what it is made of ([chapter 4.1](ch04-01-ownership.md)), and a bound
+saying so again would be one more thing to write on every generic that
+copies a number.
+
+### `defer` runs at block exit *(revised)*
+
+**Status: decided.** A defer fires when its enclosing `{ }` ends (Zig's
 model), in reverse order of registration, so a loop body's defers run every
-iteration.
+iteration. The whole call is evaluated at exit, arguments included, against
+the names in scope where it was written.
 
-Rejected Go's function-exit model: `for { var p = alloc<T>(); defer free(p) }`
-would pile allocations up until return, and the leak-warning pass reasons
-about scopes, not functions.
+Rejected Go's function-exit model: `for { let p = alloc<T>(); defer free(p) }`
+would pile allocations up until return.
+
+Rejected capturing the arguments at registration, which Gyro did before. It
+copies a value at the `defer` and uses the copy at exit, and with ownership
+([chapter 4](ch04-01-ownership.md)) that copy is either a move, which takes
+the value away from the rest of the block, or a view held to the end of the
+block, which blocks every change to its source. Evaluating at exit needs
+neither, and it is what a reader expects from `defer x.close()`.
 
 ### Definite assignment, no zero values *(new)*
 
-**Status: planned.** `var x: i32` without an initializer is legal; reading
+**Status: planned.** `let x: i32` without an initializer is legal; reading
 it before every path has assigned it is a compile error. A receive from a
 closed channel yields no value — reading it without checking `open` is the
 same error.
@@ -1016,7 +1264,7 @@ real bugs).
 **Status: done.** An inner block may redeclare an outer name; declaring
 the same name twice in one block is an error. Standard C/Go behaviour, no
 special rules. A local's initializer resolves before the name binds, so
-`var x = x` reaches the outer x or fails.
+`let x = x` reaches the outer x or fails.
 
 ### Absence is expressed by nullable types, not a bare null
 
@@ -1164,7 +1412,7 @@ parameters than the type does ([appendix G](appendix-g-known-gaps.md)).
 - `a.eq(b)`, `a.add(b)` and the other methods of the capability traits exist
   on the built-in types, so a generic body that calls them works for the
   numbers as it does for a declared type.
-- `Index<T>` is `at(*self, index: usize): *T`, the address of element `i`,
+- `Index<T>` is `at(inout self, index: usize): *T`, the address of element `i`,
   because "An index is a place, on every container": `value[i]` lowers through
   it as `Array<T>` lowers through its own `at`.
 - Default bodies need a trait without type parameters, and a trait value needs
@@ -1225,10 +1473,10 @@ array: nothing is allocated to make one, and the borrow analysis follows it
 with the slice's rules (a function returning one names where it came from,
 and a view of this frame's storage cannot be returned).
 
-**Rejected: inline storage with a cap.** The `error` mechanism, a buffer
-inside the value. It would make `Array<dyn Element>` a fixed-size-element
+**Rejected: inline storage with a cap.** The mechanism the book once gave
+`error`, a buffer inside the value. It would make `Array<dyn Element>` a fixed-size-element
 array of whatever the biggest implementer is, reject types by their size,
-and copy the value so that a `*self` method mutated a copy. **Rejected:
+and copy the value so that an `inout self` method mutated a copy. **Rejected:
 boxing into an allocator.** The value is allocated when the trait value is
 made and nobody knows who frees it — hidden ownership, against explicit
 allocation. **Rejected: an implicit conversion from a pointer.** Gyro has
@@ -1267,14 +1515,15 @@ with defaults, which Gyro does not have.
 **Status: done (syntax; sema checks the owner names a type in the module).**
 
 ```gyro
-fn Stack::push(*self, v: i32) { ... }
+fn Stack::push(inout self, v: i32) { ... }
 export fn Stack::new(capacity: i32): Stack { ... }
 ```
 
 Structs stay pure data; behaviour is declared beside it at top level, in any
 file order. Receivers keep the first-round semantics: `self` borrows
 immutably and never copies (a copying receiver would memcpy invisibly per
-call), `*self` is a mutable pointer, no receiver means an associated
+call), `inout self` is the receiver passed by address so that the method
+may change it, no receiver means an associated
 function called `Stack::new(16)`.
 
 Rejected `class` (first round — implied inheritance fights a simple SSA IR),
@@ -1290,7 +1539,7 @@ methods are ordinary methods of the type afterwards.
 are the traits its argument has to implement, joined with `&`, and the body
 may use exactly what they provide. A parameter with no bounds can be stored,
 passed and returned, and nothing else. `struct Pair<T>` and `fn
-Pair<T>::swap(*self)` are legal with no bounds, and a type may bound its
+Pair<T>::swap(inout self)` are legal with no bounds, and a type may bound its
 parameters where it introduces them, `struct Map<K: Eq & Hash, V>`, which its
 methods inherit. Instantiation stamps out concrete code per type argument.
 
@@ -1365,8 +1614,8 @@ outside the stdlib — it is `Mutex::new(0)`.
 ### Tuples are first-class *(revised)*
 
 **Status: done (syntax), planned (semantics).** `(A, B)` is a real type:
-usable in `chan<(string, error?)>`, fields, variables. Values are written `(a, b)`, read by
-destructuring (`var a, b = pair`) or positional access (`pair.0`). No
+usable in `chan<(string, i32)>`, fields, variables. Values are written `(a, b)`, read by
+destructuring (`let a, b = pair`) or positional access (`pair.0`). No
 one-element tuples; `(expr)` stays grouping. `return a, b` is sugar for
 returning a tuple, so multi-value returns are no longer a special form.
 
@@ -1374,7 +1623,7 @@ This reverses the first round's "no tuple values", which held that `(T,
 error)` was a return-only shape and structured data belongs in named
 structs. What broke it: a channel could not carry a fallible result — every
 worker thread needed a single-use wrapper struct. The iteration protocol
-(`next(): (T, bool)`) and channel receive (`var v, open = <-ch`) fell out of
+(`next(): (T, bool)`) and channel receive (`let v, open = <-ch`) fell out of
 the same shape for free.
 
 ### Match is exhaustive, variants qualified, type-tests share the shape *(new)*
@@ -1389,7 +1638,7 @@ the same shape for free.
   `Shape::Circle(r)`, never bare `Circle(r)`. Grep-friendly, and it keeps
   variant destructuring visually distinct from the other `Name(binding)`
   form.
-- `RangeError(e)` where the scrutinee is an `error` is a type test binding
+- `RangeError(e)` where the scrutinee is an `Error` is a type test binding
   the whole value. Same surface shape as variant destructuring, told apart
   by what the name resolves to. A distinct type-test syntax was considered
   and rejected as a second pattern form to learn.
@@ -1401,7 +1650,7 @@ the same shape for free.
 
 **Status: done.** `for x in ...` handles slices, arrays, ranges and
 channels natively; any other type qualifies by implementing
-`Iterator<T>`, whose one method is `next(*self): (T, bool)` and where
+`Iterator<T>`, whose one method is `next(inout self): (T, bool)` and where
 `false` ends the loop. Rejected a closed built-in set: user containers could
 never be iterated.
 
@@ -1475,7 +1724,7 @@ exists for the case where a format string is data.
 print a message with source position and terminate. Not returnable, not
 catchable.
 
-Keeps the `(T, error?)` channel meaningful — it carries conditions, not
+Keeps the `T | Error` channel meaningful — it carries conditions, not
 bugs — and needs no unwinding machinery.
 
 ### Float division by zero is IEEE; NaN is unordered *(new)*
@@ -1615,9 +1864,9 @@ because there were no closures, and it broke the rule that anything outside
 the formal syntax must be imported.
 
 `select` arms use the `comm: body` shape of match — newline-terminated, like
-match arms after the review. Bindings are ordinary `var` declarations. Go's
+match arms after the review. Bindings are ordinary `let` declarations. Go's
 `:=` was explicitly rejected — an assignment is `=`, and anything that binds
-is `var` or `const`.
+is `let` or `const`.
 
 Channels have no direction. `chan.send<T>` was considered; parameter naming
 carries the intent instead. Channel creation stays call-shaped grammar
@@ -1810,7 +2059,7 @@ a slice result does, and a `!{ &xs }` row on it is legal and required. A
 number read out of an aggregate carries nothing, and only a field whose
 declared type can hold a view carries a view.
 
-**Stores are judged where they happen.** A method taking `*self` is treated as
+**Stores are judged where they happen.** A method taking `inout self` is treated as
 possibly keeping its arguments (`push`, `set`, `insert`, and a method a
 program writes), and so is an assignment to a field, an element or through a
 pointer. The target's root variable takes on the origin of what it was given,
@@ -1834,7 +2083,7 @@ input into a caller's token array a false positive. It is allowed and listed
 in appendix G. **Rejected: following a view through a callee.** A call
 `register(&hs, f)` stores in `register`, where `f` is an ordinary parameter;
 following it needs rows on parameters, which is a different feature.
-**Rejected: treating every `*self` method as a store only when its parameter
+**Rejected: treating every `inout self` method as a store only when its parameter
 type can hold a view.** The receiver's type is what decides, not the
 parameter's, because a container instantiated at a view type has `T` where
 the parameter is declared. **Rejected: a separate check for aggregates beside
@@ -1980,7 +2229,7 @@ be read is the one that does not exist. A declaration with no body is a
 foreign function, and with no row there is nothing to know it by, so it is
 assumed to do `io`. That is what forced every intrinsic in the
 standard library to state a row — `Array<T>::get(self, index: usize): T !{}`
-down to `MutexGuard<T>::unlock(*self) !{}` — which is the right place for
+down to `MutexGuard<T>::unlock(inout self) !{}` — which is the right place for
 the annotation burden to fall: the runtime boundary is where a row is the
 only possible source of truth.
 
@@ -2025,7 +2274,7 @@ Still open, deliberately out of v1:
   polymorphism (the row variables above) gives them something to say.
   `spawn` carries `!{ io }` as a stand-in for its task's effects for
   exactly this reason.
-- **Module-level `var` initializers.** They run before `main`, outside any
+- **Module-level `let` initializers.** They run before `main`, outside any
   signature, so no row covers them and they are unconstrained.
 - **Channels and Mutex.** No effect in v1. What concurrency should be in
   the effect vocabulary is undecided — `async` was already rejected as an
@@ -2117,7 +2366,7 @@ written the natural way is rejected. Listed under "Still open".
 ### Constant expressions fold during checking *(new)*
 
 **Status: done.** Untyped literal arithmetic folds over big integers, so
-`var x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
+`let x: u8 = 200 + 56` and `1 << 40` into an i32 are compile errors, not
 runtime panics. Operands are typed without the outer context — the folded
 result is what must fit.
 
@@ -2136,11 +2385,11 @@ the count keeps its own type, so an untyped left operand has no
 neighbour to adapt against and the surrounding context is the only
 source. A folded expression is exempt — it emits its value and never its
 operands, and only the folded value has to fit, which is what keeps
-`var x: i8 = -128` legal.
+`let x: i8 = -128` legal.
 
 This closed the recorded checker/interpreter divergence on untyped
 operands: the interpreter now keeps `~` and an untyped shift untyped
-instead of defaulting them to i32 mid-expression, so `var x: i64 = 1 <<
+instead of defaulting them to i32 mid-expression, so `let x: i64 = 1 <<
 40` is an i64 shift in every tier. Rejected: making the interpreter read
 the checker's recorded types for literals, which would have coupled the
 spec tier to `Info` for one narrow case. Corpus:
@@ -2187,7 +2436,7 @@ Corpus: `tests/testdata/run/shift-edges.gyro`.
 strings (`usize`); `runes(): rune[]` on strings; `compare(other): i32` on
 the numeric primitives, `rune` and `string` — which is what lets
 `max(3, 7)` and `max("pear", "apple")` both instantiate;
-`message(): string` on `error`. There is no `append` on a
+`message(): string` on `Error`. There is no `append` on a
 slice: `T[]` borrows memory it cannot grow, so growth lives in
 `Array<T>::push`. The docs briefly said `xs.append(v)`; that was a relic
 and was removed.
@@ -2279,7 +2528,7 @@ foreign parameter substitution could never rewrite.
 
 ### Tuples assign structurally *(new)*
 
-**Status: done.** `(string, null)` goes where `(string, error?)` is
+**Status: done.** `(string, null)` goes where `(string, i32?)` is
 required: tuple assignability is elementwise, since a tuple is shape, not
 identity. Everything else converts only by `as`.
 
@@ -2553,7 +2802,7 @@ cross.
 - A function becomes an import from the native library, called in C's ABI
   through the shim the backend already generated for `@extern`. It is
   `unsafe` to call unless the import says `import safe`, which is the rule
-  for a `.c` import and is stated once ([chapter 4.6](ch04-06-unsafe.md)).
+  for a `.c` import and is stated once ([chapter 4.7](ch04-07-unsafe.md)).
 - A struct or union, under its tag, or under the typedef name when the
   typedef names a struct (`typedef struct { ... } div_t`). A tag the header
   leaves incomplete is a fieldless struct, which is Gyro's spelling for a
@@ -3977,7 +4226,7 @@ instructions that are supposed to be the machine's own.
 by-value record parameter into a slot so that its fields could be assigned.
 It now does so only when the body may change the record or take its address:
 a field or element assigned through the name, a narrowing that could be
-written through, a call with a `*self` method on it, `&` of it or of a part,
+written through, a call with an `inout self` method on it, `&` of it or of a part,
 or any mention inside a closure. The analysis is syntactic and errs towards
 a slot. Rejected: an inliner over METALS, which is the bigger lever and a
 bigger risk than this change needed.
@@ -4489,8 +4738,8 @@ global, so nothing can conflict globally.
 
 The compiler's own surface stays separate and wins on a name clash: `len`
 and `runes` are part of the type, not additions to it, and they need no
-import. `void` and `error` are not extensible — nothing has type void,
-and `error` is a contract met by shape rather than a type.
+import. `void` and `any` are not extensible — nothing has type void,
+and an any's behaviour belongs to the type inside it.
 
 ### `bytes()` and `from_utf8` both copy *(new)*
 
@@ -4564,13 +4813,13 @@ one-shot has no open state to forget. When the guard/resource-release
 question settles, a streaming write API can be designed against it;
 until then the path forms cover what a CLI needs.
 
-`read_dir` returns `(Array<string>, error?)`: entry names only, sorted
+`read_dir` returns `Array<string> | Error`: entry names only, sorted
 bytewise, without `.` and `..` — the evaluator leans on Go's
 `os.ReadDir` and the C runtime sorts the same way, so a listing is
 deterministic on every tier. Rejected returning richer entries (name
 plus kind and size): that shape wants a struct and a stat per entry,
 and a caller who needs it can `open` the name. `exists` returns a bare
-`bool`; the two-valued form `(bool, error?)` was rejected because the
+`bool`; the two-valued form `bool | Error` was rejected because the
 boolean answer is the whole point — a path that cannot be stat'ed is
 absent for every purpose a caller has.
 
@@ -4736,25 +4985,23 @@ and bound imports opaquely; it is deleted.
 
 | question | why it matters |
 | --- | --- |
-| `error` as a trait | `error` is still any type with `message(): string`, the one contract met by shape, with inline storage for its value; folding it into the trait system is issue #113 |
 | conditional impls and traits on built-in types | `impl Add for Pair<T>` cannot ask more of `T` than the type does, and a program cannot implement its own trait for `i32` or `string`; parameter defaults and a `Trait::method` call syntax are not built either |
-| mutation rules | when a `*self` method may be called on what, and what `self` may not do |
-| guard/resource release | `MutexGuard::unlock` is explicit because Gyro has no destructors; whether a drop/RAII mechanism ever exists affects guards, `free`, and `close` alike |
+| mutation rules | what a view in use across an `inout` call may not be; the rest is checked |
 | `syntaxfn` parser extensions | the METALS-facing feature, entirely unspecified |
 | METALS remainder | the format is implemented end to end (spec, verifier, linker, two producers, one backend); still open: what the name expands to, the binary encoding, foreign-runtime embedding, whether effect rows enter signatures |
 | linear memory has no producer | `memory`, `trunc` and `bitcast` came in for the wasm bridge and outlived it; the corpus exercises them from hand-written METALS, and whether two modules may share one memory is still undecided |
-| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use. Module-level `var` does have identity and lowers to METALS storage |
+| module-level `const` re-evaluates | a const has no identity to share, so it stays a synthesized getter and its initializer runs per use. Module-level `let` does have identity and lowers to METALS storage |
 | views through a pointer | `&x` on a local gives a `*T` the analysis stops following, so a slice built from a dereferenced pointer has no traceable origin |
 | narrowing across `\|\|` | the checker follows `&&`'s short circuit but not `\|\|`'s, so the early-exit guard `if p == null \|\| p.child == null` is rejected where the equivalent `&&` form is accepted |
 | narrowing text | `xs[a..b]` narrows a slice, and a `string` is deliberately not among them: its length is in bytes and its content is UTF-8, so a byte range can cut a code point in half. Whether a text window counts bytes, runes or something else is undecided |
 | formatting a float to a precision | `fmt` has no `%e`/`%f`/`%g` and nothing can read a double's bits, so no Gyro program can print a float to a fixed number of digits; the cJSON port needed 358 lines of exact decimal conversion to do what `printf("%.15g")` does |
 | a `const` in a match pattern binds | a bare name is a binding, so `match piece { WQ: "q"  WR: "r" }` matches the first arm for every value — it compiles clean and answers wrong. Either warn when a binding shadows a module-scope `const`, or let a path pattern mean equality |
 | what a match *expression* takes its type from | the first arm decides, so `Value::Text(s): s` beside `_: null` is E0516; a statement `match` writing into a pre-declared local is the workaround |
-| the scope of leak settling | an allocation stored into a field *through a pointer* (`p.child = n`) is not settled, though a struct-literal field is, and tracking does not survive a constructor call, so `var n = new_node()` is untracked entirely. cJSON does real manual memory management and warns zero times, having first been false-positived on the linked-list idiom |
+| the scope of leak settling | an allocation stored into a field *through a pointer* (`p.child = n`) is not settled, though a struct-literal field is, and tracking does not survive a constructor call, so `let n = new_node()` is untracked entirely. cJSON does real manual memory management and warns zero times, having first been false-positived on the linked-list idiom |
 | viewing a literal's bytes | `bytes()` on a string literal allocates, so constant markup written into a byte buffer copies per emission |
 | Stack package manager | resolution of bare import names depends on it; the loader rejects them until the `.stack/` layout is decided |
 | derived `==`/repr for recursive types | field-wise derivation must handle `*Node?` cycles |
-| receive vs tuple destructuring | on `chan<(A, B)>`, `var a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
+| receive vs tuple destructuring | on `chan<(A, B)>`, `let a, b = <-ch` could mean the (value, open) form or destructuring the element; currently it means (value, open), so the element is received whole and destructured afterwards |
 | memory reclamation | native binaries free only what the program frees; strings and other implicit allocations leak until an ownership/GC decision exists |
 | use-after-free and uninitialized reads | the runtime frees for real and leaves storage as the allocator returned it, so a binary silently reads garbage. The evaluator poisoned freed cells and unwritten storage and aborted on a read; it is deleted, and a poisoning allocator in `rt.c` is the replacement worth building. It cannot even name a double free today, since `gy_free` hands the block back to libc before a second free could read the poison |
 | type punning is not diagnosed | reading across union members with no common initial sequence, or a struct's storage as bytes, reinterprets whatever is there; catching it needs something that records which member was written |

@@ -64,8 +64,8 @@ methods and associated functions
 ==================
 
 export struct Stack {
-  export capacity: i32
-  top: i32
+  capacity: i32
+  private top: i32
 }
 
 export fn Stack::new(capacity: i32): Stack {
@@ -76,11 +76,11 @@ fn Stack::is_empty(self): bool {
   return self.top == 0
 }
 
-fn Stack::push(*self, v: i32) {
+fn Stack::push(inout self, v: i32) {
   self.top += 1
 }
 
-fn Pair<T>::swap(*self) {
+fn Pair<T>::swap(inout self) {
 }
 
 ---
@@ -426,8 +426,8 @@ fn load(p: string): (string, error?) {
 }
 
 fn main() {
-  var value, err = load("x")
-  var _, e2 = load("y")
+  let value, err = load("x")
+  let _, e2 = load("y")
 }
 
 ---
@@ -476,7 +476,7 @@ c-style for loop
 ==================
 
 fn main() {
-  for var i = 0; i < 10; i += 1 {
+  for let i = 0; i < 10; i += 1 {
     f(i)
   }
 }
@@ -510,7 +510,7 @@ defer
 ==================
 
 fn main() {
-  var node = alloc<Node>()
+  let node = alloc<Node>()
   defer free(node)
 }
 
@@ -606,7 +606,7 @@ from is contextual
 import { a } from "m"
 
 fn String::from(text: string): String {
-  var from = text
+  let from = text
   return from
 }
 
@@ -820,7 +820,7 @@ unsafe and safe are names elsewhere
 ==================
 
 fn t(unsafe: i32, safe: i32): i32 {
-  var x = unsafe + safe
+  let x = unsafe + safe
   return x
 }
 
@@ -891,7 +891,7 @@ trait requiring other traits and taking parameters
 ==================
 
 export trait Widget<T>: Element & Named {
-  fn click(*self, at: T)
+  fn click(inout self, at: T)
 }
 
 ---
@@ -1018,7 +1018,7 @@ type is an ordinary identifier outside a member
 ==================
 
 fn f(e: Event): i32 {
-  var type = e.type
+  let type = e.type
   return type
 }
 
@@ -1152,7 +1152,7 @@ dyn types and casts
 ==================
 
 fn paint(items: Array<dyn Element>, one: *dyn Widget<i32>) {
-  var e = p as dyn Element
+  let e = p as dyn Element
 }
 
 ---
@@ -1186,3 +1186,133 @@ fn paint(items: Array<dyn Element>, one: *dyn Widget<i32>) {
           (dyn_type
             (named_type
               (type_identifier))))))))
+
+==================
+private is a contextual word
+==================
+
+struct Flags {
+  private: bool
+  private hidden: i32
+}
+
+---
+
+(source_file
+  (struct_declaration
+    (type_identifier)
+    (field_declaration_list
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (field_declaration
+        (identifier)
+        (named_type
+          (type_identifier))))))
+
+==================
+inout receivers and parameters
+==================
+
+fn Stack::push(inout self, xs: inout Stack, n: i32) {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (type_identifier)
+    (identifier)
+    (parameter_list
+      (receiver)
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block)))
+
+==================
+a parameter that takes ownership
+==================
+
+fn keep(names: Names!, count: i32) {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (block)))
+
+==================
+result types
+==================
+
+fn read(): i32 | Error {
+}
+
+fn check(): Error? {
+}
+
+fn pair(): (i32, i32) | Error {
+}
+
+fn odd(): i32 | Error? {
+}
+
+---
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (named_type
+        (type_identifier))
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (optional_type
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (tuple_type
+        (named_type
+          (type_identifier))
+        (named_type
+          (type_identifier)))
+      (named_type
+        (type_identifier)))
+    (block))
+  (function_declaration
+    (identifier)
+    (parameter_list)
+    (union_type
+      (named_type
+        (type_identifier))
+      (optional_type
+        (named_type
+          (type_identifier))))
+    (block)))

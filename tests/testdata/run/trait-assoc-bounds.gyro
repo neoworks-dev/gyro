@@ -16,11 +16,11 @@ struct Countdown {
 }
 
 impl Iterator<i32> for Countdown {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.from == 0 {
             return 0, false
         }
-        var current = self.from
+        let current = self.from
         self.from -= 1
         return current, true
     }
@@ -48,7 +48,7 @@ struct Ticks {
 }
 
 impl Iterator<bool> for Ticks {
-    fn next(*self): (bool, bool) {
+    fn next(inout self): (bool, bool) {
         if self.left == 0 {
             return false, false
         }
@@ -75,7 +75,7 @@ fn show<C: Collection>(c: C) {
 
 // Pinned, Item is i32 and can be added.
 fn sum<C: Collection<Item = i32>>(c: C): i32 {
-    var total = 0
+    let total = 0
     for item in c.walk() {
         total += item
     }
@@ -107,7 +107,7 @@ impl Pair<i32> for Entry {
 
 // The pin comes after the positional argument.
 fn both<P: Pair<i32, Second = bool>>(p: P): bool {
-    var live: P::Second = p.right()
+    let live: P::Second = p.right()
     return live && p.left() > 0
 }
 

@@ -20,18 +20,18 @@ safe fn dotted(addr: in_addr): string {
 }
 
 fn main() {
-    var d = div(17, 5)
+    let d = div(17, 5)
     println(d.quot)
     println(d.rem)
 
-    var negative = div(0 - 17, 5)
+    let negative = div(0 - 17, 5)
     println(negative.quot)
     println(negative.rem)
 
     // The literal is 127.0.0.1 as a little-endian machine holds it.
-    var local = in_addr{ s_addr: 0x0100007F }
+    let local = in_addr{ s_addr: 0x0100007F }
     println(dotted(local))
 
-    var wide = ldiv(7, 2)
+    let wide = ldiv(7, 2)
     println(wide.quot + wide.rem)
 }

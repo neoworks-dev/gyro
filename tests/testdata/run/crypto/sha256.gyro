@@ -16,10 +16,10 @@
 export const BLOCK_SIZE: usize = 32
 
 export struct Ctx {
-    export data: u8[64]
-    export datalen: usize
-    export bitlen: u64
-    export state: u32[8]
+    data: u8[64]
+    datalen: usize
+    bitlen: u64
+    state: u32[8]
 }
 
 // ---------------------------------------------------------------------------
@@ -97,11 +97,11 @@ const ZERO_DIGEST: u8[32] = [
 // The compression function
 // ---------------------------------------------------------------------------
 
-fn Ctx::transform(*self) {
-    var m: u32[64] = ZERO_SCHEDULE
+fn Ctx::transform(inout self) {
+    let m: u32[64] = ZERO_SCHEDULE
 
-    var i: usize = 0
-    var j: usize = 0
+    let i: usize = 0
+    let j: usize = 0
     while i < 16 {
         m[i] = ((self.data[j] as u32) << 24) | ((self.data[j + 1] as u32) << 16)
             | ((self.data[j + 2] as u32) << 8) | (self.data[j + 3] as u32)
@@ -113,19 +113,19 @@ fn Ctx::transform(*self) {
         i += 1
     }
 
-    var a = self.state[0]
-    var b = self.state[1]
-    var c = self.state[2]
-    var d = self.state[3]
-    var e = self.state[4]
-    var f = self.state[5]
-    var g = self.state[6]
-    var h = self.state[7]
+    let a = self.state[0]
+    let b = self.state[1]
+    let c = self.state[2]
+    let d = self.state[3]
+    let e = self.state[4]
+    let f = self.state[5]
+    let g = self.state[6]
+    let h = self.state[7]
 
     i = 0
     while i < 64 {
-        var t1 = h +% ep1(e) +% ch(e, f, g) +% K[i] +% m[i]
-        var t2 = ep0(a) +% maj(a, b, c)
+        let t1 = h +% ep1(e) +% ch(e, f, g) +% K[i] +% m[i]
+        let t2 = ep0(a) +% maj(a, b, c)
         h = g
         g = f
         f = e
@@ -163,7 +163,7 @@ export fn init(): Ctx {
     }
 }
 
-export fn Ctx::update(*self, data: u8[]) {
+export fn Ctx::update(inout self, data: u8[]) {
     for byte in data {
         self.data[self.datalen] = byte
         self.datalen += 1
@@ -175,8 +175,8 @@ export fn Ctx::update(*self, data: u8[]) {
     }
 }
 
-export fn Ctx::final(*self): u8[32] {
-    var i = self.datalen
+export fn Ctx::final(inout self): u8[32] {
+    let i = self.datalen
 
     // Pad whatever data is left in the buffer.
     if self.datalen < 56 {
@@ -194,7 +194,7 @@ export fn Ctx::final(*self): u8[32] {
             i += 1
         }
         self.transform()
-        var z: usize = 0
+        let z: usize = 0
         while z < 56 {
             self.data[z] = 0
             z += 1
@@ -203,7 +203,7 @@ export fn Ctx::final(*self): u8[32] {
 
     // Append the message length in bits and transform a last time.
     self.bitlen += (self.datalen as u64) * 8
-    var n: usize = 0
+    let n: usize = 0
     while n < 8 {
         self.data[63 - n] = ((self.bitlen >> ((n * 8) as u64)) & 0xff) as u8
         n += 1
@@ -212,11 +212,11 @@ export fn Ctx::final(*self): u8[32] {
 
     // SHA-256 is big-endian; the state words are not, so the bytes come
     // out most significant first.
-    var hash: u8[32] = ZERO_DIGEST
-    var w: usize = 0
+    let hash: u8[32] = ZERO_DIGEST
+    let w: usize = 0
     while w < 8 {
-        var word = self.state[w]
-        var k: usize = 0
+        let word = self.state[w]
+        let k: usize = 0
         while k < 4 {
             hash[w * 4 + k] = ((word >> ((24 - k * 8) as u32)) & 0xff) as u8
             k += 1
@@ -228,7 +228,7 @@ export fn Ctx::final(*self): u8[32] {
 
 // sum is the one-shot form.
 export fn sum(data: u8[]): u8[32] {
-    var ctx = init()
+    let ctx = init()
     ctx.update(data)
     return ctx.final()
 }
@@ -236,7 +236,7 @@ export fn sum(data: u8[]): u8[32] {
 // sum_repeated hashes `data` repeated `count` times without building the
 // repetition, which is how the C test drives its million-byte vector.
 export fn sum_repeated(data: u8[], count: i64): u8[32] {
-    var ctx = init()
+    let ctx = init()
     for i in 0..count {
         ctx.update(data)
     }

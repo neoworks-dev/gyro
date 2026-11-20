@@ -556,6 +556,8 @@ func walkEffectExpr(e ast.Expr, visit func(source ast.Expr)) {
 		walkEffectStmt(e.Block, visit)
 	case *ast.AwaitExpr:
 		walkEffectExpr(e.X, visit)
+	case *ast.TryExpr:
+		walkEffectExpr(e.X, visit)
 	case *ast.RecvExpr:
 		walkEffectExpr(e.Chan, visit)
 	case *ast.ChanLit:

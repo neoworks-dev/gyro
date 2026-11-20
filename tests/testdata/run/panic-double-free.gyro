@@ -8,7 +8,7 @@ struct Node {
 }
 
 fn main() {
-    var node = alloc<Node>(heap())
+    let node = alloc<Node>(heap())
     node.value = 1
     free(heap(), node)
     free(heap(), node)

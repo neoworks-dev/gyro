@@ -7,21 +7,21 @@ struct Node {
 }
 
 fn mustBeChecked(n: *Node?) {
-    var v = n.value //~ may be null
-    var d = *n      //~ may be null
+    let v = n.value //~ may be null
+    let d = *n      //~ may be null
 }
 
 fn checkedIsFine(n: *Node?) {
     if n != null {
-        var v = n.value
+        let v = n.value
     }
 }
 
 fn nullOnlyFitsOptional(n: *Node) {
-    var p: *Node? = n
+    let p: *Node? = n
     p = null
-    var x: i32 = null //~ cannot use null as i32
-    var y: i32? = 5
+    let x: i32 = null //~ cannot use null as i32
+    let y: i32? = 5
 }
 
 // An early exit leaves the survivor narrowed.
@@ -35,14 +35,15 @@ fn earlyExit(n: *Node?): i32 {
 // The else branch knows the check failed.
 fn elseKnows(n: *Node?): i32 {
     if n == null {
-        var x = 1
+        let x = 1
     } else {
         return n.value
     }
     return 0
 }
 
-fn whileNarrowsItsBody(n: *Node?) {
+fn whileNarrowsItsBody(start: *Node?) {
+    let n = start
     while n != null {
         n = n.next
     }
@@ -63,17 +64,18 @@ fn find(): *Node? {
     return null
 }
 
-fn assignmentKillsNarrowing(n: *Node?) {
+fn assignmentKillsNarrowing(start: *Node?) {
+    let n = start
     if n != null {
         n = find()
-        var v = n.value //~ may be null
+        let v = n.value //~ may be null
     }
 }
 
 fn narrowingStaysInsideTheCheck(n: *Node?) {
     if n != null {
     }
-    var v = n.value //~ may be null
+    let v = n.value //~ may be null
 }
 
 // A pointer to a nullable is spelled with parentheses, since `?` binds to
@@ -83,8 +85,8 @@ fn fillSlot(slot: *(i32?)) {
 }
 
 fn slotMustHoldNullable() {
-    var plain: i32 = 1
+    let plain: i32 = 1
     fillSlot(&plain) //~ cannot use *i32 as *(i32?)
-    var maybe: i32? = 1
+    let maybe: i32? = 1
     fillSlot(&maybe)
 }

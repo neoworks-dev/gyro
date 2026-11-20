@@ -27,7 +27,7 @@ import (
 var capabilityNames = map[string]bool{
 	"Eq": true, "Hash": true, "Print": true, "Ord": true,
 	"Add": true, "Sub": true, "Mul": true, "Div": true, "Rem": true, "Neg": true,
-	"Iterator": true, "Index": true,
+	"Iterator": true, "Index": true, "Destroy": true, "Error": true,
 }
 
 // derivable are the capabilities `impl Trait for Type` with no block asks
@@ -366,6 +366,10 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 			return
 		}
 	}
+	if ref.Trait.Kind == "Error" && !errorImplementer(owner, params) {
+		c.errorf(d.Offset, "%s cannot implement Error: an error value holds its type by name, so it has to be a struct or an enum without type parameters", owner)
+		return
+	}
 
 	impl := &types.Impl{Trait: ref.Trait, Args: ref.Args, Derived: !d.Body, Decl: d, Owner: owner}
 	*impls = append(*impls, impl)
@@ -378,6 +382,20 @@ func (c *checker) registerImpl(d *ast.ImplDecl) {
 		self.typ = owner
 		c.registerImplAssoc(d, impl, owner)
 	})
+}
+
+// errorImplementer reports a type that can inhabit an Error value, which
+// holds the type as one variant of a closed sum: a struct or an enum with
+// no parameters of its own.
+func errorImplementer(owner types.Type, params []*types.TypeParam) bool {
+	if len(params) > 0 {
+		return false
+	}
+	switch owner.(type) {
+	case *types.Struct, *types.Enum:
+		return true
+	}
+	return false
 }
 
 // implOwnerOf finds the type an impl is for, which has to be declared in
@@ -584,6 +602,18 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 			decl.Name, len(have.TypeParams), len(declared.TypeParams))
 		return
 	}
+	for i, param := range decl.Params {
+		if have.InoutAt(i) != declared.InoutAt(i) {
+			c.errorf(param.Offset, "parameter %s of %s is %s, but the trait declares it %s",
+				param.Name, decl.Name, inoutText(have.InoutAt(i)), inoutText(declared.InoutAt(i)))
+			return
+		}
+		if have.TakesAt(i) != declared.TakesAt(i) {
+			c.errorf(param.Offset, "parameter %s of %s is %s, but the trait declares it %s",
+				param.Name, decl.Name, takeText(have.TakesAt(i)), takeText(declared.TakesAt(i)))
+			return
+		}
+	}
 
 	// The method's own generics are different objects on each side; map
 	// the trait's onto the impl's before comparing.
@@ -602,12 +632,26 @@ func (c *checker) compareImplMethod(decl *ast.FuncDecl, have, declared *types.Me
 	}
 }
 
+func inoutText(inout bool) string {
+	if inout {
+		return "inout"
+	}
+	return "a plain borrow"
+}
+
+func takeText(take bool) string {
+	if take {
+		return "taken with !"
+	}
+	return "a plain borrow"
+}
+
 func receiverText(r types.RecvKind) string {
 	switch r {
 	case types.ValueRecv:
 		return "self"
-	case types.PointerRecv:
-		return "*self"
+	case types.InoutRecv:
+		return "inout self"
 	}
 	return "no receiver"
 }
@@ -829,6 +873,11 @@ func (c *checker) hasCapability(t types.Type, kind string, seen map[string]bool)
 		return c.implementsRef(t, c.capabilityRef(kind))
 	}
 
+	// Nothing is an Error unless it says so, in the bundled library as much
+	// as in a program; the Error itself is the one built-in.
+	if kind == "Error" {
+		return isErrorBasic(t) || c.userHasCapability(t, kind, seen)
+	}
 	if c.userNamed(t) {
 		return c.userHasCapability(t, kind, seen)
 	}
@@ -926,7 +975,8 @@ func (c *checker) builtinHash(t types.Type, seen map[string]bool) bool {
 func (c *checker) builtinPrint(t types.Type, seen map[string]bool) bool {
 	switch t := t.(type) {
 	case *types.Basic:
-		return t.Kind != types.VoidKind
+		// An Error is shown by its message, which the program asks for.
+		return t.Kind != types.VoidKind && t.Kind != types.ErrorKind
 	case *types.Pointer:
 		return c.hasCapability(t.Elem, "Print", seen)
 	case *types.Optional:
@@ -1293,6 +1343,8 @@ func typeMentionsSelf(t ast.Type) bool {
 		return typeMentionsSelf(t.Elem)
 	case *ast.OptionalType:
 		return typeMentionsSelf(t.Elem)
+	case *ast.UnionType:
+		return typeMentionsSelf(t.Left) || typeMentionsSelf(t.Right)
 	case *ast.ArrayType:
 		return typeMentionsSelf(t.Elem)
 	case *ast.ChanType:
@@ -1569,6 +1621,8 @@ func hasUnknown(t types.Type) bool {
 		return hasUnknown(t.Elem)
 	case *types.Optional:
 		return hasUnknown(t.Elem)
+	case *types.Result:
+		return hasUnknown(t.Value)
 	case *types.Slice:
 		return hasUnknown(t.Elem)
 	case *types.Array:

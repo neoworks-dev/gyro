@@ -20,24 +20,24 @@ const SIZE: i64 = 4096
 const ROUNDS: i64 = 1000
 
 fn main() {
-    var buffer = Array<u8>::with_capacity(heap(), SIZE as usize)
-    for var i: i64 = 0; i < SIZE; i += 1 {
+    let buffer = Array<u8>::with_capacity(heap(), SIZE as usize)
+    for let i: i64 = 0; i < SIZE; i += 1 {
         buffer.push(((i * 31 + 7) & 0xff) as u8)
     }
-    var data = buffer.slice()
+    let data = buffer.slice()
 
     // Each round seeds the next one from the digest of the last, so no
     // compiler on either side can hoist the hash out of the loop.
-    var start = monotonic()
-    var acc: u64 = 0
-    for var round: i64 = 0; round < ROUNDS; round += 1 {
+    let start = monotonic()
+    let acc: u64 = 0
+    for let round: i64 = 0; round < ROUNDS; round += 1 {
         data[0] = (acc & 0xff) as u8
-        var digest = sha256::sum(data)
+        let digest = sha256::sum(data)
         for byte in digest {
             acc = acc *% 31 +% (byte as u64)
         }
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(acc)
     eprintln("gyro:bench #{stop - start}")

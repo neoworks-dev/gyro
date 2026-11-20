@@ -1,0 +1,22 @@
+// A main that returns an error ends the program: the message goes to
+// standard error and the status is 1. What main printed before it stays.
+
+//gyro:exit 1
+
+import { println, Error } from "stdlib"
+
+fn step(n: i32): i32 | Error {
+    if n > 2 {
+        return Error::new("step is too big")
+    }
+    return n
+}
+
+fn main(): i32 | Error {
+    println("start")
+    let first = step(1)?
+    println("first #{first}")
+    let second = step(3)?
+    println("second #{second}")
+    return 0
+}

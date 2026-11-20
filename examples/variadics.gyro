@@ -12,7 +12,7 @@ import { format, heap } from "mem"
 
 // A homogeneous pack. The call site may pass nothing at all.
 fn sum(values: ...i32): i32 {
-    var total = 0
+    let total = 0
     for value in values {
         total += value
     }
@@ -41,7 +41,7 @@ fn describe(label: string, values: ...any) {
     for value in values {
         // An any prints as whatever is inside it, so showing one needs no
         // unwrapping. Asking what it holds is a match.
-        var kind = match value {
+        let kind = match value {
             i32(n): "an i32"
             f64(f): "an f64"
             string(s): format(heap(), "a string of #{s.len()}")
@@ -62,7 +62,7 @@ fn main() {
 
     // Outside a pack, `as` is how a value enters and leaves an any. Leaving
     // panics when the type disagrees, the way a narrowing conversion does.
-    var held: any = 7 as any
+    let held: any = 7 as any
     println(held as i32)
 
     // fmt is ordinary Gyro over one of these packs.

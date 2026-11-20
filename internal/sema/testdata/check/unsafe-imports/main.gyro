@@ -29,7 +29,7 @@ fn plain(): i32 {
 }
 
 fn namespaces(): i32 {
-    var a = vouching::add(1, 2)
-    var b = plainly::add(1, 2) //~ E0618 add is unsafe to call; this function is a plain fn
+    let a = vouching::add(1, 2)
+    let b = plainly::add(1, 2) //~ E0618 add is unsafe to call; this function is a plain fn
     return a + b
 }

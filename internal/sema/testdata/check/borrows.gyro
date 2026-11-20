@@ -24,7 +24,7 @@ fn severalSources(a: i32[], b: i32[], f: bool): i32[] !{ &a, &b } {
 // An array literal is storage in the enclosing frame, and the caller
 // outlives the frame.
 fn escapingLocal(): i32[] {
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     return xs //~ E0610 view into storage that ends with this function
 }
 

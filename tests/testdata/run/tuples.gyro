@@ -11,25 +11,25 @@ fn missing(): (i64, i64) {
 }
 
 fn main() {
-    var n, word = pair()
+    let n, word = pair()
     println(n)
     println(word)
 
-    var t = pair()
+    let t = pair()
     println(t.1)
 
-    var at, length = missing()
+    let at, length = missing()
     println("#{at} #{length}")
 
-    var counts = (1, 2)
+    let counts = (1, 2)
     counts.0 = 10
     println(counts.0 + counts.1)
 
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     xs[1] += 40
     println(xs[1])
 
-    var i: i32 = 0
+    let i: i32 = 0
     while true {
         i += 1
         if i == 2 {

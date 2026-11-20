@@ -26,8 +26,8 @@ fn main() {
     println(mean_of_range(1, 10))
 
     // Out-parameters: storage Gyro owns, written by C.
-    var whole = alloc<i32>(heap())
-    var rest = alloc<i32>(heap())
+    let whole = alloc<i32>(heap())
+    let rest = alloc<i32>(heap())
     defer free(heap(), whole)
     defer free(heap(), rest)
     divmod(47, 10, whole, rest)

@@ -416,7 +416,7 @@ func symbolFor(a *analysis, top topDecl) (documentSymbol, bool) {
 			return documentSymbol{}, false
 		}
 		kind := symbolKindVariable
-		detail := "var"
+		detail := "let"
 		if decl.Const {
 			kind = symbolKindConstant
 			detail = "const"

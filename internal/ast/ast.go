@@ -141,7 +141,7 @@ type Borrow struct {
 }
 
 // FuncDecl is a function, or a method when Owner names the type it belongs
-// to: `fn Stack::push(*self, v: i32)`.
+// to: `fn Stack::push(inout self, v: i32)`.
 type FuncDecl struct {
 	Offset   int
 	Exported bool
@@ -189,11 +189,11 @@ type FuncDecl struct {
 func (f *FuncDecl) Pos() int  { return f.Offset }
 func (f *FuncDecl) declNode() {}
 
-// Receiver is the `self` or `*self` parameter of a method.
+// Receiver is the `self` or `inout self` parameter of a method.
 type Receiver struct {
 	Offset int
-	// Pointer is true for `*self`, meaning the method may mutate its type.
-	Pointer bool
+	// Inout is true for `inout self`: the method may change its receiver.
+	Inout bool
 }
 
 // Param is one declared function parameter.
@@ -201,6 +201,12 @@ type Param struct {
 	Offset int
 	Name   string
 	Type   Type
+	// Inout marks `name: inout T`: the function may change the argument in
+	// place, and nothing else may see it for the length of the call.
+	Inout bool
+	// Take marks `name: T!`: the argument moves into the call, and the
+	// function owns it from then on.
+	Take bool
 	// Default is the expression after `=`, or nil.
 	Default Expr
 	// Variadic marks `name: ...T`, which collects the remaining arguments.
@@ -249,12 +255,13 @@ type UnionDecl struct {
 func (u *UnionDecl) Pos() int  { return u.Offset }
 func (u *UnionDecl) declNode() {}
 
-// Field is one struct field, or one union member.
+// Field is one struct field, or one union member. It is visible wherever its
+// type is, unless it is written `private`, which keeps it to its module.
 type Field struct {
-	Offset   int
-	Exported bool
-	Name     string
-	Type     Type
+	Offset  int
+	Private bool
+	Name    string
+	Type    Type
 }
 
 // EnumDecl declares a sum type. Variants may carry positional payloads, as in
@@ -329,7 +336,7 @@ type EnumVariant struct {
 	Payload []Type
 }
 
-// VarDecl is a `var` or `const` binding. It appears both at file scope and
+// VarDecl is a `let` or `const` binding. It appears both at file scope and
 // as a statement, so it satisfies both Decl and Stmt.
 type VarDecl struct {
 	Offset   int
@@ -479,7 +486,7 @@ func (s *SendStmt) stmtNode() {}
 
 // SelectStmt waits on several channel operations and runs the arm whose
 // operation becomes ready first. Arms use the same `comm: body` shape as
-// match, and bindings are ordinary `var` declarations rather than a special
+// match, and bindings are ordinary `let` declarations rather than a special
 // short form.
 type SelectStmt struct {
 	Offset int
@@ -770,6 +777,16 @@ type AwaitExpr struct {
 func (a *AwaitExpr) Pos() int  { return a.Offset }
 func (a *AwaitExpr) exprNode() {}
 
+// TryExpr is `x?`: the value of a `T | Error`, or the enclosing function's
+// return of the error. Offset is the `?`.
+type TryExpr struct {
+	Offset int
+	X      Expr
+}
+
+func (t *TryExpr) Pos() int  { return t.Offset }
+func (t *TryExpr) exprNode() {}
+
 // RecvExpr is the receive operator `<-ch`. Paired with a two-name binding it
 // also reports whether the channel is still open: `var value, ok = <-ch`.
 type RecvExpr struct {
@@ -995,6 +1012,18 @@ type OptionalType struct {
 
 func (o *OptionalType) Pos() int  { return o.Offset }
 func (o *OptionalType) typeNode() {}
+
+// UnionType is `T | Error`: either a T or an error. The syntax takes any
+// two types so that a misuse is reported where it is written; sema holds
+// the right-hand side to Error, the only union the language has.
+type UnionType struct {
+	Offset int
+	Left   Type
+	Right  Type
+}
+
+func (u *UnionType) Pos() int  { return u.Offset }
+func (u *UnionType) typeNode() {}
 
 // ChanType is `chan<T>`. Channels are language-level rather than a stdlib
 // generic so that `select` and the send and receive operators can be type

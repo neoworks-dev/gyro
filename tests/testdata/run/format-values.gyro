@@ -70,9 +70,9 @@ fn length(text: string): usize {
 }
 
 fn main() {
-    var n = 3
-    var title = "Gyro"
-    var xs = [10, 20, 30]
+    let n = 3
+    let title = "Gyro"
+    let xs = [10, 20, 30]
 
     // Streamed: every kind of piece, nothing built.
     println("#{n}. #{title}")
@@ -95,23 +95,23 @@ fn main() {
     describe("generic #{n + 1}")
 
     // Allocated: a string, usable afterwards.
-    var text = format(heap(), "#{n}. #{title}")
+    let text = format(heap(), "#{n}. #{title}")
     println(text)
     println(length(text))
     println(text == "3. Gyro")
-    var long = format(heap(), "#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}")
+    let long = format(heap(), "#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}#{title}")
     println(length(long))
     println(long)
 
     // An arena's free_all takes the text back, and the next one is built over
     // it. The first text is not read again: that is what the borrow analysis
     // refuses.
-    var arena = Arena::new(heap(), 512)
+    let arena = Arena::new(heap(), 512)
     defer arena.free()
-    var a = arena.allocator()
-    var first = format(a, "first #{n}")
+    let a = arena.allocator()
+    let first = format(a, "first #{n}")
     println(first)
     arena.free_all()
-    var second = format(a, "other #{n + 1}")
+    let second = format(a, "other #{n + 1}")
     println(second)
 }

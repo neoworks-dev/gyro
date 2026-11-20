@@ -8,7 +8,7 @@ entries against what the result views.
 ```gyro
 fn add(a: i32, b: i32): i32 // no row: unconstrained
 export fn log(msg: string) !{ io }
-export fn load(p: string): (string, error?) !{ io }
+export fn load(p: string): string | Error !{ io }
 fn map<T, U>(xs: T[], f: fn(T): U !e): U[] !e // effect-polymorphic
 fn kernel(a: *f32) !{}                        // empty row
 ```
@@ -27,7 +27,7 @@ row without `io` promises no io.
 ## Allocation is not an effect
 
 There is no effect for allocating. A function allocates when it is handed
-an `Allocator` as a parameter ([chapter 4.5](ch04-05-allocators.md)), and
+an `Allocator` as a parameter ([chapter 4.6](ch04-06-allocators.md)), and
 that is visible in its signature without a row to say it again. So `!{}`
 says nothing about allocation: `alloc` and `free` carry it, a function
 that takes an `Allocator` may be `!{}`, and so may `Array<T>::push`, which
@@ -114,7 +114,7 @@ shown separately; two arriving along the same calls are shown once.
 A closure may write its own row, and its body is checked against it:
 
 ```gyro
-var quiet = fn(n: i32) !{} {
+let quiet = fn(n: i32) !{} {
     println(n) // error: println does io, which the row does not name
 }
 ```
@@ -151,7 +151,7 @@ fn bad(xs: i32[]): i32[] {
 }
 
 fn worse(): i32[] {
-    var xs = [1, 2, 3]
+    let xs = [1, 2, 3]
     return xs // error: that storage ends with this function
 }
 ```
@@ -197,7 +197,7 @@ fn caller(xs: i32[], ys: i32[]): i32[] !{ &xs } {
 }
 
 fn bad(ys: i32[]): i32[] !{ &ys } {
-    var local = [1, 2, 3]
+    let local = [1, 2, 3]
     return pick(local, ys) // error: the result views this frame
 }
 ```
@@ -227,8 +227,8 @@ still the frame's:
 struct View { data: i32[] }
 
 fn bad(): i32[] {
-    var xs = [1, 2, 3]
-    var v = View{ data: xs }
+    let xs = [1, 2, 3]
+    let v = View{ data: xs }
     return v.data // error: xs ends with this function
 }
 ```
@@ -238,7 +238,7 @@ that outlives the frame, and lending a view of it is fine.
 
 What is tracked here is **provenance, not lifetime**: where a view came
 from, not how long the storage lives. That is why a slice can still outlive
-its backing memory ([chapter 4.4](ch04-04-slices-and-views.md)) — this
+its backing memory ([chapter 4.4](ch04-04-borrowing.md)) — this
 analysis was never the one that would catch it.
 
 ## Views inside other values
@@ -283,16 +283,16 @@ module-level variable, outlives the frame. A view into this frame's storage,
 or a closure whose environment is in it, cannot be stored there:
 
 ```gyro
-fn fill(handlers: Array<fn(): i32>, n: i32) {
+fn fill(handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(fn(): i32 { return n }) // error: n lives in this frame
 }
 
-fn fill(a: Allocator, handlers: Array<fn(): i32>, n: i32) {
+fn fill(a: Allocator, handlers: inout Array<fn(): i32>, n: i32) {
     handlers.push(keep(a, fn(): i32 { return n })) // fine: kept in a
 }
 ```
 
-The store forms are a method taking `*self` (`push`, `set`, `insert`, and any
+The store forms are a method taking `inout self` (`push`, `set`, `insert`, and any
 method a program writes), and an assignment to a field, an element or
 through a pointer. A view of a parameter may be stored: the row describes a
 function's result, not the places its arguments end up, so a view of
@@ -303,7 +303,7 @@ and returning it is judged like returning the view:
 
 ```gyro
 fn handlers(n: i32): Array<fn(): i32> {
-    var hs = Array<fn(): i32>::new(heap())
+    let hs = Array<fn(): i32>::new(heap())
     hs.push(fn(): i32 { return n })
     return hs // error: hs holds a closure that borrows this frame
 }
@@ -316,7 +316,7 @@ the loop leaves every element pointing at that slot, whatever the variable is
 for; keep it first, or copy it:
 
 ```gyro
-var hs = Array<fn(): i32>::new(heap())
+let hs = Array<fn(): i32>::new(heap())
 for i in 0..3 {
     hs.push(fn(): i32 { return i })               // error: every element would see the last i
     hs.push(keep(heap(), fn(): i32 { return i })) // fine
@@ -334,7 +334,7 @@ analysis cannot trace ([appendix G](appendix-g-known-gaps.md)).
 An allocator is a borrow source too. A value allocated from
 `arena.allocator()` sits in the arena, so it borrows `arena`, and the
 rule that keeps a view from outliving a frame keeps it from outliving an
-arena ([chapter 4.5](ch04-05-allocators.md)).
+arena ([chapter 4.6](ch04-06-allocators.md)).
 
 ## Borrows on a generic
 
@@ -354,7 +354,7 @@ holds the body to what the row says.
   unchecked**
 - *calling* a function value — a closure or an `fn` parameter — contributes
   nothing to the caller ([chapter 11](ch11-00-closures.md))
-- module-level `var` initializers run before `main`, outside any row, over
+- module-level `let` initializers run before `main`, outside any row, over
   the process heap
 - channel operations and `Mutex` carry no effect
 - `spawn` declares `!{ io }`, which covers starting the thread and

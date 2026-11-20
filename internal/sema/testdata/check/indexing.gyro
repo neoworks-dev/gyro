@@ -7,8 +7,8 @@ fn constantIndex(xs: i32[]): i32 {
 }
 
 fn badIndexing(xs: i32[], n: i32, x: i32) {
-    var a = xs[n] //~ indexes are usize
-    var b = x[0]  //~ cannot be indexed
+    let a = xs[n] //~ indexes are usize
+    let b = x[0]  //~ cannot be indexed
 }
 
 fn total(xs: i32[]): i32 {
@@ -26,10 +26,10 @@ fn arraysBorrowAsSlices(): i32 {
 }
 
 fn elementTypesMustMatch() {
-    var xs: i32[3] = [1, 2, 3]
-    var x = wideTotal(xs) //~ cannot use i32[3] as i64[]
+    let xs: i32[3] = [1, 2, 3]
+    let x = wideTotal(xs) //~ cannot use i32[3] as i64[]
 }
 
 fn literalsMustAgree() {
-    var xs = [1, "two"] //~ mixes i32 and string
+    let xs = [1, "two"] //~ mixes i32 and string
 }

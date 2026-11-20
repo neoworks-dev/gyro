@@ -13,7 +13,7 @@ safe fn pixels(buffer: anyptr, count: usize): u32[] {
 }
 
 fn fill(view: u32[]) {
-    var i: usize = 0
+    let i: usize = 0
     while i < view.len() {
         view[i] = (i as u32) * 10 + 1
         i += 1
@@ -27,17 +27,17 @@ safe fn main() {
         return
     }
     const buffer = maybe
-    var view = pixels(buffer, count)
+    let view = pixels(buffer, count)
     fill(view)
 
     // A second view over the same bytes sees what the first wrote.
-    var again = pixels(buffer, count)
+    let again = pixels(buffer, count)
     println(again.len())
     println(again[0])
     println(again[4])
 
     // Narrowing a raw slice is checked like any other.
-    var middle = again[1..4]
+    let middle = again[1..4]
     println(middle.len())
     println(middle[0])
     println(middle[2])

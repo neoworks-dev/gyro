@@ -5,9 +5,9 @@ dereference a nullable value until it has been checked, and **narrows** the
 type inside the check.
 
 ```gyro
-fn find(id: i32): *Node? { ... }
+fn find(list: Node, id: i32): *Node? { ... } // a pointer into list, or null
 
-var node = find(3)
+let node = find(list, 3)
 // node.value          // error: node may be null
 if node != null {
     println(node.value)  // narrowed to *Node here

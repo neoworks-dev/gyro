@@ -199,7 +199,7 @@ fn total(p: Point): i32 {
 }
 
 fn main() {
-  var origin = Point{ x: 1, y: 2 }
+  let origin = Point{ x: 1, y: 2 }
   println(total(origin))
 }
 `
@@ -368,7 +368,7 @@ func TestDefinitionAcrossFiles(t *testing.T) {
 	if err := os.WriteFile(libraryPath, []byte(library), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	source := "import { helper } from \"./lib\"\n\nfn main() {\n  var x = helper()\n}\n"
+	source := "import { helper } from \"./lib\"\n\nfn main() {\n  let x = helper()\n}\n"
 	mainPath := filepath.Join(directory, "main.gyro")
 	if err := os.WriteFile(mainPath, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
@@ -468,7 +468,7 @@ func TestCompletionScope(t *testing.T) {
 	for _, item := range items {
 		labels[item.Label] = true
 	}
-	for _, want := range []string{"origin", "total", "main", "Point", "println", "var"} {
+	for _, want := range []string{"origin", "total", "main", "Point", "println", "let"} {
 		if !labels[want] {
 			t.Fatalf("scope completion missed %q: have %d items", want, len(items))
 		}
@@ -491,9 +491,9 @@ fn apply(value: i32, f: fn(i32): i32): i32 {
 }
 
 fn main() {
-  var origin = Point{ x: 1, y: 2 }
-  var factor = 3
-  var values = [1, 2]
+  let origin = Point{ x: 1, y: 2 }
+  let factor = 3
+  let values = [1, 2]
   for value in values {
     println(scaled(origin, apply(value, fn(n) n * 2)))
   }
@@ -549,9 +549,9 @@ func TestInlayHints(t *testing.T) {
 
 	hints := c.inlayHints(uri, hintSource, wholeFile(hintSource))
 	want := `fn main() {
-  var origin: Point = Point{ x: 1, y: 2 }
-  var factor: i32 = 3
-  var values: i32[2] = [1, 2]
+  let origin: Point = Point{ x: 1, y: 2 }
+  let factor: i32 = 3
+  let values: i32[2] = [1, 2]
   for value: i32 in values {
     println(value: scaled(p: origin, factor: apply(value, f: fn(n: i32) n * 2)))
   }
@@ -573,7 +573,7 @@ func TestInlayHintsHonourRange(t *testing.T) {
 	c.waitDiagnostics(uri)
 
 	// Ask only about the line declaring origin.
-	at := positionFor(hintSource, strings.Index(hintSource, "var origin"))
+	at := positionFor(hintSource, strings.Index(hintSource, "let origin"))
 	span := Range{Start: at, End: Position{Line: at.Line, Character: 999}}
 	hints := c.inlayHints(uri, hintSource, span)
 	if len(hints) != 1 {
@@ -591,7 +591,7 @@ func TestInlayHintsWaitForACleanCheck(t *testing.T) {
 	c.open(uri, hintSource)
 	c.waitDiagnostics(uri)
 
-	broken := strings.Replace(hintSource, "var origin = Point{ x: 1, y: 2 }", "var origin = ", 1)
+	broken := strings.Replace(hintSource, "let origin = Point{ x: 1, y: 2 }", "let origin = ", 1)
 	c.change(uri, broken)
 	c.waitDiagnostics(uri)
 
@@ -606,7 +606,7 @@ func TestInlayHintsWaitForACleanCheck(t *testing.T) {
 const genericHintSource = `import { println, Ord } from "stdlib"
 
 fn largest<T: Ord>(a: T, b: T): T {
-  var winner = a
+  let winner = a
   if b > a {
     winner = b
   }
@@ -628,7 +628,7 @@ func TestInlayHintsInGenericBody(t *testing.T) {
 	}
 
 	hints := c.inlayHints(uri, genericHintSource, wholeFile(genericHintSource))
-	if !strings.Contains(annotate(t, genericHintSource, hints), "var winner: i32 = a") {
+	if !strings.Contains(annotate(t, genericHintSource, hints), "let winner: i32 = a") {
 		t.Fatalf("the sole instantiation should type the body:\n%s",
 			annotate(t, genericHintSource, hints))
 	}
@@ -640,7 +640,7 @@ func TestInlayHintsInGenericBody(t *testing.T) {
 	c.waitDiagnostics(uri)
 
 	hints = c.inlayHints(uri, twice, wholeFile(twice))
-	if strings.Contains(annotate(t, twice, hints), "var winner:") {
+	if strings.Contains(annotate(t, twice, hints), "let winner:") {
 		t.Fatalf("two instantiations should leave the body unannotated:\n%s",
 			annotate(t, twice, hints))
 	}
@@ -671,7 +671,7 @@ struct Counter {
   count: i32
 }
 
-fn Counter::bump(*self, by: i32) {
+fn Counter::bump(inout self, by: i32) {
   self.count += by
 }
 
@@ -685,16 +685,16 @@ struct Square {
 
 impl Shape for Square {
   fn area(self): i32 {
-    var length = self.side
+    let length = self.side
     return length * length
   }
 }
 
 fn main() {
-  var counter = Counter{ count: 0 }
+  let counter = Counter{ count: 0 }
   counter.bump(1)
   counter.bump(2)
-  var square = Square{ side: 3 }
+  let square = Square{ side: 3 }
   println(square.area())
   println(counter.count)
 }
@@ -744,8 +744,8 @@ func TestReferences(t *testing.T) {
 		includeDeclaration bool
 		want               []string
 	}{
-		{"a method from its declaration", "bump(*self", true,
-			[]string{"bump(*self", "bump(1)", "bump(2)"}},
+		{"a method from its declaration", "bump(inout self", true,
+			[]string{"bump(inout self", "bump(1)", "bump(2)"}},
 		{"a method from a call", "bump(2)", false,
 			[]string{"bump(1)", "bump(2)"}},
 		{"a parameter", "by: i32", true,
@@ -783,7 +783,7 @@ func TestReferencesAcrossOpenFiles(t *testing.T) {
 	directory := t.TempDir()
 	library := "export fn helper(): i32 {\n  return 4\n}\n"
 	libraryPath := filepath.Join(directory, "lib.gyro")
-	source := "import { helper } from \"./lib\"\n\nfn main() {\n  var x = helper()\n  var y = helper()\n}\n"
+	source := "import { helper } from \"./lib\"\n\nfn main() {\n  let x = helper()\n  let y = helper()\n}\n"
 	mainPath := filepath.Join(directory, "main.gyro")
 	for path, text := range map[string]string{libraryPath: library, mainPath: source} {
 		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
@@ -819,10 +819,10 @@ func TestReferencesInFilesThatAreNotOpen(t *testing.T) {
 	c.initialize()
 
 	directory := t.TempDir()
-	library := "export fn helper(): i32 {\n  var local = 4\n  return local\n}\n"
+	library := "export fn helper(): i32 {\n  let local = 4\n  return local\n}\n"
 	libraryPath := filepath.Join(directory, "lib.gyro")
-	user := "import { helper } from \"./lib\"\n\nfn main() {\n  var local = helper()\n}\n"
-	stranger := "fn main() {\n  var local = 1\n}\n"
+	user := "import { helper } from \"./lib\"\n\nfn main() {\n  let local = helper()\n}\n"
+	stranger := "fn main() {\n  let local = 1\n}\n"
 	for name, text := range map[string]string{"lib.gyro": library, "user.gyro": user, "stranger.gyro": stranger} {
 		if err := os.WriteFile(filepath.Join(directory, name), []byte(text), 0o644); err != nil {
 			t.Fatal(err)
@@ -878,8 +878,8 @@ func TestFormatting(t *testing.T) {
 	}
 	c.notify("initialized", `{}`)
 
-	const messy = "fn main() {\n  var x = 1+2   // sum\n}\n"
-	const tidy = "fn main() {\n    var x = 1 + 2 // sum\n}\n"
+	const messy = "fn main() {\n  let x = 1+2   // sum\n}\n"
+	const tidy = "fn main() {\n    let x = 1 + 2 // sum\n}\n"
 
 	uri, _ := tempURI(t, "main.gyro", messy)
 	c.open(uri, messy)
@@ -905,7 +905,7 @@ func TestFormatting(t *testing.T) {
 	}
 
 	// A buffer that does not parse is left alone.
-	broken := "fn main( {\n  var x =\n"
+	broken := "fn main( {\n  let x =\n"
 	c.change(uri, broken)
 	c.waitDiagnostics(uri)
 	if edits := c.formatting(uri); len(edits) != 0 {

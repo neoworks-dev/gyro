@@ -7,8 +7,8 @@ import { println, Eq, Ord, Print, Add } from "stdlib"
 import { format, heap } from "mem"
 
 export struct Version {
-    export major: i32
-    export minor: i32
+    major: i32
+    minor: i32
 }
 
 export fn Version::new(major: i32, minor: i32): Version {
@@ -58,8 +58,8 @@ export fn max<T: Ord>(a: T, b: T): T {
 
 // Arithmetic on a user type is the trait's method behind the operator.
 export struct Vector2 {
-    export x: f64
-    export y: f64
+    x: f64
+    y: f64
 }
 
 impl Add for Vector2 {
@@ -71,30 +71,44 @@ impl Add for Vector2 {
 // A user-defined generic struct, instantiated like the built-in ones. It
 // only stores its parameter, so it needs no bound.
 export struct Pair<T> {
-    export first: T
-    export second: T
+    first: T
+    second: T
 }
 
-export fn Pair<T>::swap(*self) {
-    var tmp = self.first
+export fn Pair<T>::swap(inout self) {
+    let tmp = self.first
     self.first = self.second
     self.second = tmp
 }
 
+// A plain parameter only reads its argument. One meant to change it says so
+// with inout, and the call looks the same.
+fn clamp(value: inout i32, low: i32, high: i32) {
+    if value < low {
+        value = low
+    } elif value > high {
+        value = high
+    }
+}
+
 fn main() {
-    var older = Version::new(1, 4)
-    var newer = Version::new(1, 9)
+    let older = Version::new(1, 4)
+    let newer = Version::new(1, 9)
 
     println(max(older, newer))
     println(max(3, 7))
     println(older < newer)
 
-    var a = Vector2{ x: 1.0, y: 2.0 }
-    var b = Vector2{ x: 3.0, y: 4.0 }
-    var sum = a + b
+    let a = Vector2{ x: 1.0, y: 2.0 }
+    let b = Vector2{ x: 3.0, y: 4.0 }
+    let sum = a + b
     println(sum.x)
 
-    var pair = Pair<i32>{ 1, 2 }
+    let pair = Pair<i32>{ 1, 2 }
     pair.swap()
     println(pair.first)
+
+    let level = 15
+    clamp(level, 0, 10)
+    println(level)
 }

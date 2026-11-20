@@ -14,7 +14,7 @@ struct Node {
 
 // Takes an allocator, so it allocates from whichever the caller names.
 fn make_node(a: Allocator, value: i32): *Node {
-    var node = alloc<Node>(a)
+    let node = alloc<Node>(a)
     node.value = value
     node.next = null
     return node
@@ -31,7 +31,7 @@ safe fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old:
     if data == null {
         return null
     }
-    var counter = cast<Counter>(data)
+    let counter = cast<Counter>(data)
     match mode {
         Mode::Alloc: {
             counter.allocs += 1
@@ -44,7 +44,7 @@ safe fn counting_proc(data: anyptr?, mode: Mode, size: usize, align: usize, old:
         Mode::Resize: {
         }
     }
-    var h = heap()
+    let h = heap()
     return h.proc(h.data, mode, size, align, old, old_size)
 }
 
@@ -53,19 +53,19 @@ fn main() {
     println(align<Node>())
     println(size<u8>())
 
-    var arena = Arena::new(heap(), 256)
+    let arena = Arena::new(heap(), 256)
     defer arena.free()
 
     // Both blocks come out of the arena, which is what reclaims them: no
     // free, no warning.
-    var first = make_node(arena.allocator(), 1)
-    var second = make_node(arena.allocator(), 2)
+    let first = make_node(arena.allocator(), 1)
+    let second = make_node(arena.allocator(), 2)
     first.next = second
     println(first.value + second.value)
     println(first.next == second)
 
     // A block from the heap is freed to the heap.
-    var kept = make_node(heap(), 3)
+    let kept = make_node(heap(), 3)
     defer free(heap(), kept)
     println(kept.value)
     println(kept == first)
@@ -73,36 +73,36 @@ fn main() {
     // free_all resets the arena: the next block is the first block again,
     // and zero-filled even though the first one held a 1.
     arena.free_all()
-    var again = alloc<Node>(arena.allocator())
+    let again = alloc<Node>(arena.allocator())
     println(again == first)
     println(again.value)
     println(again.next == null)
 
     // &make_node is an ordinary code pointer: the allocator is an argument.
     arena.free_all()
-    var code = &make_node
-    var via_code = code(arena.allocator(), 5)
+    let code = &make_node
+    let via_code = code(arena.allocator(), 5)
     println(via_code == first)
     println(via_code.value)
 
     // So is the function as a value.
-    var named = make_node
-    var via_fn = named(heap(), 6)
+    let named = make_node
+    let via_fn = named(heap(), 6)
     println(via_fn.value)
     free(heap(), via_fn)
 
     // An arena inside an arena takes its buffer from the outer one.
     arena.free_all()
-    var inner = Arena::new(arena.allocator(), 64)
-    var deep = make_node(inner.allocator(), 7)
+    let inner = Arena::new(arena.allocator(), 64)
+    let deep = make_node(inner.allocator(), 7)
     println(deep.value)
     inner.free()
 
     // Any value of the right shape is an allocator.
-    var counter = Counter{ allocs: 0, frees: 0 }
-    var counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
-    var c1 = make_node(counting, 8)
-    var c2 = make_node(counting, 9)
+    let counter = Counter{ allocs: 0, frees: 0 }
+    let counting = Allocator{ proc: &counting_proc, data: &counter as anyptr }
+    let c1 = make_node(counting, 8)
+    let c2 = make_node(counting, 9)
     println(counter.allocs)
     println(c1.value + c2.value)
     free(counting, c1)

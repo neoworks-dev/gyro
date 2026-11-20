@@ -10,7 +10,7 @@
 // platform this module exists for.
 
 import { Allocator, heap, format } from "mem"
-import { Array } from "stdlib"
+import { Array, Error } from "stdlib"
 import { syscall1, syscall2, syscall3, syscall4, text_bytes } from "unsafe"
 
 // The system calls this library makes, by number.
@@ -40,11 +40,13 @@ export const EISDIR: isize = 21
 // SysError is what the library's own i/o reports: a sentence that says
 // what was attempted, on what, and why the kernel refused.
 export struct SysError {
-    export text: string
+    text: string
 }
 
-export fn SysError::message(self): string !{ &self } {
-    return self.text
+impl Error for SysError {
+    fn message(self): string !{ &self } {
+        return self.text
+    }
 }
 
 // errno_text is the sentence for an error number, spelled as the C
@@ -196,7 +198,7 @@ export fn fail(call: string, path: string, result: isize): SysError !{} {
 // c_path is the path as the kernel reads it: its bytes and a NUL after
 // them, in a fresh array from the heap. The caller frees it.
 export safe fn c_path(text: string): Array<u8> !{} {
-    var out = Array<u8>::with_capacity(heap(), text.len() + 1)
+    let out = Array<u8>::with_capacity(heap(), text.len() + 1)
     for byte in text_bytes(text) {
         out.push(byte)
     }
@@ -207,23 +209,23 @@ export safe fn c_path(text: string): Array<u8> !{} {
 // open opens the path relative to the working directory and answers the
 // descriptor, or the negated error number.
 export safe fn open(path: string, flags: usize, mode: usize): isize !{ io } {
-    var buffer = c_path(path)
-    var bytes = buffer.slice()
-    var result = syscall4(SYS_OPENAT, AT_FDCWD, &bytes[0], flags, mode)
+    let buffer = c_path(path)
+    let bytes = buffer.slice()
+    let result = syscall4(SYS_OPENAT, AT_FDCWD, &bytes[0], flags, mode)
     buffer.free()
     return result
 }
 
 export safe fn close(fd: isize) !{ io } {
-    var _ = syscall1(SYS_CLOSE, fd)
+    let _ = syscall1(SYS_CLOSE, fd)
 }
 
 // access reports whether the path can be reached at all: the question
 // stat(2) answers, and all that exists and open's "stat" error need.
 export safe fn access(path: string): isize !{ io } {
-    var buffer = c_path(path)
-    var bytes = buffer.slice()
-    var result = syscall3(SYS_FACCESSAT, AT_FDCWD, &bytes[0], 0)
+    let buffer = c_path(path)
+    let bytes = buffer.slice()
+    let result = syscall3(SYS_FACCESSAT, AT_FDCWD, &bytes[0], 0)
     buffer.free()
     return result
 }
@@ -231,9 +233,9 @@ export safe fn access(path: string): isize !{ io } {
 // unlink removes a file, or an empty directory when the path is one, the
 // way C's remove does.
 export safe fn unlink(path: string): isize !{ io } {
-    var buffer = c_path(path)
-    var bytes = buffer.slice()
-    var result = syscall3(SYS_UNLINKAT, AT_FDCWD, &bytes[0], 0)
+    let buffer = c_path(path)
+    let bytes = buffer.slice()
+    let result = syscall3(SYS_UNLINKAT, AT_FDCWD, &bytes[0], 0)
     if result == -EISDIR {
         result = syscall3(SYS_UNLINKAT, AT_FDCWD, &bytes[0], AT_REMOVEDIR)
     }
@@ -249,7 +251,7 @@ export safe fn read(fd: isize, buffer: u8[]): isize !{ io } {
         return 0
     }
     while true {
-        var got = syscall3(SYS_READ, fd, &buffer[0], buffer.len())
+        let got = syscall3(SYS_READ, fd, &buffer[0], buffer.len())
         if got != -EINTR {
             return got
         }
@@ -260,10 +262,10 @@ export safe fn read(fd: isize, buffer: u8[]): isize !{ io } {
 // write_all writes every byte, going again after a short write or an
 // interrupted call, and answers zero or the negated error number.
 export safe fn write_all(fd: isize, bytes: u8[]): isize !{ io } {
-    var done: usize = 0
+    let done: usize = 0
     while done < bytes.len() {
-        var rest = bytes[done..bytes.len()]
-        var put = syscall3(SYS_WRITE, fd, &rest[0], rest.len())
+        let rest = bytes[done..bytes.len()]
+        let put = syscall3(SYS_WRITE, fd, &rest[0], rest.len())
         if put == -EINTR {
             continue
         }

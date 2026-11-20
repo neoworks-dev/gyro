@@ -50,7 +50,7 @@ safe fn failure(): string {
 // the bytes are copied with the NUL C wants after them, for as long as
 // the call needs them.
 safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
-    var bytes = c_string(heap(), title)
+    let bytes = c_string(heap(), title)
     defer bytes.free()
     return SDL_CreateWindow(c_data(bytes), width, height, 0)
 }
@@ -59,7 +59,7 @@ safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
 // holds four bytes an element, which is the stride the texture's format
 // reads.
 safe fn upload(texture: *SDL_Texture, pixels: *Array<u32>, pitch: i32): bool {
-    var view = pixels.slice()
+    let view = pixels.slice()
     return SDL_UpdateTexture(texture, null, &view[0] as anyptr, pitch)
 }
 
@@ -113,18 +113,18 @@ fn rotate(around_x: f64, around_y: f64, radius: f64, angle: f64, r: f64, g: f64,
 }
 
 fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
-    var area = edge(a.x, a.y, b.x, b.y, c.x, c.y)
-    var background = pack(0.05, 0.05, 0.09)
+    let area = edge(a.x, a.y, b.x, b.y, c.x, c.y)
+    let background = pack(0.05, 0.05, 0.09)
 
-    for var y = 0; y < HEIGHT; y += 1 {
-        var py = y as f64 + 0.5
-        for var x = 0; x < WIDTH; x += 1 {
-            var px = x as f64 + 0.5
-            var index = (y * WIDTH + x) as usize
+    for let y = 0; y < HEIGHT; y += 1 {
+        let py = y as f64 + 0.5
+        for let x = 0; x < WIDTH; x += 1 {
+            let px = x as f64 + 0.5
+            let index = (y * WIDTH + x) as usize
 
-            var w0 = edge(b.x, b.y, c.x, c.y, px, py) / area
-            var w1 = edge(c.x, c.y, a.x, a.y, px, py) / area
-            var w2 = edge(a.x, a.y, b.x, b.y, px, py) / area
+            let w0 = edge(b.x, b.y, c.x, c.y, px, py) / area
+            let w1 = edge(c.x, c.y, a.x, a.y, px, py) / area
+            let w2 = edge(a.x, a.y, b.x, b.y, px, py) / area
 
             if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
                 pixels.set(index, background)
@@ -149,7 +149,7 @@ fn draw(pixels: *Array<u32>, a: Vertex, b: Vertex, c: Vertex) {
 // begins with that same u32. Nothing records which member of the union is
 // live, so reading one is unsafe and this function vouches for it.
 safe fn quit_requested(event: *SDL_Event): bool {
-    var quit = false
+    let quit = false
     while SDL_PollEvent(event) {
         if event.type == SDL_EVENT_QUIT as u32 {
             quit = true
@@ -165,7 +165,7 @@ fn main() {
     }
     defer SDL_Quit()
 
-    var window = open_window("gyro — a triangle", WIDTH, HEIGHT)
+    let window = open_window("gyro — a triangle", WIDTH, HEIGHT)
     if window == null {
         eprintln("SDL_CreateWindow: #{failure()}")
         return
@@ -173,14 +173,14 @@ fn main() {
     defer SDL_DestroyWindow(window)
 
     // No driver name: SDL picks the best one it has.
-    var renderer = SDL_CreateRenderer(window, null)
+    let renderer = SDL_CreateRenderer(window, null)
     if renderer == null {
         eprintln("SDL_CreateRenderer: #{failure()}")
         return
     }
     defer SDL_DestroyRenderer(renderer)
 
-    var texture = SDL_CreateTexture(
+    let texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
     )
     if texture == null {
@@ -190,23 +190,23 @@ fn main() {
     defer SDL_DestroyTexture(texture)
 
     // One frame's worth of storage, reused every frame.
-    var pixels = Array<u32>::with_capacity(heap(), (WIDTH * HEIGHT) as usize)
+    let pixels = Array<u32>::with_capacity(heap(), (WIDTH * HEIGHT) as usize)
     defer pixels.free()
     for i in 0..(WIDTH * HEIGHT) {
         pixels.push(0)
     }
 
-    var centre_x = WIDTH as f64 / 2.0
-    var centre_y = HEIGHT as f64 / 2.0
-    var radius = 240.0
-    var third = 2.0943951023931953
-    var frames = 0
+    let centre_x = WIDTH as f64 / 2.0
+    let centre_y = HEIGHT as f64 / 2.0
+    let radius = 240.0
+    let third = 2.0943951023931953
+    let frames = 0
 
-    var started = SDL_GetTicks()
-    var event = SDL_Event{ type: 0 }
+    let started = SDL_GetTicks()
+    let event = SDL_Event{ type: 0 }
 
     while SDL_GetTicks() - started < DURATION {
-        var angle = (SDL_GetTicks() - started) as f64 / 900.0
+        let angle = (SDL_GetTicks() - started) as f64 / 900.0
 
         draw(&pixels,
             rotate(centre_x, centre_y, radius, angle, 0.95, 0.25, 0.30),
@@ -214,10 +214,10 @@ fn main() {
             rotate(centre_x, centre_y, radius, angle + third + third, 0.30, 0.45, 0.95),
         )
 
-        var _ = upload(texture, &pixels, WIDTH * 4)
-        var _ = SDL_RenderClear(renderer)
-        var _ = SDL_RenderTexture(renderer, texture, null, null)
-        var _ = SDL_RenderPresent(renderer)
+        let _ = upload(texture, &pixels, WIDTH * 4)
+        let _ = SDL_RenderClear(renderer)
+        let _ = SDL_RenderTexture(renderer, texture, null, null)
+        let _ = SDL_RenderPresent(renderer)
 
         if quit_requested(&event) {
             break

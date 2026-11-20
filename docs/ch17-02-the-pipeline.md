@@ -43,9 +43,10 @@ module**:
 - defers inlined at every exit
 - `match` lowered to tag tests
 - narrowing made explicit as `opt.unwrap`
-- `error` as a closed program-wide enum
+- `Error` as a closed program-wide enum, and `T | Error` as a two-variant
+  enum over it; `?` as a tag test and an early return
 - stdlib natives as `gyro:rt` imports
-- module-level `const` as a synthesized getter; module-level `var` as METALS
+- module-level `const` as a synthesized getter; module-level `let` as METALS
   storage, zero-initialized, with initializers run before main's own body
 - derived printing synthesized here — one function per composite type,
   reached as an ordinary call

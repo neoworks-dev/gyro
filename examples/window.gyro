@@ -47,8 +47,8 @@ struct Rect {
 }
 
 fn Rect::contains(self, x: f32, y: f32): bool {
-    var px = x as i32
-    var py = y as i32
+    let px = x as i32
+    let py = y as i32
     return px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
 }
 
@@ -68,20 +68,20 @@ struct Canvas {
 }
 
 // fill paints a rectangle, clipped to the canvas.
-fn Canvas::fill(*self, r: Rect, colour: u32) {
-    var left = max(r.x, 0)
-    var top = max(r.y, 0)
-    var right = min(r.x + r.w, WIDTH)
-    var bottom = min(r.y + r.h, HEIGHT)
-    for var y = top; y < bottom; y += 1 {
-        var row = y as usize * self.stride
-        for var x = left; x < right; x += 1 {
+fn Canvas::fill(inout self, r: Rect, colour: u32) {
+    let left = max(r.x, 0)
+    let top = max(r.y, 0)
+    let right = min(r.x + r.w, WIDTH)
+    let bottom = min(r.y + r.h, HEIGHT)
+    for let y = top; y < bottom; y += 1 {
+        let row = y as usize * self.stride
+        for let x = left; x < right; x += 1 {
             self.pixels[row + x as usize] = colour
         }
     }
 }
 
-fn Canvas::write(*self, x: i32, y: i32, text: string) {
+fn Canvas::write(inout self, x: i32, y: i32, text: string) {
     self.texts.push(Text{ x: x, y: y, text: text })
 }
 
@@ -115,7 +115,7 @@ trait Element {
     fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse)
 
     // press reacts to a click at the mouse and reports whether it hit.
-    fn press(*self, mouse: Mouse): bool
+    fn press(inout self, mouse: Mouse): bool
 }
 
 struct Button {
@@ -126,7 +126,7 @@ struct Button {
 
 impl Element for Button {
     fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse) {
-        var colour: u32 = 0xff3a4a6b
+        let colour: u32 = 0xff3a4a6b
         if self.rect.contains(mouse.x, mouse.y) {
             colour = 0xff5872a8
         }
@@ -134,7 +134,7 @@ impl Element for Button {
         canvas.write(self.rect.x + 10, self.rect.y + 12, format(frame, "#{self.label} (#{self.clicks})"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }
@@ -153,12 +153,12 @@ struct Meter {
 impl Element for Meter {
     fn paint(self, canvas: *Canvas, frame: Allocator, mouse: Mouse) {
         canvas.fill(self.rect, 0xff20242c)
-        var filled = self.rect.w * min(self.level, self.capacity) / self.capacity
+        let filled = self.rect.w * min(self.level, self.capacity) / self.capacity
         canvas.fill(Rect{ x: self.rect.x, y: self.rect.y, w: filled, h: self.rect.h }, 0xff4fb37a)
         canvas.write(self.rect.x, self.rect.y - 14, format(frame, "#{self.level} of #{self.capacity} clicks"))
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         return false
     }
 }
@@ -179,12 +179,12 @@ impl Element for Panel {
         }
     }
 
-    fn press(*self, mouse: Mouse): bool {
+    fn press(inout self, mouse: Mouse): bool {
         if !self.rect.contains(mouse.x, mouse.y) {
             return false
         }
         for i in 0..self.children.len() {
-            var child = self.children.get(i)
+            let child = self.children.get(i)
             if child.press(mouse) {
                 return true
             }
@@ -203,7 +203,7 @@ safe fn failure(): string {
 }
 
 safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
-    var bytes = c_string(heap(), title)
+    let bytes = c_string(heap(), title)
     defer bytes.free()
     return SDL_CreateWindow(c_data(bytes), width, height, 0)
 }
@@ -212,12 +212,12 @@ safe fn open_window(title: string, width: i32, height: i32): *SDL_Window? {
 // cannot lock it. SDL says the memory holds `pitch` bytes a row for
 // every row of the texture, which is the promise this function vouches for.
 safe fn lock(texture: *SDL_Texture, stride: *usize): u32[]? {
-    var address: anyptr? = null
-    var pitch: i32 = 0
+    let address: anyptr? = null
+    let pitch: i32 = 0
     if !SDL_LockTexture(texture, null, &address, &pitch) || address == null {
         return null
     }
-    var memory = address
+    let memory = address
     *stride = pitch as usize / 4
     return slice_from_raw<u32>(memory, *stride * HEIGHT as usize)
 }
@@ -225,8 +225,8 @@ safe fn lock(texture: *SDL_Texture, stride: *usize): u32[]? {
 // caption draws one string with SDL's debug font, through a C copy that
 // lives in the frame's allocator.
 safe fn caption(renderer: *SDL_Renderer, frame: Allocator, text: Text) {
-    var bytes = c_string(frame, text.text)
-    var _ = SDL_RenderDebugText(renderer, text.x as f32, text.y as f32, c_data(bytes))
+    let bytes = c_string(frame, text.text)
+    let _ = SDL_RenderDebugText(renderer, text.x as f32, text.y as f32, c_data(bytes))
 }
 
 // poll drains the event queue into what the frame needs: where the mouse
@@ -235,7 +235,7 @@ safe fn caption(renderer: *SDL_Renderer, frame: Allocator, text: Text) {
 // only from the events whose tag says they are there, which is the promise
 // this function vouches for.
 safe fn poll(event: *SDL_Event, mouse: *Mouse): bool {
-    var quit = false
+    let quit = false
     mouse.clicked = false
     while SDL_PollEvent(event) {
         if event.type == SDL_EVENT_QUIT as u32 {
@@ -255,7 +255,7 @@ safe fn poll(event: *SDL_Event, mouse: *Mouse): bool {
 // ---------------------------------------------------------------------
 
 fn main(args: string[]) {
-    var limit = 0
+    let limit = 0
     if args.len() > 1 && args[1] == "--smoke" {
         limit = 120
     }
@@ -266,21 +266,21 @@ fn main(args: string[]) {
     }
     defer SDL_Quit()
 
-    var window = open_window("gyro: elements", WIDTH, HEIGHT)
+    let window = open_window("gyro: elements", WIDTH, HEIGHT)
     if window == null {
         eprintln("SDL_CreateWindow: #{failure()}")
         return
     }
     defer SDL_DestroyWindow(window)
 
-    var renderer = SDL_CreateRenderer(window, null)
+    let renderer = SDL_CreateRenderer(window, null)
     if renderer == null {
         eprintln("SDL_CreateRenderer: #{failure()}")
         return
     }
     defer SDL_DestroyRenderer(renderer)
 
-    var texture = SDL_CreateTexture(
+    let texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT,
     )
     if texture == null {
@@ -290,25 +290,25 @@ fn main(args: string[]) {
     defer SDL_DestroyTexture(texture)
 
     // The elements outlive every frame; the tree pointing at them does not.
-    var open = Button{ rect: Rect{ x: 40, y: 40, w: 160, h: 36 }, label: "Open", clicks: 0 }
-    var save = Button{ rect: Rect{ x: 220, y: 40, w: 160, h: 36 }, label: "Save", clicks: 0 }
-    var close = Button{ rect: Rect{ x: 400, y: 40, w: 160, h: 36 }, label: "Close", clicks: 0 }
-    var meter = Meter{ rect: Rect{ x: 40, y: 160, w: 520, h: 24 }, level: 0, capacity: 20 }
+    let open = Button{ rect: Rect{ x: 40, y: 40, w: 160, h: 36 }, label: "Open", clicks: 0 }
+    let save = Button{ rect: Rect{ x: 220, y: 40, w: 160, h: 36 }, label: "Save", clicks: 0 }
+    let close = Button{ rect: Rect{ x: 400, y: 40, w: 160, h: 36 }, label: "Close", clicks: 0 }
+    let meter = Meter{ rect: Rect{ x: 40, y: 160, w: 520, h: 24 }, level: 0, capacity: 20 }
 
-    var arena = Arena::new(heap(), 1 << 16)
+    let arena = Arena::new(heap(), 1 << 16)
     defer arena.free()
 
-    var mouse = Mouse{ x: -1.0, y: -1.0, clicked: false }
-    var event = SDL_Event{ type: 0 }
-    var frames = 0
+    let mouse = Mouse{ x: -1.0, y: -1.0, clicked: false }
+    let event = SDL_Event{ type: 0 }
+    let frames = 0
 
     while limit == 0 || frames < limit {
         if poll(&event, &mouse) {
             break
         }
-        var frame = arena.allocator()
+        let frame = arena.allocator()
 
-        var toolbar = Panel{
+        let toolbar = Panel{
             rect: Rect{ x: 20, y: 20, w: 560, h: 76 },
             colour: 0xff2a2f3a,
             children: Array<dyn Element>::new(frame),
@@ -317,7 +317,7 @@ fn main(args: string[]) {
         toolbar.children.push(&save as dyn Element)
         toolbar.children.push(&close as dyn Element)
 
-        var root = Panel{
+        let root = Panel{
             rect: Rect{ x: 0, y: 0, w: WIDTH, h: HEIGHT },
             colour: 0xff14161b,
             children: Array<dyn Element>::new(frame),
@@ -326,13 +326,13 @@ fn main(args: string[]) {
         root.children.push(&meter as dyn Element)
 
         if mouse.clicked {
-            var _ = root.press(mouse)
+            let _ = root.press(mouse)
             meter.level = open.clicks + save.clicks + close.clicks
         }
 
-        var stride: usize = 0
-        var canvas = Canvas{ pixels: [], stride: 0, texts: Array<Text>::new(frame) }
-        var pixels = lock(texture, &stride)
+        let stride: usize = 0
+        let canvas = Canvas{ pixels: [], stride: 0, texts: Array<Text>::new(frame) }
+        let pixels = lock(texture, &stride)
         if pixels != null {
             canvas.pixels = pixels
             canvas.stride = stride
@@ -340,13 +340,13 @@ fn main(args: string[]) {
             SDL_UnlockTexture(texture)
         }
 
-        var _ = SDL_RenderClear(renderer)
-        var _ = SDL_RenderTexture(renderer, texture, null, null)
-        var _ = SDL_SetRenderDrawColor(renderer, 230, 232, 238, 255)
+        let _ = SDL_RenderClear(renderer)
+        let _ = SDL_RenderTexture(renderer, texture, null, null)
+        let _ = SDL_SetRenderDrawColor(renderer, 230, 232, 238, 255)
         for i in 0..canvas.texts.len() {
             caption(renderer, frame, canvas.texts.get(i))
         }
-        var _ = SDL_RenderPresent(renderer)
+        let _ = SDL_RenderPresent(renderer)
 
         arena.free_all()
         SDL_Delay(16)

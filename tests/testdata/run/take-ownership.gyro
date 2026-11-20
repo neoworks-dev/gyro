@@ -1,0 +1,59 @@
+// A parameter written `T!` takes ownership: the argument moves into the
+// call, and the function destroys it at its end unless it hands the value
+// on. A plain parameter only borrows, and the caller destroys its value.
+
+import { println, Destroy } from "stdlib"
+
+struct Noisy {
+    name: string
+}
+
+impl Destroy for Noisy {
+    fn destroy(inout self) {
+        println("destroy #{self.name}")
+    }
+}
+
+fn make(name: string): Noisy !{ &name } {
+    return Noisy{ name: name }
+}
+
+fn borrow(n: Noisy) {
+    println("borrowed #{n.name}")
+}
+
+fn consume(n: Noisy!) {
+    println("consumed #{n.name}")
+}
+
+struct Shelf {
+    item: Noisy?
+}
+
+fn Shelf::put(inout self, n: Noisy!) {
+    self.item = n
+}
+
+// An owned parameter can be changed and handed back.
+fn rename(n: Noisy!, name: string): Noisy !{ &n, &name } {
+    n.name = name
+    return n
+}
+
+fn main() {
+    let a = make("a")
+    borrow(a)
+    consume(a)
+    println("after consume")
+
+    consume(make("fresh"))
+
+    let shelf = Shelf{ item: null }
+    let b = make("b")
+    shelf.put(b)
+    shelf.put(make("c"))
+    println("shelved")
+
+    let d = rename(make("d"), "renamed")
+    println("end of main")
+}

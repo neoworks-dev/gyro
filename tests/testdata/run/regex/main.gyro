@@ -11,7 +11,7 @@ import { heap } from "mem"
 
 // (should match, pattern, text, expected match length)
 fn vectors(): Array<(bool, string, string, i64)> {
-    var cases = Array<(bool, string, string, i64)>::new(heap())
+    let cases = Array<(bool, string, string, i64)>::new(heap())
     cases.push((true,  "\\d", "5", 1))
     cases.push((true,  "\\w+", "hej", 3))
     cases.push((true,  "\\s", "\t \n", 1))
@@ -92,16 +92,16 @@ fn vectors(): Array<(bool, string, string, i64)> {
 }
 
 fn main() {
-    var cases = vectors()
+    let cases = vectors()
     defer cases.free()
 
-    var failed: usize = 0
-    for var i: usize = 0; i < cases.len(); i += 1 {
-        var expect_match, pattern, text, expect_length = cases.get(i)
-        var at, length = match_text(pattern, text)
+    let failed: usize = 0
+    for let i: usize = 0; i < cases.len(); i += 1 {
+        let expect_match, pattern, text, expect_length = cases.get(i)
+        let at, length = match_text(pattern, text)
         println("#{i} #{at} #{length}")
 
-        var ok = true
+        let ok = true
         if expect_match {
             if at < 0 || length != expect_length {
                 ok = false

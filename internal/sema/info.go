@@ -26,6 +26,10 @@ type Info struct {
 	Calls map[*ast.CallExpr]*CallInfo
 	// Consts holds the folded values of untyped integer expressions.
 	Consts map[ast.Expr]*big.Int
+	// Consumed holds the expressions of an owning type whose value is
+	// taken by what they are put into: a variable named here moves out,
+	// and any other value has an owner and is not a temporary.
+	Consumed map[ast.Expr]bool
 	// Locals holds the declared type of every value binding, keyed by
 	// the declaring node and the bound name: parameters under their
 	// FuncDecl or ClosureExpr, locals under their VarDecl, loop
@@ -107,6 +111,7 @@ func newInfo() *Info {
 		Refs:      map[ast.Expr]ast.Node{},
 		Calls:     map[*ast.CallExpr]*CallInfo{},
 		Consts:    map[ast.Expr]*big.Int{},
+		Consumed:  map[ast.Expr]bool{},
 		Locals:    map[ast.Node]map[string]types.Type{},
 		Structs:   map[*ast.StructDecl]*types.Struct{},
 		Unions:    map[*ast.UnionDecl]*types.Union{},

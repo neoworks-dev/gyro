@@ -1,0 +1,53 @@
+// `?` takes the value out of a result, or returns the error from the
+// function it is written in, running that function's deferred calls on the
+// way out. The error passes through every level untouched.
+
+import { println, Error } from "stdlib"
+import { format, heap } from "mem"
+
+struct Refused {
+    reason: string
+}
+
+impl Error for Refused {
+    fn message(self): string {
+        return format(heap(), "refused: #{self.reason}")
+    }
+}
+
+fn read(n: i32): i32 | Error {
+    if n < 0 {
+        return Refused{ reason: "negative" }
+    }
+    if n == 0 {
+        return Error::new("zero")
+    }
+    return n * 10
+}
+
+fn middle(n: i32): i32 | Error {
+    defer println("middle leaves #{n}")
+    let value = read(n)?
+    println("middle read #{value}")
+    return value + 1
+}
+
+fn outer(n: i32): i32 | Error {
+    defer println("outer leaves #{n}")
+    let value = middle(n)? * 2
+    println("outer got #{value}")
+    return value
+}
+
+fn report(n: i32) {
+    match outer(n) {
+        i32(value): println("ok #{value}")
+        Error(e): println("failed: #{e.message()}")
+    }
+}
+
+fn main() {
+    report(4)
+    report(0)
+    report(-1)
+}

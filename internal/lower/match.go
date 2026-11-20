@@ -30,7 +30,8 @@ func (f *funcLowerer) evalMatch(m *ast.MatchExpr, want types.Type) string {
 	// generated %error, or the generated %any.
 	tag := ""
 	_, isEnum := subjType.(*types.Enum)
-	if isEnum || isErrorBasic(subjType) || isAnyType(subjType) {
+	_, isResult := subjType.(*types.Result)
+	if isEnum || isResult || isErrorBasic(subjType) || isAnyType(subjType) {
 		tag = f.newReg("tag")
 		f.emit(&metals.VariantTag{Dst: tag, X: subj})
 	}
@@ -109,11 +110,17 @@ func (f *funcLowerer) armTest(subj string, subjType types.Type, tag string, patt
 		if isErrorBasic(subjType) {
 			return f.errorArmTest(subj, tag, p)
 		}
+		if _, ok := subjType.(*types.Result); ok {
+			return f.resultArmTest(subj, tag, p, p.Payload)
+		}
 		if isAnyType(subjType) {
 			return f.anyArmTest(subj, tag, p, p.Payload)
 		}
 
 	case *ast.TypeTestPattern:
+		if _, ok := subjType.(*types.Result); ok {
+			return f.resultArmTest(subj, tag, p, p.Payload)
+		}
 		return f.anyArmTest(subj, tag, p, p.Payload)
 	}
 	f.l.fail("@%s: cannot lower this match pattern", f.fn.Name)
@@ -193,20 +200,11 @@ func (f *funcLowerer) emitPayloadTests(subj string, index, from int, patterns []
 
 // errorArmTest is the type test: does this error hold a RangeError?
 func (f *funcLowerer) errorArmTest(subj, tag string, p *ast.VariantPattern) (string, func()) {
-	name := p.Path.Segments[len(p.Path.Segments)-1].Name
-	var strct *types.Struct
-	for _, candidate := range f.l.errTypes {
-		if candidate.Name == name {
-			if strct != nil {
-				f.l.fail("@%s: two error types are named %s; the type test is ambiguous", f.fn.Name, name)
-			}
-			strct = candidate
-		}
+	held := f.localType(p, sema.TypeTestLocal)
+	if held == nil {
+		f.l.fail("@%s: no recorded type for an Error type test", f.fn.Name)
 	}
-	if strct == nil {
-		f.l.fail("@%s: no error type %s", f.fn.Name, name)
-	}
-	index := f.l.errorVariantOf(strct)
+	index := f.l.errorVariantOf(held)
 	cond := f.tagEquals(tag, index)
 	return cond, func() {
 		if len(p.Payload) == 1 {
@@ -215,11 +213,30 @@ func (f *funcLowerer) errorArmTest(subj, tag string, p *ast.VariantPattern) (str
 	}
 }
 
+// resultArmTest is the type test on a `T | Error`: the value or the error,
+// told apart by the type the checker recorded at the pattern.
+func (f *funcLowerer) resultArmTest(subj, tag string, p ast.Pattern, payload []ast.Pattern) (string, func()) {
+	held := f.localType(p, sema.TypeTestLocal)
+	if held == nil {
+		f.l.fail("@%s: no recorded type for a result type test", f.fn.Name)
+	}
+	index := resultValue
+	if isErrorBasic(held) {
+		index = resultError
+	}
+	cond := f.tagEquals(tag, index)
+	return cond, func() {
+		if len(payload) == 1 {
+			f.bindPayload(payload[0], subj, index, 0)
+		}
+	}
+}
+
 // anyArmTest is the type test on an any: does it hold the type the pattern
 // names? The checker recorded that type at the pattern, since the pattern
 // itself is only a path.
 func (f *funcLowerer) anyArmTest(subj, tag string, p ast.Pattern, payload []ast.Pattern) (string, func()) {
-	held := f.localType(p, sema.AnyTestLocal)
+	held := f.localType(p, sema.TypeTestLocal)
 	if held == nil {
 		f.l.fail("@%s: no recorded type for an any type test", f.fn.Name)
 	}
@@ -316,7 +333,7 @@ func (f *funcLowerer) loopShell(test func(breakLabel string), body *ast.Block, b
 	loopBody := f.nested(func() {
 		test(breakLabel)
 		f.loops = append(f.loops, loopContext{
-			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes),
+			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes), temps: len(f.temps),
 		})
 		inner := f.nested(func() {
 			f.pushScope()
@@ -395,7 +412,7 @@ func (f *funcLowerer) chanLoop(s *ast.ForInStmt, elemType types.Type) {
 	}, nil)
 }
 
-// iteratorLoop drives a type implementing Iterator: next(*self): (T, bool)
+// iteratorLoop drives a type implementing Iterator: next(inout self): (T, bool)
 // until it says there is no more.
 func (f *funcLowerer) iteratorLoop(s *ast.ForInStmt, target *types.Struct, elemType types.Type) {
 	value := f.lowerExpr(s.Iterable, nil)

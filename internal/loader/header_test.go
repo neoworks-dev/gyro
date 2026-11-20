@@ -50,8 +50,8 @@ export fn @flip(%p: %Point) -> %Point {
 	// Every member is exported: a C struct has no private ones.
 	wants(t, text,
 		"export struct Point {",
-		"  export x: i32",
-		"  export y: i32",
+		"  x: i32",
+		"  y: i32",
 		"export unsafe fn flip(a0: Point): Point",
 	)
 }
@@ -70,7 +70,7 @@ export fn @span(%l: %Line) -> i32 {
   return %n
 }
 `)
-	wants(t, text, "export struct Point {", "export struct Line {", "  export a: Point")
+	wants(t, text, "export struct Point {", "export struct Line {", "  a: Point")
 }
 
 // An opaque type is a fieldless struct, which is what Gyro already
@@ -157,10 +157,10 @@ export fn @held(%h: %Holder) -> i32 {
 `)
 	wants(t, text,
 		"export union Bits {",
-		"  export whole: i32",
-		"  export half: u16",
+		"  whole: i32",
+		"  half: u16",
 		"export struct Holder {",
-		"  export bits: Bits",
+		"  bits: Bits",
 		"export unsafe fn punned(a0: Bits): i32",
 	)
 }
@@ -186,7 +186,7 @@ export fn @tabled(%p: %Pointers) -> i32 {
   return %n
 }
 `)
-	wants(t, text, "export struct Buf {", "  export name: u8[16]", "  export tail: *i32")
+	wants(t, text, "export struct Buf {", "  name: u8[16]", "  tail: *i32")
 	if strings.Contains(text, "Pointers") || strings.Contains(text, "tabled") {
 		t.Errorf("an array of pointers reached the header:\n%s", text)
 	}
@@ -206,7 +206,7 @@ export fn @head(%n: ptr<%Node>) -> i32 {
   return %v
 }
 `)
-	wants(t, text, "export struct Node {", "  export next: *Node?")
+	wants(t, text, "export struct Node {", "  next: *Node?")
 }
 
 // A member Gyro cannot name is the same refusal as a type it cannot

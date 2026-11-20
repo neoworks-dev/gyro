@@ -76,6 +76,9 @@ func (c *checker) stmt(stmt ast.Stmt) {
 
 	case *ast.ForInStmt:
 		elem := c.iterableElem(s.Iterable)
+		if c.rejectOwning(s.Offset, elem, "a for loop variable") {
+			elem = types.Unknown
+		}
 		c.pushScope(func() {
 			c.declareValue(s.Name, s.Offset, s, elem)
 			c.pushLoop(false, func() {
@@ -103,7 +106,7 @@ func (c *checker) stmt(stmt ast.Stmt) {
 			return
 		}
 		// `continue` goes back to the loop head, so nothing below it runs.
-		c.flow.reachable = false
+		c.recordContinue()
 	}
 }
 
@@ -156,7 +159,7 @@ func isAlwaysTrue(e ast.Expr) bool {
 func (c *checker) exprStmt(s *ast.ExprStmt) {
 	t := c.expr(s.X)
 	if containsError(t) {
-		c.errorf(s.X.Pos(), "the error result is dropped here; discarding one must be written out: var _, _ = ...")
+		c.errorf(s.X.Pos(), "the error result is dropped here; take its value with ?, or discard it: let _ = ...")
 		return
 	}
 	if _, ok := t.(*types.Future); ok {
@@ -181,6 +184,8 @@ func containsError(t types.Type) bool {
 		return t.Kind == types.ErrorKind
 	case *types.Optional:
 		return containsError(t.Elem)
+	case *types.Result:
+		return true
 	case *types.Tuple:
 		for _, elem := range t.Elems {
 			if containsError(elem) {
@@ -202,6 +207,7 @@ func (c *checker) localVar(decl *ast.VarDecl) {
 	c.varTypes(decl, func(binding ast.Binding, typ types.Type) {
 		sym := c.declareValue(binding.Name, binding.Offset, decl, typ)
 		c.noteOrigin(sym, decl.Value, typ)
+		c.owningLocal(sym, decl.Value != nil)
 		declared = append(declared, sym)
 	})
 
@@ -263,6 +269,8 @@ func (c *checker) varTypes(decl *ast.VarDecl, bind func(ast.Binding, types.Type)
 		} else {
 			t = c.defaultExpr(decl.Value, c.expr(decl.Value))
 		}
+		// Before the names are bound: `let x = x` moves the outer x.
+		c.consume(decl.Value)
 		for _, binding := range decl.Names {
 			bind(binding, t)
 		}
@@ -297,6 +305,7 @@ func (c *checker) destructure(decl *ast.VarDecl, annotation types.Type, bind fun
 		c.assignValue(decl.Value.Pos(), decl.Value, value, annotation, "the declaration")
 		value = annotation
 	}
+	c.consume(decl.Value)
 
 	tuple, ok := value.(*types.Tuple)
 	if !ok {
@@ -339,6 +348,7 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 		return
 	}
 	c.assignExpr(s.Rhs, target, "assignment")
+	c.consume(s.Rhs)
 	c.noteAssign(s.Lhs[0], s.Rhs)
 	c.killFactsFor(s.Lhs[0])
 	c.markAssignedTarget(s.Lhs[0])
@@ -351,6 +361,14 @@ func (c *checker) assignStmt(s *ast.AssignStmt) {
 // assigning a fresh *Node? into a narrowed *Node? local is fine, and the
 // write is what withdraws the narrowing afterwards.
 func (c *checker) assignTarget(lhs ast.Expr) types.Type {
+	target := c.assignTargetType(lhs)
+	if target != nil && !types.IsUnknown(target) {
+		c.checkChangeable(lhs)
+	}
+	return target
+}
+
+func (c *checker) assignTargetType(lhs ast.Expr) types.Type {
 	switch lhs := lhs.(type) {
 	case *ast.Ident:
 		if lhs.Name == "_" {
@@ -405,6 +423,7 @@ func (c *checker) destructuringAssign(s *ast.AssignStmt) {
 	}
 
 	value := c.expr(s.Rhs)
+	c.consume(s.Rhs)
 	tuple, ok := value.(*types.Tuple)
 	if !ok {
 		if !flexible(value) {
@@ -518,7 +537,8 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 
 	switch len(s.Results) {
 	case 0:
-		if !flexible(want) && !types.Identical(want, types.Void) {
+		// An Error? function succeeds by returning nothing.
+		if !flexible(want) && !types.Identical(want, types.Void) && !isErrorOptional(want) {
 			c.errorf(s.Offset, "this function returns %s; the return gives nothing", want)
 		}
 	case 1:
@@ -530,8 +550,9 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 			return
 		}
 		c.assignExpr(s.Results[0], want, "return")
+		c.consume(s.Results[0])
 	default:
-		tuple, ok := want.(*types.Tuple)
+		tuple, ok := valueTuple(want)
 		if !ok || len(tuple.Elems) != len(s.Results) {
 			for _, result := range s.Results {
 				c.expr(result)
@@ -543,6 +564,7 @@ func (c *checker) returnStmt(s *ast.ReturnStmt) {
 		}
 		for i, result := range s.Results {
 			c.assignExpr(result, tuple.Elems[i], "return")
+			c.consume(result)
 		}
 	}
 }
@@ -556,10 +578,20 @@ func (c *checker) resultAt(i, n int) types.Type {
 	if n == 1 {
 		return c.fn.result
 	}
-	if tuple, ok := c.fn.result.(*types.Tuple); ok && i < len(tuple.Elems) {
+	if tuple, ok := valueTuple(c.fn.result); ok && i < len(tuple.Elems) {
 		return tuple.Elems[i]
 	}
 	return nil
+}
+
+// valueTuple is the tuple a multi-value return fills: the result itself, or
+// the value of a result that can fail, as in `(f64, f64) | Error`.
+func valueTuple(result types.Type) (*types.Tuple, bool) {
+	if fallible, ok := result.(*types.Result); ok {
+		result = fallible.Value
+	}
+	tuple, ok := result.(*types.Tuple)
+	return tuple, ok
 }
 
 func (c *checker) sendStmt(s *ast.SendStmt) {
@@ -820,7 +852,7 @@ func (c *checker) iterableElem(e ast.Expr) types.Type {
 		return elem
 	}
 	c.errorHintf(e.Pos(), []string{
-		"a type is iterated by implementing Iterator: impl Iterator<T> for " + t.String() + " { fn next(*self): (T, bool) }",
+		"a type is iterated by implementing Iterator: impl Iterator<T> for " + t.String() + " { fn next(inout self): (T, bool) }",
 	}, "%s is not iterable; for..in takes slices, arrays, ranges, channels, or a type implementing Iterator", t)
 	return types.Unknown
 }

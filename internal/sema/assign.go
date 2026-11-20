@@ -18,6 +18,10 @@ import "github.com/gyro-lang/gyro/internal/ast"
 // leaves x assigned below.
 type flow struct {
 	assigned map[*symbol]bool
+	// moved holds where each owning variable last moved out, for a
+	// variable that is unassigned because of it. It merges by union: a
+	// value moved on either path may be gone.
+	moved map[*symbol]int
 	// settled holds the tracked allocations that something has freed or
 	// carried out of the block. It merges the same way assigned does.
 	settled map[*symbol]bool
@@ -32,6 +36,7 @@ type flow struct {
 func newFlow() flow {
 	return flow{
 		assigned:  map[*symbol]bool{},
+		moved:     map[*symbol]int{},
 		settled:   map[*symbol]bool{},
 		freed:     map[*symbol]int{},
 		reset:     map[*symbol]int{},
@@ -78,6 +83,7 @@ func intersectSets(a, b map[*symbol]bool) map[*symbol]bool {
 func (f flow) clone() flow {
 	return flow{
 		assigned:  copySet(f.assigned),
+		moved:     copyTicks(f.moved),
 		settled:   copySet(f.settled),
 		freed:     copyTicks(f.freed),
 		reset:     copyTicks(f.reset),
@@ -96,6 +102,7 @@ func mergeFlow(a, b flow) flow {
 	}
 	return flow{
 		assigned:  intersectSets(a.assigned, b.assigned),
+		moved:     unionTicks(a.moved, b.moved),
 		settled:   intersectSets(a.settled, b.settled),
 		freed:     unionTicks(a.freed, b.freed),
 		reset:     unionTicks(a.reset, b.reset),
@@ -126,7 +133,8 @@ func (c *checker) isolateFlow(walk func()) {
 // matter for a loop that cannot fall out of its condition, where breaking is
 // the sole exit.
 type loopFlow struct {
-	breaks []flow
+	breaks    []flow
+	continues []flow
 }
 
 func (c *checker) pushLoop(alwaysTrue bool, walk func()) {
@@ -136,12 +144,20 @@ func (c *checker) pushLoop(alwaysTrue bool, walk func()) {
 	walk()
 	c.loops = c.loops[:len(c.loops)-1]
 
+	for _, state := range append(loop.continues, c.flow) {
+		c.checkLoopMoves(entry, state)
+	}
+
 	if !alwaysTrue {
 		// The loop may run zero times, so nothing its body wrote survives.
 		// A free is the exception: the body may have run, and an arena it
-		// freed is gone either way.
+		// freed is gone either way. So is a move on the way out through a
+		// break.
 		entry.freed = unionTicks(entry.freed, c.flow.freed)
 		entry.reset = unionTicks(entry.reset, c.flow.reset)
+		for _, state := range loop.breaks {
+			entry = mergeFlow(entry, state)
+		}
 		c.flow = entry
 		return
 	}
@@ -169,12 +185,24 @@ func (c *checker) recordBreak() {
 	c.flow.reachable = false
 }
 
+// recordContinue hands the current state to the innermost loop as one
+// that starts the next iteration, and marks the rest of the block
+// unreachable.
+func (c *checker) recordContinue() {
+	if len(c.loops) > 0 {
+		loop := c.loops[len(c.loops)-1]
+		loop.continues = append(loop.continues, c.flow.clone())
+	}
+	c.flow.reachable = false
+}
+
 // markAssigned records a write to a tracked name.
 func (c *checker) markAssigned(sym *symbol) {
 	if sym == nil || !sym.needsAssign {
 		return
 	}
 	c.flow.assigned[sym] = true
+	delete(c.flow.moved, sym)
 }
 
 // markAssignedTarget records a write through an assignment's left side.
@@ -214,6 +242,10 @@ func (c *checker) checkAssigned(sym *symbol, offset int, name string) {
 	// beats a report at every later read of the same name.
 	c.flow.assigned[sym] = true
 
+	if _, moved := c.flow.moved[sym]; moved {
+		c.reportMoved(sym, offset, name)
+		return
+	}
 	if sym.openGuard != nil {
 		c.errorHintf(offset, []string{
 			"a closed channel yields no value, so " + name + " is only there when " + sym.openGuardName + " is true",
@@ -223,7 +255,7 @@ func (c *checker) checkAssigned(sym *symbol, offset int, name string) {
 	}
 
 	c.errorHintf(offset, []string{
-		"assign it where it is declared: var " + name + ": T = ...",
+		"assign it where it is declared: let " + name + ": T = ...",
 		"or write to it on every path that reaches this read",
 	}, "%s is read before it is assigned", name)
 }

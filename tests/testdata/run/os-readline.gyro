@@ -15,9 +15,9 @@ import { readline, read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-    var taken = 0
+    let taken = 0
     while taken < 3 {
-        var line = readline(heap())
+        let line = readline(heap())
         if line == null {
             break
         }

@@ -44,8 +44,8 @@ const (
 	BoolKind
 	StringKind
 	VoidKind
-	// ErrorKind is the structural error type: any type with a
-	// message(): string method satisfies it.
+	// ErrorKind is the owned error value: any type that implements the
+	// Error trait converts to it, and Error::new makes a plain one.
 	ErrorKind
 	// AnyKind holds a value of one other type and remembers which. It is a
 	// closed sum over the types the program wraps, not a runtime registry.
@@ -91,7 +91,7 @@ var (
 	Bool    = &Basic{BoolKind, "bool"}
 	String  = &Basic{StringKind, "string"}
 	Void    = &Basic{VoidKind, "void"}
-	Error   = &Basic{ErrorKind, "error"}
+	Error   = &Basic{ErrorKind, "Error"}
 	Any     = &Basic{AnyKind, "any"}
 	AnyPtr  = &Basic{AnyPtrKind, "anyptr"}
 	Null    = &Basic{NullKind, "null"}
@@ -106,7 +106,7 @@ var Builtin = map[string]*Basic{
 	"u8": Uint8, "u16": Uint16, "u32": Uint32, "u64": Uint64,
 	"usize": USize, "isize": ISize, "f32": Float32, "f64": Float64,
 	"rune": Rune, "bool": Bool, "string": String, "void": Void,
-	"error": Error, "any": Any, "anyptr": AnyPtr,
+	"any": Any, "anyptr": AnyPtr,
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,10 @@ type Pointer struct{ Elem Type }
 
 // Optional is T?, the only type that may hold null.
 type Optional struct{ Elem Type }
+
+// Result is `T | Error`: either a value or an error. It is the type of a
+// fallible function's result, and the only union the language has.
+type Result struct{ Value Type }
 
 // Slice is T[], a borrowed view.
 type Slice struct{ Elem Type }
@@ -185,6 +189,7 @@ func (p *Pointer) String() string {
 	return "*" + p.Elem.String()
 }
 func (o *Optional) String() string  { return o.Elem.String() + "?" }
+func (r *Result) String() string    { return r.Value.String() + " | Error" }
 func (s *Slice) String() string     { return s.Elem.String() + "[]" }
 func (c *Chan) String() string      { return "chan<" + c.Elem.String() + ">" }
 func (t *TypeParam) String() string { return t.Name }
@@ -250,10 +255,10 @@ type RecvKind int
 const (
 	// NoRecv marks an associated function, called as Type::name().
 	NoRecv RecvKind = iota
-	// ValueRecv is `self`: borrows immutably.
+	// ValueRecv is `self`: borrows, and may not change the receiver.
 	ValueRecv
-	// PointerRecv is `*self`: may mutate.
-	PointerRecv
+	// InoutRecv is `inout self`: borrows exclusively and may change it.
+	InoutRecv
 )
 
 // Method is a free-standing fn attached to a type, or a free function when
@@ -277,7 +282,48 @@ type Method struct {
 	Impl *Impl
 }
 
-// Field is one struct field.
+// InoutAt reports whether parameter i, counted without the receiver, is
+// declared `inout`. A method with no declaration, one the checker
+// synthesizes, takes everything as a plain borrow.
+func (m *Method) InoutAt(i int) bool {
+	return m.Decl != nil && i < len(m.Decl.Params) && m.Decl.Params[i].Inout
+}
+
+// TakesAt reports whether parameter i, counted without the receiver, is
+// declared `T!`, taking ownership of its argument.
+func (m *Method) TakesAt(i int) bool {
+	return m.Decl != nil && i < len(m.Decl.Params) && m.Decl.Params[i].Take
+}
+
+// HasTakeParam reports whether any parameter is declared `T!`.
+func (m *Method) HasTakeParam() bool {
+	if m.Decl == nil {
+		return false
+	}
+	for _, param := range m.Decl.Params {
+		if param.Take {
+			return true
+		}
+	}
+	return false
+}
+
+// HasInoutParam reports whether any parameter, not counting the receiver, is
+// declared `inout`.
+func (m *Method) HasInoutParam() bool {
+	if m.Decl == nil {
+		return false
+	}
+	for _, param := range m.Decl.Params {
+		if param.Inout {
+			return true
+		}
+	}
+	return false
+}
+
+// Field is one struct field. Exported reports that it is visible outside its
+// module: its type is exported and the field is not written `private`.
 type Field struct {
 	Name     string
 	Type     Type
@@ -551,6 +597,9 @@ func Identical(a, b Type) bool {
 	case *Optional:
 		y, ok := b.(*Optional)
 		return ok && Identical(x.Elem, y.Elem)
+	case *Result:
+		y, ok := b.(*Result)
+		return ok && Identical(x.Value, y.Value)
 	case *Slice:
 		y, ok := b.(*Slice)
 		return ok && Identical(x.Elem, y.Elem)
@@ -654,8 +703,9 @@ type Trait struct {
 	Assoc []*AssocType
 	Decl  *ast.TraitDecl
 	// Kind names the capability the compiler knows the trait as — "Eq",
-	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg" or
-	// "Iterator" — and is empty for every other trait. Such a trait is
+	// "Hash", "Print", "Ord", "Add", "Sub", "Mul", "Div", "Rem", "Neg",
+	// "Iterator", "Index", "Destroy" or "Error" — and is empty for every
+	// other trait. Such a trait is
 	// declared in the bundled standard library like any other; the
 	// compiler recognizes it by where it is declared.
 	Kind string

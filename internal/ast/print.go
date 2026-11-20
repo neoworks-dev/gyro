@@ -92,10 +92,10 @@ func (p *printer) node(node Node) {
 		p.line("Func %s%s%s%s%s%s", exportMark(n.Exported), trustMark(n), asyncMark(n.Async), ownerString(n), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		if n.Recv != nil {
-			p.line("Recv: %sself", pointerMark(n.Recv.Pointer))
+			p.line("Recv: %sself", inoutMark(n.Recv.Inout))
 		}
 		for _, param := range n.Params {
-			p.group("Param "+param.Name+variadicMark(param.Variadic), func() {
+			p.group("Param "+param.Name+inoutSuffix(param.Inout)+takeSuffix(param.Take)+variadicMark(param.Variadic), func() {
 				p.child("Type", param.Type)
 				p.child("Default", param.Default)
 			})
@@ -111,7 +111,7 @@ func (p *printer) node(node Node) {
 		p.line("Struct %s%s%s", exportMark(n.Exported), n.Name, typeParamString(n.TypeParams))
 		p.indent++
 		for _, field := range n.Fields {
-			p.group("Field "+exportMark(field.Exported)+field.Name, func() {
+			p.group("Field "+privateMark(field.Private)+field.Name, func() {
 				p.node(field.Type)
 			})
 		}
@@ -121,7 +121,7 @@ func (p *printer) node(node Node) {
 		p.line("Union %s%s", exportMark(n.Exported), n.Name)
 		p.indent++
 		for _, member := range n.Members {
-			p.group("Member "+exportMark(member.Exported)+member.Name, func() {
+			p.group("Member "+privateMark(member.Private)+member.Name, func() {
 				p.node(member.Type)
 			})
 		}
@@ -176,7 +176,7 @@ func (p *printer) node(node Node) {
 		p.indent--
 
 	case *VarDecl:
-		p.line("%s %s%s", varKeyword(n.Const), exportMark(n.Exported), bindingString(n.Names))
+		p.line("%s %s%s", bindingKeyword(n.Const), exportMark(n.Exported), bindingString(n.Names))
 		p.indent++
 		p.child("Type", n.Type)
 		p.child("Value", n.Value)
@@ -405,6 +405,12 @@ func (p *printer) node(node Node) {
 		p.node(n.X)
 		p.indent--
 
+	case *TryExpr:
+		p.line("Try")
+		p.indent++
+		p.node(n.X)
+		p.indent--
+
 	case *RecvExpr:
 		p.line("Recv")
 		p.indent++
@@ -496,6 +502,13 @@ func (p *printer) node(node Node) {
 		p.line("OptionalType")
 		p.indent++
 		p.node(n.Elem)
+		p.indent--
+
+	case *UnionType:
+		p.line("UnionType")
+		p.indent++
+		p.node(n.Left)
+		p.node(n.Right)
 		p.indent--
 
 	case *ArrayType:
@@ -747,9 +760,23 @@ func exportMark(exported bool) string {
 	return ""
 }
 
-func pointerMark(pointer bool) string {
-	if pointer {
-		return "*"
+func inoutMark(inout bool) string {
+	if inout {
+		return "inout "
+	}
+	return ""
+}
+
+func takeSuffix(take bool) string {
+	if take {
+		return " take"
+	}
+	return ""
+}
+
+func inoutSuffix(inout bool) string {
+	if inout {
+		return " inout"
 	}
 	return ""
 }
@@ -763,11 +790,11 @@ func variadicMark(variadic bool) string {
 	return ""
 }
 
-func varKeyword(isConst bool) string {
+func bindingKeyword(isConst bool) string {
 	if isConst {
 		return "Const"
 	}
-	return "Var"
+	return "Let"
 }
 
 func quoteIfString(lit *BasicLit) string {
@@ -775,4 +802,11 @@ func quoteIfString(lit *BasicLit) string {
 		return fmt.Sprintf("%q", lit.Value)
 	}
 	return lit.Value
+}
+
+func privateMark(private bool) string {
+	if private {
+		return "private "
+	}
+	return ""
 }

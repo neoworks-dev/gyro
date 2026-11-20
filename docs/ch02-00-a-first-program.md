@@ -16,7 +16,7 @@ import { read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-    var text = read_stdin(heap())
+    let text = read_stdin(heap())
     println("read #{text.len()} bytes")
 }
 ```
@@ -27,7 +27,7 @@ read 6 bytes
 ```
 
 `read_stdin` comes from the bundled `os` module and reads to end of file in
-one shot. `var text` needs no annotation: the type is the function's result,
+one shot. `let text` needs no annotation: the type is the function's result,
 a `string`. `text.len()` counts **bytes**, not characters, and needs no
 import because it is part of the type rather than a name in scope.
 
@@ -39,14 +39,14 @@ import { read_stdin } from "os"
 import { heap } from "mem"
 
 fn main() {
-    var text = read_stdin(heap())
+    let text = read_stdin(heap())
 
-    var words = 0
-    var lines = text.split(heap(), "\n")
+    let words = 0
+    let lines = text.split(heap(), "\n")
     defer lines.free()
 
     for line in lines.slice() {
-        var parts = line.trim(heap()).split(heap(), " ")
+        let parts = line.trim(heap()).split(heap(), " ")
         defer parts.free()
         for word in parts.slice() {
             if word.len() > 0 {
@@ -70,12 +70,12 @@ universe scope ([chapter 5.2](ch05-02-methods.md)).
 `Array<string>` owns a buffer; `string[]` is a slice, a pointer and a length
 borrowing storage it does not own. `.slice()` hands out the view. The
 distinction is not decoration — an owner is freed and a view never is
-([chapter 4.4](ch04-04-slices-and-views.md)).
+([chapter 4.4](ch04-04-borrowing.md)).
 
 **`defer` runs at block exit**, in reverse order of registration. The
 `defer parts.free()` inside the loop runs on *every iteration*, which is
 exactly what you want for a value created every iteration
-([chapter 4.2](ch04-02-leaks-and-defer.md)).
+([chapter 4.2](ch04-02-destroy-and-defer.md)).
 
 Leave one of those `free` calls out and the program still runs. Nothing
 detects the leak at run time yet; the compiler's leak analysis warns about
@@ -90,23 +90,23 @@ import { printf } from "fmt"
 import { heap } from "mem"
 
 fn main() {
-    var text = read_stdin(heap())
+    let text = read_stdin(heap())
 
-    var counts = Map<string, i32>::new(heap())
+    let counts = Map<string, i32>::new(heap())
     defer counts.free()
 
-    var lines = text.split(heap(), "\n")
+    let lines = text.split(heap(), "\n")
     defer lines.free()
 
     for line in lines.slice() {
-        var words = line.trim(heap()).split(heap(), " ")
+        let words = line.trim(heap()).split(heap(), " ")
         defer words.free()
 
         for word in words.slice() {
             if word.len() == 0 {
                 continue
             }
-            var seen = counts.get(word)
+            let seen = counts.get(word)
             if seen == null {
                 counts.insert(word, 1)
             } else {
@@ -115,11 +115,11 @@ fn main() {
         }
     }
 
-    var keys = counts.keys()
+    let keys = counts.keys()
     defer keys.free()
 
     for key in keys.slice() {
-        var count = counts.get(key)
+        let count = counts.get(key)
         if count != null {
             printf("%-12s %d\n", key, count)
         }
@@ -143,7 +143,7 @@ to be expressible. And a nullable value cannot be used until it has been
 checked:
 
 ```gyro
-var seen = counts.get(word)
+let seen = counts.get(word)
 counts.insert(word, seen + 1) // error: seen may be null
 ```
 
@@ -167,7 +167,7 @@ neighbouring programs that do not compile:
   is about to be freed. A function handing back a `string[]` or a `string`
   has to name where the view came from, in an effect row
   ([chapter 12](ch12-00-effect-rows.md)).
-- `var total: i32` used before every path assigned it — there are no zero
+- `let total: i32` used before every path assigned it — there are no zero
   values ([chapter 3.1](ch03-01-variables-and-constants.md)).
 - `counts.get(word) + 1` — nullable, unchecked.
 - `words += 1` overflowing an `i32` — that panics rather than wrapping, and

@@ -3,8 +3,10 @@ exit 0
 body 1
 exit 1
 2
-1
+2
 300
-computed 15
+computed 300
 99
-counter 1
+counter 99
+inner y 2
+outer y 1

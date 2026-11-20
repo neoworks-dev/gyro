@@ -1,0 +1,176 @@
+// Changing a value: a plain parameter only borrows, and inout may change.
+
+import { Array } from "stdlib"
+
+struct Counter {
+    n: i32
+    pair: i32[2]
+}
+
+struct Pair {
+    left: i32
+    right: i32
+}
+
+fn Counter::bump(inout self) {
+    self.n += 1
+}
+
+fn Counter::peek(self): i32 {
+    return self.n
+}
+
+fn Counter::add(inout self, by: i32) {
+    self.n += by
+}
+
+fn Counter::copy_into(self, other: inout Counter) {
+    other.n = self.n
+}
+
+fn swap(a: inout i32, b: inout i32) {
+    let held = a
+    a = b
+    b = held
+}
+
+fn bump_all(xs: inout Array<i32>) {
+    xs.push(1)
+}
+
+fn read(xs: Array<i32>): i32 {
+    return xs.get(0)
+}
+
+// What a plain parameter may not do.
+fn assigns(n: i32, c: Counter, xs: i32[3]) {
+    n = 1         //~ E0634 n cannot be changed: a plain parameter only borrows its argument
+    n += 1        //~ E0634 n cannot be changed
+    c.n = 2       //~ E0634 c cannot be changed
+    c.pair[0] = 3 //~ E0634 c cannot be changed
+    xs[0] = 4     //~ E0634 xs cannot be changed
+    c.bump()      //~ E0634 c cannot be changed
+    c.add(1)      //~ E0634 c cannot be changed
+}
+
+fn Counter::broken(self) {
+    self.n = 1                      //~ E0634 self cannot be changed: a plain self only borrows the receiver
+    self.bump()                     //~ E0634 self cannot be changed
+    let again = fn() { self.n = 2 } //~ E0634 self cannot be changed
+}
+
+fn pushes(xs: Array<i32>) {
+    xs.push(1)   //~ E0634 xs cannot be changed
+    bump_all(xs) //~ E0634 xs cannot be changed
+}
+
+// A const never changes.
+const LIMIT = 3
+
+fn consts() {
+    const local = 1
+    local = 2 //~ E0634 local cannot be changed: it is a const
+    LIMIT = 4 //~ E0634 LIMIT cannot be changed: it is a const
+    const c = Counter{ n: 0, pair: [0, 0] }
+    c.n = 1  //~ E0634 c cannot be changed
+    c.bump() //~ E0634 c cannot be changed
+}
+
+// What inout allows.
+fn changes(n: inout i32, c: inout Counter, xs: inout Array<i32>) {
+    n = 1
+    n += 1
+    c.n = 2
+    c.pair[0] = 3
+    c.bump()
+    xs.push(1)
+    bump_all(xs)
+    swap(n, c.n)
+}
+
+fn locals() {
+    let a = 1
+    let b = 2
+    swap(a, b)
+    let c = Counter{ n: 0, pair: [0, 0] }
+    c.bump()
+    swap(c.pair[0], a)
+    let p = Pair{ left: 1, right: 2 }
+    swap(p.left, p.right)
+}
+
+// A pointer or a slice views storage somebody else owns, so a write through
+// one is not a write to the parameter that holds it.
+fn views(p: *Counter, xs: i32[], q: *Counter?) {
+    p.n = 1
+    p.bump()
+    xs[0] = 1
+    if q != null {
+        q.n = 2
+    }
+}
+
+// An inout argument is a variable that can change.
+fn arguments(plain: i32, counter: Counter) {
+    let n = 1
+    const fixed = 2
+    swap(n, fixed) //~ E0634 fixed cannot be changed: it is a const
+    swap(n, plain) //~ E0634 plain cannot be changed
+    swap(n, 3)     //~ E0635 argument 2 to swap is inout, so it must be a variable
+    swap(n, n + 1) //~ E0635 argument 2 to swap is inout
+    let c = Counter{ n: 0, pair: [0, 0] }
+    c.copy_into(counter)                       //~ E0634 counter cannot be changed
+    Counter{ n: 1, pair: [0, 0] }.bump()       //~ E0635 the receiver of bump is inout, so it must be a variable
+    c.copy_into(Counter{ n: 2, pair: [0, 0] }) //~ E0635 argument 1 to copy_into is inout
+}
+
+fn make(): Counter {
+    return Counter{ n: 0, pair: [0, 0] }
+}
+
+fn temporaries() {
+    make().bump() //~ E0635 the receiver of bump is inout, so it must be a variable
+    make().n = 1  //~ E0634 a temporary value cannot be changed
+}
+
+// The same value twice, when one of the passes is inout.
+fn aliases() {
+    let a = 1
+    let b = 2
+    swap(a, a) //~ E0636 argument 1 to swap and argument 2 to swap overlap
+    let c = Counter{ n: 0, pair: [0, 0] }
+    c.copy_into(c)             //~ E0636 the receiver of copy_into and argument 1 to copy_into overlap
+    swap(c.n, c.n)             //~ E0636 argument 1 to swap and argument 2 to swap overlap
+    swap(c.pair[0], c.pair[1]) //~ E0636 argument 1 to swap and argument 2 to swap overlap
+    let p = Pair{ left: 1, right: 2 }
+    swap(p.left, p.right)
+    swap(a, b)
+    c.add(c.n)
+    c.add(a)
+}
+
+// What an inout parameter is.
+fn defaulted(n: inout i32 = 0) { //~ E0637 an inout parameter takes no default
+}
+
+async fn waits(n: inout i32) { //~ E0637 an async function cannot take an inout parameter
+}
+
+fn valued() {
+    let f = swap  //~ E0637 swap takes an inout parameter, so it can only be called, not used as a value
+    let g = &swap //~ E0637 swap takes an inout parameter
+    let h = fn(a: i32, b: i32) { let x = a }
+}
+
+trait Stepper {
+    fn step(inout self, by: inout i32)
+}
+
+struct Counting {
+    n: i32
+}
+
+impl Stepper for Counting {
+    fn step(inout self, by: i32) { //~ E0528 parameter by of step is a plain borrow, but the trait declares it inout
+    }
+}

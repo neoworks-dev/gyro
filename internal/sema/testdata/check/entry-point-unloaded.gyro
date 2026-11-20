@@ -1,0 +1,6 @@
+// What main returns is acted on by code in stdlib, which a program has to
+// have asked for.
+
+fn main(): i32 { //~ E0620 what main returns is implemented in stdlib
+    return 0
+}

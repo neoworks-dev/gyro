@@ -1,5 +1,5 @@
-// A `*self` receiver mutates the value the method was called on; a plain
-// `self` receiver gets a copy and its writes are lost.
+// An `inout self` receiver changes the value the method was called on; a
+// plain `self` only reads it.
 
 import { println } from "stdlib"
 
@@ -7,7 +7,7 @@ struct Counter {
     n: i32
 }
 
-fn Counter::bump(*self) {
+fn Counter::bump(inout self) {
     self.n += 1
 }
 
@@ -15,21 +15,14 @@ fn Counter::peek(self): i32 {
     return self.n
 }
 
-fn Counter::broken_bump(self) {
-    self.n += 1
-}
-
 fn Counter::at(n: i32): Counter {
     return Counter{ n: n }
 }
 
 fn main() {
-    var c = Counter{ n: 0 }
+    let c = Counter{ n: 0 }
     c.bump()
     c.bump()
-    println(c.peek())
-
-    c.broken_bump()
     println(c.peek())
 
     println(Counter::at(5).peek())

@@ -15,36 +15,36 @@ same rule narrowing conversions follow
 ([chapter 3.2](ch03-02-data-types.md)).
 
 ```gyro
-var v: any = 42 as any
-var n = v as i32    // 42
-var s = v as string // panics: any holds i32, not string
+let v: any = 42 as any
+let n = v as i32    // 42
+let s = v as string // panics: any holds i32, not string
 ```
 
 The only implicit conversion in the language is **packing**: an argument to
 a `...any` parameter is wrapped without writing `as any`, because the call
-is what constructs the pack. Assignment never wraps — `var x: any = 42` is
+is what constructs the pack. Assignment never wraps — `let x: any = 42` is
 an error and `42 as any` is the fix.
 
 ## Asking instead of asserting
 
 `match` tests the type rather than asserting it, spelled like the type test
-on an `error`:
+on an `Error`:
 
 ```gyro
-var text = match v {
+let text = match v {
     i32(n):    format(heap(), "int #{n}")
     string(s): format(heap(), "text #{s}")
     _:         "something else"
 }
 ```
 
-`any` is an open subject like `error`, so a match on one is never reported
+`any` is an open subject like `Error`, so a match on one is never reported
 as partial — and falling off the end panics. Write the `_`.
 
 A type an ordinary path cannot spell is written out in the arm:
 
 ```gyro
-var text = match v {
+let text = match v {
     (i32, string)(pair): format(heap(), "pair #{pair.0}")
     i32[](xs):           format(heap(), "#{xs.len()} numbers")
     i32[3](fixed):       "three numbers"
@@ -60,8 +60,8 @@ themselves afterwards:
 
 - `void` and `null`
 - another `any` — they do not nest
-- an `error` or a `T?`, both of which hide the concrete type the `any` is
-  meant to be sure of
+- an `Error`, a `T | Error` or a `T?`, all of which hide the concrete type the
+  `any` is meant to be sure of
 - a channel, a future, a function value
 - `anyptr` and `code(..)` ([chapter 15](ch15-00-c-interop.md))
 - the runtime-owned handles, such as `Array` and `Mutex`

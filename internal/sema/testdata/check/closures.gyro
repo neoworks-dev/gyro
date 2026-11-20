@@ -9,14 +9,14 @@ fn produce(n: i32) {
 }
 
 fn types() {
-    var double = fn(a: i32): i32 { return a * 2 }
-    var x: i32 = double(21)
+    let double = fn(a: i32): i32 { return a * 2 }
+    let x: i32 = double(21)
 }
 
 fn badTypes() {
-    var double = fn(a: i32): i32 { return a * 2 }
+    let double = fn(a: i32): i32 { return a * 2 }
     double("x")                             //~ cannot use string as i32
-    var f = fn(a: i32): i32 { return "no" } //~ cannot use string as i32 in return
+    let f = fn(a: i32): i32 { return "no" } //~ cannot use string as i32 in return
 }
 
 // A closure's parameter types come from the expected type at the call.
@@ -30,7 +30,7 @@ fn inferredBodyIsChecked(): i32 {
 }
 
 fn nothingToInferFrom() {
-    var f = fn(x) x //~ needs a type
+    let f = fn(x) x //~ needs a type
 }
 
 // A closure with the wrong arity has no expected type for its extra
@@ -47,13 +47,13 @@ fn expressionBody() {
 }
 
 fn moveNeedsTheName() {
-    var node = 1
-    var f = fn[move node]() {
-        var x = node
+    let node = 1
+    let f = fn[move node]() {
+        let x = node
     }
     f()
 }
 
 fn moveOfAGhost() {
-    var f = fn[move ghost]() {} //~ cannot move ghost
+    let f = fn[move ghost]() {} //~ cannot move ghost
 }

@@ -1,4 +1,4 @@
-// `for..in` accepts anything that implements Iterator<T>: a next(*self):
+// `for..in` accepts anything that implements Iterator<T>: a next(inout self):
 // (T, bool) that hands back the following element and whether there was one.
 
 import { println, Iterator } from "stdlib"
@@ -9,7 +9,7 @@ struct Counter {
 }
 
 impl Iterator<i32> for Counter {
-    fn next(*self): (i32, bool) {
+    fn next(inout self): (i32, bool) {
         if self.n >= self.limit {
             return 0, false
         }
@@ -22,7 +22,7 @@ fn main() {
     for x in (Counter{ n: 0, limit: 3 }) {
         println(x)
     }
-    var total: i32 = 0
+    let total: i32 = 0
     for x in (Counter{ n: 0, limit: 4 }) {
         total += x
     }

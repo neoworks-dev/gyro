@@ -85,7 +85,7 @@ impl Shape for Rect {
 }
 
 fn total_area<S: Shape>(shapes: S[]): i32 {
-    var total = 0
+    let total = 0
     for shape in shapes {
         total += shape.area()
     }
@@ -98,7 +98,7 @@ fn doubled<S: Shape>(shape: S): i32 {
 
 // Two bounds. The key of a Map needs both.
 fn count_distinct<K: Eq & Hash>(keys: K[]): usize {
-    var seen = Map<K, bool>::new(heap())
+    let seen = Map<K, bool>::new(heap())
     defer seen.free()
     for key in keys {
         seen.insert(key, true)
@@ -116,12 +116,12 @@ fn Ranked<T>::new(): Ranked<T> {
     return Ranked{ items: Array<T>::new(heap()) }
 }
 
-fn Ranked<T>::add(*self, item: T) {
+fn Ranked<T>::add(inout self, item: T) {
     self.items.push(item)
 }
 
 fn Ranked<T>::best(self): T {
-    var best = self.items.get(0)
+    let best = self.items.get(0)
     for i in 1..self.items.len() {
         best = bigger(best, self.items.get(i))
     }
@@ -132,7 +132,7 @@ fn main() {
     println(bigger(3, 9))
     println(bigger("pear", "apple"))
     println(bigger(2.5, 1.5))
-    var newest = bigger(Version{ major: 1, minor: 9 }, Version{ major: 2, minor: 0 })
+    let newest = bigger(Version{ major: 1, minor: 9 }, Version{ major: 2, minor: 0 })
     println(newest.major)
 
     println(clamp(15, 0, 10))
@@ -140,7 +140,7 @@ fn main() {
     println(clamp(7, 0, 10))
     println(clamp(Version{ major: 3, minor: 0 }, Version{ major: 1, minor: 0 }, Version{ major: 2, minor: 5 }).major)
 
-    var squares = [Square{ side: 2 }, Square{ side: 3 }]
+    let squares = [Square{ side: 2 }, Square{ side: 3 }]
     println(total_area(squares))
     println(doubled(Square{ side: 4 }))
     println(doubled(Rect{ w: 2, h: 5 }))
@@ -149,7 +149,7 @@ fn main() {
     println(count_distinct(["a", "b", "a"]))
     println(count_distinct([Version{ major: 1, minor: 0 }, Version{ major: 1, minor: 0 }, Version{ major: 2, minor: 0 }]))
 
-    var ranked = Ranked<i32>::new()
+    let ranked = Ranked<i32>::new()
     ranked.add(4)
     ranked.add(11)
     ranked.add(7)

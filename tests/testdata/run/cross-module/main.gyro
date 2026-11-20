@@ -5,7 +5,7 @@ fn main() {
     shout("hey")
     println(double(BASE))
 
-    var c = Counter{ n: 0 }
+    let c = Counter{ n: 0 }
     println(c.bump())
     println(c.bump())
 }

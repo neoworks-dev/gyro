@@ -22,17 +22,17 @@ async fn label(n: i64, text: string): (string, i64) {
 }
 
 async fn main() {
-    var total: i64 = 0
-    var running = [square(1), square(2), square(3), square(4), square(5)]
+    let total: i64 = 0
+    let running = [square(1), square(2), square(3), square(4), square(5)]
     for each in running {
         total += await each
     }
     println(total)
 
-    var scale = Scale{ factor: 3 }
+    let scale = Scale{ factor: 3 }
     println(await scale.apply(14))
 
-    var name, n = await label(7, "item")
+    let name, n = await label(7, "item")
     println(name)
     println(n)
 }

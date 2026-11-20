@@ -48,16 +48,16 @@ export const ERROR_PART: i64 = -3
 // A token is a span of the input: [start, end) and how many children it
 // has. An object counts its keys, a key counts its one value.
 export struct Token {
-    export kind: Kind
-    export start: i64
-    export end: i64
-    export size: i64
+    kind: Kind
+    start: i64
+    end: i64
+    size: i64
 }
 
 export struct Parser {
-    export pos: i64
-    export toknext: i64
-    export toksuper: i64
+    pos: i64
+    toknext: i64
+    toksuper: i64
 }
 
 export fn init(): Parser {
@@ -73,11 +73,11 @@ fn byte_at(bytes: u8[], index: i64): u8 {
 
 // alloc takes the next token out of the pool, or answers -1 when the
 // pool is spent — C's NULL return from jsmn_alloc_token.
-fn Parser::alloc(*self, tokens: Array<Token>, max_tokens: i64): i64 {
+fn Parser::alloc(inout self, tokens: inout Array<Token>, max_tokens: i64): i64 {
     if self.toknext >= max_tokens {
         return -1
     }
-    var index = self.toknext
+    let index = self.toknext
     self.toknext += 1
     if index < tokens.len() as i64 {
         tokens.set(index as usize, Token{ kind: Kind::Undefined, start: -1, end: -1, size: 0 })
@@ -87,12 +87,12 @@ fn Parser::alloc(*self, tokens: Array<Token>, max_tokens: i64): i64 {
     return index
 }
 
-fn fill(tokens: Array<Token>, index: i64, kind: Kind, start: i64, end: i64) {
+fn fill(tokens: inout Array<Token>, index: i64, kind: Kind, start: i64, end: i64) {
     tokens.set(index as usize, Token{ kind: kind, start: start, end: end, size: 0 })
 }
 
-fn grow(tokens: Array<Token>, index: i64) {
-    var token = tokens.get(index as usize)
+fn grow(tokens: inout Array<Token>, index: i64) {
+    let token = tokens.get(index as usize)
     token.size += 1
     tokens.set(index as usize, token)
 }
@@ -103,12 +103,12 @@ fn grow(tokens: Array<Token>, index: i64) {
 
 // primitive is a number, true, false or null: everything up to the next
 // separator. The default build ends one at end of input too.
-fn Parser::primitive(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
-    var start = self.pos
-    var len = js.len() as i64
+fn Parser::primitive(inout self, js: u8[], tokens: inout Array<Token>, max_tokens: i64, count_only: bool): i64 {
+    let start = self.pos
+    let len = js.len() as i64
 
     while self.pos < len && byte_at(js, self.pos) != 0 {
-        var c = byte_at(js, self.pos)
+        let c = byte_at(js, self.pos)
         if c == ':' as u8 || c == '\t' as u8 || c == '\r' as u8 || c == '\n' as u8
             || c == ' ' as u8 || c == ',' as u8 || c == ']' as u8 || c == '}' as u8 {
             break
@@ -124,7 +124,7 @@ fn Parser::primitive(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, cou
         self.pos -= 1
         return 0
     }
-    var index = self.alloc(tokens, max_tokens)
+    let index = self.alloc(tokens, max_tokens)
     if index < 0 {
         self.pos = start
         return ERROR_NOMEM
@@ -136,21 +136,21 @@ fn Parser::primitive(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, cou
 
 // string spans a quoted string, escapes included; the token covers what
 // is between the quotes.
-fn Parser::string(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
-    var start = self.pos
-    var len = js.len() as i64
+fn Parser::string(inout self, js: u8[], tokens: inout Array<Token>, max_tokens: i64, count_only: bool): i64 {
+    let start = self.pos
+    let len = js.len() as i64
 
     // Skip the opening quote.
     self.pos += 1
 
     while self.pos < len && byte_at(js, self.pos) != 0 {
-        var c = byte_at(js, self.pos)
+        let c = byte_at(js, self.pos)
 
         if c == '"' as u8 {
             if count_only {
                 return 0
             }
-            var index = self.alloc(tokens, max_tokens)
+            let index = self.alloc(tokens, max_tokens)
             if index < 0 {
                 self.pos = start
                 return ERROR_NOMEM
@@ -161,17 +161,17 @@ fn Parser::string(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_
 
         if c == '\\' as u8 && self.pos + 1 < len {
             self.pos += 1
-            var escaped = byte_at(js, self.pos)
+            let escaped = byte_at(js, self.pos)
             if escaped == '"' as u8 || escaped == '/' as u8 || escaped == '\\' as u8
                 || escaped == 'b' as u8 || escaped == 'f' as u8 || escaped == 'r' as u8
                 || escaped == 'n' as u8 || escaped == 't' as u8 {
                 // An allowed escape; nothing else to check.
             } elif escaped == 'u' as u8 {
                 self.pos += 1
-                var digits: i64 = 0
+                let digits: i64 = 0
                 while digits < 4 && self.pos < len && byte_at(js, self.pos) != 0 {
-                    var hex = byte_at(js, self.pos)
-                    var ok = (hex >= 48 && hex <= 57) || (hex >= 65 && hex <= 70) || (hex >= 97 && hex <= 102)
+                    let hex = byte_at(js, self.pos)
+                    let ok = (hex >= 48 && hex <= 57) || (hex >= 65 && hex <= 70) || (hex >= 97 && hex <= 102)
                     if !ok {
                         self.pos = start
                         return ERROR_INVAL
@@ -199,24 +199,24 @@ fn Parser::string(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_
 // parse tokenizes js into tokens, returning how many tokens the input
 // holds or one of the three errors. With count_only the tokens array is
 // left alone and only the count comes back, which is C's tokens == NULL.
-export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, count_only: bool): i64 {
-    var count = self.toknext
-    var len = js.len() as i64
+export fn Parser::parse(inout self, js: u8[], tokens: inout Array<Token>, max_tokens: i64, count_only: bool): i64 {
+    let count = self.toknext
+    let len = js.len() as i64
 
     while self.pos < len && byte_at(js, self.pos) != 0 {
-        var c = byte_at(js, self.pos)
+        let c = byte_at(js, self.pos)
 
         if c == '{' as u8 || c == '[' as u8 {
             count += 1
             if !count_only {
-                var index = self.alloc(tokens, max_tokens)
+                let index = self.alloc(tokens, max_tokens)
                 if index < 0 {
                     return ERROR_NOMEM
                 }
                 if self.toksuper != -1 {
                     grow(tokens, self.toksuper)
                 }
-                var token = tokens.get(index as usize)
+                let token = tokens.get(index as usize)
                 if c == '{' as u8 {
                     token.kind = Kind::Object
                 } else {
@@ -228,17 +228,17 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
             }
         } elif c == '}' as u8 || c == ']' as u8 {
             if !count_only {
-                var kind = Kind::Array
+                let kind = Kind::Array
                 if c == '}' as u8 {
                     kind = Kind::Object
                 }
 
                 // Close the innermost open token, then find the one enclosing
                 // it. C walks the array backwards twice for this.
-                var i = self.toknext - 1
-                var closed = false
+                let i = self.toknext - 1
+                let closed = false
                 while i >= 0 {
-                    var token = tokens.get(i as usize)
+                    let token = tokens.get(i as usize)
                     if token.start != -1 && token.end == -1 {
                         if token.kind != kind {
                             return ERROR_INVAL
@@ -255,7 +255,7 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
                     return ERROR_INVAL
                 }
                 while i >= 0 {
-                    var token = tokens.get(i as usize)
+                    let token = tokens.get(i as usize)
                     if token.start != -1 && token.end == -1 {
                         self.toksuper = i
                         break
@@ -264,7 +264,7 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
                 }
             }
         } elif c == '"' as u8 {
-            var result = self.string(js, tokens, max_tokens, count_only)
+            let result = self.string(js, tokens, max_tokens, count_only)
             if result < 0 {
                 return result
             }
@@ -278,11 +278,11 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
             self.toksuper = self.toknext - 1
         } elif c == ',' as u8 {
             if !count_only && self.toksuper != -1 {
-                var parent = tokens.get(self.toksuper as usize)
+                let parent = tokens.get(self.toksuper as usize)
                 if parent.kind != Kind::Array && parent.kind != Kind::Object {
-                    var i = self.toknext - 1
+                    let i = self.toknext - 1
                     while i >= 0 {
-                        var token = tokens.get(i as usize)
+                        let token = tokens.get(i as usize)
                         if token.kind == Kind::Array || token.kind == Kind::Object {
                             if token.start != -1 && token.end == -1 {
                                 self.toksuper = i
@@ -295,7 +295,7 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
             }
         } else {
             // The default build takes every unquoted value as a primitive.
-            var result = self.primitive(js, tokens, max_tokens, count_only)
+            let result = self.primitive(js, tokens, max_tokens, count_only)
             if result < 0 {
                 return result
             }
@@ -308,9 +308,9 @@ export fn Parser::parse(*self, js: u8[], tokens: Array<Token>, max_tokens: i64, 
     }
 
     if !count_only {
-        var i = self.toknext - 1
+        let i = self.toknext - 1
         while i >= 0 {
-            var token = tokens.get(i as usize)
+            let token = tokens.get(i as usize)
             // An object or array that was opened and never closed.
             if token.start != -1 && token.end == -1 {
                 return ERROR_PART

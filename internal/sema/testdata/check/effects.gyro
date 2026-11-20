@@ -53,7 +53,7 @@ fn fill(xs: Array<i32>, v: i32): i32[] !{ &xs } {
 
 // Pushing allocates and interpolating builds a Format, and neither is an
 // effect: io for the print is the whole row.
-fn describe(xs: Array<i32>, n: i32) !{ io } {
+fn describe(xs: inout Array<i32>, n: i32) !{ io } {
     xs.push(n)
     println("n = #{n}")
 }
@@ -62,7 +62,7 @@ struct Logger {
     count: i32
 }
 
-fn Logger::log(*self, message: string) !{} {
+fn Logger::log(inout self, message: string) !{} {
     println(message) //~ E0611 println does io, which the row does not name
 }
 
@@ -104,18 +104,18 @@ fn callsRelay() !{} {
 // alloc effect.
 fn misspelled(n: i32) !{ ioo } { //~ E0612 ioo is not an effect
     //~^ help: the only effect is io; a &name entry names a borrow source
-    var doubled = n * 2
+    let doubled = n * 2
 }
 
 fn allocating(n: i32) !{ alloc } { //~ E0612 alloc is not an effect
     //~^ help: the only effect is io; a &name entry names a borrow source
-    var doubled = n * 2
+    let doubled = n * 2
 }
 
 // runes() and bytes() have no declaration to carry a row, so the built-in
 // surface answers for itself, and it performs no io.
 fn count(text: string): i32 !{} {
-    var seen = 0
+    let seen = 0
     for point in text.runes(heap()) {
         seen += 1
     }
@@ -126,7 +126,7 @@ fn count(text: string): i32 !{} {
 // contributes nothing to the caller: a row cannot travel with a function
 // value until effect polymorphism.
 fn closureRow() {
-    var quiet = fn(n: i32) !{} {
+    let quiet = fn(n: i32) !{} {
         println(n) //~ E0611 println does io, which the row does not name
     }
 }

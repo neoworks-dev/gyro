@@ -6,8 +6,8 @@ any file order.
 
 ```gyro
 export struct Stack {
-    export capacity: i32
-    top: i32
+    capacity: i32
+    private top: i32
 }
 
 export fn Stack::new(capacity: i32): Stack {
@@ -18,7 +18,7 @@ fn Stack::is_empty(self): bool {
     return self.top == 0
 }
 
-fn Stack::push(*self, v: i32) {
+fn Stack::push(inout self, v: i32) {
     self.top += 1
 }
 ```
@@ -32,9 +32,12 @@ owner's name, as in `fn Stack::new(): Self`.
 
 ## Receivers
 
-- `self` borrows the receiver immutably and **never copies it**, however
-  large the struct is.
-- `*self` takes a pointer and may mutate.
+- `self` borrows the receiver and **never copies it**, however large the
+  struct is. The method may read it and may not change it: assigning to
+  `self` or a field of it, or calling a method that takes `inout self`, is
+  an error.
+- `inout self` borrows the receiver exclusively and may change it in place.
+  The call is written the same, `c.bump()`, on a variable that can change.
 - No receiver at all makes it an **associated function**, called as
   `Stack::new(16)`.
 
@@ -57,7 +60,7 @@ scope:
 import { trim, split } from "stdlib"
 import { heap } from "mem"
 
-var clean = line.trim(heap()) // works because `trim` was imported
+let clean = line.trim(heap()) // works because `trim` was imported
 ```
 
 That is what keeps extensions out of universe scope. `line.trim(heap())` works
@@ -80,8 +83,8 @@ Most of the standard library's string surface is exactly this: `split`,
 are part of the type rather than an addition to it. They need no import, and an
 extension of the same name does not displace them.
 
-`void` and `error` cannot be extended: nothing has type void, and `error` is
-a contract satisfied by whatever carries `message()`, not a type.
+`void` cannot be extended, as nothing has that type, and neither can `any`,
+whose behaviour belongs to the type inside it.
 
 ## Methods and traits
 
@@ -122,8 +125,8 @@ max(3, 7)            // fine: i32 is Ord
 The same pattern runs through the language. `impl Iterator<T>` makes a type
 work in `for..in`, `impl Print` with a `to_string` controls its own
 printing, `impl Hash` with a `hash` replaces the derived one — and takes on
-keeping it consistent with `Eq`. The one contract still met by shape is
-`error`, which is any type with `message(): string`.
+keeping it consistent with `Eq`, and `impl Error` is what makes a type an
+error ([chapter 9](ch09-00-errors.md)).
 
 ## Receivers in effect rows
 

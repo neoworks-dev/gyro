@@ -101,14 +101,14 @@ impl Eq for TextKind
 // null `text` pointer, and every place it does so also has size 0, so the
 // two spellings agree.
 export struct Attribute {
-    export text: Array<u8>
-    export types: Array<TextKind>
-    export offsets: Array<i64>
+    text: Array<u8>
+    types: Array<TextKind>
+    offsets: Array<i64>
 }
 
-var NO_TEXT: Array<u8> = Array<u8>::new(heap())
-var NO_TYPES: Array<TextKind> = Array<TextKind>::new(heap())
-var NO_OFFSETS: Array<i64> = Array<i64>::new(heap())
+let NO_TEXT: Array<u8> = Array<u8>::new(heap())
+let NO_TYPES: Array<TextKind> = Array<TextKind>::new(heap())
+let NO_OFFSETS: Array<i64> = Array<i64>::new(heap())
 
 export fn Attribute::absent(): Attribute {
     return Attribute{ text: NO_TEXT, types: NO_TYPES, offsets: NO_OFFSETS }
@@ -126,16 +126,16 @@ export fn Attribute::size(self): i64 {
 // struct is enough here because Gyro has no unions and the renderer reads
 // only the fields belonging to the kind it was handed.
 export struct Detail {
-    export level: i64        // H
-    export start: i64        // Ol
-    export is_tight: bool    // Ul, Ol
-    export mark: u8          // Ul bullet, Ol delimiter
-    export fence_char: u8    // Code
-    export info: Attribute   // Code
-    export lang: Attribute   // Code
-    export href: Attribute   // A, Img
-    export title: Attribute  // A, Img
-    export is_autolink: bool // A
+    level: i64        // H
+    start: i64        // Ol
+    is_tight: bool    // Ul, Ol
+    mark: u8          // Ul bullet, Ol delimiter
+    fence_char: u8    // Code
+    info: Attribute   // Code
+    lang: Attribute   // Code
+    href: Attribute   // A, Img
+    title: Attribute  // A, Img
+    is_autolink: bool // A
 }
 
 export fn Detail::none(): Detail {
@@ -157,11 +157,11 @@ export fn Detail::none(): Detail {
 // callback takes the source it should read plus a half-open range, since
 // there are no interior pointers to hand over.
 export struct Parser {
-    export enter_block: fn(BlockKind, Detail)
-    export leave_block: fn(BlockKind, Detail)
-    export enter_span: fn(SpanKind, Detail)
-    export leave_span: fn(SpanKind, Detail)
-    export text: fn(TextKind, u8[], i64, i64)
+    enter_block: fn(BlockKind, Detail)
+    leave_block: fn(BlockKind, Detail)
+    enter_span: fn(SpanKind, Detail)
+    leave_span: fn(SpanKind, Detail)
+    text: fn(TextKind, u8[], i64, i64)
 }
 
 // ---------------------------------------------------------------------------
@@ -224,23 +224,23 @@ impl Eq for LineKind
 // Literals handed to the text callback
 // ---------------------------------------------------------------------------
 
-var SPACE: u8[1] = [32]
-var NEWLINE: u8[1] = [10]
+let SPACE: u8[1] = [32]
+let NEWLINE: u8[1] = [10]
 // What md4c passes for MD_TEXT_NULLCHAR: a one-byte placeholder the
 // renderer never reads, since the kind already says what to emit.
-var NUL: u8[1] = [0]
+let NUL: u8[1] = [0]
 // Code blocks are indented sixteen columns at a time.
-var INDENT_CHUNK: u8[16] = [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+let INDENT_CHUNK: u8[16] = [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
 
-var HTML_COMMENT_CLOSE: u8[3] = [45, 45, 62]                  // -->
-var HTML_PI_CLOSE: u8[2] = [63, 62]                           // ?>
-var HTML_DECL_CLOSE: u8[1] = [62]                             // >
-var HTML_CDATA_CLOSE: u8[3] = [93, 93, 62]                    // ]]>
-var HTML_CDATA_OPEN: u8[8] = [33, 91, 67, 68, 65, 84, 65, 91] // ![CDATA[
-var MAILTO: u8[7] = [109, 97, 105, 108, 116, 111, 58]         // mailto:
+let HTML_COMMENT_CLOSE: u8[3] = [45, 45, 62]                  // -->
+let HTML_PI_CLOSE: u8[2] = [63, 62]                           // ?>
+let HTML_DECL_CLOSE: u8[1] = [62]                             // >
+let HTML_CDATA_CLOSE: u8[3] = [93, 93, 62]                    // ]]>
+let HTML_CDATA_OPEN: u8[8] = [33, 91, 67, 68, 65, 84, 65, 91] // ![CDATA[
+let MAILTO: u8[7] = [109, 97, 105, 108, 116, 111, 58]         // mailto:
 
-var BRACKET_CHARS: u8[3] = [91, 33, 93] // [ ! ]
-var EMPH_CHARS: u8[3] = [38, 42, 95]    // & * _
+let BRACKET_CHARS: u8[3] = [91, 33, 93] // [ ! ]
+let EMPH_CHARS: u8[3] = [38, 42, 95]    // & * _
 
 // ---------------------------------------------------------------------------
 // Character classes
@@ -327,7 +327,7 @@ fn is_utf8_tail(b: u8): bool { return (b & 0xc0) == 0x80 }
 // ill-formed sequence decodes as its lead byte, one byte wide, which is
 // what md4c does.
 fn decode(text: u8[], off: i64, size: i64): (u32, i64) {
-    var lead = text[off as usize]
+    let lead = text[off as usize]
     if !is_utf8_lead1(lead) {
         if is_utf8_lead2(lead) {
             if off + 1 < size && is_utf8_tail(text[(off + 1) as usize]) {
@@ -354,7 +354,7 @@ fn decode(text: u8[], off: i64, size: i64): (u32, i64) {
 
 // decode_before answers the code point ending just before `off`.
 fn decode_before(text: u8[], off: i64): u32 {
-    var last = text[(off - 1) as usize]
+    let last = text[(off - 1) as usize]
     if !is_utf8_lead1(last) {
         if off > 1 && is_utf8_lead2(text[(off - 2) as usize]) && is_utf8_tail(last) {
             return ((text[(off - 2) as usize] as u32 & 0x1f) << 6) | (last as u32 & 0x3f)
@@ -567,8 +567,8 @@ fn Ctx::emit(self, kind: TextKind, source: u8[], beg: i64, end: i64) {
 // emit_insecure is MD_TEXT_INSECURE: the same, except that a NUL in the
 // run is reported separately so the renderer can substitute U+FFFD.
 fn Ctx::emit_insecure(self, kind: TextKind, source: u8[], beg: i64, end: i64) {
-    var start = beg
-    var off = beg
+    let start = beg
+    let off = beg
     while true {
         while off < end && source[off as usize] != 0 {
             off += 1
@@ -593,13 +593,13 @@ fn Ctx::mark(self, index: i64): Mark {
     return self.marks.get(index as usize)
 }
 
-fn Ctx::put_mark(*self, index: i64, mark: Mark) {
+fn Ctx::put_mark(inout self, index: i64, mark: Mark) {
     self.marks.set(index as usize, mark)
 }
 
-fn Ctx::add_mark(*self, ch: u8, beg: i64, end: i64, flags: i64) {
-    var mark = Mark{ beg: beg, end: end, prev: -1, next: -1, ch: ch, flags: flags }
-    var index = self.n_marks
+fn Ctx::add_mark(inout self, ch: u8, beg: i64, end: i64, flags: i64) {
+    let mark = Mark{ beg: beg, end: end, prev: -1, next: -1, ch: ch, flags: flags }
+    let index = self.n_marks
     if index < self.marks.len() as i64 {
         self.marks.set(index as usize, mark)
     } else {
@@ -612,15 +612,15 @@ fn Ctx::stack_top(self, stack: i64): i64 {
     return self.opener_stacks.get(stack as usize)
 }
 
-fn Ctx::stack_push(*self, stack: i64, mark_index: i64) {
-    var mark = self.mark(mark_index)
+fn Ctx::stack_push(inout self, stack: i64, mark_index: i64) {
+    let mark = self.mark(mark_index)
     mark.next = self.stack_top(stack)
     self.put_mark(mark_index, mark)
     self.opener_stacks.set(stack as usize, mark_index)
 }
 
-fn Ctx::stack_pop(*self, stack: i64): i64 {
-    var top = self.stack_top(stack)
+fn Ctx::stack_pop(inout self, stack: i64): i64 {
+    let top = self.stack_top(stack)
     if top >= 0 {
         self.opener_stacks.set(stack as usize, self.mark(top).next)
     }
@@ -628,13 +628,13 @@ fn Ctx::stack_pop(*self, stack: i64): i64 {
 }
 
 // resolve_range ties an opener to its closer and marks both settled.
-fn Ctx::resolve_range(*self, opener_index: i64, closer_index: i64) {
-    var opener = self.mark(opener_index)
+fn Ctx::resolve_range(inout self, opener_index: i64, closer_index: i64) {
+    let opener = self.mark(opener_index)
     opener.next = closer_index
     opener.flags = opener.flags | MARK_OPENER | MARK_RESOLVED
     self.put_mark(opener_index, opener)
 
-    var closer = self.mark(closer_index)
+    let closer = self.mark(closer_index)
     closer.prev = opener_index
     closer.flags = closer.flags | MARK_CLOSER | MARK_RESOLVED
     self.put_mark(closer_index, closer)
@@ -642,19 +642,19 @@ fn Ctx::resolve_range(*self, opener_index: i64, closer_index: i64) {
 
 // pop_openers drops every unresolved opener at or after the given mark, so
 // no two resolved ranges can cross.
-fn Ctx::pop_openers(*self, opener_index: i64) {
-    for var stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
+fn Ctx::pop_openers(inout self, opener_index: i64) {
+    for let stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
         while self.stack_top(stack) >= opener_index {
-            var _ = self.stack_pop(stack)
+            let _ = self.stack_pop(stack)
         }
     }
 }
 
 // disable_marks turns a span of marks into dummies, which the later phases
 // skip over.
-fn Ctx::disable_marks(*self, first: i64, limit: i64) {
-    for var i = first; i < limit; i += 1 {
-        var mark = self.mark(i)
+fn Ctx::disable_marks(inout self, first: i64, limit: i64) {
+    for let i = first; i < limit; i += 1 {
+        let mark = self.mark(i)
         mark.ch = 68 // 'D'
         mark.flags = 0
         self.put_mark(i, mark)
@@ -665,14 +665,14 @@ fn Ctx::disable_marks(*self, first: i64, limit: i64) {
 // to. The "rule of three" needs the original length modulo three, and
 // openers that could also close are kept apart from openers that could not.
 fn emph_stack(ch: u8, flags: i64): i64 {
-    var stack: i64 = 0
+    let stack: i64 = 0
     if ch == 95 { // '_'
         stack = 6
     }
     if (flags & MARK_EMPH_OC) != 0 {
         stack += 3
     }
-    var mod3 = flags & MARK_EMPH_MOD3_MASK
+    let mod3 = flags & MARK_EMPH_MOD3_MASK
     if mod3 == MARK_EMPH_MOD3_1 {
         stack += 1
     } elif mod3 == MARK_EMPH_MOD3_2 {
@@ -682,7 +682,7 @@ fn emph_stack(ch: u8, flags: i64): i64 {
 }
 
 fn Ctx::opener_stack_of(self, mark_index: i64): i64 {
-    var mark = self.mark(mark_index)
+    let mark = self.mark(mark_index)
     if mark.ch == 42 || mark.ch == 95 { // '*' '_'
         return emph_stack(mark.ch, mark.flags)
     }
@@ -701,11 +701,11 @@ fn Ctx::line(self, index: i64): Line {
 // the offset. An offset falling in the gap between two lines answers the
 // following one. -1 means the offset is outside the block.
 fn Ctx::lookup_line(self, off: i64, lines_off: i64, n_lines: i64): i64 {
-    var low: i64 = 0
-    var high = n_lines - 1
+    let low: i64 = 0
+    let high = n_lines - 1
     while low <= high {
-        var pivot = (low + high) / 2
-        var line = self.line(lines_off + pivot)
+        let pivot = (low + high) / 2
+        let line = self.line(lines_off + pivot)
 
         if off < line.beg {
             if high == 0 || self.line(lines_off + high - 1).end < off {
@@ -724,12 +724,12 @@ fn Ctx::lookup_line(self, off: i64, lines_off: i64, n_lines: i64): i64 {
 // merge_lines copies [beg, end) out of the document, replacing each line
 // break with one character, and hands back storage of its own.
 fn Ctx::merge_lines(self, beg: i64, end: i64, lines_off: i64, replacement: u8): Array<u8> {
-    var out = Array<u8>::new(heap())
-    var line_index: i64 = 0
-    var off = beg
+    let out = Array<u8>::new(heap())
+    let line_index: i64 = 0
+    let off = beg
 
     while true {
-        var line_end = self.line(lines_off + line_index).end
+        let line_end = self.line(lines_off + line_index).end
         if end < line_end {
             line_end = end
         }
@@ -751,8 +751,8 @@ fn Ctx::merge_lines(self, beg: i64, end: i64, lines_off: i64, replacement: u8): 
 // document, which the port needs wherever md4c would have passed a pointer
 // into it.
 fn Ctx::copy_range(self, beg: i64, end: i64): Array<u8> {
-    var out = Array<u8>::new(heap())
-    for var off = beg; off < end; off += 1 {
+    let out = Array<u8>::new(heap())
+    for let off = beg; off < end; off += 1 {
         out.push(self.ch(off))
     }
     return out
@@ -763,7 +763,7 @@ fn Ctx::copy_range(self, beg: i64, end: i64): Array<u8> {
 // ---------------------------------------------------------------------------
 
 fn is_hex_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+    let off = beg
     while off < max_end && is_xdigit(text[off as usize]) && off - beg <= 8 {
         off += 1
     }
@@ -774,7 +774,7 @@ fn is_hex_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
 }
 
 fn is_dec_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+    let off = beg
     while off < max_end && is_digit(text[off as usize]) && off - beg <= 8 {
         off += 1
     }
@@ -785,7 +785,7 @@ fn is_dec_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
 }
 
 fn is_named_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+    let off = beg
     if off < max_end && is_alpha(text[off as usize]) {
         off += 1
     } else {
@@ -804,8 +804,8 @@ fn is_named_entity_contents(text: u8[], beg: i64, max_end: i64): (bool, i64) {
 // md4c knows no list of names here: anything shaped like one counts, and
 // the renderer decides what an unknown name means.
 export fn is_entity(text: u8[], beg: i64, max_end: i64): (bool, i64) {
-    var off = beg + 1
-    var ok = false
+    let off = beg + 1
+    let ok = false
 
     if off + 2 < max_end && text[off as usize] == 35
         && (text[(off + 1) as usize] == 120 || text[(off + 1) as usize] == 88) {
@@ -834,18 +834,18 @@ fn build_attribute(source: u8[], beg: i64, size: i64, keep_escapes: bool): Attri
         return Attribute::absent()
     }
 
-    var text = Array<u8>::new(heap())
-    var types = Array<TextKind>::new(heap())
-    var offsets = Array<i64>::new(heap())
+    let text = Array<u8>::new(heap())
+    let types = Array<TextKind>::new(heap())
+    let offsets = Array<i64>::new(heap())
 
-    var raw_off = beg
-    var limit = beg + size
-    var out: i64 = 0
-    var last_kind = TextKind::Normal
-    var have_run = false
+    let raw_off = beg
+    let limit = beg + size
+    let out: i64 = 0
+    let last_kind = TextKind::Normal
+    let have_run = false
 
     while raw_off < limit {
-        var c = source[raw_off as usize]
+        let c = source[raw_off as usize]
 
         if c == 0 {
             types.push(TextKind::NullChar)
@@ -859,7 +859,7 @@ fn build_attribute(source: u8[], beg: i64, size: i64, keep_escapes: bool): Attri
         }
 
         if c == 38 { // '&'
-            var found, ent_end = is_entity(source, raw_off, limit)
+            let found, ent_end = is_entity(source, raw_off, limit)
             if found {
                 types.push(TextKind::Entity)
                 offsets.push(out)
@@ -907,9 +907,9 @@ const FNV1A_BASE: u32 = 2166136261
 const FNV1A_PRIME: u32 = 16777619
 
 fn fnv1a_u32(base: u32, value: u32): u32 {
-    var hash = base
-    var shifted = value
-    for var i: i64 = 0; i < 4; i += 1 {
+    let hash = base
+    let shifted = value
+    for let i: i64 = 0; i < 4; i += 1 {
         hash = hash ^ (shifted & 0xff)
         hash = hash *% FNV1A_PRIME
         shifted = shifted >> 8
@@ -919,10 +919,10 @@ fn fnv1a_u32(base: u32, value: u32): u32 {
 
 // skip_label_whitespace walks past a run of whitespace, newlines included.
 fn skip_label_whitespace(label: u8[], off: i64): i64 {
-    var size = label.len() as i64
-    var at = off
+    let size = label.len() as i64
+    let at = off
     while at < size {
-        var codepoint, width = decode(label, at, size)
+        let codepoint, width = decode(label, at, size)
         if !unicode::is_whitespace(codepoint) && !is_newline(label[at as usize]) {
             break
         }
@@ -932,17 +932,17 @@ fn skip_label_whitespace(label: u8[], off: i64): i64 {
 }
 
 fn label_hash(label: u8[]): u32 {
-    var size = label.len() as i64
-    var hash = FNV1A_BASE
-    var off = skip_label_whitespace(label, 0)
+    let size = label.len() as i64
+    let hash = FNV1A_BASE
+    let off = skip_label_whitespace(label, 0)
 
     while off < size {
-        var codepoint, width = decode(label, off, size)
+        let codepoint, width = decode(label, off, size)
         if unicode::is_whitespace(codepoint) || is_newline(label[off as usize]) {
             hash = fnv1a_u32(hash, 32)
             off = skip_label_whitespace(label, off)
         } else {
-            var a, b, c, n = unicode::fold(codepoint)
+            let a, b, c, n = unicode::fold(codepoint)
             hash = fnv1a_u32(hash, a)
             if n > 1 {
                 hash = fnv1a_u32(hash, b)
@@ -979,27 +979,27 @@ fn FoldRun::at(self, index: i64): u32 {
 // load_fold advances one side by one code point. The end of a label counts
 // as whitespace, which is what makes "foo " and "foo" the same label.
 fn load_fold(label: u8[], off: i64): (FoldRun, i64) {
-    var size = label.len() as i64
+    let size = label.len() as i64
     if off >= size {
         return FoldRun{ first: 32, second: 0, third: 0, count: 1, taken: 0 }, skip_label_whitespace(label, off)
     }
 
-    var codepoint, width = decode(label, off, size)
+    let codepoint, width = decode(label, off, size)
     if unicode::is_whitespace(codepoint) {
         return FoldRun{ first: 32, second: 0, third: 0, count: 1, taken: 0 }, skip_label_whitespace(label, off + width)
     }
 
-    var a, b, c, n = unicode::fold(codepoint)
+    let a, b, c, n = unicode::fold(codepoint)
     return FoldRun{ first: a, second: b, third: c, count: n, taken: 0 }, off + width
 }
 
 fn label_cmp(a_label: u8[], b_label: u8[]): i64 {
-    var a_size = a_label.len() as i64
-    var b_size = b_label.len() as i64
-    var a_off = skip_label_whitespace(a_label, 0)
-    var b_off = skip_label_whitespace(b_label, 0)
-    var a_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
-    var b_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
+    let a_size = a_label.len() as i64
+    let b_size = b_label.len() as i64
+    let a_off = skip_label_whitespace(a_label, 0)
+    let b_off = skip_label_whitespace(b_label, 0)
+    let a_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
+    let b_run = FoldRun{ first: 0, second: 0, third: 0, count: 0, taken: 0 }
 
     while a_off < a_size || a_run.taken < a_run.count || b_off < b_size || b_run.taken < b_run.count {
         if a_run.taken >= a_run.count {
@@ -1009,7 +1009,7 @@ fn label_cmp(a_label: u8[], b_label: u8[]): i64 {
             b_run, b_off = load_fold(b_label, b_off)
         }
 
-        var order = b_run.at(b_run.taken) as i64 - a_run.at(a_run.taken) as i64
+        let order = b_run.at(b_run.taken) as i64 - a_run.at(a_run.taken) as i64
         if order != 0 {
             return order
         }
@@ -1023,7 +1023,7 @@ fn label_cmp(a_label: u8[], b_label: u8[]): i64 {
 // Link reference definitions
 // ---------------------------------------------------------------------------
 
-fn Ctx::add_ref_def(*self, label: Array<u8>, title: Array<u8>, dest_beg: i64, dest_end: i64) {
+fn Ctx::add_ref_def(inout self, label: Array<u8>, title: Array<u8>, dest_beg: i64, dest_end: i64) {
     self.ref_defs.push(RefDef{
         label: label,
         hash: label_hash(label.slice()),
@@ -1038,9 +1038,9 @@ fn Ctx::add_ref_def(*self, label: Array<u8>, title: Array<u8>, dest_beg: i64, de
 // the purpose; the hash is kept here because it makes the common miss one
 // integer comparison rather than a fold-and-compare.
 fn Ctx::lookup_ref_def(self, label: u8[]): i64 {
-    var hash = label_hash(label)
-    for var i: i64 = 0; i < self.ref_defs.len() as i64; i += 1 {
-        var def = self.ref_defs.get(i as usize)
+    let hash = label_hash(label)
+    for let i: i64 = 0; i < self.ref_defs.len() as i64; i += 1 {
+        let def = self.ref_defs.get(i as usize)
         if def.hash == hash && label_cmp(def.label.slice(), label) == 0 {
             return i
         }
@@ -1057,12 +1057,12 @@ fn Ctx::lookup_ref_def(self, label: u8[]): i64 {
 // ---------------------------------------------------------------------------
 
 fn Ctx::is_html_tag(self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
-    var line_end = self.size
+    let off = beg
+    let line_end = self.size
     if n_lines > 0 {
         line_end = self.line(lines_off).end
     }
-    var line_index: i64 = 0
+    let line_index: i64 = 0
 
     if off + 1 >= line_end {
         return false, 0
@@ -1078,7 +1078,7 @@ fn Ctx::is_html_tag(self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64):
     //   41  inside an unquoted value
     //   42  inside a single-quoted value
     //   43  inside a double-quoted value
-    var attr_state: i64 = 0
+    let attr_state: i64 = 0
 
     if self.ch(off) == 47 { // '/'
         attr_state = -1
@@ -1093,10 +1093,10 @@ fn Ctx::is_html_tag(self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64):
         off += 1
     }
 
-    var closed = false
+    let closed = false
     while !closed {
         while off < line_end && !is_newline(self.ch(off)) {
-            var c = self.ch(off)
+            let c = self.ch(off)
 
             if attr_state > 40 {
                 if attr_state == 41 && (is_blank(c) || is_tag_delim(c)) {
@@ -1197,7 +1197,7 @@ fn Ctx::horizon(self, which: i64): i64 {
     return self.html_cdata_horizon
 }
 
-fn Ctx::set_horizon(*self, which: i64, value: i64) {
+fn Ctx::set_horizon(inout self, which: i64, value: i64) {
     if which == HORIZON_COMMENT {
         self.html_comment_horizon = value
     } elif which == HORIZON_PROC_INSTR {
@@ -1210,7 +1210,7 @@ fn Ctx::set_horizon(*self, which: i64, value: i64) {
 }
 
 fn Ctx::equals_at(self, off: i64, needle: u8[]): bool {
-    for var i: i64 = 0; i < needle.len() as i64; i += 1 {
+    for let i: i64 = 0; i < needle.len() as i64; i += 1 {
         if self.ch(off + i) != needle[i as usize] {
             return false
         }
@@ -1218,13 +1218,13 @@ fn Ctx::equals_at(self, off: i64, needle: u8[]): bool {
     return true
 }
 
-fn Ctx::scan_for_html_closer(*self, needle: u8[], lines_off: i64, n_lines: i64,
+fn Ctx::scan_for_html_closer(inout self, needle: u8[], lines_off: i64, n_lines: i64,
     beg: i64, max_end: i64, which_horizon: i64): (bool, i64) {
-    var len = needle.len() as i64
-    var off = beg
-    var line_index: i64 = 0
+    let len = needle.len() as i64
+    let off = beg
+    let line_index: i64 = 0
 
-    var scanned = self.horizon(which_horizon)
+    let scanned = self.horizon(which_horizon)
     if off < scanned && scanned >= max_end - len {
         // Already scanned this far and found nothing.
         return false, 0
@@ -1248,8 +1248,8 @@ fn Ctx::scan_for_html_closer(*self, needle: u8[], lines_off: i64, n_lines: i64,
     return false, 0
 }
 
-fn Ctx::is_html_comment(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+fn Ctx::is_html_comment(inout self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+    let off = beg
     if off + 4 >= self.line(lines_off).end {
         return false, 0
     }
@@ -1261,9 +1261,9 @@ fn Ctx::is_html_comment(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: 
         off + 2, max_end, HORIZON_COMMENT)
 }
 
-fn Ctx::is_html_processing_instruction(*self, lines_off: i64, n_lines: i64,
+fn Ctx::is_html_processing_instruction(inout self, lines_off: i64, n_lines: i64,
     beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+    let off = beg
     if off + 2 >= self.line(lines_off).end {
         return false, 0
     }
@@ -1274,9 +1274,9 @@ fn Ctx::is_html_processing_instruction(*self, lines_off: i64, n_lines: i64,
         off + 2, max_end, HORIZON_PROC_INSTR)
 }
 
-fn Ctx::is_html_declaration(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
-    var line_end = self.line(lines_off).end
+fn Ctx::is_html_declaration(inout self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+    let off = beg
+    let line_end = self.line(lines_off).end
     if off + 2 >= line_end {
         return false, 0
     }
@@ -1297,8 +1297,8 @@ fn Ctx::is_html_declaration(*self, lines_off: i64, n_lines: i64, beg: i64, max_e
         off, max_end, HORIZON_DECL)
 }
 
-fn Ctx::is_html_cdata(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg
+fn Ctx::is_html_cdata(inout self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+    let off = beg
     if off + 9 >= self.line(lines_off).end {
         return false, 0
     }
@@ -1309,8 +1309,8 @@ fn Ctx::is_html_cdata(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i6
         off + 9, max_end, HORIZON_CDATA)
 }
 
-fn Ctx::is_html_any(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
-    var ok, end = self.is_html_tag(lines_off, n_lines, beg, max_end)
+fn Ctx::is_html_any(inout self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64): (bool, i64) {
+    let ok, end = self.is_html_tag(lines_off, n_lines, beg, max_end)
     if ok { return true, end }
     ok, end = self.is_html_comment(lines_off, n_lines, beg, max_end)
     if ok { return true, end }
@@ -1330,38 +1330,38 @@ fn Ctx::is_html_any(*self, lines_off: i64, n_lines: i64, beg: i64, max_end: i64)
 // so far, so a paragraph full of unmatched backticks is not rescanned from
 // the top for every opener.
 fn Ctx::is_code_span(self, lines_off: i64, n_lines: i64, beg: i64,
-    last_closers: Array<i64>, reached_end: bool): CodeSpan {
-    var opener_beg = beg
-    var line_index: i64 = 0
-    var line_end = self.line(lines_off).end
+    last_closers: inout Array<i64>, reached_end: bool): CodeSpan {
+    let opener_beg = beg
+    let line_index: i64 = 0
+    let line_end = self.line(lines_off).end
 
-    var opener_end = opener_beg
+    let opener_end = opener_beg
     while opener_end < line_end && self.ch(opener_end) == 96 {
         opener_end += 1
     }
-    var has_space_after_opener = opener_end < line_end && self.ch(opener_end) == 32
-    var has_eol_after_opener = opener_end == line_end
+    let has_space_after_opener = opener_end < line_end && self.ch(opener_end) == 32
+    let has_eol_after_opener = opener_end == line_end
 
-    var failure = CodeSpan{
+    let failure = CodeSpan{
         ok: false, opener_beg: opener_beg, opener_end: opener_end,
         closer_beg: 0, closer_end: 0, reached_paragraph_end: reached_end,
     }
 
-    var mark_len = opener_end - opener_beg
+    let mark_len = opener_end - opener_beg
     if mark_len > CODESPAN_MARK_MAXLEN {
         return failure
     }
 
-    var known = last_closers.get((mark_len - 1) as usize)
+    let known = last_closers.get((mark_len - 1) as usize)
     if known >= self.line(lines_off + n_lines - 1).end || (reached_end && known < opener_end) {
         return failure
     }
 
-    var closer_beg = opener_end
-    var closer_end = opener_end
-    var has_space_before_closer = false
-    var has_eol_before_closer = false
-    var has_only_space = true
+    let closer_beg = opener_end
+    let closer_end = opener_end
+    let has_space_before_closer = false
+    let has_eol_before_closer = false
+    let has_only_space = true
 
     while true {
         while closer_beg < line_end && self.ch(closer_beg) != 96 {
@@ -1384,7 +1384,7 @@ fn Ctx::is_code_span(self, lines_off: i64, n_lines: i64, beg: i64,
 
         if closer_end - closer_beg > 0 {
             has_only_space = false
-            var run = closer_end - closer_beg
+            let run = closer_end - closer_beg
             if run < CODESPAN_MARK_MAXLEN {
                 if closer_beg > last_closers.get((run - 1) as usize) {
                     last_closers.set((run - 1) as usize, closer_beg)
@@ -1432,7 +1432,7 @@ fn Ctx::is_code_span(self, lines_off: i64, n_lines: i64, beg: i64,
 }
 
 fn Ctx::is_autolink_uri(self, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg + 1
+    let off = beg + 1
 
     if off >= max_end || !is_alnum(self.ch(off)) {
         return false, 0
@@ -1448,7 +1448,7 @@ fn Ctx::is_autolink_uri(self, beg: i64, max_end: i64): (bool, i64) {
         if self.ch(off) == 58 && off - beg >= 3 { // ':'
             break
         }
-        var c = self.ch(off)
+        let c = self.ch(off)
         if !is_alnum(c) && c != 43 && c != 45 && c != 46 {
             return false, 0
         }
@@ -1456,7 +1456,7 @@ fn Ctx::is_autolink_uri(self, beg: i64, max_end: i64): (bool, i64) {
     }
 
     while off < max_end && self.ch(off) != 62 { // '>'
-        var c = self.ch(off)
+        let c = self.ch(off)
         if is_space_class(c) || is_cntrl(c) || c == 60 {
             return false, 0
         }
@@ -1470,7 +1470,7 @@ fn Ctx::is_autolink_uri(self, beg: i64, max_end: i64): (bool, i64) {
 }
 
 fn Ctx::is_autolink_email(self, beg: i64, max_end: i64): (bool, i64) {
-    var off = beg + 1
+    let off = beg + 1
 
     while off < max_end && (is_alnum(self.ch(off)) || is_email_user_char(self.ch(off))) {
         off += 1
@@ -1486,9 +1486,9 @@ fn Ctx::is_autolink_email(self, beg: i64, max_end: i64): (bool, i64) {
 
     // Labels separated by '.', each 1 to 63 alphanumerics or '-', with '-'
     // neither first nor last.
-    var label_len: i64 = 0
+    let label_len: i64 = 0
     while off < max_end {
-        var c = self.ch(off)
+        let c = self.ch(off)
         if is_alnum(c) {
             label_len += 1
         } elif c == 45 && label_len > 0 {
@@ -1514,7 +1514,7 @@ fn Ctx::is_autolink_email(self, beg: i64, max_end: i64): (bool, i64) {
 // is_autolink also reports whether the destination needs a "mailto:" put in
 // front of it, which is the case for the bare e-mail form.
 fn Ctx::is_autolink(self, beg: i64, max_end: i64): (bool, i64, bool) {
-    var ok, end = self.is_autolink_uri(beg, max_end)
+    let ok, end = self.is_autolink_uri(beg, max_end)
     if ok {
         return true, end, false
     }
@@ -1540,18 +1540,18 @@ fn is_mark_char(c: u8): bool {
         || c == 60 || c == 62 || c == 91 || c == 33 || c == 93 || c == 0
 }
 
-fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
-    var last_closers = Array<i64>::new(heap())
-    for var i: i64 = 0; i < CODESPAN_MARK_MAXLEN; i += 1 {
+fn Ctx::collect_marks(inout self, lines_off: i64, n_lines: i64) {
+    let last_closers = Array<i64>::new(heap())
+    for let i: i64 = 0; i < CODESPAN_MARK_MAXLEN; i += 1 {
         last_closers.push(0)
     }
-    var reached_end = false
+    let reached_end = false
 
-    var line_index: i64 = 0
+    let line_index: i64 = 0
     while line_index < n_lines {
-        var line_beg = self.line(lines_off + line_index).beg
-        var line_end = self.line(lines_off + line_index).end
-        var off = line_beg
+        let line_beg = self.line(lines_off + line_index).beg
+        let line_end = self.line(lines_off + line_index).end
+        let off = line_beg
 
         while true {
             while off < line_end && !is_mark_char(self.ch(off)) {
@@ -1561,7 +1561,7 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
                 break
             }
 
-            var ch = self.ch(off)
+            let ch = self.ch(off)
 
             // A backslash escape. It may reach past the line's end, since an
             // escaped newline is a hard break.
@@ -1577,24 +1577,24 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
 
             // Emphasis, possibly strong.
             if ch == 42 || ch == 95 {
-                var run_end = off + 1
+                let run_end = off + 1
                 while run_end < line_end && self.ch(run_end) == ch {
                     run_end += 1
                 }
 
                 // 0 = whitespace, 1 = punctuation, 2 = anything else.
-                var left: i64 = 2
+                let left: i64 = 2
                 if off == line_beg || unicode::is_whitespace(decode_before(self.text, off)) {
                     left = 0
                 } elif unicode::is_punct(decode_before(self.text, off)) {
                     left = 1
                 }
 
-                var right: i64 = 2
+                let right: i64 = 2
                 if run_end == line_end {
                     right = 0
                 } else {
-                    var codepoint, _ = decode(self.text, run_end, self.size)
+                    let codepoint, _ = decode(self.text, run_end, self.size)
                     if unicode::is_whitespace(codepoint) {
                         right = 0
                     } elif unicode::is_punct(codepoint) {
@@ -1609,7 +1609,7 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
                 }
 
                 if left != 0 || right != 0 {
-                    var flags: i64 = 0
+                    let flags: i64 = 0
                     if left > 0 && left >= right {
                         flags = flags | MARK_POTENTIAL_CLOSER
                     }
@@ -1622,7 +1622,7 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
 
                     // The rule of three needs the run's original length modulo
                     // three, before a shorter closer splits it.
-                    var mod3 = (run_end - off) % 3
+                    let mod3 = (run_end - off) % 3
                     if mod3 == 0 {
                         flags = flags | MARK_EMPH_MOD3_0
                     } elif mod3 == 1 {
@@ -1650,7 +1650,7 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
             // A code span is recognized here, not later, because doing it later
             // would cost a rescan per opener.
             if ch == 96 {
-                var span = self.is_code_span(lines_off + line_index, n_lines - line_index,
+                let span = self.is_code_span(lines_off + line_index, n_lines - line_index,
                     off, last_closers, reached_end)
                 reached_end = span.reached_paragraph_end
                 if span.ok {
@@ -1686,17 +1686,17 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
             }
 
             if ch == 60 { // '<', maybe raw HTML or an autolink
-                var is_html, html_end = self.is_html_any(lines_off + line_index, n_lines - line_index,
+                let is_html, html_end = self.is_html_any(lines_off + line_index, n_lines - line_index,
                     off, self.line(lines_off + n_lines - 1).end)
                 if is_html {
                     self.add_mark(60, off, off, MARK_OPENER | MARK_RESOLVED)
                     self.add_mark(62, html_end, html_end, MARK_CLOSER | MARK_RESOLVED)
-                    var opener = self.n_marks - 2
-                    var closer = self.n_marks - 1
-                    var opener_mark = self.mark(opener)
+                    let opener = self.n_marks - 2
+                    let closer = self.n_marks - 1
+                    let opener_mark = self.mark(opener)
                     opener_mark.next = closer
                     self.put_mark(opener, opener_mark)
-                    var closer_mark = self.mark(closer)
+                    let closer_mark = self.mark(closer)
                     closer_mark.prev = opener
                     self.put_mark(closer, closer_mark)
                     off = html_end
@@ -1709,21 +1709,21 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
                     continue
                 }
 
-                var is_link, link_end, missing_mailto =
+                let is_link, link_end, missing_mailto =
                     self.is_autolink(off, self.line(lines_off + n_lines - 1).end)
                 if is_link {
-                    var flags = MARK_RESOLVED | MARK_AUTOLINK
+                    let flags = MARK_RESOLVED | MARK_AUTOLINK
                     if missing_mailto {
                         flags = flags | MARK_AUTOLINK_MISSING_MAILTO
                     }
                     self.add_mark(60, off, off + 1, MARK_OPENER | flags)
                     self.add_mark(62, link_end - 1, link_end, MARK_CLOSER | flags)
-                    var opener = self.n_marks - 2
-                    var closer = self.n_marks - 1
-                    var opener_mark = self.mark(opener)
+                    let opener = self.n_marks - 2
+                    let closer = self.n_marks - 1
+                    let opener_mark = self.mark(opener)
                     opener_mark.next = closer
                     self.put_mark(opener, opener_mark)
-                    var closer_mark = self.mark(closer)
+                    let closer_mark = self.mark(closer)
                     closer_mark.prev = opener
                     self.put_mark(closer, closer_mark)
                     off = link_end
@@ -1781,13 +1781,13 @@ fn Ctx::collect_marks(*self, lines_off: i64, n_lines: i64) {
 // analyze_bracket only pairs brackets up; whether a pair is a link needs
 // more context than one mark has. The pairs are collected in closing order,
 // so resolving walks them from the innermost outwards.
-fn Ctx::analyze_bracket(*self, mark_index: i64) {
-    var mark = self.mark(mark_index)
+fn Ctx::analyze_bracket(inout self, mark_index: i64) {
+    let mark = self.mark(mark_index)
 
     if (mark.flags & MARK_POTENTIAL_OPENER) != 0 {
-        var top = self.stack_top(BRACKET_OPENERS)
+        let top = self.stack_top(BRACKET_OPENERS)
         if top >= 0 {
-            var outer = self.mark(top)
+            let outer = self.mark(top)
             outer.flags = outer.flags | MARK_BRACKET_HASNESTED
             self.put_mark(top, outer)
         }
@@ -1796,9 +1796,9 @@ fn Ctx::analyze_bracket(*self, mark_index: i64) {
     }
 
     if self.stack_top(BRACKET_OPENERS) >= 0 {
-        var opener_index = self.stack_pop(BRACKET_OPENERS)
+        let opener_index = self.stack_pop(BRACKET_OPENERS)
 
-        var opener = self.mark(opener_index)
+        let opener = self.mark(opener_index)
         opener.next = mark_index
         self.put_mark(opener_index, opener)
         mark = self.mark(mark_index)
@@ -1808,7 +1808,7 @@ fn Ctx::analyze_bracket(*self, mark_index: i64) {
         // The list of pairs to resolve reuses opener->prev, since opener->next
         // is now the closer.
         if self.unresolved_link_tail >= 0 {
-            var tail = self.mark(self.unresolved_link_tail)
+            let tail = self.mark(self.unresolved_link_tail)
             tail.prev = opener_index
             self.put_mark(self.unresolved_link_tail, tail)
         } else {
@@ -1823,41 +1823,41 @@ fn Ctx::analyze_bracket(*self, mark_index: i64) {
 }
 
 // is_link_reference resolves "[label]" against the collected definitions.
-fn Ctx::is_link_reference(*self, lines_off: i64, n_lines: i64, beg: i64, end: i64): (bool, LinkAttr) {
-    var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+fn Ctx::is_link_reference(inout self, lines_off: i64, n_lines: i64, beg: i64, end: i64): (bool, LinkAttr) {
+    let attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
 
     if self.max_ref_def_output == 0 {
         return false, attr
     }
 
-    var label_beg = beg + 1
+    let label_beg = beg + 1
     if self.ch(beg) == 33 { // '!'
         label_beg = beg + 2
     }
-    var label_end = end - 1
+    let label_end = end - 1
 
-    var beg_line = self.lookup_line(label_beg, lines_off, n_lines)
-    var label = NO_TEXT
+    let beg_line = self.lookup_line(label_beg, lines_off, n_lines)
+    let label = NO_TEXT
     if label_end > self.line(lines_off + beg_line).end {
         label = self.merge_lines(label_beg, label_end, lines_off + beg_line, 32)
     } else {
         label = self.copy_range(label_beg, label_end)
     }
 
-    var index = self.lookup_ref_def(label.slice())
+    let index = self.lookup_ref_def(label.slice())
     label.free()
     if index < 0 {
         return false, attr
     }
 
-    var def = self.ref_defs.get(index as usize)
+    let def = self.ref_defs.get(index as usize)
     attr.dest_beg = def.dest_beg
     attr.dest_end = def.dest_end
     attr.title = def.title
 
     // A document may not instantiate more reference definition text than a
     // multiple of its own size; see md4c issue 238.
-    var estimate = def.label.len() as i64 + def.title.len() as i64 + def.dest_end - def.dest_beg
+    let estimate = def.label.len() as i64 + def.title.len() as i64 + def.dest_end - def.dest_beg
     if estimate < self.max_ref_def_output {
         self.max_ref_def_output -= estimate
         return true, attr
@@ -1869,24 +1869,24 @@ fn Ctx::is_link_reference(*self, lines_off: i64, n_lines: i64, beg: i64, end: i6
 // resolve_bracket_link decides whether one bracket pair is a link or an
 // image, and if so records the destination and title in the two dummy marks
 // behind the opener. It answers the index of the next pair to consider.
-fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
+fn Ctx::resolve_bracket_link(inout self, lines_off: i64, n_lines: i64,
     opener_index: i64, closer_index: i64, next_index: i64): i64 {
-    var opener = self.mark(opener_index)
-    var closer = self.mark(closer_index)
-    var next_opener_index: i64 = -1
-    var next_closer_index: i64 = -1
+    let opener = self.mark(opener_index)
+    let closer = self.mark(closer_index)
+    let next_opener_index: i64 = -1
+    let next_closer_index: i64 = -1
     if next_index >= 0 {
         next_opener_index = next_index
         next_closer_index = self.mark(next_index).next
     }
 
-    var is_link = false
-    var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
-    var following = next_index
+    let is_link = false
+    let attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+    let following = next_index
 
     if next_opener_index >= 0 && self.mark(next_opener_index).beg == closer.end {
-        var next_opener = self.mark(next_opener_index)
-        var next_closer = self.mark(next_closer_index)
+        let next_opener = self.mark(next_opener_index)
+        let next_closer = self.mark(next_closer_index)
 
         if next_closer.beg > closer.end + 1 {
             // Perhaps a full reference link: "[text][label]".
@@ -1909,8 +1909,8 @@ fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
         }
     } else {
         if closer.end < self.size && self.ch(closer.end) == 40 { // '('
-            var inline_end: i64 = 0
-            var following_mark = closer_index + 1
+            let inline_end: i64 = 0
+            let following_mark = closer_index + 1
 
             is_link, inline_end, attr = self.is_inline_link_spec(lines_off, n_lines, closer.end)
 
@@ -1918,7 +1918,7 @@ fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
             // a higher priority, a code span for instance.
             if is_link {
                 while following_mark < self.n_marks {
-                    var mark = self.mark(following_mark)
+                    let mark = self.mark(following_mark)
                     if mark.beg >= inline_end {
                         break
                     }
@@ -1963,14 +1963,14 @@ fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
     closer.flags = closer.flags | MARK_CLOSER | MARK_RESOLVED
     self.put_mark(closer_index, closer)
 
-    var dest = self.mark(opener_index + 1)
+    let dest = self.mark(opener_index + 1)
     dest.beg = attr.dest_beg
     dest.end = attr.dest_end
     self.put_mark(opener_index + 1, dest)
 
-    var title_index = self.titles.len() as i64
+    let title_index = self.titles.len() as i64
     self.titles.push(attr.title)
-    var title = self.mark(opener_index + 2)
+    let title = self.mark(opener_index + 2)
     title.beg = title_index
     self.put_mark(opener_index + 2, title)
 
@@ -1986,8 +1986,8 @@ fn Ctx::resolve_bracket_link(*self, lines_off: i64, n_lines: i64,
     return following
 }
 
-fn Ctx::resolve_brackets(*self, lines_off: i64, n_lines: i64) {
-    var opener_index = self.unresolved_link_head
+fn Ctx::resolve_brackets(inout self, lines_off: i64, n_lines: i64) {
+    let opener_index = self.unresolved_link_head
     self.last_link_beg = 0
     self.last_link_end = 0
     self.last_img_beg = 0
@@ -1996,9 +1996,9 @@ fn Ctx::resolve_brackets(*self, lines_off: i64, n_lines: i64) {
     // The pairs are ordered by their closer, so this walks from the
     // innermost bracket pair outwards.
     while opener_index >= 0 {
-        var opener = self.mark(opener_index)
-        var closer_index = opener.next
-        var next_index = opener.prev
+        let opener = self.mark(opener_index)
+        let closer_index = opener.next
+        let next_index = opener.prev
 
         if opener.ch == 68 { // disabled in an earlier round
             opener_index = next_index
@@ -2012,7 +2012,7 @@ fn Ctx::resolve_brackets(*self, lines_off: i64, n_lines: i64) {
             self.put_mark(opener_index, opener)
         }
 
-        var closer = self.mark(closer_index)
+        let closer = self.mark(closer_index)
 
         // Nested brackets: an outer pair may not end inside the inner pair's
         // "(...)", and an outer link may not contain an inner link — though an
@@ -2034,17 +2034,17 @@ fn Ctx::resolve_brackets(*self, lines_off: i64, n_lines: i64) {
 
 // analyze_entity does all the work on the '&', because an entity can only
 // be a '&' with its ';' as the very next mark.
-fn Ctx::analyze_entity(*self, mark_index: i64) {
+fn Ctx::analyze_entity(inout self, mark_index: i64) {
     if mark_index + 1 >= self.n_marks {
         return
     }
-    var closer = self.mark(mark_index + 1)
+    let closer = self.mark(mark_index + 1)
     if closer.ch != 59 {
         return
     }
 
-    var opener = self.mark(mark_index)
-    var ok, _ = is_entity(self.text, opener.beg, closer.end)
+    let opener = self.mark(mark_index)
+    let ok, _ = is_entity(self.text, opener.beg, closer.end)
     if ok {
         self.resolve_range(mark_index, mark_index + 1)
         opener = self.mark(mark_index)
@@ -2055,11 +2055,11 @@ fn Ctx::analyze_entity(*self, mark_index: i64) {
 
 // split_emph_mark cuts `n` characters off the end of a mark into the dummy
 // that follows it, which is what lets "**foo* bar*" resolve.
-fn Ctx::split_emph_mark(*self, mark_index: i64, n: i64): i64 {
-    var mark = self.mark(mark_index)
-    var new_index = mark_index + (mark.end - mark.beg - n)
+fn Ctx::split_emph_mark(inout self, mark_index: i64, n: i64): i64 {
+    let mark = self.mark(mark_index)
+    let new_index = mark_index + (mark.end - mark.beg - n)
 
-    var dummy = mark
+    let dummy = mark
     mark.end -= n
     dummy.beg = mark.end
     self.put_mark(mark_index, mark)
@@ -2070,7 +2070,7 @@ fn Ctx::split_emph_mark(*self, mark_index: i64, n: i64): i64 {
 // better_opener keeps whichever candidate opener reaches furthest right,
 // which is md4c's "most recent mark from the allowed stacks".
 fn Ctx::better_opener(self, best: i64, stack: i64): i64 {
-    var top = self.stack_top(stack)
+    let top = self.stack_top(stack)
     if top < 0 {
         return best
     }
@@ -2083,13 +2083,13 @@ fn Ctx::better_opener(self, best: i64, stack: i64): i64 {
     return best
 }
 
-fn Ctx::analyze_emph(*self, mark_index: i64) {
-    var mark = self.mark(mark_index)
+fn Ctx::analyze_emph(inout self, mark_index: i64) {
+    let mark = self.mark(mark_index)
 
     if (mark.flags & MARK_POTENTIAL_CLOSER) != 0 {
-        var flags = mark.flags
-        var mod3 = flags & MARK_EMPH_MOD3_MASK
-        var opener_index: i64 = -1
+        let flags = mark.flags
+        let mod3 = flags & MARK_EMPH_MOD3_MASK
+        let opener_index: i64 = -1
 
         // The rule of three: a mark that is both opener and closer may not
         // match one whose combined length is a multiple of three unless both
@@ -2110,16 +2110,16 @@ fn Ctx::analyze_emph(*self, mark_index: i64) {
         }
 
         if opener_index >= 0 {
-            var opener = self.mark(opener_index)
-            var opener_size = opener.end - opener.beg
-            var closer_size = mark.end - mark.beg
-            var stack = self.opener_stack_of(opener_index)
+            let opener = self.mark(opener_index)
+            let opener_size = opener.end - opener.beg
+            let closer_size = mark.end - mark.beg
+            let stack = self.opener_stack_of(opener_index)
 
             if opener_size > closer_size {
                 opener_index = self.split_emph_mark(opener_index, closer_size)
                 self.stack_push(stack, opener_index)
             } elif opener_size < closer_size {
-                var _ = self.split_emph_mark(mark_index, closer_size - opener_size)
+                let _ = self.split_emph_mark(mark_index, closer_size - opener_size)
             }
 
             self.pop_openers(opener_index)
@@ -2138,12 +2138,12 @@ fn Ctx::analyze_emph(*self, mark_index: i64) {
 // Driving the analyses
 // ---------------------------------------------------------------------------
 
-fn Ctx::analyze_marks(*self, lines_off: i64, mark_beg: i64, mark_end: i64, mark_chars: u8[]) {
-    var i = mark_beg
-    var last_end = self.line(lines_off).beg
+fn Ctx::analyze_marks(inout self, lines_off: i64, mark_beg: i64, mark_end: i64, mark_chars: u8[]) {
+    let i = mark_beg
+    let last_end = self.line(lines_off).beg
 
     while i < mark_end {
-        var mark = self.mark(i)
+        let mark = self.mark(i)
 
         // Skip over what is already resolved.
         if (mark.flags & MARK_RESOLVED) != 0 {
@@ -2187,14 +2187,14 @@ fn Ctx::analyze_marks(*self, lines_off: i64, mark_beg: i64, mark_end: i64, mark_
     }
 }
 
-fn Ctx::analyze_link_contents(*self, lines_off: i64, n_lines: i64, mark_beg: i64, mark_end: i64) {
+fn Ctx::analyze_link_contents(inout self, lines_off: i64, n_lines: i64, mark_beg: i64, mark_end: i64) {
     self.analyze_marks(lines_off, mark_beg, mark_end, EMPH_CHARS)
-    for var stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
+    for let stack: i64 = 0; stack < N_OPENER_STACKS; stack += 1 {
         self.opener_stacks.set(stack as usize, -1)
     }
 }
 
-fn Ctx::analyze_inlines(*self, lines_off: i64, n_lines: i64) {
+fn Ctx::analyze_inlines(inout self, lines_off: i64, n_lines: i64) {
     self.n_marks = 0
     self.collect_marks(lines_off, n_lines)
 
@@ -2217,12 +2217,12 @@ fn Ctx::analyze_inlines(*self, lines_off: i64, n_lines: i64) {
 // ---------------------------------------------------------------------------
 
 fn Ctx::is_link_label(self, lines_off: i64, n_lines: i64, beg: i64): LabelSpan {
-    var span = LabelSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
-    var off = beg
-    var contents_beg: i64 = 0
-    var contents_end: i64 = 0
-    var line_index: i64 = 0
-    var length: i64 = 0
+    let span = LabelSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
+    let off = beg
+    let contents_beg: i64 = 0
+    let contents_end: i64 = 0
+    let line_index: i64 = 0
+    let length: i64 = 0
 
     if self.ch(off) != 91 { // '['
         return span
@@ -2230,7 +2230,7 @@ fn Ctx::is_link_label(self, lines_off: i64, n_lines: i64, beg: i64): LabelSpan {
     off += 1
 
     while true {
-        var line_end = self.line(lines_off + line_index).end
+        let line_end = self.line(lines_off + line_index).end
 
         while off < line_end {
             if self.ch(off) == 92 && off + 1 < self.size
@@ -2255,7 +2255,7 @@ fn Ctx::is_link_label(self, lines_off: i64, n_lines: i64, beg: i64): LabelSpan {
                 // A label has to hold something other than whitespace.
                 return span
             } else {
-                var codepoint, width = decode(self.text, off, self.size)
+                let codepoint, width = decode(self.text, off, self.size)
                 if !unicode::is_whitespace(codepoint) {
                     if contents_end == 0 {
                         contents_beg = off
@@ -2286,7 +2286,7 @@ fn Ctx::is_link_label(self, lines_off: i64, n_lines: i64, beg: i64): LabelSpan {
 
 // The "<...>" form of a destination.
 fn Ctx::is_link_destination_angle(self, beg: i64, max_end: i64): (bool, i64, i64, i64) {
-    var off = beg
+    let off = beg
     if off >= max_end || self.ch(off) != 60 {
         return false, 0, 0, 0
     }
@@ -2310,8 +2310,8 @@ fn Ctx::is_link_destination_angle(self, beg: i64, max_end: i64): (bool, i64, i64
 
 // The bare form, which may hold balanced parentheses.
 fn Ctx::is_link_destination_bare(self, beg: i64, max_end: i64): (bool, i64, i64, i64) {
-    var off = beg
-    var depth: i64 = 0
+    let off = beg
+    let depth: i64 = 0
 
     while off < max_end {
         if self.ch(off) == 92 && off + 1 < max_end && is_punct(self.ch(off + 1)) {
@@ -2352,9 +2352,9 @@ fn Ctx::is_link_destination(self, beg: i64, max_end: i64): (bool, i64, i64, i64)
 }
 
 fn Ctx::is_link_title(self, lines_off: i64, n_lines: i64, beg: i64): TitleSpan {
-    var span = TitleSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
-    var off = beg
-    var line_index: i64 = 0
+    let span = TitleSpan{ ok: false, end: 0, beg_line: 0, end_line: 0, contents_beg: 0, contents_end: 0 }
+    let off = beg
+    let line_index: i64 = 0
 
     // Whitespace, with at most one line break in it.
     while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
@@ -2373,8 +2373,8 @@ fn Ctx::is_link_title(self, lines_off: i64, n_lines: i64, beg: i64): TitleSpan {
 
     span.beg_line = line_index
 
-    var closer: u8 = 0
-    var c = self.ch(off)
+    let closer: u8 = 0
+    let c = self.ch(off)
     if c == 34 {
         closer = 34
     } elif c == 39 {
@@ -2389,7 +2389,7 @@ fn Ctx::is_link_title(self, lines_off: i64, n_lines: i64, beg: i64): TitleSpan {
     span.contents_beg = off
 
     while line_index < n_lines {
-        var line_end = self.line(lines_off + line_index).end
+        let line_end = self.line(lines_off + line_index).end
 
         while off < line_end {
             if self.ch(off) == 92 && off + 1 < self.size
@@ -2416,14 +2416,14 @@ fn Ctx::is_link_title(self, lines_off: i64, n_lines: i64, beg: i64): TitleSpan {
 
 // is_link_reference_definition answers how many lines the definition at the
 // head of the block takes, or 0 when there is none.
-fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
-    var label = self.is_link_label(lines_off, n_lines, self.line(lines_off).beg)
+fn Ctx::is_link_reference_definition(inout self, lines_off: i64, n_lines: i64): i64 {
+    let label = self.is_link_label(lines_off, n_lines, self.line(lines_off).beg)
     if !label.ok {
         return 0
     }
-    var line_index = label.end_line
-    var label_is_multiline = label.beg_line != line_index
-    var off = label.end
+    let line_index = label.end_line
+    let label_is_multiline = label.beg_line != line_index
+    let off = label.end
 
     if off >= self.line(lines_off + line_index).end || self.ch(off) != 58 { // ':'
         return 0
@@ -2442,7 +2442,7 @@ fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
         off = self.line(lines_off + line_index).beg
     }
 
-    var dest_ok, dest_end, dest_beg, dest_contents_end =
+    let dest_ok, dest_end, dest_beg, dest_contents_end =
         self.is_link_destination(off, self.line(lines_off + line_index).end)
     if !dest_ok {
         return 0
@@ -2450,11 +2450,11 @@ fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
     off = dest_end
 
     // A title only counts when nothing else follows it on its last line.
-    var title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
-    var title_is_multiline = false
-    var title_beg: i64 = off
-    var title_end: i64 = off
-    var title_line: i64 = 0
+    let title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
+    let title_is_multiline = false
+    let title_beg: i64 = off
+    let title_end: i64 = off
+    let title_line: i64 = 0
 
     // Note the offset moves past a title that was recognized even when it is
     // then rejected for having something after it, which is what upstream's
@@ -2479,7 +2479,7 @@ fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
         return 0
     }
 
-    var label_bytes = NO_TEXT
+    let label_bytes = NO_TEXT
     if label_is_multiline {
         label_bytes = self.merge_lines(label.contents_beg, label.contents_end,
             lines_off + label.beg_line, 32)
@@ -2487,7 +2487,7 @@ fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
         label_bytes = self.copy_range(label.contents_beg, label.contents_end)
     }
 
-    var title_bytes = NO_TEXT
+    let title_bytes = NO_TEXT
     if title_is_multiline {
         title_bytes = self.merge_lines(title_beg, title_end, lines_off + title_line, 10)
     } else {
@@ -2501,9 +2501,9 @@ fn Ctx::is_link_reference_definition(*self, lines_off: i64, n_lines: i64): i64 {
 // is_inline_link_spec reads the "(destination \"title\")" that may follow a
 // link's text.
 fn Ctx::is_inline_link_spec(self, lines_off: i64, n_lines: i64, beg: i64): (bool, i64, LinkAttr) {
-    var attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
-    var line_index = self.lookup_line(beg, lines_off, n_lines)
-    var off = beg + 1
+    let attr = LinkAttr{ dest_beg: 0, dest_end: 0, title: NO_TEXT }
+    let line_index = self.lookup_line(beg, lines_off, n_lines)
+    let off = beg + 1
 
     // Optional whitespace, with at most one line break in it.
     while off < self.line(lines_off + line_index).end && is_space_class(self.ch(off)) {
@@ -2524,7 +2524,7 @@ fn Ctx::is_inline_link_spec(self, lines_off: i64, n_lines: i64, beg: i64): (bool
         return true, off + 1, attr
     }
 
-    var dest_ok, dest_end, dest_beg, dest_contents_end =
+    let dest_ok, dest_end, dest_beg, dest_contents_end =
         self.is_link_destination(off, self.line(lines_off + line_index).end)
     if !dest_ok {
         return false, 0, attr
@@ -2533,11 +2533,11 @@ fn Ctx::is_inline_link_spec(self, lines_off: i64, n_lines: i64, beg: i64): (bool
     attr.dest_end = dest_contents_end
     off = dest_end
 
-    var title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
-    var title_is_multiline = false
-    var title_beg = off
-    var title_end = off
-    var title_line: i64 = 0
+    let title = self.is_link_title(lines_off + line_index, n_lines - line_index, off)
+    let title_is_multiline = false
+    let title_beg = off
+    let title_end = off
+    let title_line: i64 = 0
 
     if title.ok {
         title_is_multiline = title.end_line != title.beg_line
@@ -2583,8 +2583,8 @@ fn Ctx::is_inline_link_spec(self, lines_off: i64, n_lines: i64, beg: i64): (bool
 // each time so the renderer sees the same detail entering and leaving.
 fn Ctx::span_a(self, enter: bool, kind: SpanKind, dest: u8[], dest_beg: i64, dest_size: i64,
     is_autolink: bool, title: u8[], title_size: i64) {
-    var detail = Detail::none()
-    var no_escapes = is_autolink
+    let detail = Detail::none()
+    let no_escapes = is_autolink
     detail.href = build_attribute(dest, dest_beg, dest_size, no_escapes)
     detail.title = build_attribute(title, 0, title_size, false)
     detail.is_autolink = is_autolink
@@ -2596,25 +2596,25 @@ fn Ctx::span_a(self, enter: bool, kind: SpanKind, dest: u8[], dest_beg: i64, des
     }
 }
 
-fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
-    var line_index: i64 = 0
-    var off = self.line(lines_off).beg
-    var end = self.line(lines_off + n_lines - 1).end
-    var text_kind = TextKind::Normal
-    var enforce_hardbreak = false
+fn Ctx::process_inlines(inout self, lines_off: i64, n_lines: i64) {
+    let line_index: i64 = 0
+    let off = self.line(lines_off).beg
+    let end = self.line(lines_off + n_lines - 1).end
+    let text_kind = TextKind::Normal
+    let enforce_hardbreak = false
 
     // There is always at least one resolved mark: the sentinel past the end.
-    var mark_index: i64 = 0
+    let mark_index: i64 = 0
     while (self.mark(mark_index).flags & MARK_RESOLVED) == 0 {
         mark_index += 1
     }
 
     while true {
-        var line_end = self.line(lines_off + line_index).end
-        var mark = self.mark(mark_index)
+        let line_end = self.line(lines_off + line_index).end
+        let mark = self.mark(mark_index)
 
         // Everything up to the next mark or the end of the line is text.
-        var stop = line_end
+        let stop = line_end
         if mark.beg < stop {
             stop = mark.beg
         }
@@ -2624,7 +2624,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
         }
 
         if off >= mark.beg {
-            var ch = mark.ch
+            let ch = mark.ch
 
             if ch == 92 { // a backslash escape
                 if is_newline(self.ch(mark.beg + 1)) {
@@ -2661,16 +2661,16 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
                     }
                 }
             } elif ch == 91 || ch == 33 || ch == 93 { // a link or an image
-                var opener_index = mark_index
+                let opener_index = mark_index
                 if ch == 93 {
                     opener_index = mark.prev
                 }
-                var opener = self.mark(opener_index)
-                var dest_mark = self.mark(opener_index + 1)
-                var title_mark = self.mark(opener_index + 2)
-                var title = self.titles.get(title_mark.beg as usize)
+                let opener = self.mark(opener_index)
+                let dest_mark = self.mark(opener_index + 1)
+                let title_mark = self.mark(opener_index + 2)
+                let title = self.titles.get(title_mark.beg as usize)
 
-                var kind = SpanKind::A
+                let kind = SpanKind::A
                 if opener.ch == 33 {
                     kind = SpanKind::Img
                 }
@@ -2691,21 +2691,21 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
                         text_kind = TextKind::Normal
                     }
                 } else {
-                    var opener_index = mark_index
+                    let opener_index = mark_index
                     if (mark.flags & MARK_OPENER) == 0 {
                         opener_index = mark.prev
                     }
-                    var opener = self.mark(opener_index)
-                    var closer = self.mark(opener.next)
-                    var dest_beg = opener.end
-                    var dest_size = closer.beg - opener.end
+                    let opener = self.mark(opener_index)
+                    let closer = self.mark(opener.next)
+                    let dest_beg = opener.end
+                    let dest_size = closer.beg - opener.end
 
                     if (opener.flags & MARK_AUTOLINK_MISSING_MAILTO) != 0 {
-                        var buffer = Array<u8>::new(heap())
-                        for var i: i64 = 0; i < 7; i += 1 {
+                        let buffer = Array<u8>::new(heap())
+                        for let i: i64 = 0; i < 7; i += 1 {
                             buffer.push(MAILTO[i as usize])
                         }
-                        for var i: i64 = 0; i < dest_size; i += 1 {
+                        for let i: i64 = 0; i < dest_size; i += 1 {
                             buffer.push(self.ch(dest_beg + i))
                         }
                         self.span_a((mark.flags & MARK_OPENER) != 0, SpanKind::A,
@@ -2741,7 +2741,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
             if text_kind == TextKind::Code {
                 // Trailing whitespace inside a code span is part of the code, and
                 // the line break itself becomes one space.
-                var blank_beg = off
+                let blank_beg = off
                 while off < self.size && is_blank(self.ch(off)) {
                     off += 1
                 }
@@ -2754,7 +2754,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
             } elif text_kind == TextKind::Html {
                 // Inside raw HTML the line break is verbatim, trailing spaces
                 // included.
-                var blank_end = off
+                let blank_end = off
                 while blank_end < end && is_blank(self.ch(blank_end)) {
                     blank_end += 1
                 }
@@ -2763,7 +2763,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
                 }
                 self.emit(TextKind::Html, NEWLINE, 0, 1)
             } else {
-                var break_kind = TextKind::SoftBr
+                let break_kind = TextKind::SoftBr
                 if text_kind == TextKind::Normal {
                     if enforce_hardbreak {
                         break_kind = TextKind::Br
@@ -2781,7 +2781,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
             }
 
             line_index += 1
-            var next_beg = self.line(lines_off + line_index).beg
+            let next_beg = self.line(lines_off + line_index).beg
             if next_beg > off {
                 off = next_beg
             }
@@ -2798,7 +2798,7 @@ fn Ctx::process_inlines(*self, lines_off: i64, n_lines: i64) {
 // comparison never has to turn a `string` into bytes.
 // ---------------------------------------------------------------------------
 
-var TAG_NAMES: string[66] = [
+let TAG_NAMES: string[66] = [
     "pre", "script", "style", "textarea",
     "address", "article", "aside",
     "base", "basefont", "blockquote", "body",
@@ -2824,9 +2824,9 @@ struct NameTable {
 }
 
 fn build_tags(): NameTable {
-    var text = Array<u8>::new(heap())
-    var beg = Array<i64>::new(heap())
-    var end = Array<i64>::new(heap())
+    let text = Array<u8>::new(heap())
+    let beg = Array<i64>::new(heap())
+    let end = Array<i64>::new(heap())
     for name in TAG_NAMES {
         beg.push(text.len() as i64)
         for byte in name.bytes(heap()) {
@@ -2837,7 +2837,7 @@ fn build_tags(): NameTable {
     return NameTable{ text: text, beg: beg, end: end }
 }
 
-var TAGS: NameTable = build_tags()
+let TAGS: NameTable = build_tags()
 
 // The four tags that start an HTML block of type 1.
 const TYPE1_BEG: i64 = 0
@@ -2845,11 +2845,11 @@ const TYPE1_END: i64 = 4
 
 // Where each initial letter's type-6 tags sit, a..z. An empty span means no
 // tag starts with that letter.
-var TYPE6_BEG: i64[26] = [
+let TYPE6_BEG: i64[26] = [
     4,  7, 11, 15,  0, 22,  0, 29, 39,  0,  0, 40, 43,
     46, 48, 51,  0,  0, 53, 56, 65,  0,  0,  0,  0,  0,
 ]
-var TYPE6_END: i64[26] = [
+let TYPE6_END: i64[26] = [
     7, 11, 15, 22,  0, 29,  0, 39, 40,  0,  0, 43, 46,
     48, 51, 53,  0,  0, 56, 65, 66,  0,  0,  0,  0,  0,
 ]
@@ -2859,9 +2859,9 @@ fn tag_len(tag: i64): i64 {
 }
 
 fn Ctx::tag_matches(self, off: i64, tag: i64): bool {
-    var beg = TAGS.beg.get(tag as usize)
-    var end = TAGS.end.get(tag as usize)
-    for var i = beg; i < end; i += 1 {
+    let beg = TAGS.beg.get(tag as usize)
+    let end = TAGS.end.get(tag as usize)
+    for let i = beg; i < end; i += 1 {
         if lower_ascii(self.ch(off + i - beg)) != TAGS.text.get(i as usize) {
             return false
         }
@@ -2877,12 +2877,12 @@ fn Ctx::block(self, index: i64): Block {
     return self.blocks.get(index as usize)
 }
 
-fn Ctx::put_block(*self, index: i64, block: Block) {
+fn Ctx::put_block(inout self, index: i64, block: Block) {
     self.blocks.set(index as usize, block)
 }
 
-fn Ctx::push_block(*self, block: Block): i64 {
-    var index = self.n_blocks
+fn Ctx::push_block(inout self, block: Block): i64 {
+    let index = self.n_blocks
     if index < self.blocks.len() as i64 {
         self.blocks.set(index as usize, block)
     } else {
@@ -2892,7 +2892,7 @@ fn Ctx::push_block(*self, block: Block): i64 {
     return index
 }
 
-fn Ctx::push_line(*self, line: Line) {
+fn Ctx::push_line(inout self, line: Line) {
     if self.n_lines < self.lines.len() as i64 {
         self.lines.set(self.n_lines as usize, line)
     } else {
@@ -2905,7 +2905,7 @@ fn Ctx::container(self, index: i64): Container {
     return self.containers.get(index as usize)
 }
 
-fn Ctx::put_container(*self, index: i64, container: Container) {
+fn Ctx::put_container(inout self, index: i64, container: Container) {
     if index < self.containers.len() as i64 {
         self.containers.set(index as usize, container)
     } else {
@@ -2913,8 +2913,8 @@ fn Ctx::put_container(*self, index: i64, container: Container) {
     }
 }
 
-fn Ctx::start_new_block(*self, line: LineAnalysis) {
-    var kind = BlockKind::P
+fn Ctx::start_new_block(inout self, line: LineAnalysis) {
+    let kind = BlockKind::P
     if line.kind == LineKind::Hr {
         kind = BlockKind::Hr
     } elif line.kind == LineKind::AtxHeader || line.kind == LineKind::SetextHeader {
@@ -2930,9 +2930,9 @@ fn Ctx::start_new_block(*self, line: LineAnalysis) {
     })
 }
 
-fn Ctx::add_line_into_current_block(*self, line: LineAnalysis) {
-    var block = self.block(self.current_block)
-    var indent: i64 = 0
+fn Ctx::add_line_into_current_block(inout self, line: LineAnalysis) {
+    let block = self.block(self.current_block)
+    let indent: i64 = 0
     if block.kind == BlockKind::Code || block.kind == BlockKind::Html {
         indent = line.indent
     }
@@ -2944,14 +2944,14 @@ fn Ctx::add_line_into_current_block(*self, line: LineAnalysis) {
 // consume_link_reference_definitions eats any definitions from the start of
 // the current block. They can only be at the start, since a definition
 // cannot interrupt a paragraph.
-fn Ctx::consume_link_reference_definitions(*self) {
-    var block = self.block(self.current_block)
-    var first = block.first_line
-    var n_lines = block.n_lines
-    var taken: i64 = 0
+fn Ctx::consume_link_reference_definitions(inout self) {
+    let block = self.block(self.current_block)
+    let first = block.first_line
+    let n_lines = block.n_lines
+    let taken: i64 = 0
 
     while taken < n_lines {
-        var consumed = self.is_link_reference_definition(first + taken, n_lines - taken)
+        let consumed = self.is_link_reference_definition(first + taken, n_lines - taken)
         if consumed == 0 {
             break
         }
@@ -2970,7 +2970,7 @@ fn Ctx::consume_link_reference_definitions(*self) {
         return
     }
 
-    for var i: i64 = 0; i < n_lines - taken; i += 1 {
+    for let i: i64 = 0; i < n_lines - taken; i += 1 {
         self.lines.set((first + i) as usize, self.line(first + taken + i))
     }
     self.n_lines -= taken
@@ -2979,17 +2979,17 @@ fn Ctx::consume_link_reference_definitions(*self) {
     self.put_block(self.current_block, block)
 }
 
-fn Ctx::end_current_block(*self) {
+fn Ctx::end_current_block(inout self) {
     if self.current_block < 0 {
         return
     }
 
     // A reference definition may span lines, so it is recognized here rather
     // than during line analysis.
-    var block = self.block(self.current_block)
+    let block = self.block(self.current_block)
     if block.kind == BlockKind::P
         || (block.kind == BlockKind::H && (block.flags & BLOCK_SETEXT_HEADER) != 0) {
-        var first = self.line(block.first_line)
+        let first = self.line(block.first_line)
         if first.beg < self.size && self.ch(first.beg) == 91 {
             self.consume_link_reference_definitions()
             if self.current_block < 0 {
@@ -3017,9 +3017,9 @@ fn Ctx::end_current_block(*self) {
     self.current_block = -1
 }
 
-fn Ctx::push_container_block(*self, kind: BlockKind, start: i64, data: i64, flags: i64) {
+fn Ctx::push_container_block(inout self, kind: BlockKind, start: i64, data: i64, flags: i64) {
     self.end_current_block()
-    var _ = self.push_block(Block{
+    let _ = self.push_block(Block{
         kind: kind, flags: flags, data: data, n_lines: start, first_line: self.n_lines,
     })
 }
@@ -3032,7 +3032,7 @@ fn Ctx::top_block_is_li(self): bool {
     if self.n_blocks == 0 {
         return false
     }
-    var block = self.block(self.n_blocks - 1)
+    let block = self.block(self.n_blocks - 1)
     return block.kind == BlockKind::Li && block.first_line == self.n_lines
 }
 
@@ -3040,15 +3040,15 @@ fn Ctx::top_block_is_li(self): bool {
 // Rendering blocks
 // ---------------------------------------------------------------------------
 
-fn Ctx::process_normal_block_contents(*self, lines_off: i64, n_lines: i64) {
+fn Ctx::process_normal_block_contents(inout self, lines_off: i64, n_lines: i64) {
     self.analyze_inlines(lines_off, n_lines)
     self.process_inlines(lines_off, n_lines)
 }
 
-fn Ctx::process_verbatim_block_contents(*self, kind: TextKind, lines_off: i64, n_lines: i64) {
-    for var i: i64 = 0; i < n_lines; i += 1 {
-        var line = self.line(lines_off + i)
-        var indent = line.indent
+fn Ctx::process_verbatim_block_contents(inout self, kind: TextKind, lines_off: i64, n_lines: i64) {
+    for let i: i64 = 0; i < n_lines; i += 1 {
+        let line = self.line(lines_off + i)
+        let indent = line.indent
 
         while indent > 16 {
             self.emit(kind, INDENT_CHUNK, 0, 16)
@@ -3063,9 +3063,9 @@ fn Ctx::process_verbatim_block_contents(*self, kind: TextKind, lines_off: i64, n
     }
 }
 
-fn Ctx::process_code_block_contents(*self, is_fenced: bool, lines_off: i64, n_lines: i64) {
-    var first = lines_off
-    var count = n_lines
+fn Ctx::process_code_block_contents(inout self, is_fenced: bool, lines_off: i64, n_lines: i64) {
+    let first = lines_off
+    let count = n_lines
 
     if is_fenced {
         // The opening fence is the first line; the closing one was never added.
@@ -3089,11 +3089,11 @@ fn Ctx::process_code_block_contents(*self, is_fenced: bool, lines_off: i64, n_li
 }
 
 fn Ctx::fenced_code_detail(self, block: Block): Detail {
-    var detail = Detail::none()
-    var fence_line = self.line(block.first_line)
-    var beg = fence_line.beg
-    var end = fence_line.end
-    var fence_ch = self.ch(beg)
+    let detail = Detail::none()
+    let fence_line = self.line(block.first_line)
+    let beg = fence_line.beg
+    let end = fence_line.end
+    let fence_ch = self.ch(beg)
 
     while beg < self.size && self.ch(beg) == fence_ch {
         beg += 1
@@ -3107,7 +3107,7 @@ fn Ctx::fenced_code_detail(self, block: Block): Detail {
 
     detail.info = build_attribute(self.text, beg, end - beg, false)
 
-    var lang_end = beg
+    let lang_end = beg
     while lang_end < end && !is_space_class(self.ch(lang_end)) {
         lang_end += 1
     }
@@ -3116,11 +3116,11 @@ fn Ctx::fenced_code_detail(self, block: Block): Detail {
     return detail
 }
 
-fn Ctx::process_leaf_block(*self, block_index: i64) {
-    var block = self.block(block_index)
-    var detail = Detail::none()
+fn Ctx::process_leaf_block(inout self, block_index: i64) {
+    let block = self.block(block_index)
+    let detail = Detail::none()
 
-    var is_in_tight_list = false
+    let is_in_tight_list = false
     if self.n_containers > 0 {
         is_in_tight_list = !self.container(self.n_containers - 1).is_loose
     }
@@ -3150,14 +3150,14 @@ fn Ctx::process_leaf_block(*self, block_index: i64) {
     }
 }
 
-fn Ctx::process_all_blocks(*self) {
+fn Ctx::process_all_blocks(inout self) {
     // The container stack is no longer needed for detecting lists, so it is
     // reused for tracking which enclosing lists are loose.
     self.n_containers = 0
 
-    for var index: i64 = 0; index < self.n_blocks; index += 1 {
-        var block = self.block(index)
-        var detail = Detail::none()
+    for let index: i64 = 0; index < self.n_blocks; index += 1 {
+        let block = self.block(index)
+        let detail = Detail::none()
 
         if block.kind == BlockKind::Ul {
             detail.is_tight = (block.flags & BLOCK_LOOSE_LIST) == 0
@@ -3180,14 +3180,14 @@ fn Ctx::process_all_blocks(*self) {
             if (block.flags & BLOCK_CONTAINER_OPENER) != 0 {
                 self.parser.enter_block(block.kind, detail)
                 if block.kind == BlockKind::Ul || block.kind == BlockKind::Ol {
-                    var entry = empty_container()
+                    let entry = empty_container()
                     entry.is_loose = (block.flags & BLOCK_LOOSE_LIST) != 0
                     self.put_container(self.n_containers, entry)
                     self.n_containers += 1
                 } elif block.kind == BlockKind::Quote {
                     // Text in a block quote is wrapped in <p> even inside a tight
                     // list item.
-                    var entry = empty_container()
+                    let entry = empty_container()
                     entry.is_loose = true
                     self.put_container(self.n_containers, entry)
                     self.n_containers += 1
@@ -3207,8 +3207,8 @@ fn Ctx::process_all_blocks(*self) {
 // ---------------------------------------------------------------------------
 
 fn Ctx::is_hr_line(self, beg: i64): (bool, i64, i64) {
-    var off = beg + 1
-    var n: i64 = 1
+    let off = beg + 1
+    let n: i64 = 1
 
     while off < self.size && (self.ch(off) == self.ch(beg) || self.ch(off) == 32 || self.ch(off) == 9) {
         if self.ch(off) == self.ch(beg) {
@@ -3228,11 +3228,11 @@ fn Ctx::is_hr_line(self, beg: i64): (bool, i64, i64) {
 }
 
 fn Ctx::is_atxheader_line(self, beg: i64): (bool, i64, i64, i64) {
-    var off = beg + 1
+    let off = beg + 1
     while off < self.size && self.ch(off) == 35 && off - beg < 7 {
         off += 1
     }
-    var level = off - beg
+    let level = off - beg
 
     if level > 6 {
         return false, 0, 0, 0
@@ -3247,7 +3247,7 @@ fn Ctx::is_atxheader_line(self, beg: i64): (bool, i64, i64, i64) {
 }
 
 fn Ctx::is_setext_underline(self, beg: i64): (bool, i64, i64) {
-    var off = beg + 1
+    let off = beg + 1
     while off < self.size && self.ch(off) == self.ch(beg) {
         off += 1
     }
@@ -3257,15 +3257,15 @@ fn Ctx::is_setext_underline(self, beg: i64): (bool, i64, i64) {
     if off < self.size && !is_newline(self.ch(off)) {
         return false, 0, 0
     }
-    var level: i64 = 2
+    let level: i64 = 2
     if self.ch(beg) == 61 { // '='
         level = 1
     }
     return true, off, level
 }
 
-fn Ctx::is_opening_code_fence(*self, beg: i64): (bool, i64) {
-    var off = beg
+fn Ctx::is_opening_code_fence(inout self, beg: i64): (bool, i64) {
+    let off = beg
     while off < self.size && self.ch(off) == self.ch(beg) {
         off += 1
     }
@@ -3290,7 +3290,7 @@ fn Ctx::is_opening_code_fence(*self, beg: i64): (bool, i64) {
 // The offset comes back even on failure: a line that is not a closing fence
 // is eaten whole anyway.
 fn Ctx::is_closing_code_fence(self, ch: u8, beg: i64): (bool, i64) {
-    var off = beg
+    let off = beg
     while off < self.size && self.ch(off) == ch {
         off += 1
     }
@@ -3309,10 +3309,10 @@ fn Ctx::is_closing_code_fence(self, ch: u8, beg: i64): (bool, i64) {
 // is_html_block_start_condition answers which of CommonMark's seven kinds
 // of raw HTML block starts here, or 0 for none.
 fn Ctx::is_html_block_start_condition(self, beg: i64): i64 {
-    var off = beg + 1
+    let off = beg + 1
 
     // Type 1: <pre, <script, <style, <textarea.
-    for var tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
+    for let tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
         if off + tag_len(tag) <= self.size && self.tag_matches(off, tag) {
             return 1
         }
@@ -3343,13 +3343,13 @@ fn Ctx::is_html_block_start_condition(self, beg: i64): i64 {
         if self.ch(off) == 47 {
             off += 1
         }
-        var slot = lower_ascii(self.ch(off)) as i64 - 97
-        var first = TYPE6_BEG[slot as usize]
-        var limit = TYPE6_END[slot as usize]
+        let slot = lower_ascii(self.ch(off)) as i64 - 97
+        let first = TYPE6_BEG[slot as usize]
+        let limit = TYPE6_END[slot as usize]
 
-        for var tag = first; tag < limit; tag += 1 {
+        for let tag = first; tag < limit; tag += 1 {
             if off + tag_len(tag) <= self.size && self.tag_matches(off, tag) {
-                var after = off + tag_len(tag)
+                let after = off + tag_len(tag)
                 if after >= self.size {
                     return 6
                 }
@@ -3366,7 +3366,7 @@ fn Ctx::is_html_block_start_condition(self, beg: i64): i64 {
 
     // Type 7: any other complete tag, alone on its line.
     if off + 1 < self.size {
-        var ok, end = self.is_html_tag(0, 0, beg, self.size)
+        let ok, end = self.is_html_tag(0, 0, beg, self.size)
         if ok {
             while end < self.size && is_space_class(self.ch(end)) {
                 end += 1
@@ -3384,8 +3384,8 @@ fn Ctx::is_html_block_start_condition(self, beg: i64): i64 {
 // offset comes back either way, since a raw HTML block's contents are not
 // analyzed further.
 fn Ctx::line_contains(self, beg: i64, needle: u8[]): (bool, i64) {
-    var len = needle.len() as i64
-    var i = beg
+    let len = needle.len() as i64
+    let i = beg
     while i + len < self.size {
         if is_newline(self.ch(i)) {
             break
@@ -3400,10 +3400,10 @@ fn Ctx::line_contains(self, beg: i64, needle: u8[]): (bool, i64) {
 
 fn Ctx::is_html_block_end_condition(self, beg: i64): (i64, i64) {
     if self.html_block_type == 1 {
-        var off = beg
+        let off = beg
         while off + 1 < self.size && !is_newline(self.ch(off)) {
             if self.ch(off) == 60 && self.ch(off + 1) == 47 {
-                for var tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
+                for let tag = TYPE1_BEG; tag < TYPE1_END; tag += 1 {
                     if off + 2 + tag_len(tag) < self.size {
                         if self.tag_matches(off + 2, tag) && self.ch(off + 2 + tag_len(tag)) == 62 {
                             return 1, off + 2 + tag_len(tag) + 1
@@ -3417,22 +3417,22 @@ fn Ctx::is_html_block_end_condition(self, beg: i64): (i64, i64) {
     }
 
     if self.html_block_type == 2 {
-        var found, end = self.line_contains(beg, HTML_COMMENT_CLOSE)
+        let found, end = self.line_contains(beg, HTML_COMMENT_CLOSE)
         if found { return 2, end }
         return 0, end
     }
     if self.html_block_type == 3 {
-        var found, end = self.line_contains(beg, HTML_PI_CLOSE)
+        let found, end = self.line_contains(beg, HTML_PI_CLOSE)
         if found { return 3, end }
         return 0, end
     }
     if self.html_block_type == 4 {
-        var found, end = self.line_contains(beg, HTML_DECL_CLOSE)
+        let found, end = self.line_contains(beg, HTML_DECL_CLOSE)
         if found { return 4, end }
         return 0, end
     }
     if self.html_block_type == 5 {
-        var found, end = self.line_contains(beg, HTML_CDATA_CLOSE)
+        let found, end = self.line_contains(beg, HTML_CDATA_CLOSE)
         if found { return 5, end }
         return 0, end
     }
@@ -3459,8 +3459,8 @@ fn is_container_compatible(pivot: Container, container: Container): bool {
 }
 
 fn Ctx::is_container_mark(self, indent: i64, beg: i64): (bool, i64, Container) {
-    var container = empty_container()
-    var off = beg
+    let container = empty_container()
+    let off = beg
 
     if off >= self.size || indent >= CODE_INDENT_OFFSET {
         return false, 0, container
@@ -3481,7 +3481,7 @@ fn Ctx::is_container_mark(self, indent: i64, beg: i64): (bool, i64, Container) {
         return true, off + 1, container
     }
 
-    var max_end = off + 9
+    let max_end = off + 9
     if max_end > self.size {
         max_end = self.size
     }
@@ -3502,8 +3502,8 @@ fn Ctx::is_container_mark(self, indent: i64, beg: i64): (bool, i64, Container) {
 }
 
 fn Ctx::line_indentation(self, total_indent: i64, beg: i64): (i64, i64) {
-    var off = beg
-    var indent = total_indent
+    let off = beg
+    let indent = total_indent
 
     while off < self.size && is_blank(self.ch(off)) {
         if self.ch(off) == 9 {
@@ -3516,14 +3516,14 @@ fn Ctx::line_indentation(self, total_indent: i64, beg: i64): (i64, i64) {
     return indent - total_indent, off
 }
 
-fn Ctx::enter_child_containers(*self, n_children: i64) {
-    for var i = self.n_containers - n_children; i < self.n_containers; i += 1 {
-        var c = self.container(i)
+fn Ctx::enter_child_containers(inout self, n_children: i64) {
+    for let i = self.n_containers - n_children; i < self.n_containers; i += 1 {
+        let c = self.container(i)
 
         if c.ch == 62 {
             self.push_container_block(BlockKind::Quote, 0, 0, BLOCK_CONTAINER_OPENER)
         } else {
-            var kind = BlockKind::Ul
+            let kind = BlockKind::Ul
             if c.ch == 41 || c.ch == 46 {
                 kind = BlockKind::Ol
             }
@@ -3539,14 +3539,14 @@ fn Ctx::enter_child_containers(*self, n_children: i64) {
     }
 }
 
-fn Ctx::leave_child_containers(*self, n_keep: i64) {
+fn Ctx::leave_child_containers(inout self, n_keep: i64) {
     while self.n_containers > n_keep {
-        var c = self.container(self.n_containers - 1)
+        let c = self.container(self.n_containers - 1)
 
         if c.ch == 62 {
             self.push_container_block(BlockKind::Quote, 0, 0, BLOCK_CONTAINER_CLOSER)
         } else {
-            var kind = BlockKind::Ul
+            let kind = BlockKind::Ul
             if c.ch == 41 || c.ch == 46 {
                 kind = BlockKind::Ol
             }
@@ -3561,21 +3561,21 @@ fn Ctx::leave_child_containers(*self, n_keep: i64) {
 // analyze_line decides what one source line is, which is the main input to
 // deciding where blocks begin and end. It answers the analysis and the
 // offset the next line starts at.
-fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i64) {
-    var pivot = pivot_in
-    var line = LineAnalysis{
+fn Ctx::analyze_line(inout self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i64) {
+    let pivot = pivot_in
+    let line = LineAnalysis{
         kind: LineKind::Text, data: 0, enforce_new_block: false, beg: 0, end: 0, indent: 0,
     }
-    var total_indent: i64 = 0
-    var n_parents: i64 = 0
-    var n_brothers: i64 = 0
-    var n_children: i64 = 0
-    var container = empty_container()
-    var prev_line_loosens = self.last_line_has_list_loosening_effect
-    var off = beg
-    var hr_killer: i64 = 0
+    let total_indent: i64 = 0
+    let n_parents: i64 = 0
+    let n_brothers: i64 = 0
+    let n_children: i64 = 0
+    let container = empty_container()
+    let prev_line_loosens = self.last_line_has_list_loosening_effect
+    let off = beg
+    let hr_killer: i64 = 0
 
-    var indent, after = self.line_indentation(total_indent, off)
+    let indent, after = self.line_indentation(total_indent, off)
     line.indent = indent
     off = after
     total_indent += line.indent
@@ -3584,7 +3584,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
     // How many of the open containers this line still belongs to, given its
     // indentation and its block quote marks.
     while n_parents < self.n_containers {
-        var c = self.container(n_parents)
+        let c = self.container(n_parents)
 
         if c.ch == 62 && line.indent < CODE_INDENT_OFFSET && off < self.size && self.ch(off) == 62 {
             off += 1
@@ -3625,7 +3625,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
             // Another fenced code line, unless it is the closing fence, which
             // becomes a blank line.
             if line.indent < CODE_INDENT_OFFSET {
-                var closing, fence_end = self.is_closing_code_fence(self.ch(pivot.beg), off)
+                let closing, fence_end = self.is_closing_code_fence(self.ch(pivot.beg), off)
                 off = fence_end
                 if closing {
                     line.kind = LineKind::Blank
@@ -3652,7 +3652,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
                 // The enclosing container ending ends the HTML block too.
                 self.html_block_type = 0
             } else {
-                var kind, end = self.is_html_block_end_condition(off)
+                let kind, end = self.is_html_block_end_condition(off)
                 off = end
                 if kind > 0 {
                     self.html_block_type = 0
@@ -3708,7 +3708,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
                 line.indent = total_indent
                 if n_parents > 0 {
-                    var reduce = self.container(n_parents - 1).contents_indent
+                    let reduce = self.container(n_parents - 1).contents_indent
                     if reduce > line.indent {
                         reduce = line.indent
                     }
@@ -3724,7 +3724,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
         if line.indent < CODE_INDENT_OFFSET && pivot.kind == LineKind::Text
             && off < self.size && (self.ch(off) == 61 || self.ch(off) == 45)
             && n_parents == self.n_containers {
-            var ok, end, level = self.is_setext_underline(off)
+            let ok, end, level = self.is_setext_underline(off)
             if ok {
                 off = end
                 line.kind = LineKind::SetextUnderline
@@ -3736,7 +3736,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
         // A thematic break.
         if line.indent < CODE_INDENT_OFFSET && off < self.size && off >= hr_killer
             && is_hr_char(self.ch(off)) {
-            var ok, end, killer = self.is_hr_line(off)
+            let ok, end, killer = self.is_hr_line(off)
             if ok {
                 off = end
                 line.kind = LineKind::Hr
@@ -3747,7 +3747,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
         // Another item of a list already open.
         if n_parents < self.n_containers && n_brothers + n_children == 0 {
-            var found, mark_end, candidate = self.is_container_mark(line.indent, off)
+            let found, mark_end, candidate = self.is_container_mark(line.indent, off)
             if found && is_container_compatible(self.container(n_parents), candidate) {
                 container = candidate
                 pivot = blank_line()
@@ -3771,7 +3771,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
                     line.indent -= 1
                 }
 
-                var parent = self.container(n_parents)
+                let parent = self.container(n_parents)
                 parent.mark_indent = container.mark_indent
                 parent.contents_indent = container.contents_indent
                 self.put_container(n_parents, parent)
@@ -3791,14 +3791,14 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
         // A new container block.
         if line.indent < CODE_INDENT_OFFSET {
-            var found, mark_end, candidate = self.is_container_mark(line.indent, off)
+            let found, mark_end, candidate = self.is_container_mark(line.indent, off)
             if found {
                 // Note the offset moves past the mark either way, exactly as
                 // upstream's out-parameter does.
                 off = mark_end
                 container = candidate
 
-                var suppressed = false
+                let suppressed = false
                 if pivot.kind == LineKind::Text && n_parents == self.n_containers
                     && (off >= self.size || is_newline(self.ch(off))) && container.ch != 62 {
                     // A list mark on an otherwise blank line cannot interrupt a
@@ -3847,7 +3847,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
         // An ATX header.
         if line.indent < CODE_INDENT_OFFSET && off < self.size && self.ch(off) == 35 {
-            var ok, header_beg, end, level = self.is_atxheader_line(off)
+            let ok, header_beg, end, level = self.is_atxheader_line(off)
             if ok {
                 line.beg = header_beg
                 off = end
@@ -3860,7 +3860,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
         // An opening code fence.
         if line.indent < CODE_INDENT_OFFSET && off < self.size
             && (self.ch(off) == 96 || self.ch(off) == 126) {
-            var ok, end = self.is_opening_code_fence(off)
+            let ok, end = self.is_opening_code_fence(off)
             if ok {
                 off = end
                 line.kind = LineKind::FencedCode
@@ -3881,7 +3881,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
             if self.html_block_type > 0 {
                 // The line may close the block immediately.
-                var kind, end = self.is_html_block_end_condition(off)
+                let kind, end = self.is_html_block_end_condition(off)
                 off = end
                 if kind == self.html_block_type {
                     self.html_block_type = 0
@@ -3910,7 +3910,7 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
     // An ATX header drops its optional trailing run of '#'.
     if line.kind == LineKind::AtxHeader {
-        var trimmed = line.end
+        let trimmed = line.end
         while trimmed > line.beg && is_blank(self.ch(trimmed - 1)) {
             trimmed -= 1
         }
@@ -3940,9 +3940,9 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
     // A list that continues after a blank line is loose.
     if prev_line_loosens && line.kind != LineKind::Blank && n_parents + n_brothers > 0 {
-        var c = self.container(n_parents + n_brothers - 1)
+        let c = self.container(n_parents + n_brothers - 1)
         if c.ch != 62 {
-            var block = self.block(c.block_index)
+            let block = self.block(c.block_index)
             block.flags = block.flags | BLOCK_LOOSE_LIST
             self.put_block(c.block_index, block)
         }
@@ -3968,8 +3968,8 @@ fn Ctx::analyze_line(*self, beg: i64, pivot_in: LineAnalysis): (LineAnalysis, i6
 
 // process_line folds one analyzed line into the block stream. It answers
 // the pivot line the next analysis should be measured against.
-fn Ctx::process_line(*self, pivot_in: LineAnalysis, line: LineAnalysis): LineAnalysis {
-    var pivot = pivot_in
+fn Ctx::process_line(inout self, pivot_in: LineAnalysis, line: LineAnalysis): LineAnalysis {
+    let pivot = pivot_in
 
     // A blank line ends the current leaf block.
     if line.kind == LineKind::Blank {
@@ -3992,7 +3992,7 @@ fn Ctx::process_line(*self, pivot_in: LineAnalysis, line: LineAnalysis): LineAna
 
     // A Setext underline changes what the block above it means, and ends it.
     if line.kind == LineKind::SetextUnderline {
-        var block = self.block(self.current_block)
+        let block = self.block(self.current_block)
         block.kind = BlockKind::H
         block.data = line.data
         block.flags = block.flags | BLOCK_SETEXT_HEADER
@@ -4004,7 +4004,7 @@ fn Ctx::process_line(*self, pivot_in: LineAnalysis, line: LineAnalysis): LineAna
         }
         // Everything above turned out to be reference definitions, so the
         // underline is the start of an ordinary paragraph instead.
-        var downgraded = line
+        let downgraded = line
         downgraded.kind = LineKind::Text
         return downgraded
     }
@@ -4023,14 +4023,14 @@ fn Ctx::process_line(*self, pivot_in: LineAnalysis, line: LineAnalysis): LineAna
     return pivot
 }
 
-fn Ctx::process_doc(*self) {
-    var pivot = blank_line()
-    var off: i64 = 0
+fn Ctx::process_doc(inout self) {
+    let pivot = blank_line()
+    let off: i64 = 0
 
     self.parser.enter_block(BlockKind::Doc, Detail::none())
 
     while off < self.size {
-        var line, next = self.analyze_line(off, pivot)
+        let line, next = self.analyze_line(off, pivot)
         off = next
         pivot = self.process_line(pivot, line)
     }
@@ -4047,21 +4047,21 @@ fn Ctx::process_doc(*self) {
 // ---------------------------------------------------------------------------
 
 export fn parse(text: u8[], parser: Parser) {
-    var size = text.len() as i64
-    var stacks = Array<i64>::new(heap())
-    for var i: i64 = 0; i < N_OPENER_STACKS; i += 1 {
+    let size = text.len() as i64
+    let stacks = Array<i64>::new(heap())
+    for let i: i64 = 0; i < N_OPENER_STACKS; i += 1 {
         stacks.push(-1)
     }
 
     // A document may not instantiate more reference-definition text than
     // sixteen times its own size, capped so a huge document does not lift the
     // cap with it. See md4c issue 238.
-    var capped = size
+    let capped = size
     if capped > 65536 {
         capped = 65536
     }
 
-    var ctx = Ctx{
+    let ctx = Ctx{
         text: text,
         size: size,
         parser: parser,

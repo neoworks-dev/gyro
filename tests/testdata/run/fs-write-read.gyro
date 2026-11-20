@@ -1,39 +1,39 @@
 // The fs one-shots round-trip through a real file: write_file truncates,
 // append_file extends, remove deletes, and exists reports each state.
-import { print, println } from "stdlib"
+import { print, println, Error } from "stdlib"
 import { open, read_all, write_file, append_file, remove, exists } from "fs"
 import { heap } from "mem"
 
-fn read_back(path: string): string {
-    var file, err = open(path)
-    if err != null {
-        return ""
-    }
+fn read_file(path: string): string | Error {
+    let file = open(path)?
     defer file.close()
-    var text, readErr = read_all(heap(), file)
-    if readErr != null {
-        return ""
+    return read_all(heap(), file)?
+}
+
+fn read_back(path: string): string {
+    match read_file(path) {
+        string(text): return text
+        Error(e): return ""
     }
-    return text
 }
 
 fn main() {
     const path = "/tmp/gyro-fs-write-read.txt"
 
-    var created = write_file(path, "one\n")
+    let created = write_file(path, "one\n")
     println(created == null)
     println(exists(path))
     print(read_back(path))
 
-    var extended = append_file(path, "two\n")
+    let extended = append_file(path, "two\n")
     println(extended == null)
     print(read_back(path))
 
-    var truncated = write_file(path, "three\n")
+    let truncated = write_file(path, "three\n")
     println(truncated == null)
     print(read_back(path))
 
-    var removed = remove(path)
+    let removed = remove(path)
     println(removed == null)
     println(exists(path))
 }

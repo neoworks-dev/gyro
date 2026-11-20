@@ -16,10 +16,10 @@ fn Buf::get(self, at: usize): i32 {
 }
 
 fn main() {
-    var buf = Buf{ tag: 7, data: [1, 2, 3, 4] }
+    let buf = Buf{ tag: 7, data: [1, 2, 3, 4] }
     println("before")
 
     // 3 is the last element; 4 is one past the end.
-    var at: usize = 4
+    let at: usize = 4
     println(buf.get(at))
 }

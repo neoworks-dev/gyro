@@ -94,6 +94,9 @@ func (c *checker) exprValue(e ast.Expr, want types.Type) types.Type {
 	case *ast.AwaitExpr:
 		return c.awaitExpr(e)
 
+	case *ast.TryExpr:
+		return c.tryExpr(e)
+
 	case *ast.RecvExpr:
 		return c.recvExpr(e)
 
@@ -129,9 +132,14 @@ func (c *checker) identExpr(e *ast.Ident) types.Type {
 	c.checkAssigned(sym, e.Offset, e.Name)
 	c.checkArenaLive(sym, e.Offset)
 	c.noteCapture(sym)
-	if sym.kind == symValue && sym.closureDepth < c.closureDepth && c.isFormat(sym.typ) {
-		c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")
-		return types.Unknown
+	if sym.kind == symValue && sym.closureDepth < c.closureDepth {
+		if c.isFormat(sym.typ) {
+			c.errorf(e.Offset, "a closure cannot capture a format value, because it cannot outlive the statement it is written in")
+			return types.Unknown
+		}
+		if c.rejectOwning(e.Offset, sym.typ, "a closure capture") {
+			return types.Unknown
+		}
 	}
 	return c.symbolValueType(sym, e.Offset, e.Name)
 }
@@ -172,6 +180,9 @@ func (c *checker) symbolValueType(sym *symbol, offset int, name string) types.Ty
 		return types.Unknown
 	}
 	if sym.typ == nil {
+		return types.Unknown
+	}
+	if sym.fn != nil && c.refuseInoutValue(offset, sym.fn) {
 		return types.Unknown
 	}
 	if c.facts[sym] {
@@ -219,6 +230,10 @@ func (c *checker) adaptUntyped(e ast.Expr, t types.Type, want types.Type) types.
 	for {
 		if optional, ok := target.(*types.Optional); ok {
 			target = optional.Elem
+			continue
+		}
+		if result, ok := target.(*types.Result); ok {
+			target = result.Value
 			continue
 		}
 		break
@@ -371,8 +386,8 @@ func describeType(t types.Type) string {
 // assignableType reports whether a value of one type can be stored where
 // the other is required. There are no implicit conversions between typed
 // values; what this allows beyond identity is exactly: null into T?, T into
-// T?, a fixed-size array borrowed as a slice, and any type with
-// message(): string used as an error.
+// T?, a T or an error into T | Error, a fixed-size array borrowed as a
+// slice, and any type that implements Error used as an Error.
 func (c *checker) assignableType(value, target types.Type) bool {
 	if flexible(value) || flexible(target) {
 		return true
@@ -396,6 +411,8 @@ func (c *checker) assignableType(value, target types.Type) bool {
 	switch target := target.(type) {
 	case *types.Optional:
 		return c.assignableType(value, target.Elem)
+	case *types.Result:
+		return c.assignableType(value, target.Value) || c.satisfiesError(value)
 	case *types.Basic:
 		if target.Kind == types.ErrorKind {
 			return c.satisfiesError(value)
@@ -421,17 +438,10 @@ func (c *checker) assignableType(value, target types.Type) bool {
 	return false
 }
 
-// satisfiesError implements the structural error contract: any type with a
-// message(): string method is an error.
+// satisfiesError reports whether a value of type t can be used as an Error:
+// the Error itself, or a type that implements the trait of that name.
 func (c *checker) satisfiesError(t types.Type) bool {
-	if basic, ok := t.(*types.Basic); ok && basic.Kind == types.ErrorKind {
-		return true
-	}
-	method, _ := c.lookupMethod(t, "message")
-	if method == nil || method.Recv == types.NoRecv || len(method.TypeParams) > 0 {
-		return false
-	}
-	return len(method.Sig.Params) == 0 && types.Identical(method.Sig.Result, types.String)
+	return c.hasCapability(t, "Error", map[string]bool{})
 }
 
 // ---------------------------------------------------------------------------
@@ -938,6 +948,7 @@ func (c *checker) arrayLit(e *ast.ArrayLit, want types.Type) types.Type {
 		// Storing an allocation in a literal puts it beyond this block.
 		c.settleEscape(element)
 		t := c.exprWith(element, elemWant)
+		c.consume(element)
 		if elemWant != nil {
 			c.assignValue(element.Pos(), element, t, elemWant, "the array literal")
 			continue
@@ -974,6 +985,7 @@ func (c *checker) tupleLit(e *ast.TupleLit, want types.Type) types.Type {
 			elemWant = wantTuple.Elems[i]
 		}
 		t := c.exprWith(element, elemWant)
+		c.consume(element)
 		if elemWant != nil {
 			// Adapt rather than default: `-1` is a literal behind a
 			// negation, and only adapting carries the element's type
@@ -1375,6 +1387,7 @@ func (c *checker) positionalStructLit(e *ast.StructLit, strct *types.Struct) {
 	for i, field := range e.Fields {
 		if i < len(strct.Fields) {
 			c.assignExpr(field.Value, strct.Fields[i].Type, "the field "+strct.Fields[i].Name)
+			c.consume(field.Value)
 		} else {
 			c.expr(field.Value)
 		}
@@ -1398,6 +1411,7 @@ func (c *checker) namedStructLit(e *ast.StructLit, strct *types.Struct) {
 			continue
 		}
 		c.assignExpr(field.Value, declared.Type, "the field "+field.Name)
+		c.consume(field.Value)
 	}
 
 	for _, declared := range strct.Fields {
@@ -1510,6 +1524,10 @@ func isAnyPtrCastable(t types.Type) bool {
 // slice, an array and a pointer are tested by walking their shape, and
 // written in a match arm as `(i32, string)(pair)`.
 func anyPayload(t types.Type) bool {
+	if types.Owning(t) {
+		// An any is copied freely, and an owning value never is.
+		return false
+	}
 	switch t := t.(type) {
 	case *types.Basic:
 		switch t.Kind {
@@ -1533,7 +1551,7 @@ func anyPayload(t types.Type) bool {
 		// does not record which member it holds — so what came out would
 		// be storage rather than a value.
 		return false
-	case *types.Optional, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Assoc, *types.Dyn:
+	case *types.Optional, *types.Result, *types.Chan, *types.Future, *types.Func, *types.Code, *types.TypeParam, *types.Assoc, *types.Dyn:
 		return false
 	case *types.Pointer:
 		return anyPayload(t.Elem)
@@ -1613,6 +1631,14 @@ func (c *checker) matchExpr(e *ast.MatchExpr, want types.Type) types.Type {
 		c.flow = merged
 	}
 
+	// Every arm's value becomes the match's, whether or not anything
+	// takes the match's in turn.
+	if result != nil && types.Owning(result) {
+		for _, arm := range e.Arms {
+			c.consumeTail(arm.Body)
+		}
+	}
+
 	c.checkExhaustive(e, subject, covered, irrefutable)
 
 	if result == nil {
@@ -1647,20 +1673,27 @@ func (c *checker) matchArm(arm ast.MatchArm, subject, want, result types.Type) (
 
 // checkExhaustive demands that a match over an enum name every variant or
 // end in a `_`. Adding a variant then breaks every match that enumerated
-// the old set, which is the point of the check.
+// the old set, which is the point of the check. A `T | Error` has two, the
+// value and the error.
 func (c *checker) checkExhaustive(e *ast.MatchExpr, subject types.Type, covered map[string]bool, irrefutable bool) {
 	if irrefutable {
 		return
 	}
-	enum, ok := subject.(*types.Enum)
-	if !ok {
-		return
-	}
 
 	var missing []string
-	for _, variant := range enum.Variants {
-		if !covered[variant.Name] {
-			missing = append(missing, enum.Name+"::"+variant.Name)
+	switch subject := subject.(type) {
+	case *types.Enum:
+		for _, variant := range subject.Variants {
+			if !covered[variant.Name] {
+				missing = append(missing, subject.Name+"::"+variant.Name)
+			}
+		}
+	case *types.Result:
+		if !covered["value"] {
+			missing = append(missing, subject.Value.String()+"(value)")
+		}
+		if !covered["error"] {
+			missing = append(missing, "Error(e)")
 		}
 	}
 	if len(missing) == 0 {
@@ -1755,7 +1788,8 @@ func (c *checker) closureExpr(e *ast.ClosureExpr, want types.Type) types.Type {
 				selfType = savedFn.selfType
 			}
 			c.fn = &funcContext{result: result, async: e.Async, inMethod: inMethod, selfType: selfType,
-				trusted: savedFn != nil && savedFn.trusted}
+				trusted:      savedFn != nil && savedFn.trusted,
+				selfBorrowed: savedFn != nil && savedFn.selfBorrowed}
 
 			if e.Body != nil {
 				// A closure runs at a time this analysis cannot pin down, so its

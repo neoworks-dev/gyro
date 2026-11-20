@@ -30,6 +30,10 @@ type funcLowerer struct {
 	result    types.Type
 	addrTaken map[string]bool
 
+	// writeBacks collects what the call being lowered owes its inout
+	// arguments once it returns. See collectWriteBacks.
+	writeBacks []writeBack
+
 	// written holds the names the body may change in place, which is what
 	// decides whether a record parameter needs a slot of its own. It is nil
 	// where nobody has looked, and nil means every name.
@@ -40,10 +44,8 @@ type funcLowerer struct {
 	// env pointer arrives as the first parameter, named env.
 	captures []capture
 
-	// deferring counts the deferred calls being prepared. A deferred
-	// call's arguments are evaluated where it is written, so while this
-	// is non-zero a local's register is snapshotted rather than named.
-	deferring int
+	// temps are the owning temporaries not yet destroyed, oldest first.
+	temps []temporary
 }
 
 type scopeInfo struct {
@@ -57,6 +59,9 @@ type local struct {
 	slot bool
 	// env is the field index in the closure environment record, or -1.
 	env int
+	// alive names the flag register of a local that owns its value, and
+	// is empty for every other local.
+	alive string
 }
 
 type capture struct {
@@ -68,6 +73,9 @@ type loopContext struct {
 	breakLabel string
 	contLabel  string
 	depth      int
+	// temps is how many temporaries were pending when the loop began;
+	// leaving it destroys the ones made inside.
+	temps int
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +104,7 @@ func (l *lowerer) lowerFunc(item workItem) {
 		f.fn.Result = l.metalsType(f.result)
 	}
 	f.addrTaken = map[string]bool{}
-	markAddressTaken(decl.Body, f.addrTaken)
+	f.markAddressTaken(decl.Body)
 	f.written = f.writtenNames(decl.Body)
 
 	f.blocks = []*[]metals.Instr{&f.fn.Body}
@@ -107,13 +115,28 @@ func (l *lowerer) lowerFunc(item workItem) {
 		f.declareReceiver()
 	}
 	for _, param := range decl.Params {
+		if param.Inout {
+			f.declareInout(param.Name, f.localType(decl, param.Name))
+			continue
+		}
+		if param.Take {
+			// The function owns the argument now, and destroys it through
+			// its address.
+			f.addrTaken[param.Name] = true
+		}
 		f.declareParam(param.Name, f.localType(decl, param.Name))
+		if param.Take {
+			f.own(param.Name, true)
+		}
 	}
 	f.blockInPlace(decl.Body)
 	f.epilogue(blockTerminates(decl.Body))
 	f.popScopeNoDefers()
 
 	l.module.Funcs = append(l.module.Funcs, f.fn)
+	if f.fn.Name == mainRunName {
+		l.entryWrapper(f.fn, f.result)
+	}
 }
 
 func (f *funcLowerer) declareReceiver() {
@@ -121,16 +144,26 @@ func (f *funcLowerer) declareReceiver() {
 	if selfType == nil {
 		f.l.fail("@%s has a receiver but no recorded self type", f.fn.Name)
 	}
-	if f.decl.Recv.Pointer {
-		f.fn.Params = append(f.fn.Params, metals.Param{
-			Name: "self",
-			Type: &metals.Ptr{Elem: f.l.metalsType(selfType)},
-		})
-		f.bind("self", &local{reg: "self", typ: selfType, slot: true, env: -1})
-		f.noteReg("self")
+	if f.decl.Recv.Inout {
+		f.declareInout("self", selfType)
 		return
 	}
 	f.declareParam("self", selfType)
+}
+
+// declareInout takes a parameter passed by address. The name is the
+// caller's own storage, so every read and write in the body goes through
+// the pointer, and nothing is copied in or out.
+func (f *funcLowerer) declareInout(name string, typ types.Type) {
+	if typ == nil {
+		f.l.fail("@%s: parameter %s has no recorded type", f.fn.Name, name)
+	}
+	f.fn.Params = append(f.fn.Params, metals.Param{
+		Name: name,
+		Type: &metals.Ptr{Elem: f.l.metalsType(typ)},
+	})
+	f.bind(name, &local{reg: name, typ: typ, slot: true, env: -1})
+	f.noteReg(name)
 }
 
 // declareParam takes one incoming value parameter, spilling it to a slot
@@ -157,6 +190,10 @@ func (f *funcLowerer) declareParam(name string, typ types.Type) {
 // epilogue closes the function when its body can fall off the end.
 func (f *funcLowerer) epilogue(terminated bool) {
 	if terminated {
+		return
+	}
+	if isErrorOptional(f.result) {
+		f.returnSuccess()
 		return
 	}
 	f.flushDefersDownTo(0)
@@ -190,17 +227,43 @@ func stmtTerminates(s ast.Stmt) bool {
 	return false
 }
 
-// markAddressTaken collects every name whose address the body takes.
-func markAddressTaken(node ast.Node, out map[string]bool) {
+// markAddressTaken collects every name whose address the body takes: with
+// `&`, or by passing it as an inout argument, which the callee reaches
+// through a pointer.
+func (f *funcLowerer) markAddressTaken(node ast.Node) {
 	walk(node, func(n ast.Node) {
-		unary, ok := n.(*ast.UnaryExpr)
-		if !ok || unary.Op != token.Amp {
-			return
-		}
-		if name := placeRoot(unary.X); name != "" {
-			out[name] = true
+		switch n := n.(type) {
+		case *ast.UnaryExpr:
+			if n.Op == token.Amp {
+				f.markAddress(n.X)
+			}
+		case *ast.CallExpr:
+			f.markInoutPasses(n)
 		}
 	})
+}
+
+func (f *funcLowerer) markAddress(place ast.Expr) {
+	if name := placeRoot(place); name != "" {
+		f.addrTaken[name] = true
+	}
+}
+
+// markInoutPasses marks what a call to a function written in Gyro passes by
+// address. A runtime method takes a handle, which is already a reference.
+func (f *funcLowerer) markInoutPasses(call *ast.CallExpr) {
+	info := f.lookupCall(call)
+	if info == nil || info.Method == nil || info.Method.Decl == nil || info.Method.Decl.Body == nil {
+		return
+	}
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && info.Method.Recv == types.InoutRecv {
+		f.markAddress(selector.X)
+	}
+	for i, arg := range call.Args {
+		if info.Method.InoutAt(i) {
+			f.markAddress(arg.Value)
+		}
+	}
 }
 
 // placeRoot names the local a place expression is rooted at, so that
@@ -290,7 +353,9 @@ func (f *funcLowerer) emit(instr metals.Instr) {
 func (f *funcLowerer) nested(fill func()) []metals.Instr {
 	var body []metals.Instr
 	f.blocks = append(f.blocks, &body)
+	mark := len(f.temps)
 	fill()
+	f.endTemporaries(mark)
 	f.blocks = f.blocks[:len(f.blocks)-1]
 	return body
 }
@@ -369,7 +434,8 @@ func (f *funcLowerer) needsSlot(name string, typ types.Type) bool {
 	if f.addrTaken[name] {
 		return true
 	}
-	return isUserRecord(typ)
+	// An owner is destroyed through its address.
+	return isUserRecord(typ) || types.Owning(typ)
 }
 
 // paramNeedsSlot is needsSlot for an incoming parameter. A record the body
@@ -391,7 +457,7 @@ func (f *funcLowerer) paramNeedsSlot(name string, typ types.Type) bool {
 // writtenNames collects every name the body may change in place, or take
 // the address of by another road than &: assigned to through a field or an
 // index, narrowed into a view that can be written, called with a method
-// that takes *self, or mentioned inside a closure, which may do any of
+// that takes inout self, or mentioned inside a closure, which may do any of
 // them later. It errs towards yes.
 func (f *funcLowerer) writtenNames(body ast.Node) map[string]bool {
 	written := map[string]bool{}
@@ -419,7 +485,7 @@ func (f *funcLowerer) writtenNames(body ast.Node) map[string]bool {
 				return
 			}
 			info := f.lookupCall(n)
-			if info == nil || info.Method == nil || info.Method.Recv == types.PointerRecv {
+			if info == nil || info.Method == nil || info.Method.Recv == types.InoutRecv {
 				written[root] = true
 			}
 		case *ast.ClosureExpr:
@@ -541,6 +607,8 @@ func (f *funcLowerer) mark(offset int) {
 
 func (f *funcLowerer) stmt(s ast.Stmt) {
 	f.mark(s.Pos())
+	mark := len(f.temps)
+	defer f.endTemporaries(mark)
 	switch s := s.(type) {
 	case *ast.VarDecl:
 		f.localVar(s)
@@ -573,10 +641,14 @@ func (f *funcLowerer) stmt(s ast.Stmt) {
 	}
 }
 
-// discard evaluates an expression for its effect.
+// discard evaluates an expression for its effect. An owning value
+// nothing takes is destroyed right away.
 func (f *funcLowerer) discard(e ast.Expr) {
 	if call, ok := e.(*ast.CallExpr); ok {
-		f.prepareCall(call)()
+		result := f.lowerCall(call)
+		if t := f.typeOfVoidOK(call); result != "" && t != nil && types.Owning(t) {
+			f.destroyValue(result, t)
+		}
 		return
 	}
 	if isVoid(f.typeOfVoidOK(e)) {
@@ -610,6 +682,8 @@ func (f *funcLowerer) evalVoid(e ast.Expr) {
 		f.block(e.Block)
 	case *ast.AwaitExpr:
 		f.await(e)
+	case *ast.TryExpr:
+		f.tryExpr(e)
 	default:
 		f.lowerExpr(e, nil)
 	}
@@ -632,6 +706,7 @@ func (f *funcLowerer) localVar(decl *ast.VarDecl) {
 			slot := f.newReg(name)
 			f.emit(&metals.Slot{Dst: slot, Type: f.l.metalsType(declared)})
 			f.bind(name, &local{reg: slot, typ: declared, slot: true, env: -1})
+			f.own(name, false)
 			return
 		}
 		if declared != nil {
@@ -646,6 +721,7 @@ func (f *funcLowerer) localVar(decl *ast.VarDecl) {
 	}
 	value := f.lowerExpr(decl.Value, declared)
 	f.newLocal(name, declared, value)
+	f.own(name, true)
 }
 
 func (f *funcLowerer) destructuringVar(decl *ast.VarDecl) {
@@ -682,6 +758,7 @@ func (f *funcLowerer) destructuringVar(decl *ast.VarDecl) {
 		f.emit(&metals.TupleGet{Dst: elem, X: value, Index: i})
 		elem = f.coerce(elem, types.Default(tuple.Elems[i]), declared)
 		f.newLocal(binding.Name, declared, elem)
+		f.own(binding.Name, true)
 	}
 }
 
@@ -700,7 +777,7 @@ func (f *funcLowerer) assign(s *ast.AssignStmt) {
 		return
 	}
 	value := f.lowerExpr(s.Rhs, target.typ)
-	target.store(value)
+	f.storeOwned(s.Lhs[0], target, value)
 }
 
 func (f *funcLowerer) destructuringAssign(s *ast.AssignStmt) {
@@ -733,7 +810,7 @@ func (f *funcLowerer) destructuringAssign(s *ast.AssignStmt) {
 		}
 		part := f.newReg("part")
 		f.emit(&metals.TupleGet{Dst: part, X: value, Index: i})
-		target.store(f.coerce(part, types.Default(tuple.Elems[i]), target.typ))
+		f.storeOwned(s.Lhs[i], target, f.coerce(part, types.Default(tuple.Elems[i]), target.typ))
 	}
 }
 
@@ -766,20 +843,27 @@ func (f *funcLowerer) compoundAssign(s *ast.AssignStmt) {
 func (f *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 	switch len(s.Results) {
 	case 0:
-		f.flushDefersDownTo(0)
+		if isErrorOptional(f.result) {
+			f.returnSuccess()
+			return
+		}
+		f.leave()
 		f.emit(&metals.Return{})
 	case 1:
 		if isVoid(f.result) {
 			f.discard(s.Results[0])
-			f.flushDefersDownTo(0)
+			f.leave()
 			f.emit(&metals.Return{})
 			return
 		}
 		value := f.lowerExpr(s.Results[0], f.result)
-		f.flushDefersDownTo(0)
+		f.leave()
 		f.emit(&metals.Return{Val: value})
 	default:
 		tuple, ok := f.result.(*types.Tuple)
+		if fallible, isResult := f.result.(*types.Result); isResult {
+			tuple, ok = fallible.Value.(*types.Tuple)
+		}
 		if !ok || len(tuple.Elems) != len(s.Results) {
 			f.l.fail("@%s: return arity does not match the result", f.fn.Name)
 		}
@@ -789,9 +873,18 @@ func (f *funcLowerer) returnStmt(s *ast.ReturnStmt) {
 		}
 		value := f.newReg("ret")
 		f.emit(&metals.MakeTuple{Dst: value, Args: parts})
-		f.flushDefersDownTo(0)
+		value = f.coerce(value, tuple, f.result)
+		f.leave()
 		f.emit(&metals.Return{Val: value})
 	}
+}
+
+// leave runs everything a return passes on its way out: the temporaries
+// of the statements it is inside, then the defers and destructions of
+// every open scope.
+func (f *funcLowerer) leave() {
+	f.destroyTemporaries(0)
+	f.flushDefersDownTo(0)
 }
 
 func (f *funcLowerer) ifStmt(s *ast.IfStmt) {
@@ -818,7 +911,7 @@ func (f *funcLowerer) whileStmt(s *ast.WhileStmt) {
 		f.emit(&metals.BrIf{Cond: stop, Label: breakLabel})
 
 		f.loops = append(f.loops, loopContext{
-			breakLabel: breakLabel, contLabel: topLabel, depth: len(f.scopes),
+			breakLabel: breakLabel, contLabel: topLabel, depth: len(f.scopes), temps: len(f.temps),
 		})
 		f.block(s.Body)
 		f.loops = f.loops[:len(f.loops)-1]
@@ -846,7 +939,7 @@ func (f *funcLowerer) forStmt(s *ast.ForStmt) {
 			f.emit(&metals.BrIf{Cond: stop, Label: breakLabel})
 		}
 		f.loops = append(f.loops, loopContext{
-			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes),
+			breakLabel: breakLabel, contLabel: contLabel, depth: len(f.scopes), temps: len(f.temps),
 		})
 		inner := f.nested(func() { f.block(s.Body) })
 		f.loops = f.loops[:len(f.loops)-1]
@@ -867,6 +960,7 @@ func (f *funcLowerer) branchStmt(s *ast.BranchStmt) {
 		f.l.fail("@%s: %s outside a loop", f.fn.Name, s.Kind)
 	}
 	loop := f.loops[len(f.loops)-1]
+	f.destroyTemporaries(loop.temps)
 	f.flushDefersDownTo(loop.depth)
 	if s.Kind == token.Break {
 		f.emit(&metals.Br{Label: loop.breakLabel})
@@ -880,12 +974,19 @@ func (f *funcLowerer) deferStmt(s *ast.DeferStmt) {
 	if !ok {
 		f.l.fail("@%s: defer takes a call", f.fn.Name)
 	}
-	f.deferring++
-	run := f.prepareCall(call)
-	f.deferring--
-
-	top := f.scopes[len(f.scopes)-1]
-	top.defers = append(top.defers, func() { run() })
+	// The whole call is lowered again at every exit, so it sees what its
+	// names hold then. An exit from a deeper block still has that block's
+	// scopes open, and a name there could shadow the one the defer means:
+	// the call is lowered against the scopes that were open where it was
+	// written.
+	depth := len(f.scopes)
+	top := f.scopes[depth-1]
+	top.defers = append(top.defers, func() {
+		open := f.scopes
+		f.scopes = append([]*scopeInfo(nil), open[:depth]...)
+		f.lowerCall(call)
+		f.scopes = open
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1477,6 +1578,8 @@ func walk(node ast.Node, visit func(ast.Node)) {
 	case *ast.BlockExpr:
 		walk(n.Block, visit)
 	case *ast.AwaitExpr:
+		walk(n.X, visit)
+	case *ast.TryExpr:
 		walk(n.X, visit)
 	case *ast.RecvExpr:
 		walk(n.Chan, visit)

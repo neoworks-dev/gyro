@@ -19,14 +19,14 @@ fn main() {
     println("ab".repeat(heap(), 3))
     println("[#{"ab".repeat(heap(), 0)}]")
 
-    var at = "hello".index_of("ll")
+    let at = "hello".index_of("ll")
     if at != null {
         println(at)
     }
     println("hello".index_of("zz") == null)
 
     // An empty field between two separators is a field.
-    var parts = "a,b,,c".split(heap(), ",")
+    let parts = "a,b,,c".split(heap(), ",")
     defer parts.free()
     println(parts.len())
     for part in parts.slice() {
@@ -35,12 +35,12 @@ fn main() {
     println(join(heap(), parts.slice(), "-"))
 
     // A separator that does not occur leaves one field.
-    var whole = "abc".split(heap(), ",")
+    let whole = "abc".split(heap(), ",")
     defer whole.free()
     println(whole.len())
 
     // Extensions chain like any other method.
-    var fields = "  a, b ,c  ".trim(heap()).split(heap(), ",")
+    let fields = "  a, b ,c  ".trim(heap()).split(heap(), ",")
     defer fields.free()
     println(fields.len())
     println(fields.get(0).trim(heap()))

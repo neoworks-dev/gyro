@@ -8,8 +8,8 @@ struct Point {
 }
 
 fn main() {
-    var a = Point{ x: 1, y: 2 }
-    var b = a
+    let a = Point{ x: 1, y: 2 }
+    let b = a
     b.x = 99
     println(a.x)
     println(b.x)

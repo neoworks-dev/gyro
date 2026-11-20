@@ -7,9 +7,9 @@ import { heap, spawn } from "mem"
 import { monotonic } from "time"
 
 fn main() {
-    var values = chan<i64>(256)
-    var done = chan<bool>(4)
-    var start = monotonic()
+    let values = chan<i64>(256)
+    let done = chan<bool>(4)
+    let start = monotonic()
     for p in 0..4 {
         spawn(heap(), fn() {
             for i in 0..200000 {
@@ -19,14 +19,14 @@ fn main() {
         })
     }
 
-    var total: i64 = 0
+    let total: i64 = 0
     for i in 0..800000 {
         total += <-values
     }
     for p in 0..4 {
-        var _ = <-done
+        let _ = <-done
     }
-    var stop = monotonic()
+    let stop = monotonic()
 
     println(total)
     eprintln("gyro:bench #{stop - start}")
