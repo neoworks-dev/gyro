@@ -1,0 +1,31 @@
+// main may take the process's Io before the command line. Printing is a
+// method on it, and a function does io exactly when it is handed one. An
+// Io is an ordinary value: it is passed, copied and stored like any other.
+//gyro:args one two
+
+import { Io } from "stdlib"
+
+struct Greeter {
+    io: Io
+    greeting: string
+}
+
+fn Greeter::greet(self, name: string) {
+    self.io.println("#{self.greeting}, #{name}")
+}
+
+fn count(io: Io, args: string[]) {
+    io.print("args: ")
+    io.println(args.len())
+}
+
+fn main(io: Io, args: string[]) {
+    count(io, args)
+    let greeter = Greeter{ io: io, greeting: "hello" }
+    for arg in args {
+        greeter.greet(arg)
+    }
+    let copy = io
+    copy.println(true)
+    copy.println(2.5)
+}

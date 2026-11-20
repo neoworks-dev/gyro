@@ -5,6 +5,7 @@ import (
 
 	"github.com/gyro-lang/gyro/internal/ast"
 	"github.com/gyro-lang/gyro/internal/metals"
+	"github.com/gyro-lang/gyro/internal/sema"
 	"github.com/gyro-lang/gyro/internal/types"
 )
 
@@ -315,14 +316,26 @@ func isErrorOptional(t types.Type) bool {
 	return ok && isErrorBasic(optional.Elem)
 }
 
-// entryWrapper is the exported main of a program whose main returns a
-// result: it runs the body, and hands what came back to stdlib, which ends
-// the process with the status or the error.
+// entryWrapper is the exported main of a program whose main takes an Io or
+// returns a result. The runtime passes the arguments alone, so the wrapper
+// makes the process's Io and hands it over first; and it hands what came
+// back to stdlib, which ends the process with the status or the error.
 func (l *lowerer) entryWrapper(run *metals.Func, result types.Type) {
 	wrapper := &metals.Func{Name: "main", Export: true, Params: run.Params}
-	args := make([]string, len(run.Params))
-	for i, param := range run.Params {
-		args[i] = param.Name
+	var args []string
+	if l.mainTakesIo() {
+		wrapper.Params = run.Params[1:]
+		maker := l.ensureFunc(l.leafDecl("process_io"), nil)
+		wrapper.Body = append(wrapper.Body, &metals.Call{Dst: "process_io", Callee: maker})
+		args = append(args, "process_io")
+	}
+	for _, param := range wrapper.Params {
+		args = append(args, param.Name)
+	}
+	l.module.Funcs = append(l.module.Funcs, wrapper)
+	if len(l.mainDecl.Results) == 0 {
+		wrapper.Body = append(wrapper.Body, &metals.Call{Callee: run.Name, Args: args}, &metals.Return{})
+		return
 	}
 	wrapper.Body = append(wrapper.Body, &metals.Call{Dst: "returned", Callee: run.Name, Args: args})
 
@@ -343,5 +356,13 @@ func (l *lowerer) entryWrapper(run *metals.Func, result types.Type) {
 		&metals.Call{Callee: finish, Args: []string{outcome}},
 		&metals.Return{},
 	)
-	l.module.Funcs = append(l.module.Funcs, wrapper)
+}
+
+// mainTakesIo reports a main whose first parameter is the process's Io.
+func (l *lowerer) mainTakesIo() bool {
+	main := l.mainDecl
+	if len(main.Params) == 0 {
+		return false
+	}
+	return sema.IsIo(l.info.Locals[main][main.Params[0].Name])
 }

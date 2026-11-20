@@ -274,7 +274,7 @@ var explanations = map[Code]explanation{
 	EUnassignedRead: {"value is read before it is assigned",
 		"Gyro has no zero values, so `let x: i32` holds nothing until something\nwrites to it. Every path reaching a read must have written it: assigning\nin one branch of an if and not the other is not enough. Taking the\naddress with &x counts as a write, since the storage is real and what\nhappens through the pointer cannot be followed here."},
 	EEntryPointSignature: {"main has the wrong signature",
-		"The entry point is `fn main()` or `fn main(args: string[])`, and may\nbe async. args[0] is the name the program was invoked as, so a program\nwith no arguments still sees one element. main returns nothing, an i32\nexit code, or `i32 | Error`: an error ends the program with its message on\nstandard error and status 1."},
+		"The entry point is `fn main()`, and may take the process's `Io`, the\ncommand line as `args: string[]`, or both in that order:\n`fn main(io: Io, args: string[])`. It may be async. A main without an\n`Io` does no io. args[0] is the name the program was invoked as, so a\nprogram with no arguments still sees one element. main returns nothing, an i32\nexit code, or `i32 | Error`: an error ends the program with its message on\nstandard error and status 1."},
 	EVariadicParam: {"variadic parameter is declared wrongly",
 		"A parameter written `name: ...T` collects the remaining arguments and\nis a T[] slice inside the body. Only the last parameter may be one, and\nit takes no default: a call that passes nothing for it gives it an empty\nslice."},
 	EBadSpread: {"spread argument is misplaced",

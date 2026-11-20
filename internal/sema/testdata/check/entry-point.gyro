@@ -1,6 +1,6 @@
-// main is `fn main()` or `fn main(args: string[])`, and may be async.
-// Anything else used to check clean and then read a register nobody had
-// filled, which segfaulted natively.
+// main takes the process's Io, the command line as a string[], both in
+// that order, or nothing, and may be async. Anything else would read a
+// register nobody filled.
 
-fn main(count: i32) { //~ E0523 main takes no parameters, or one string[] of arguments
+fn main(count: i32) { //~ E0523 main takes an Io, a string[] of arguments, both in that order, or nothing
 }

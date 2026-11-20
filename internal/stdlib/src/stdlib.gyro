@@ -2,13 +2,51 @@
 // with a body is ordinary Gyro, compiled like any other module.
 
 import { Allocator, Mode, heap, Format, alloc, free, size, panic, format } from "mem"
-import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, destroy_at, futex_wait, futex_wake, init_at, offset, raw_alloc, slice_from_raw, syscall1, syscall2, syscall3, text_bytes, text_seal, text_size } from "unsafe"
+import { atomic_add, atomic_and, atomic_cas, atomic_fence, atomic_load, atomic_or, atomic_store, atomic_sub, atomic_swap, atomic_xor, cast, copy_bytes, destroy_at, futex_wait, futex_wake, init_at, offset, raw_alloc, slice_from_raw, syscall1, syscall2, syscall3, syscall6, text_bytes, text_seal, text_size } from "unsafe"
 import { write as write_float } from "float"
 
 export fn print<T: Print>(value: T) !{ io }
 export fn println<T: Print>(value: T) !{ io }
 export fn eprint<T: Print>(value: T) !{ io }
 export fn eprintln<T: Print>(value: T) !{ io }
+
+// Io is the capability to act on the world outside the program. A function
+// does io exactly when it is handed one, the way it allocates when it is
+// handed an Allocator, so a function without one provably does none. The
+// entry point hands main the process's own; nothing else makes one except
+// unsafe code.
+//
+// It is a data pointer and a table of procedures, like an Allocator. The
+// table has one entry, a system call, since that is what every other io
+// operation is built from: the process's Io makes the call, and another
+// Io may answer it however it likes.
+export struct Io {
+    private data: anyptr?
+    private syscall: code(anyptr?, usize, usize, usize, usize, usize, usize, usize): isize
+}
+
+// Io::new makes an Io from a system call procedure and the data it is
+// handed. It is unsafe because a function holding the result is taken to
+// do io, and the procedure is what decides whether that is true.
+export unsafe fn Io::new(data: anyptr?, syscall: code(anyptr?, usize, usize, usize, usize, usize, usize, usize): isize): Io !{} {
+    return Io{ data: data, syscall: syscall }
+}
+
+export fn Io::print<T: Print>(self, value: T) !{ io }
+export fn Io::println<T: Print>(self, value: T) !{ io }
+export fn Io::eprint<T: Print>(self, value: T) !{ io }
+export fn Io::eprintln<T: Print>(self, value: T) !{ io }
+
+// process_io is the process's own Io, which the entry point hands main.
+safe fn process_io(): Io !{} {
+    return Io{ data: null, syscall: &process_syscall }
+}
+
+// process_syscall asks the kernel. Unused arguments are passed too, and the
+// kernel ignores what a call does not read.
+safe fn process_syscall(data: anyptr?, number: usize, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize): isize !{ io } {
+    return syscall6(number, a, b, c, d, e, f)
+}
 
 // The capabilities the language itself leans on. Each is an ordinary trait,
 // and the compiler gives it a meaning by where it is declared: == and !=

@@ -368,6 +368,15 @@ func (f *funcLowerer) lowerNative(call *ast.CallExpr, resolved *sema.CallInfo, d
 	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "" && isPrintName(decl.Name) {
 		return f.lowerPrint(call, resolved, decl)
 	}
+	if module != nil && module.Path == stdlib.Path("stdlib") && decl.Owner == "Io" && isPrintName(decl.Name) {
+		// Every Io prints through the process's streams for now: the
+		// receiver is evaluated for what it does, and its table is not
+		// asked.
+		if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+			f.lowerExpr(selector.X, nil)
+		}
+		return f.lowerPrint(call, resolved, decl)
+	}
 
 	name := f.l.funcName(decl, resolved.Bindings)
 	f.l.ensureNativeImport(name, decl, resolved.Sig)
